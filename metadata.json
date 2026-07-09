@@ -1,0 +1,6 @@
+{
+  "name": "Garment Retail & Billing SaaS",
+  "description": "Enterprise-level Multi-Tenant SaaS Garment Billing, POS, Inventory, and Retail Management System with custom garment articulation, developer APIs, integrations, interactive dashboards, and an industry-standard PT (Purchase Template) File Import System.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
