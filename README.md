@@ -1,20 +1,61 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Vastra ERP Billing
 
-# Run and deploy your AI Studio app
+Vastra ERP Billing is a modern, multi-tenant SaaS application specifically designed for the garment and retail industry. It provides an all-in-one comprehensive solution to manage retail operations from point of sale (POS) and inventory to accounting and employee commissions.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/ae99eaf4-9f0e-46c5-85c7-ba8e82bfe869
+- **Billing & POS System**: Seamless and fast checkout experience tailored for garment retail, supporting multiple payment methods and quick invoice generation.
+- **Inventory Management**: Real-time stock tracking, articulation windows, and low-stock alerts.
+- **SaaS Admin Panel**: Multi-tenant architecture to seamlessly manage different stores, subscriptions, and integrations.
+- **Accounting & Reports**: Comprehensive accounting tools with day-books, trial balances, and automated sales reporting.
+- **Employee & Commission Tracking**: Automatically calculate sales commissions and manage staff performance.
+- **Customer Relationship Management**: Built-in CRM to track customer purchase history and loyalty.
+- **Purchasing & Supplier Management**: Manage vendors, purchase orders, and wholesale shipments easily.
+- **Developer Portal**: Integrated API keys and Webhook management for custom integrations.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 19, Vite, Tailwind CSS, Framer Motion
+- **Icons**: Lucide React
+- **Data & Integrations**: Google GenAI
 
+## Getting Started
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Prerequisites
+
+- Node.js (v18 or higher recommended)
+
+### Installation
+
+1. Clone the repository and navigate to the project directory:
+   ```bash
+   cd garment-retail-&-billing-saas
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. (Optional) Set up your environment variables. Copy `.env.example` to `.env.local` and add any necessary keys (like `GEMINI_API_KEY`).
+
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open your browser and navigate to `http://localhost:3000` to view the application.
+
+## Building for Production
+
+To create a production-ready build:
+
+```bash
+npm run build
+```
+
+This will output optimized static assets into the `dist` directory, ready to be deployed to any static web host.
+
+## License
+
+This project is proprietary and intended for Vastra ERP Billing users.
