@@ -10,6 +10,16 @@ const generateSuperAdminToken = () => {
   });
 };
 
+const generateBusinessCode = () => {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let randomLetters = '';
+  for (let i = 0; i < 4; i++) {
+    randomLetters += letters.charAt(Math.floor(Math.random() * letters.length));
+  }
+  const randomDigits = Math.floor(1000 + Math.random() * 9000); // 4 digit number
+  return `BB-${randomLetters}-${randomDigits}`;
+};
+
 exports.superAdminLogin = async (req, res) => {
   try {
     const { email, secretKey } = req.body;
@@ -41,13 +51,26 @@ exports.registerBusiness = async (req, res) => {
     } = req.body;
 
     // 1. Check if email already exists
-    const tenantExists = await Tenant.findOne({ email });
-    const userExists = await User.findOne({ email });
-
-    if (tenantExists || userExists) {
+    const emailInUse = await Tenant.findOne({ email }) || await User.findOne({ email });
+    if (emailInUse) {
       return res.status(400).json({ success: false, message: 'Email already in use' });
     }
 
+    // 2. Check if business name already exists
+    const nameInUse = await Tenant.findOne({ businessName });
+    if (nameInUse) {
+      return res.status(400).json({ success: false, message: 'Business name already in use' });
+    }
+
+    // 3. Check if phone already exists
+    const phoneInUse = await Tenant.findOne({ phone: adminPhone }) || await User.findOne({ phone: adminPhone });
+    if (phoneInUse) {
+      return res.status(400).json({ success: false, message: 'Mobile number already in use' });
+    }
+
+    // Generate custom business code
+    let businessCode = generateBusinessCode();
+    
     // Determine expiry using IST
     let expiryDays = 14;
     if (plan === 'Starter') expiryDays = 30;
@@ -59,6 +82,7 @@ exports.registerBusiness = async (req, res) => {
     // 2. Create the Tenant (Business)
     const tenant = await Tenant.create({
       businessName,
+      businessCode,
       email,
       phone: adminPhone,
       aadhaarNumber,
@@ -70,6 +94,7 @@ exports.registerBusiness = async (req, res) => {
     // 3. Create the BusinessAdmin User
     const adminUser = await User.create({
       tenantId: tenant._id,
+      businessCode,
       name: adminName,
       email,
       password: adminPassword,

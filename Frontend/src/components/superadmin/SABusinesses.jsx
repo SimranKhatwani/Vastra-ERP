@@ -16,7 +16,7 @@ export function SABusinesses() {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const { data } = await axios.get("/api/super-admin/tenants", config);
+      const { data } = await axios.get("http://localhost:5000/api/superadmin/tenants", config);
       if (data.success) {
         setTenants(data.data);
       }
@@ -45,7 +45,7 @@ export function SABusinesses() {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.put(`/api/super-admin/tenants/${id}/toggle-status`, {}, config);
+      await axios.put(`http://localhost:5000/api/superadmin/tenants/${id}/toggle-status`, {}, config);
       fetchTenants();
     } catch (err) {
       alert("Failed to toggle status: " + (err.response?.data?.message || err.message));
@@ -119,7 +119,10 @@ export function SABusinesses() {
                       </div>
                       <div>
                         <p className="font-bold text-slate-800">{tenant.businessName}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">Aadhaar: {tenant.aadhaarNumber}</p>
+                        <div className="flex flex-col gap-0.5 mt-0.5">
+                          <p className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded w-fit">ID: {tenant.businessCode || tenant._id}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">Aadhaar: {tenant.aadhaarNumber}</p>
+                        </div>
                       </div>
                     </div>
                   </td>

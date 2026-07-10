@@ -31,13 +31,13 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
             e.preventDefault();
             const email = e.target.email.value;
             const password = e.target.password.value;
-            // Note: We are ignoring businessId for now since email is universally unique in our backend.
+            const businessId = e.target.businessId.value.trim();
 
             try {
               const res = await fetch('http://localhost:5000/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ businessId, email, password })
               });
               
               const data = await res.json();

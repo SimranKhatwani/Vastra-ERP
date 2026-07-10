@@ -9,16 +9,20 @@ const generateToken = (id) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { businessId, email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide an email and password' });
+    if (!businessId || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide a Business ID, email, and password' });
     }
 
     const user = await User.findOne({ email }).select('+password').populate('tenantId');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'User not found. Please contact SuperAdmin to register your business.' });
+    }
+
+    if (user.businessCode !== businessId && (!user.tenantId || user.tenantId._id.toString() !== businessId)) {
+      return res.status(401).json({ success: false, message: 'Invalid Business ID.' });
     }
     
     if (!user.isActive) {

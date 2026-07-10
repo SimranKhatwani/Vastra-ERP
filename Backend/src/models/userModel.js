@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema(
       ref: 'Tenant',
       required: true, // Every user MUST belong to a business
     },
+    businessCode: {
+      type: String,
+      required: true,
+    },
     name: {
       type: String,
       required: [true, 'Please add a name'],

@@ -7,6 +7,11 @@ const tenantSchema = new mongoose.Schema(
       required: [true, 'Please add a business name'],
       unique: true,
     },
+    businessCode: {
+      type: String,
+      required: true,
+      unique: true,
+    },
     email: {
       type: String,
       required: [true, 'Please add a business email'],

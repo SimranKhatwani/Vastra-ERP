@@ -17,8 +17,12 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
     state: ""
   });
   const [loading, setLoading] = useState(false);
+  const [registeredTenant, setRegisteredTenant] = useState(null);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    if (registeredTenant) setRegisteredTenant(null); // Reset when fully closed
+    return null;
+  }
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,11 +54,12 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
         }
       };
 
-      const regRes = await axios.post("/api/super-admin/register-business", payload, config);
+      const regRes = await axios.post("http://localhost:5000/api/superadmin/register-business", payload, config);
       if (regRes.data.success) {
         addToastNotification("Success", "Business Registered Successfully!", "success");
+        setRegisteredTenant(regRes.data.data.tenant);
         onRegisterSuccess(regRes.data.data.tenant);
-        onClose();
+        // Do not close immediately, let them see the success screen
       }
     } catch (error) {
       addToastNotification("Error", error.response?.data?.message || error.message, "danger");
@@ -62,6 +67,46 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
       setLoading(false);
     }
   };
+
+  const handleCloseAndReset = () => {
+    setRegisteredTenant(null);
+    onClose();
+  };
+
+  if (registeredTenant) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8">
+          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Building2 className="w-8 h-8 text-emerald-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Registration Successful!</h2>
+          <p className="text-sm text-slate-500 mb-6">You can now provide these details to the business admin so they can log in.</p>
+          
+          <div className="bg-slate-50 rounded-xl p-4 text-left border border-slate-200 mb-6 space-y-3">
+            <div>
+              <p className="text-[10px] uppercase font-bold text-slate-400">Business Name</p>
+              <p className="font-bold text-slate-700">{registeredTenant.businessName}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-slate-400">Business ID (Required for Login)</p>
+              <div className="flex items-center gap-2">
+                <code className="bg-white px-2 py-1 rounded border border-slate-200 text-indigo-600 font-mono text-sm">{registeredTenant.businessCode || registeredTenant._id}</code>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-slate-400">Admin Email</p>
+              <p className="font-medium text-slate-700">{registeredTenant.email}</p>
+            </div>
+          </div>
+          
+          <button onClick={handleCloseAndReset} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
@@ -71,7 +116,7 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
             <h2 className="text-lg font-bold text-slate-800">Register New Business</h2>
             <p className="text-[11px] text-slate-500 font-medium">Aadhaar, address, and admin assignment.</p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
+          <button type="button" onClick={handleCloseAndReset} className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
@@ -187,7 +232,7 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 shrink-0 mt-4">
-            <button type="button" onClick={onClose} className="px-5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <button type="button" onClick={handleCloseAndReset} className="px-5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
               Cancel
             </button>
             <button type="submit" disabled={loading} className="px-5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-lg transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 flex items-center gap-2">
