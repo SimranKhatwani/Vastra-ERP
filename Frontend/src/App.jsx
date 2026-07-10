@@ -80,7 +80,7 @@ export default function App() {
   });
 
   const [expenses, setExpenses] = useState(() => generateExpenses());
-  const [tenants, setTenants] = useState(() => generateSaaSTenants());
+  const [tenants, setTenants] = useState([]); // Removed static mock data
   const [supportTickets, setSupportTickets] = useState(() =>
     generateSupportTickets(),
   );
@@ -91,6 +91,14 @@ export default function App() {
 
   // Auth & Session States
   const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        return JSON.parse(storedUser);
+      }
+    } catch (e) {
+      console.error("Failed to parse stored user", e);
+    }
     const emps = generateDemoEmployees();
     return (
       emps[0] || {
@@ -110,7 +118,11 @@ export default function App() {
       }
     );
   });
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return !!localStorage.getItem("token");
+  });
+  
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
   // Navigation
@@ -191,6 +203,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
 
   const getUserInitials = (name) => {
+    if (!name || typeof name !== "string") return "US";
     return (
       name
         .split(" ")
@@ -734,6 +747,7 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           setCurrentUser(emp);
+                          localStorage.setItem("user", JSON.stringify(emp));
                           addToastNotification(
                             "Role Swapped",
                             `Session context switched to ${emp.name} (${emp.role})`,
@@ -763,6 +777,8 @@ export default function App() {
                   <button
                     onClick={() => {
                       setIsLoggedIn(false);
+                      localStorage.removeItem("token");
+                      localStorage.removeItem("user");
                       addToastNotification(
                         "Auth Service",
                         "Multi-tenant session terminated successfully.",
@@ -942,9 +958,14 @@ export default function App() {
       <Routes>
         {/* Isolated Super Admin Routes */}
         <Route path="/ad/su" element={
-          isLoggedIn ? <Navigate to="/super-admin/dashboard" replace /> : (
+          (isLoggedIn && currentUser?.role === "SuperAdmin") ? <Navigate to="/super-admin/dashboard" replace /> : (
             <AdminLogin 
-              onLogin={(user) => { setCurrentUser(user); setIsLoggedIn(true); }} 
+              onLogin={(user) => { 
+                setCurrentUser(user); 
+                setIsLoggedIn(true); 
+                localStorage.setItem("token", user.token);
+                localStorage.setItem("user", JSON.stringify(user));
+              }} 
               addToastNotification={addToastNotification} 
             />
           )
@@ -958,6 +979,8 @@ export default function App() {
                 currentUser={currentUser}
                 onLogout={() => {
                   setIsLoggedIn(false);
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
                   addToastNotification("Auth Service", "Session terminated.", "warning");
                 }}
                 tenants={tenants}
@@ -970,7 +993,12 @@ export default function App() {
         <Route path="/*" element={
           !isLoggedIn ? (
             <UserLogin
-              onLogin={(user) => { setCurrentUser(user); setIsLoggedIn(true); }}
+              onLogin={(user) => { 
+                setCurrentUser(user); 
+                setIsLoggedIn(true);
+                localStorage.setItem("token", user.token);
+                localStorage.setItem("user", JSON.stringify(user));
+              }}
               addToastNotification={addToastNotification}
               switchableEmployees={switchableEmployees}
               getUserInitials={getUserInitials}
