@@ -11,7 +11,7 @@ export function AdminLogin({ onLogin, addToastNotification }) {
       <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/60 p-8 rounded-3xl shadow-2xl max-w-lg w-full relative overflow-hidden space-y-6">
         <div className="text-center space-y-2">
 
-          <h1 className="text-xl font-black tracking-tight text-white uppercase font-sans">
+          <h1 className="text-3xl font-black tracking-tight text-white font-inter">
             Super Admin Portal
           </h1>
           <p className="text-xs text-slate-400 font-medium">

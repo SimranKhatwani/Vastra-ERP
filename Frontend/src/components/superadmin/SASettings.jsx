@@ -11,10 +11,10 @@ export function SASettings() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Global Settings */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-6 shadow-sm">
+        <div className="erp-card space-y-6">
           <div className="flex items-center gap-2 mb-2">
             <Globe className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800">Platform Settings</h3>
+            <h3 className="erp-card-title !text-sm">Platform Settings</h3>
           </div>
           
           <div className="space-y-4">
@@ -40,10 +40,10 @@ export function SASettings() {
         </div>
 
         {/* Security & API */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-6 shadow-sm">
+        <div className="erp-card space-y-6">
           <div className="flex items-center gap-2 mb-2">
             <Shield className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800">Security & APIs</h3>
+            <h3 className="erp-card-title !text-sm">Security & APIs</h3>
           </div>
           
           <div className="space-y-4">
@@ -54,9 +54,9 @@ export function SASettings() {
                   type="password" 
                   value="sk_live_xxxxxxxxxxxxxxxxxxxxxx" 
                   readOnly
-                  className="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-lg px-3 py-2 w-full font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="input-field font-mono"
                 />
-                <button className="bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200 p-2 rounded-lg transition-colors cursor-pointer">
+                <button className="btn-secondary !p-2">
                   <Key className="w-4 h-4" />
                 </button>
               </div>
@@ -74,7 +74,7 @@ export function SASettings() {
       </div>
 
       <div className="flex justify-end pt-4">
-        <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 cursor-pointer">
+        <button className="btn-primary !px-5 !py-2.5">
           <Save className="w-4 h-4" /> Save Configurations
         </button>
       </div>

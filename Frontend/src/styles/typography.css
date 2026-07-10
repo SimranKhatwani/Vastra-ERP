@@ -1,0 +1,39 @@
+/*
+  Typography Styles
+*/
+
+.erp-title-h1 {
+  @apply text-3xl font-black tracking-tight;
+  color: var(--erp-text-main);
+}
+
+.erp-title-h2 {
+  @apply text-xl font-bold;
+  color: var(--erp-text-main);
+}
+
+.erp-title-h3 {
+  @apply text-sm font-bold;
+  color: var(--erp-text-main);
+}
+
+.erp-text-body {
+  @apply text-xs font-medium;
+  color: var(--erp-text-muted);
+}
+
+.erp-text-mono {
+  font-family: var(--erp-font-mono);
+}
+
+.erp-text-muted {
+  color: var(--erp-text-muted);
+}
+
+.erp-text-light {
+  color: var(--erp-text-light);
+}
+
+.erp-text-bold {
+  @apply font-bold;
+}

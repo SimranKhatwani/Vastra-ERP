@@ -18,19 +18,19 @@ export function SASubscriptions({ tenants = [] }) {
           <h2 className="text-lg font-bold text-slate-800">Subscriptions & Billing</h2>
           <p className="text-xs text-slate-500">Track client payments, invoices, and active plans.</p>
         </div>
-        <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 cursor-pointer">
+        <button className="btn-primary">
           <Download className="w-4 h-4" /> Export CSV
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div className="erp-card-table">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-indigo-600" /> Recent Invoices
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="erp-table">
             <thead>
               <tr className="bg-white text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                 <th className="p-4">Invoice ID</th>
@@ -48,7 +48,7 @@ export function SASubscriptions({ tenants = [] }) {
                   <td className="p-4 font-mono font-bold text-slate-800">{bill.id}</td>
                   <td className="p-4 font-semibold text-slate-700">{bill.tenant}</td>
                   <td className="p-4">
-                    <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">
+                    <span className="badge-primary">
                       {bill.plan}
                     </span>
                   </td>
@@ -56,11 +56,11 @@ export function SASubscriptions({ tenants = [] }) {
                   <td className="p-4 font-mono text-slate-500">{bill.date}</td>
                   <td className="p-4 text-center">
                     {bill.status === "Paid" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
+                      <span className="badge-success">
                         <CheckCircle className="w-3 h-3" /> Paid
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider">
+                      <span className="badge-warning">
                         <Clock className="w-3 h-3" /> Pending
                       </span>
                     )}

@@ -65,26 +65,26 @@ export function SABusinesses() {
           <p className="text-xs text-slate-500">Manage tenant workspaces, payments, and access levels.</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 w-full sm:w-64 shadow-sm">
+          <div className="erp-search-container w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400" />
             <input
               type="text"
               placeholder="Search businesses..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs text-slate-800 w-full placeholder-slate-400 font-medium"
+              className="erp-search-input"
             />
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-indigo-600/20 active:scale-95 shrink-0"
+            className="erp-btn-primary"
           >
             <Plus className="w-4 h-4" /> Register Business
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative min-h-[300px]">
+      <div className="erp-table-container relative min-h-[300px]">
         {loading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
             <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
@@ -96,9 +96,8 @@ export function SABusinesses() {
             <AlertCircle className="w-4 h-4" /> Failed to load businesses: {error}
           </div>
         )}
-
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="erp-table">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <th className="p-4">Business / Tenant</th>
@@ -139,7 +138,7 @@ export function SABusinesses() {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
-                      <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">
+                      <span className="erp-badge-primary">
                         {tenant.plan}
                       </span>
                       {tenant.planExpiryDate && (
@@ -152,21 +151,21 @@ export function SABusinesses() {
                   </td>
                   <td className="p-4 text-center">
                     {tenant.status === "Active" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
+                      <span className="badge-success">
                         <CheckCircle className="w-3 h-3" /> Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 text-red-600 text-[10px] font-bold uppercase tracking-wider">
+                      <span className="badge-danger">
                         <ShieldBan className="w-3 h-3" /> Suspended
                       </span>
                     )}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2 relative group">
-                       <button onClick={() => alert("Edit Modal Not implemented inline")} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" title="Edit Business">
+                       <button onClick={() => alert("Edit Modal Not implemented inline")} className="erp-icon-btn text-indigo-600 hover:bg-indigo-50" title="Edit Business">
                          <Edit className="w-4 h-4" />
                        </button>
-                       <button onClick={() => handleToggleStatus(tenant._id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Toggle Status">
+                       <button onClick={() => handleToggleStatus(tenant._id)} className="erp-icon-btn hover:text-red-600 hover:bg-red-50" title="Toggle Status">
                         {tenant.status === 'Active' ? <ShieldBan className="w-4 h-4" /> : <CheckCircle className="w-4 h-4 text-emerald-500" />}
                        </button>
                     </div>

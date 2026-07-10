@@ -39,12 +39,10 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
   const currentModule = SA_MODULES.find(m => location.pathname.includes(m.path)) || SA_MODULES[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex font-sans">
+    <div className="erp-page">
       {/* ── SIDEBAR ── */}
       <aside
-        className={`shrink-0 h-screen sticky top-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 z-30 ${
-          sidebarOpen ? "w-64" : "w-16"
-        }`}
+        className={`erp-sidebar ${sidebarOpen ? "" : "erp-sidebar--collapsed items-center"}`}
       >
         {/* Brand */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100">
@@ -65,7 +63,7 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
           )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors mx-auto"
+            className="icon-btn mx-auto"
           >
             {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
@@ -128,23 +126,23 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
       </aside>
 
       {/* ── MAIN AREA ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="erp-container">
         {/* TOP NAVBAR */}
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-20">
+        <header className="erp-navbar">
           <div className="flex items-center gap-4">
             <h2 className="text-sm font-bold text-slate-800 capitalize">
               {currentModule.label}
             </h2>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 w-72">
+          <div className="search-container w-72">
             <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search tenants, invoices, settings…"
-              className="bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none w-full font-medium"
+              className="search-input"
             />
           </div>
 
@@ -153,7 +151,7 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               System Online
             </div>
-            <button className="p-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors">
+            <button className="icon-btn !p-2 !bg-slate-50 !border !border-slate-100">
               <Bell className="w-4 h-4" />
             </button>
 
@@ -191,7 +189,7 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
         </header>
 
         {/* CONTENT AREA */}
-        <main className="flex-1 p-6 overflow-y-auto bg-slate-50">
+        <main className="erp-main-content">
           <Routes>
             <Route path="/" element={<Navigate to="/super-admin/dashboard" replace />} />
             <Route path="dashboard" element={<SuperAdminDashboard tenants={tenants} />} />

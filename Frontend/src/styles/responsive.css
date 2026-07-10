@@ -1,0 +1,25 @@
+/*
+  Responsive Overrides
+*/
+
+@media (max-width: 768px) {
+  .erp-navbar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  .erp-main-content {
+    padding: 1rem;
+  }
+  
+  .erp-sidebar {
+    position: fixed;
+    height: 100vh;
+    left: 0;
+    transform: translateX(0);
+  }
+  
+  .erp-sidebar--collapsed {
+    transform: translateX(-100%);
+  }
+}
