@@ -14,6 +14,7 @@ app.use(morgan('dev'));
 // Route imports
 const authRoutes = require('./routes/authRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
+const staffRoutes = require('./routes/staffRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -23,6 +24,7 @@ app.get('/', (req, res) => {
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/staff', staffRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

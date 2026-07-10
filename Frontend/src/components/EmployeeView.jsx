@@ -2061,7 +2061,10 @@ export const EmployeeView = ({
                     Contact Phone
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    required
+                    pattern="\d{10}"
+                    maxLength={10}
                     value={formPhone}
                     onChange={(e) => setFormPhone(e.target.value)}
                     placeholder="e.g. 9876543210"

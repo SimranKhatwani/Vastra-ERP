@@ -8,6 +8,7 @@ import {
   FileText,
   Users,
   Users2,
+  User,
   Receipt,
   TrendingUp,
   Globe,
@@ -39,6 +40,7 @@ import { DeveloperPortalView } from "./components/DeveloperPortalView";
 import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
+import { StaffManagementView } from "./components/StaffManagementView";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -154,6 +156,7 @@ export default function App() {
           "purchase",
           "customers",
           "employees",
+          "staff",
           "accounting",
           "reports",
           "settings",
@@ -446,6 +449,7 @@ export default function App() {
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: "HR Payroll & rosters", icon: Users2 },
+    { id: "staff", label: "Staff Management", icon: User },
     { id: "accounting", label: "General Ledger Profit", icon: Receipt },
     { id: "reports", label: "Advanced Report Hub", icon: TrendingUp },
     { id: "saas", label: "SaaS Multi-Tenants", icon: Building2 },
@@ -906,6 +910,10 @@ export default function App() {
               onDisburseCommission={handleDisburseCommission}
               onAddNotification={addToastNotification}
             />
+          )}
+
+          {activeModule === "staff" && (
+            <StaffManagementView />
           )}
 
           {activeModule === "accounting" && (
