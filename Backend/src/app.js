@@ -11,12 +11,9 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Route imports
 const authRoutes = require('./routes/authRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
-<<<<<<< HEAD
 const staffRoutes = require('./routes/staffRoutes');
-=======
 const categoryRoutes = require('./routes/categoryRoutes');
 const brandRoutes = require('./routes/brandRoutes');
 const productRoutes = require('./routes/productRoutes');
@@ -28,7 +25,6 @@ const employeeRoutes = require('./routes/employeeRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
->>>>>>> 8e98001 (feat: add full CRUD for expenses, products and related logic)
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -38,9 +34,7 @@ app.get('/', (req, res) => {
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superAdminRoutes);
-<<<<<<< HEAD
 app.use('/api/staff', staffRoutes);
-=======
 app.use('/api/categories', categoryRoutes);
 app.use('/api/brands', brandRoutes);
 app.use('/api/products', productRoutes);
@@ -52,7 +46,6 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/tickets', supportTicketRoutes);
 app.use('/api/notifications', notificationRoutes);
->>>>>>> 8e98001 (feat: add full CRUD for expenses, products and related logic)
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {
