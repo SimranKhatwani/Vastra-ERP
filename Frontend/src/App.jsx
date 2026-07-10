@@ -39,6 +39,8 @@ import { DeveloperPortalView } from "./components/DeveloperPortalView";
 import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
+import { AdminLogin } from "./components/AdminLogin";
+import { UserLogin } from "./components/UserLogin";
 
 // Import mock data generators
 import {
@@ -105,7 +107,7 @@ export default function App() {
       }
     );
   });
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
   // Navigation
@@ -433,130 +435,28 @@ export default function App() {
   ];
 
   if (!isLoggedIn) {
+    const path = window.location.pathname;
+    if (path === "/admin") {
+      return (
+        <AdminLogin
+          onLogin={(user) => {
+            setCurrentUser(user);
+            setIsLoggedIn(true);
+          }}
+          addToastNotification={addToastNotification}
+        />
+      );
+    }
     return (
-      <div
-        className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white"
-        id="threadflow-login-root"
-      >
-        {/* Background visual decorations */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/60 p-8 rounded-3xl shadow-2xl max-w-lg w-full relative overflow-hidden space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex w-11 h-11 rounded-2xl bg-indigo-600 items-center justify-center font-black text-white text-lg tracking-tighter mx-auto shadow-lg shadow-indigo-600/20">
-              TF
-            </div>
-            <h1 className="text-xl font-black tracking-tight text-white uppercase font-sans">
-              Threadflow SaaS Portal
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              Securely sign in or hot-swap operational employee profiles below.
-            </p>
-          </div>
-
-          {/* Employee Directory Hot Swap */}
-          <div className="space-y-3 p-4 rounded-2xl border border-slate-700/40 bg-slate-900/40">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
-              Operational Staff Hot-Swap Profiles
-            </span>
-            <div className="grid grid-cols-1 gap-2">
-              {switchableEmployees.map((emp) => (
-                <button
-                  key={emp.id}
-                  onClick={() => {
-                    setCurrentUser(emp);
-                    setIsLoggedIn(true);
-                    addToastNotification(
-                      "Auth Success",
-                      `Authenticated securely as ${emp.name} (${emp.role})`,
-                      "success",
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/40 hover:bg-slate-700/80 border border-slate-700/50 hover:border-indigo-500/50 transition-all text-left cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      {getUserInitials(emp.name)}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-100">
-                        {emp.name}
-                      </p>
-                      <p className="text-[9px] text-slate-400 font-medium">
-                        {emp.email}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-900 text-indigo-400 font-bold uppercase tracking-wider group-hover:bg-indigo-600/10 group-hover:text-indigo-300 transition-all font-mono">
-                    {emp.role}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-700/40"></div>
-            <span className="flex-shrink mx-3 text-[9px] text-slate-500 uppercase tracking-widest font-extrabold">
-              or use credentials
-            </span>
-            <div className="flex-grow border-t border-slate-700/40"></div>
-          </div>
-
-          {/* Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setIsLoggedIn(true);
-              addToastNotification(
-                "Session Initiated",
-                "Authenticated via standard user token.",
-                "success",
-              );
-            }}
-            className="space-y-4"
-          >
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5 tracking-wider">
-                Email address
-              </label>
-              <input
-                type="email"
-                defaultValue={currentUser.email}
-                required
-                className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500"
-                placeholder="name@garmentflow.com"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5 tracking-wider">
-                Secure Access PIN / Password
-              </label>
-              <input
-                type="password"
-                defaultValue="••••••••"
-                required
-                className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500"
-                placeholder="Enter password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-lg shadow-indigo-600/10 cursor-pointer text-center uppercase tracking-wider"
-            >
-              Authorise & Enter Portal
-            </button>
-          </form>
-
-          {/* Footer branding */}
-          <p className="text-[10px] text-slate-500 text-center font-mono font-medium">
-            Threadflow Corp • Encryption AES-256 Enabled
-          </p>
-        </div>
-      </div>
+      <UserLogin
+        onLogin={(user) => {
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+        }}
+        addToastNotification={addToastNotification}
+        switchableEmployees={switchableEmployees}
+        getUserInitials={getUserInitials}
+      />
     );
   }
 
