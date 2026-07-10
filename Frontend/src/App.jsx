@@ -64,31 +64,18 @@ import {
 
 export default function App() {
   // Master States
-  const [products, setProducts] = useState(() => generateDemoProducts());
-  const [customers, setCustomers] = useState(() => generateDemoCustomers());
-  const [suppliers, setSuppliers] = useState(() => generateDemoSuppliers());
-  const [employees, setEmployees] = useState(() => generateDemoEmployees());
-  const [invoices, setInvoices] = useState(() => {
-    const custs = generateDemoCustomers();
-    const prds = generateDemoProducts();
-    const emps = generateDemoEmployees();
-    return generateDemoInvoices(custs, prds, emps);
-  });
+  const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [invoices, setInvoices] = useState([]);
 
-  const [purchaseOrders, setPurchaseOrders] = useState(() => {
-    const sups = generateDemoSuppliers();
-    const prds = generateDemoProducts();
-    return generateDemoPurchaseOrders(sups, prds);
-  });
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
 
-  const [expenses, setExpenses] = useState(() => generateExpenses());
+  const [expenses, setExpenses] = useState([]);
   const [tenants, setTenants] = useState([]); // Removed static mock data
-  const [supportTickets, setSupportTickets] = useState(() =>
-    generateSupportTickets(),
-  );
-  const [notifications, setNotifications] = useState(() =>
-    generateNotifications(),
-  );
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [auditLogs, setAuditLogs] = useState(() => generateAuditLogs());
 
   // Auth & Session States
@@ -124,6 +111,69 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     return !!localStorage.getItem("token");
   });
+  
+  React.useEffect(() => {
+    const fetchProducts = async () => {
+      if (isLoggedIn) {
+        try {
+          const token = localStorage.getItem("token");
+          if (!token) return;
+          const [resProducts, resCustomers, resInvoices, resSuppliers, resPurchaseOrders, resEmployees, resExpenses, resTickets, resNotifications] = await Promise.all([
+            fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/customers", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/invoices", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/purchase-orders", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/employees", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/expenses", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/tickets", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/notifications", { headers: { Authorization: `Bearer ${token}` } })
+          ]);
+          
+          const dataProducts = await resProducts.json();
+          const dataCustomers = await resCustomers.json();
+          const dataInvoices = await resInvoices.json();
+          const dataSuppliers = await resSuppliers.json();
+          const dataPurchaseOrders = await resPurchaseOrders.json();
+          const dataEmployees = await resEmployees.json();
+          const dataExpenses = await resExpenses.json();
+          const dataTickets = await resTickets.json();
+          const dataNotifications = await resNotifications.json();
+
+          if (dataProducts.success) {
+            setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+          }
+          if (dataCustomers.success) {
+            setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
+          }
+          if (dataInvoices.success) {
+            setInvoices(dataInvoices.data.map(i => ({...i, id: i._id})));
+          }
+          if (dataSuppliers.success) {
+            setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+          }
+          if (dataPurchaseOrders.success) {
+            setPurchaseOrders(dataPurchaseOrders.data.map(p => ({...p, id: p._id})));
+          }
+          if (dataEmployees.success) {
+            setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
+          }
+          if (dataExpenses.success) {
+            setExpenses(dataExpenses.data.map(e => ({...e, id: e._id})));
+          }
+          if (dataTickets.success) {
+            setSupportTickets(dataTickets.data.map(t => ({...t, id: t._id})));
+          }
+          if (dataNotifications.success) {
+            setNotifications(dataNotifications.data.map(n => ({...n, id: n._id})));
+          }
+        } catch (error) {
+          console.error("Failed to fetch data", error);
+        }
+      }
+    };
+    fetchProducts();
+  }, [isLoggedIn]);
   
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
@@ -244,170 +294,311 @@ export default function App() {
     setNotifications((prev) => [newNotif, ...prev]);
   };
 
-  // Global Handlers
-  const handleAddProduct = (prod) => {
-    setProducts((prev) => [prod, ...prev]);
-  };
-
-  const handleUpdateProduct = (updated) => {
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-  };
-
-  const handleDeleteProducts = (ids) => {
-    setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
-  };
-
-  const handleAdjustStock = (productId, amount) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === productId) {
-          const newStock = Math.max(0, p.stock + amount);
-          let newStatus = "In Stock";
-          if (newStock === 0) newStatus = "Out of Stock";
-          else if (newStock <= p.minStockAlert) newStatus = "Low Stock";
-
-          return { ...p, stock: newStock, status: newStatus };
-        }
-        return p;
-      }),
-    );
-  };
-
-  const handleAddInvoice = (inv) => {
-    setInvoices((prev) => [inv, ...prev]);
-
-    // Decrease stocks for sold items
-    inv.items.forEach((item) => {
-      setProducts((prevPrds) =>
-        prevPrds.map((p) => {
-          if (p.id === item.productId) {
-            const newStock = Math.max(0, p.stock - item.quantity);
-            let newStatus = "In Stock";
-            if (newStock === 0) newStatus = "Out of Stock";
-            else if (newStock <= p.minStockAlert) newStatus = "Low Stock";
-            return { ...p, stock: newStock, status: newStatus };
-          }
-          return p;
-        }),
-      );
-    });
-
-    // Award loyalty points to customer
-    setCustomers((prevCusts) =>
-      prevCusts.map((c) => {
-        if (c.id === inv.customerId) {
-          const earnedPoints = Math.floor(inv.grandTotal * 0.05); // 5% point back
-          return {
-            ...c,
-            loyaltyPoints: c.loyaltyPoints + earnedPoints,
-            totalSpent: c.totalSpent + inv.grandTotal,
-            totalInvoices: c.totalInvoices + 1,
-            outstandingBalance:
-              inv.paymentMethod === "Credit"
-                ? c.outstandingBalance + inv.grandTotal
-                : c.outstandingBalance,
-          };
-        }
-        return c;
-      }),
-    );
-  };
-
-  const handleAddPurchaseOrder = (po) => {
-    setPurchaseOrders((prev) => [po, ...prev]);
-
-    // Add stock immediately if fulfilled
-    if (po.status === "Completed") {
-      po.items.forEach((item) => {
-        handleAdjustStock(item.productId, item.quantity);
+  const handleAddProduct = async (prod) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(prod)
       });
+      const data = await res.json();
+      if (data.success) {
+        setProducts((prev) => [{...data.data, id: data.data._id}, ...prev]);
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
     }
+  };
 
-    // Accumulate supplier outstanding
-    const outstandingDebt = po.grandTotal - po.outstandingPaid;
-    if (outstandingDebt > 0) {
-      setSuppliers((prev) =>
-        prev.map((s) => {
-          if (s.id === po.supplierId) {
-            return {
-              ...s,
-              outstandingBalance: s.outstandingBalance + outstandingDebt,
-            };
-          }
-          return s;
-        }),
+  const handleUpdateProduct = async (updated) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/products/${updated.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProducts((prev) => prev.map((p) => (p.id === updated.id ? {...data.data, id: data.data._id} : p)));
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleDeleteProducts = async (ids) => {
+    try {
+      const token = localStorage.getItem("token");
+      for (const id of ids) {
+        await fetch(`http://localhost:5000/api/products/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+      setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleAdjustStock = async (productId, amount) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/products/${productId}/adjust-stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === productId ? {...data.data, id: data.data._id} : p)),
+        );
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleAddInvoice = async (inv) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(inv)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setInvoices((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        
+        // Since backend handles stock deduction and loyalty points, simply refetch to sync UI
+        const [resProducts, resCustomers, resEmployees] = await Promise.all([
+          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/customers", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/employees", { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        
+        const dataProducts = await resProducts.json();
+        const dataCustomers = await resCustomers.json();
+        const dataEmployees = await resEmployees.json();
+        
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+        if (dataCustomers.success) setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
+        if (dataEmployees.success) setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleAddPurchaseOrder = async (po) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/purchase-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(po)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setPurchaseOrders((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        
+        // Backend handles stock addition and supplier balance updates, so refetch
+        const [resProducts, resSuppliers] = await Promise.all([
+          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        
+        const dataProducts = await resProducts.json();
+        const dataSuppliers = await resSuppliers.json();
+        
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleSettleSupplierBalance = async (supplierId, amount) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/suppliers/${supplierId}/settle`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setSuppliers((prev) => prev.map((s) => (s.id === supplierId ? {...data.data, id: data.data._id} : s)));
+        addToastNotification("Success", "Supplier balance settled", "success");
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleSettleCustomerBalance = async (customerId, amount) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/customers/${customerId}/settle`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
+        addToastNotification("Success", "Customer balance settled", "success");
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleDisburseCommission = async (employeeId, amount) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/employees/${employeeId}/disburse`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setEmployees((prev) => prev.map((e) => (e.id === employeeId ? {...data.data, id: data.data._id} : e)));
+        addToastNotification("Success", "Commission disbursed", "success");
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleAddExpense = async (exp) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(exp)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setExpenses((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        addToastNotification("Success", "Expense logged successfully", "success");
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleResolveTicket = async (ticketId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/tickets/${ticketId}/resolve`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSupportTickets((prev) =>
+          prev.map((t) => (t.id === ticketId ? { ...data.data, id: data.data._id } : t)),
+        );
+        addToastNotification("Success", "Ticket resolved successfully", "success");
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    // Basic implementation: mark them all via API or just locally and send multiple PUTs
+    try {
+      const token = localStorage.getItem("token");
+      const unread = notifications.filter(n => !n.read);
+      
+      // In a real app we'd have a bulk endpoint, but for now we map over them
+      await Promise.all(unread.map(n => 
+        fetch(`http://localhost:5000/api/notifications/${n.id}/read`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+        })
+      ));
+
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, read: true })),
       );
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
     }
   };
 
-  const handleSettleSupplierBalance = (supplierId, amount) => {
-    setSuppliers((prev) =>
-      prev.map((s) => {
-        if (s.id === supplierId) {
-          return {
-            ...s,
-            outstandingBalance: Math.max(0, s.outstandingBalance - amount),
-          };
-        }
-        return s;
-      }),
-    );
+  const handleUpdateCustomerBalance = async (customerId, amount) => {
+    try {
+      const token = localStorage.getItem("token");
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) return;
+      const newBalance = Math.max(0, customer.outstandingBalance + amount);
+      const res = await fetch(`http://localhost:5000/api/customers/${customerId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ outstandingBalance: newBalance })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
   };
 
-  const handleSettleCustomerBalance = (customerId, amount) => {
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.id === customerId) {
-          return {
-            ...c,
-            outstandingBalance: Math.max(0, c.outstandingBalance - amount),
-          };
-        }
-        return c;
-      }),
-    );
-  };
-
-  const handleDisburseCommission = (employeeId, amount) => {
-    setEmployees((prev) =>
-      prev.map((e) => {
-        if (e.id === employeeId) {
-          return {
-            ...e,
-            commissionEarned: Math.max(0, e.commissionEarned - amount),
-          };
-        }
-        return e;
-      }),
-    );
-  };
-
-  const handleAddExpense = (exp) => {
-    setExpenses((prev) => [exp, ...prev]);
-  };
-
-  const handleResolveTicket = (ticketId) => {
-    setSupportTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, status: "Resolved" } : t)),
-    );
-  };
-
-  const handleUpdateCustomerBalance = (customerId, amount) => {
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.id === customerId) {
-          return {
-            ...c,
-            outstandingBalance: Math.max(0, c.outstandingBalance + amount),
-          };
-        }
-        return c;
-      }),
-    );
-  };
-
-  const handleAddCustomer = (newCust) => {
-    setCustomers((prev) => [...prev, newCust]);
+  const handleAddCustomer = async (newCust) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(newCust)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomers((prev) => [{...data.data, id: data.data._id}, ...prev]);
+      } else {
+        addToastNotification("Error", data.message, "danger");
+      }
+    } catch (error) {
+      addToastNotification("Error", "Failed to connect to API", "danger");
+    }
   };
 
   const openArticulationWithDefaults = () => {
@@ -682,11 +873,7 @@ export default function App() {
                       Live Stream Alerts
                     </span>
                     <button
-                      onClick={() =>
-                        setNotifications((prev) =>
-                          prev.map((n) => ({ ...n, read: true })),
-                        )
-                      }
+                      onClick={() => handleMarkAllNotificationsRead()}
                       className="text-[9px] text-indigo-600 hover:underline font-bold"
                     >
                       Mark All Read

@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Tenant = require('../models/tenantModel');
 const User = require('../models/userModel');
-const crypto = require('crypto');
 const moment = require('moment-timezone');
 
 const generateSuperAdminToken = () => {

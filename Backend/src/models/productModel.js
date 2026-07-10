@@ -46,13 +46,11 @@ const productSchema = new mongoose.Schema(
       type: String,
     },
     category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Category',
+      type: String,
       required: true,
     },
     brand: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Brand',
+      type: String,
       required: true,
     },
     basePrice: {
@@ -67,6 +65,20 @@ const productSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    stock: {
+      type: Number,
+      default: 0,
+      min: [0, 'Stock cannot be negative'],
+    },
+    minStockAlert: {
+      type: Number,
+      default: 10,
+    },
+    status: {
+      type: String,
+      enum: ['In Stock', 'Low Stock', 'Out of Stock'],
+      default: 'In Stock',
     },
     variants: [variantSchema],
   },
