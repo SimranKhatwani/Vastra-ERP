@@ -41,7 +41,6 @@ import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
-import { LandingPage } from "./components/LandingPage";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
@@ -967,8 +966,8 @@ export default function App() {
           } 
         />
 
-        {/* Standard User App Routes */}
-        <Route path="/login" element={
+        {/* Standard User App */}
+        <Route path="/*" element={
           !isLoggedIn ? (
             <UserLogin
               onLogin={(user) => { setCurrentUser(user); setIsLoggedIn(true); }}
@@ -976,14 +975,6 @@ export default function App() {
               switchableEmployees={switchableEmployees}
               getUserInitials={getUserInitials}
             />
-          ) : (
-            <Navigate to="/" replace />
-          )
-        } />
-        
-        <Route path="/*" element={
-          !isLoggedIn ? (
-            <LandingPage />
           ) : (
             standardAppContent
           )

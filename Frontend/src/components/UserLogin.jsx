@@ -1,25 +1,11 @@
 import React from "react";
-import { ArrowLeft } from "lucide-react";
 
 export function UserLogin({ onLogin, addToastNotification, switchableEmployees, getUserInitials }) {
-  const navigateToLanding = () => {
-    window.location.href = "/";
-  };
-
   return (
     <div
       className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white relative"
       id="vastra-login-root"
     >
-      {/* Back Button */}
-      <button 
-        onClick={navigateToLanding}
-        className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white transition-colors z-50 group uppercase tracking-wider"
-      >
-        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-        Back to Home
-      </button>
-
       {/* Background glows */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
