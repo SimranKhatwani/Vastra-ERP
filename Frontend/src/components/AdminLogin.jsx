@@ -60,7 +60,7 @@ export function AdminLogin({ onLogin, addToastNotification }) {
               type="password"
               required
               className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500"
-              placeholder="Enter secure NSD key"
+              placeholder="Enter secure key"
             />
           </div>
 

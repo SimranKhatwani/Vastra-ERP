@@ -436,7 +436,7 @@ export default function App() {
 
   if (!isLoggedIn) {
     const path = window.location.pathname;
-    if (path === "/admin") {
+    if (path === "/ad/su") {
       return (
         <AdminLogin
           onLogin={(user) => {
@@ -470,15 +470,14 @@ export default function App() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`p-4 rounded-xl shadow-xl border flex items-start gap-2.5 animate-scale-up text-xs font-semibold bg-white ${
-              t.type === "success"
-                ? "border-emerald-200 text-emerald-800"
-                : t.type === "danger"
-                  ? "border-red-200 text-red-800"
-                  : t.type === "warning"
-                    ? "border-amber-200 text-amber-800"
-                    : "border-slate-200 text-slate-700"
-            }`}
+            className={`p-4 rounded-xl shadow-xl border flex items-start gap-2.5 animate-scale-up text-xs font-semibold bg-white ${t.type === "success"
+              ? "border-emerald-200 text-emerald-800"
+              : t.type === "danger"
+                ? "border-red-200 text-red-800"
+                : t.type === "warning"
+                  ? "border-amber-200 text-amber-800"
+                  : "border-slate-200 text-slate-700"
+              }`}
           >
             <div className="space-y-1">
               <p className="font-bold uppercase tracking-wide text-[10px]">
@@ -494,9 +493,8 @@ export default function App() {
 
       {/* LEFT SIDEBAR NAVIGATION */}
       <aside
-        className={`bg-white text-slate-600 border-r border-slate-200 shrink-0 h-screen sticky top-0 flex flex-col justify-between transition-all duration-300 z-30 ${
-          sidebarCollapsed ? "w-16" : "w-64"
-        }`}
+        className={`bg-white text-slate-600 border-r border-slate-200 shrink-0 h-screen sticky top-0 flex flex-col justify-between transition-all duration-300 z-30 ${sidebarCollapsed ? "w-16" : "w-64"
+          }`}
       >
         <div className="overflow-y-auto flex-1 py-4 px-3 space-y-6">
           {/* Brand header */}
@@ -553,11 +551,10 @@ export default function App() {
                         "info",
                       );
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isActive
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
                     title={mod.label}
                   >
                     <Icon
