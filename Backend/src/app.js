@@ -13,6 +13,7 @@ app.use(morgan('dev'));
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
+const superAdminRoutes = require('./routes/superAdminRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -21,8 +22,9 @@ app.get('/', (req, res) => {
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/superadmin', superAdminRoutes);
 
-// Error Handler Middleware (to be added later)
+// Error Handler Middleware
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode);

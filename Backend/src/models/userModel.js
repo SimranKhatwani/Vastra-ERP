@@ -3,6 +3,11 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
   {
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: true, // Every user MUST belong to a business
+    },
     name: {
       type: String,
       required: [true, 'Please add a name'],
@@ -27,15 +32,8 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['SuperAdmin', 'Admin', 'Manager', 'Cashier', 'Stockboy', 'Tailor'],
+      enum: ['BusinessAdmin', 'Manager', 'Cashier', 'Salesperson', 'Tailor'],
       default: 'Cashier',
-    },
-    branchId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Branch',
-    },
-    department: {
-      type: String,
     },
     isActive: {
       type: Boolean,
