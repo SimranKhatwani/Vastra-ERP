@@ -11,10 +11,16 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Route imports
+const authRoutes = require('./routes/authRoutes');
+
 // Basic Route for testing
 app.get('/', (req, res) => {
   res.send('VastraERP API is running...');
 });
+
+// Mount Routes
+app.use('/api/auth', authRoutes);
 
 // Error Handler Middleware (to be added later)
 app.use((err, req, res, next) => {
