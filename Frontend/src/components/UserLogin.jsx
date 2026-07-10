@@ -27,21 +27,45 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
 
         {/* Credentials Form */}
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            const fallbackUser = switchableEmployees[0] || {
-              id: "e-user",
-              name: "User",
-              email: e.target.email.value,
-              role: "Salesperson",
-              status: "Active",
-            };
-            onLogin(fallbackUser);
-            addToastNotification(
-              "Session Initiated",
-              "Authenticated via standard user token.",
-              "success"
-            );
+            const email = e.target.email.value;
+            const password = e.target.password.value;
+            // Note: We are ignoring businessId for now since email is universally unique in our backend.
+
+            try {
+              const res = await fetch('http://localhost:5000/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                onLogin({
+                  id: data.user.id,
+                  name: data.user.name,
+                  email: data.user.email,
+                  role: data.user.role,
+                  status: "Active",
+                  token: data.token
+                });
+                addToastNotification(
+                  "Session Initiated",
+                  "Authenticated via standard user token.",
+                  "success"
+                );
+              } else {
+                addToastNotification(
+                  "Access Denied",
+                  data.message || "wrong or invalid credential try another",
+                  "danger"
+                );
+              }
+            } catch (err) {
+              addToastNotification("Connection Error", "Could not reach the authentication server.", "danger");
+            }
           }}
           className="space-y-5"
         >

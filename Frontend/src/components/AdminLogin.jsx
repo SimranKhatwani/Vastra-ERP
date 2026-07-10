@@ -20,22 +20,45 @@ export function AdminLogin({ onLogin, addToastNotification }) {
         </div>
 
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            // Typically verify NSD Secret Key here. For now, just allow login.
-            onLogin({
-              id: "admin-0",
-              name: "Super Admin",
-              email: e.target.email.value,
-              role: "Admin",
-              status: "Active"
-            });
-            addToastNotification(
-              "System Access Granted",
-              "Authenticated as Super Administrator.",
-              "success"
-            );
-            window.history.pushState({}, "", "/");
+            const email = e.target.email.value;
+            const secretKey = e.target.secretKey.value;
+            
+            try {
+              const res = await fetch('http://localhost:5000/api/superadmin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, secretKey })
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                onLogin({
+                  id: "admin-0",
+                  name: "Super Admin",
+                  email: data.user.email,
+                  role: "SuperAdmin", // Internal frontend state mapping
+                  status: "Active",
+                  token: data.token
+                });
+                addToastNotification(
+                  "System Access Granted",
+                  "Authenticated as Super Administrator.",
+                  "success"
+                );
+                window.history.pushState({}, "", "/");
+              } else {
+                addToastNotification(
+                  "Access Denied",
+                  data.message || "wrong or invalid credential try another",
+                  "danger"
+                );
+              }
+            } catch (err) {
+              addToastNotification("Connection Error", "Could not reach the authentication server.", "danger");
+            }
           }}
           className="space-y-4"
         >

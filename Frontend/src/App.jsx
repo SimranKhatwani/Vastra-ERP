@@ -120,6 +120,13 @@ export default function App() {
   // Role-based sidebar module access helper
   const getAccessibleModules = (role) => {
     switch (role) {
+      case "SuperAdmin":
+        return [
+          "saas",
+          "developer",
+          "integrations",
+          "settings",
+        ];
       case "Admin":
         return [
           "dashboard",
@@ -134,9 +141,6 @@ export default function App() {
           "employees",
           "accounting",
           "reports",
-          "saas",
-          "developer",
-          "integrations",
           "settings",
         ];
       case "Manager":
@@ -434,29 +438,63 @@ export default function App() {
     { id: "settings", label: "System Configurations", icon: Settings },
   ];
 
+  // Toast Overlay Renderer
+  const renderToasts = () => (
+    <div className="fixed bottom-5 right-5 z-50 space-y-2 max-w-sm w-full pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`p-4 rounded-xl shadow-xl border flex items-start gap-2.5 animate-scale-up text-xs font-semibold bg-white pointer-events-auto ${t.type === "success"
+            ? "border-emerald-200 text-emerald-800"
+            : t.type === "danger"
+              ? "border-red-200 text-red-800"
+              : t.type === "warning"
+                ? "border-amber-200 text-amber-800"
+                : "border-slate-200 text-slate-700"
+            }`}
+        >
+          <div className="space-y-1">
+            <p className="font-bold uppercase tracking-wide text-[10px]">
+              {t.title}
+            </p>
+            <p className="font-medium text-slate-500 leading-relaxed">
+              {t.msg}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   if (!isLoggedIn) {
     const path = window.location.pathname;
     if (path === "/ad/su") {
       return (
-        <AdminLogin
+        <>
+          <AdminLogin
+            onLogin={(user) => {
+              setCurrentUser(user);
+              setIsLoggedIn(true);
+            }}
+            addToastNotification={addToastNotification}
+          />
+          {renderToasts()}
+        </>
+      );
+    }
+    return (
+      <>
+        <UserLogin
           onLogin={(user) => {
             setCurrentUser(user);
             setIsLoggedIn(true);
           }}
           addToastNotification={addToastNotification}
+          switchableEmployees={switchableEmployees}
+          getUserInitials={getUserInitials}
         />
-      );
-    }
-    return (
-      <UserLogin
-        onLogin={(user) => {
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-        }}
-        addToastNotification={addToastNotification}
-        switchableEmployees={switchableEmployees}
-        getUserInitials={getUserInitials}
-      />
+        {renderToasts()}
+      </>
     );
   }
 
@@ -466,30 +504,7 @@ export default function App() {
       id="threadflow-saas-root"
     >
       {/* Toast Overlay */}
-      <div className="fixed bottom-5 right-5 z-50 space-y-2 max-w-sm w-full">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`p-4 rounded-xl shadow-xl border flex items-start gap-2.5 animate-scale-up text-xs font-semibold bg-white ${t.type === "success"
-              ? "border-emerald-200 text-emerald-800"
-              : t.type === "danger"
-                ? "border-red-200 text-red-800"
-                : t.type === "warning"
-                  ? "border-amber-200 text-amber-800"
-                  : "border-slate-200 text-slate-700"
-              }`}
-          >
-            <div className="space-y-1">
-              <p className="font-bold uppercase tracking-wide text-[10px]">
-                {t.title}
-              </p>
-              <p className="font-medium text-slate-500 leading-relaxed">
-                {t.msg}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {renderToasts()}
 
       {/* LEFT SIDEBAR NAVIGATION */}
       <aside

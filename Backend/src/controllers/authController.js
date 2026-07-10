@@ -30,7 +30,7 @@ exports.login = async (req, res) => {
     }
 
     if (!(await user.matchPassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res.status(401).json({ success: false, message: 'wrong or invalid credential try another' });
     }
 
     const token = generateToken(user._id);

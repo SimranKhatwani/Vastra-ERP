@@ -11,26 +11,26 @@ const generateSuperAdminToken = () => {
 
 exports.superAdminLogin = async (req, res) => {
   try {
-    const { name, secretKey } = req.body;
+    const { email, secretKey } = req.body;
 
-    if (!name || !secretKey) {
-      return res.status(400).json({ success: false, message: 'Please provide name and secretKey' });
+    if (!email || !secretKey) {
+      return res.status(400).json({ success: false, message: 'Please provide email and secretKey' });
     }
 
     // Check credentials against .env
     if (
-      name === process.env.SUPERADMIN_NAME &&
+      email === process.env.SUPERADMIN_EMAIL &&
       secretKey === process.env.SUPERADMIN_SECRET_KEY
     ) {
       const token = generateSuperAdminToken();
       return res.status(200).json({
         success: true,
         token,
-        user: { role: 'SuperAdmin', name: process.env.SUPERADMIN_NAME }
+        user: { role: 'SuperAdmin', email: process.env.SUPERADMIN_EMAIL }
       });
     }
 
-    return res.status(401).json({ success: false, message: 'Invalid SuperAdmin Credentials' });
+    return res.status(401).json({ success: false, message: 'wrong or invalid credential try another' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
