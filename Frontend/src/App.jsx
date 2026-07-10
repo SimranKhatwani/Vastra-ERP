@@ -41,6 +41,7 @@ import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
+import { LandingPage } from "./components/LandingPage";
 
 // Import mock data generators
 import {
@@ -482,19 +483,26 @@ export default function App() {
         </>
       );
     }
+    
+    if (path === "/login") {
+      return (
+        <>
+          <UserLogin
+            onLogin={(user) => {
+              setCurrentUser(user);
+              setIsLoggedIn(true);
+            }}
+            addToastNotification={addToastNotification}
+            switchableEmployees={switchableEmployees}
+            getUserInitials={getUserInitials}
+          />
+          {renderToasts()}
+        </>
+      );
+    }
+
     return (
-      <>
-        <UserLogin
-          onLogin={(user) => {
-            setCurrentUser(user);
-            setIsLoggedIn(true);
-          }}
-          addToastNotification={addToastNotification}
-          switchableEmployees={switchableEmployees}
-          getUserInitials={getUserInitials}
-        />
-        {renderToasts()}
-      </>
+      <LandingPage />
     );
   }
 
