@@ -7,7 +7,6 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
     businessName: "",
     email: "",
     plan: "Starter",
-    customAmount: "",
     adminName: "",
     adminPassword: "",
     adminPhone: "",
@@ -19,112 +18,48 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
   });
   const [loading, setLoading] = useState(false);
 
-  // Dynamically load Razorpay script
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
-
   if (!isOpen) return null;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handlePaymentAndRegistration = async (e) => {
+  const handleRegistration = async (e) => {
     e.preventDefault();
     if (formData.adminPhone.length !== 10) return addToastNotification("Error", "Phone must be 10 digits", "danger");
     if (formData.aadhaarNumber.length !== 12) return addToastNotification("Error", "Aadhaar must be 12 digits", "danger");
-    if (!formData.customAmount || isNaN(formData.customAmount) || Number(formData.customAmount) <= 0) {
-      return addToastNotification("Error", "Please enter a valid amount to pay", "danger");
-    }
 
     setLoading(true);
     const token = localStorage.getItem("token") || "";
     const config = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } };
 
     try {
-      // 1. Create Order
-      const orderRes = await axios.post("/api/super-admin/create-order", { amount: formData.customAmount }, config);
-      
-      if (!orderRes.data.success) {
-        throw new Error("Failed to create Razorpay order");
-      }
-
-      // 2. Open Razorpay Checkout
-      const options = {
-        key: "rzp_test_SbIYMAQzqrEkAM", // Should ideally fetch from backend or env, but using requested test key
-        amount: orderRes.data.order.amount,
-        currency: "INR",
-        name: "Threadflow / Garment ERP",
-        description: `Subscription: ${formData.plan} Plan`,
-        order_id: orderRes.data.order.id,
-        handler: async function (response) {
-          try {
-            setLoading(true);
-            // 3. Verify Payment and Create Tenant
-            const payload = {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              businessName: formData.businessName,
-              email: formData.email,
-              plan: formData.plan,
-              adminName: formData.adminName,
-              adminPassword: formData.adminPassword,
-              adminPhone: formData.adminPhone,
-              aadhaarNumber: formData.aadhaarNumber,
-              address: {
-                street: formData.street,
-                city: formData.city,
-                district: formData.district,
-                state: formData.state
-              }
-            };
-
-            const regRes = await axios.post("/api/super-admin/register-business", payload, config);
-            if (regRes.data.success) {
-              addToastNotification("Success", "Payment Verified & Business Registered!", "success");
-              onRegisterSuccess(regRes.data.data.tenant);
-              onClose();
-            }
-          } catch (err) {
-            addToastNotification("Error", err.response?.data?.message || err.message, "danger");
-          } finally {
-            setLoading(false);
-          }
-        },
-        prefill: {
-          name: formData.adminName,
-          email: formData.email,
-          contact: formData.adminPhone
-        },
-        theme: {
-          color: "#4f46e5" // indigo-600
-        },
-        modal: {
-          ondismiss: function () {
-            setLoading(false);
-            addToastNotification("Warning", "Payment cancelled. Business was not registered.", "warning");
-          }
+      const payload = {
+        businessName: formData.businessName,
+        email: formData.email,
+        plan: formData.plan,
+        adminName: formData.adminName,
+        adminPassword: formData.adminPassword,
+        adminPhone: formData.adminPhone,
+        aadhaarNumber: formData.aadhaarNumber,
+        address: {
+          street: formData.street,
+          city: formData.city,
+          district: formData.district,
+          state: formData.state
         }
       };
 
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response) {
-        setLoading(false);
-        addToastNotification("Error", response.error.description, "danger");
-      });
-      rzp.open();
-
+      const regRes = await axios.post("/api/super-admin/register-business", payload, config);
+      if (regRes.data.success) {
+        addToastNotification("Success", "Business Registered Successfully!", "success");
+        onRegisterSuccess(regRes.data.data.tenant);
+        onClose();
+      }
     } catch (error) {
-      setLoading(false);
       addToastNotification("Error", error.response?.data?.message || error.message, "danger");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -134,14 +69,14 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Register New Business</h2>
-            <p className="text-[11px] text-slate-500 font-medium">Aadhaar, address, and mandatory payment integration.</p>
+            <p className="text-[11px] text-slate-500 font-medium">Aadhaar, address, and admin assignment.</p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
 
-        <form onSubmit={handlePaymentAndRegistration} className="p-4 space-y-4 overflow-y-auto flex-1">
+        <form onSubmit={handleRegistration} className="p-4 space-y-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Left Column: Business & Payment */}
@@ -234,7 +169,7 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
                 <h3 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <CreditCard className="w-3.5 h-3.5 text-blue-500" /> Subscription
                 </h3>
-                <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Plan Level</label>
                     <select name="plan" value={formData.plan} onChange={handleChange} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-500">
@@ -243,13 +178,6 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
                       <option value="Professional">Professional</option>
                       <option value="Enterprise">Enterprise</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Amount (₹) *</label>
-                    <div className="relative">
-                      <IndianRupee className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input required type="number" min="1" name="customAmount" value={formData.customAmount} onChange={handleChange} className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:border-indigo-500 font-bold text-indigo-700" placeholder="Amount" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -263,11 +191,7 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
               Cancel
             </button>
             <button type="submit" disabled={loading} className="px-5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-lg transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 flex items-center gap-2">
-              {loading ? (
-                <>Processing Payment...</>
-              ) : (
-                <>Pay ₹{formData.customAmount || '0'} & Register</>
-              )}
+              {loading ? "Registering..." : "Register Business"}
             </button>
           </div>
         </form>
