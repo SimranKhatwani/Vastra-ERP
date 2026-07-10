@@ -180,7 +180,7 @@ export const PurchaseView = ({
           {/* PO Table */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="erp-table">
                 <thead>
                   <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
                     <th className="p-3.5">PO Number</th>

@@ -484,7 +484,7 @@ export default function App() {
 
   const standardAppContent = (
     <div
-      className="min-h-screen bg-slate-50 flex text-slate-900 font-sans"
+      className="erp-page"
       id="threadflow-saas-root"
     >
       {/* Toast Overlay */}
@@ -492,8 +492,7 @@ export default function App() {
 
       {/* LEFT SIDEBAR NAVIGATION */}
       <aside
-        className={`bg-white text-slate-600 border-r border-slate-200 shrink-0 h-screen sticky top-0 flex flex-col justify-between transition-all duration-300 z-30 ${sidebarCollapsed ? "w-16" : "w-64"
-          }`}
+        className={`erp-sidebar justify-between duration-300 ${sidebarCollapsed ? "erp-sidebar--collapsed" : ""}`}
       >
         <div className="overflow-y-auto flex-1 py-4 px-3 space-y-6">
           {/* Brand header */}
@@ -516,7 +515,7 @@ export default function App() {
 
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 rounded-lg bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200/60 cursor-pointer mx-auto"
+              className="erp-icon-btn mx-auto border border-slate-200/60"
             >
               <ChevronsLeft
                 className={`w-4 h-4 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`}
@@ -638,10 +637,10 @@ export default function App() {
         </div>
       </aside>
 
-      {/* MAIN CONTAINER */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* ── MAIN WORKSPACE AREA ── */}
+      <div className="erp-container">
         {/* TOP NAVBAR */}
-        <header className="bg-white border-b border-slate-200 h-16 px-8 flex items-center justify-between sticky top-0 z-20">
+        <header className="erp-navbar">
           <div className="flex items-center gap-4">
             <h2 className="text-sm font-bold text-slate-800 capitalize">
               {modulesList.find((m) => m.id === activeModule)?.label}
@@ -796,8 +795,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* SCROLLABLE VIEW PORT */}
-        <main className="flex-1 p-6 overflow-y-auto">
+        {/* DYNAMIC VIEW CONTENT */}
+        <main className="erp-main-content">
           {activeModule === "dashboard" && (
             <DashboardView
               products={products}

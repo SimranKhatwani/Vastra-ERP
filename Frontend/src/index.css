@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+/* Enterprise Design System */
+@import "./styles/variables.css";
+@import "./styles/theme.css";
+@import "./styles/typography.css";
+@import "./styles/layout.css";
+@import "./styles/components.css";
+@import "./styles/forms.css";
+@import "./styles/tables.css";
+@import "./styles/responsive.css";
+@import "./styles/utilities.css";

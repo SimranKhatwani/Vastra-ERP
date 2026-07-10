@@ -1,0 +1,80 @@
+:root {
+  /* =======================================
+     PRIMARY COLORS (Themeable)
+     Mapped closely to Tailwind indigo
+  ======================================= */
+  --erp-primary: #4f46e5;
+  --erp-primary-hover: #4338ca;
+  --erp-primary-light: #e0e7ff;
+  --erp-primary-muted: #818cf8;
+
+  /* =======================================
+     SECONDARY COLORS (Themeable)
+     Mapped closely to Tailwind slate
+  ======================================= */
+  --erp-secondary: #475569;
+  --erp-secondary-hover: #334155;
+  --erp-secondary-light: #f1f5f9;
+  
+  /* =======================================
+     SEMANTIC COLORS
+  ======================================= */
+  --erp-success: #10b981; /* emerald-500 */
+  --erp-success-bg: #ecfdf5; /* emerald-50 */
+  --erp-success-text: #059669; /* emerald-600 */
+
+  --erp-warning: #f59e0b; /* amber-500 */
+  --erp-warning-bg: #fffbeb; /* amber-50 */
+  --erp-warning-text: #d97706; /* amber-600 */
+
+  --erp-danger: #ef4444; /* red-500 */
+  --erp-danger-bg: #fef2f2; /* red-50 */
+  --erp-danger-text: #dc2626; /* red-600 */
+
+  /* =======================================
+     SURFACE & BACKGROUND COLORS
+  ======================================= */
+  --erp-bg-base: #f8fafc; /* slate-50 */
+  --erp-bg-surface: #ffffff; /* white */
+  --erp-bg-sidebar: #0f172a; /* slate-900 (for dark sidebar) */
+  --erp-border-color: #e2e8f0; /* slate-200 */
+  --erp-border-light: #f1f5f9; /* slate-100 */
+
+  /* =======================================
+     TEXT COLORS
+  ======================================= */
+  --erp-text-main: #1e293b; /* slate-800 */
+  --erp-text-muted: #64748b; /* slate-500 */
+  --erp-text-light: #94a3b8; /* slate-400 */
+  --erp-text-inverse: #ffffff; 
+
+  /* =======================================
+     TYPOGRAPHY
+  ======================================= */
+  --erp-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --erp-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  /* =======================================
+     RADII & SHADOWS
+  ======================================= */
+  --erp-radius-sm: 0.375rem;
+  --erp-radius-md: 0.5rem;
+  --erp-radius-lg: 0.75rem;
+  --erp-radius-card: 1rem;
+  --erp-radius-full: 9999px;
+
+  --erp-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --erp-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --erp-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --erp-shadow-primary: 0 10px 15px -3px rgba(79, 70, 229, 0.2);
+  --erp-shadow-danger: 0 10px 15px -3px rgba(220, 38, 38, 0.2);
+
+  /* =======================================
+     SPACING & LAYOUT
+  ======================================= */
+  --erp-sidebar-width: 16rem;
+  --erp-sidebar-collapsed-width: 4rem;
+  --erp-navbar-height: 4rem;
+  
+  --erp-transition-speed: 0.2s;
+}

@@ -1,0 +1,24 @@
+/*
+  Utilities & Overrides
+*/
+
+.erp-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.erp-hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.erp-glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.erp-glass-dark {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

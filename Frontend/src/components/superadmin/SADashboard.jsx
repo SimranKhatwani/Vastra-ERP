@@ -21,7 +21,7 @@ function KpiCard({ label, value, sub, icon: Icon, color = "indigo", trend }) {
   const c = colors[color] || colors.indigo;
 
   return (
-    <div className={`${c.bg} border rounded-2xl p-5 flex flex-col gap-3 shadow-sm`}>
+    <div className={`erp-card flex flex-col gap-3 !p-5 ${c.bg === "bg-white border-slate-200" ? "" : c.bg}`}>
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{label}</span>
         <div className={`p-2 rounded-lg bg-slate-50`}>
@@ -88,9 +88,9 @@ export function SuperAdminDashboard({ tenants = [] }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+        <div className="xl:col-span-2 erp-card">
+          <div className="erp-card-header">
+            <h3 className="erp-card-title">
               <Activity className="w-3.5 h-3.5 text-indigo-600" />
               Infrastructure Status
             </h3>
@@ -107,8 +107,8 @@ export function SuperAdminDashboard({ tenants = [] }) {
           ))}
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <div className="erp-card">
+          <h3 className="erp-card-title mb-4">
             <Globe className="w-3.5 h-3.5 text-indigo-600" />
             Plan Distribution
           </h3>

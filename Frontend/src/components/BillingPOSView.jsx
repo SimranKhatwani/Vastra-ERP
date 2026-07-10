@@ -1677,7 +1677,7 @@ export const BillingPOSView = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="erp-table">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-semibold uppercase tracking-wider">
                   <th className="p-3">Invoice #</th>
