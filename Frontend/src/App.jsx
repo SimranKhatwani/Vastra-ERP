@@ -42,6 +42,9 @@ import { CommissionView } from "./components/CommissionView";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
 import { LandingPage } from "./components/LandingPage";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
 
 // Import mock data generators
 import {
@@ -467,46 +470,7 @@ export default function App() {
     </div>
   );
 
-  if (!isLoggedIn) {
-    const path = window.location.pathname;
-    if (path === "/ad/su") {
-      return (
-        <>
-          <AdminLogin
-            onLogin={(user) => {
-              setCurrentUser(user);
-              setIsLoggedIn(true);
-            }}
-            addToastNotification={addToastNotification}
-          />
-          {renderToasts()}
-        </>
-      );
-    }
-    
-    if (path === "/login") {
-      return (
-        <>
-          <UserLogin
-            onLogin={(user) => {
-              setCurrentUser(user);
-              setIsLoggedIn(true);
-            }}
-            addToastNotification={addToastNotification}
-            switchableEmployees={switchableEmployees}
-            getUserInitials={getUserInitials}
-          />
-          {renderToasts()}
-        </>
-      );
-    }
-
-    return (
-      <LandingPage />
-    );
-  }
-
-  return (
+  const standardAppContent = (
     <div
       className="min-h-screen bg-slate-50 flex text-slate-900 font-sans"
       id="threadflow-saas-root"
@@ -971,5 +935,60 @@ export default function App() {
         </main>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {renderToasts()}
+      <Routes>
+        {/* Isolated Super Admin Routes */}
+        <Route path="/ad/su" element={
+          isLoggedIn ? <Navigate to="/super-admin/dashboard" replace /> : (
+            <AdminLogin 
+              onLogin={(user) => { setCurrentUser(user); setIsLoggedIn(true); }} 
+              addToastNotification={addToastNotification} 
+            />
+          )
+        } />
+        
+        <Route 
+          path="/super-admin/*" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn} user={currentUser} requiredRole="SuperAdmin">
+              <SuperAdminLayout
+                currentUser={currentUser}
+                onLogout={() => {
+                  setIsLoggedIn(false);
+                  addToastNotification("Auth Service", "Session terminated.", "warning");
+                }}
+                tenants={tenants}
+              />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Standard User App Routes */}
+        <Route path="/login" element={
+          !isLoggedIn ? (
+            <UserLogin
+              onLogin={(user) => { setCurrentUser(user); setIsLoggedIn(true); }}
+              addToastNotification={addToastNotification}
+              switchableEmployees={switchableEmployees}
+              getUserInitials={getUserInitials}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } />
+        
+        <Route path="/*" element={
+          !isLoggedIn ? (
+            <LandingPage />
+          ) : (
+            standardAppContent
+          )
+        } />
+      </Routes>
+    </>
   );
 }
