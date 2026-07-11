@@ -359,7 +359,7 @@ export const ProductManagementView = ({
           </button>
         </div>
 
-        {activeSubTab === "products" && (
+        {activeSubTab === "products" && currentUser?.role?.toLowerCase() !== 'salesperson' && (
           <div className="flex items-center gap-2">
             <button
               onClick={handleImportCSV}
@@ -576,27 +576,31 @@ export const ProductManagementView = ({
                           </span>
                         </td>
                         <td className="p-3.5 text-center">
-                          <div className="flex justify-center gap-1">
-                            <button
-                              onClick={() => openEditModal(p)}
-                              className="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                onDeleteProducts([p.id]);
-                                onAddNotification(
-                                  "Catalog Item Deleted",
-                                  `Removed "${p.name}" from products ledger.`,
-                                  "danger",
-                                );
-                              }}
-                              className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          {currentUser?.role?.toLowerCase() !== 'salesperson' ? (
+                            <div className="flex justify-center gap-1">
+                              <button
+                                onClick={() => openEditModal(p)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  onDeleteProducts([p.id]);
+                                  onAddNotification(
+                                    "Catalog Item Deleted",
+                                    `Removed "${p.name}" from products ledger.`,
+                                    "danger",
+                                  );
+                                }}
+                                className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
                         </td>
                       </tr>
                     );

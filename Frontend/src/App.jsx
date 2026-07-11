@@ -186,15 +186,15 @@ export default function App() {
 
   // Role-based sidebar module access helper
   const getAccessibleModules = (role) => {
-    switch (role) {
-      case "SuperAdmin":
+    switch ((role || '').toLowerCase()) {
+      case "superadmin":
         return [
           "saas",
           "developer",
           "integrations",
           "settings",
         ];
-      case "BusinessAdmin":
+      case "businessadmin":
         return [
           "dashboard",
           "billing",
@@ -213,7 +213,7 @@ export default function App() {
           "dev",
           "settings",
         ];
-      case "Manager":
+      case "manager":
         return [
           "dashboard",
           "billing",
@@ -228,18 +228,26 @@ export default function App() {
           "reports",
           "settings",
         ];
-      case "Cashier":
-        return ["billing", "customers", "settings"];
-      case "Salesperson":
+      case "cashier":
         return [
+          "dashboard",
           "billing",
           "articulation",
-          "inventory_articulation",
           "products",
-          "inventory",
+          "purchase",
           "customers",
+          "accounting",
         ];
-      case "Tailor":
+      case "salesperson":
+        return [
+          "dashboard",
+          "billing",
+          "articulation",
+          "products",
+          "purchase",
+          "employees",
+        ];
+      case "tailor":
         return ["articulation", "inventory_articulation", "inventory"];
       default:
         return ["billing"];
@@ -641,7 +649,7 @@ export default function App() {
     },
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
-    { id: "employees", label: "HR Payroll & rosters", icon: Users2 },
+    { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
     { id: "staff", label: "Staff Management", icon: User },
     { id: "accounting", label: "General Ledger Profit", icon: Receipt },
     { id: "reports", label: "Advanced Report Hub", icon: TrendingUp },
@@ -992,6 +1000,7 @@ export default function App() {
         <main className="erp-main-content">
           {activeModule === "dashboard" && (
             <DashboardView
+              currentUser={currentUser}
               products={products}
               customers={customers}
               employees={employees}
@@ -1007,6 +1016,7 @@ export default function App() {
 
           {activeModule === "billing" && (
             <BillingPOSView
+              currentUser={currentUser}
               products={products}
               customers={customers}
               employees={employees}
@@ -1040,6 +1050,7 @@ export default function App() {
 
           {activeModule === "products" && (
             <ProductManagementView
+              currentUser={currentUser}
               products={products}
               onAddProduct={handleAddProduct}
               onUpdateProduct={handleUpdateProduct}
@@ -1094,6 +1105,7 @@ export default function App() {
 
           {activeModule === "employees" && (
             <EmployeeView
+              currentUser={currentUser}
               employees={employees}
               setEmployees={setEmployees}
               onDisburseCommission={handleDisburseCommission}

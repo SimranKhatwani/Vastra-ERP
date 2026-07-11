@@ -23,6 +23,7 @@ export const DashboardView = ({
   auditLogs = [],
   setActiveTab = (_tab) => {},
   openArticulationWithDefaults = () => {},
+  currentUser = {},
 }) => {
   // Let's compute actual dynamic KPIs from the current state!
   const todayStr = "2026-06-28"; // Fixed system 'today' matching context
@@ -181,6 +182,84 @@ export const DashboardView = ({
       stock: products.find((p) => p.id === "p-10")?.stock || 18,
     },
   ];
+
+  if (currentUser?.role?.toLowerCase() === 'salesperson') {
+    return (
+      <div className="space-y-6 animate-fade-in pb-12" id="dashboard-view-root">
+        {/* Welcome Banner */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-mono border border-emerald-500/30">
+                Sales Portal
+              </span>
+              <span className="text-slate-400 text-xs font-mono">
+                Store Front
+              </span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+              Welcome back, {currentUser.name}
+            </h1>
+            <p className="text-sm text-slate-300">
+              Here is your personal performance overview.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setActiveTab("billing")}
+              className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New POS Bill</span>
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                My Total Sales
+              </span>
+              <div className="text-2xl font-bold text-slate-800 font-sans">
+                ₹{(currentUser.monthlySales || 0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
+              <DollarSign className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                My Commission Earned
+              </span>
+              <div className="text-2xl font-bold text-slate-800 font-sans">
+                ₹{(currentUser.commissionEarned || 0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Attendance Rate
+              </span>
+              <div className="text-2xl font-bold text-slate-800 font-sans">
+                {currentUser.attendanceRate || 100}%
+              </div>
+            </div>
+            <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in pb-12" id="dashboard-view-root">

@@ -15,8 +15,9 @@ export const EmployeeView = ({
   setEmployees,
   onDisburseCommission,
   onAddNotification,
+  currentUser = {},
 }) => {
-  const [activeTab, setActiveTab] = useState("roster");
+  const [activeTab, setActiveTab] = useState(currentUser?.role?.toLowerCase() === 'salesperson' ? "commissions" : "roster");
   const [selectedEmpId, setSelectedEmpId] = useState("e-3");
   const [bonusAmount, setBonusAmount] = useState(1000);
 
@@ -637,21 +638,24 @@ export const EmployeeView = ({
 
   return (
     <div className="space-y-6 animate-fade-in pb-12" id="employee-hr-root">
-      {/* Sub tabs */}
       <div className="flex border-b border-slate-100 pb-3">
         <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl">
-          <button
-            onClick={() => setActiveTab("roster")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "roster" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Staff Directory
-          </button>
-          <button
-            onClick={() => setActiveTab("payroll")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "payroll" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Salary Ledgers
-          </button>
+          {currentUser?.role?.toLowerCase() !== 'salesperson' && (
+            <>
+              <button
+                onClick={() => setActiveTab("roster")}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "roster" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                Staff Directory
+              </button>
+              <button
+                onClick={() => setActiveTab("payroll")}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "payroll" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                Salary Ledgers
+              </button>
+            </>
+          )}
           <button
             onClick={() => setActiveTab("commissions")}
             className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "commissions" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
@@ -664,12 +668,14 @@ export const EmployeeView = ({
           >
             Biometric Attendance
           </button>
-          <button
-            onClick={() => setActiveTab("advances")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "advances" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Advances & Deductions
-          </button>
+          {currentUser?.role?.toLowerCase() !== 'salesperson' && (
+            <button
+              onClick={() => setActiveTab("advances")}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "advances" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              Advances & Deductions
+            </button>
+          )}
         </div>
       </div>
 
