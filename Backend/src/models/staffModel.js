@@ -18,6 +18,7 @@ const staffSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: [true, 'Please add a phone number'],
+      match: [/^\d{10}$/, 'Phone number must be exactly 10 digits'],
     },
     designation: {
       type: String,
@@ -39,6 +40,17 @@ const staffSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    passwordHash: {
+      type: String,
+      select: false,
+    },
+    encryptedPassword: {
+      type: String,
+      select: true, // Need this for the admin view
+    },
+    businessCode: {
+      type: String,
     }
   },
   {

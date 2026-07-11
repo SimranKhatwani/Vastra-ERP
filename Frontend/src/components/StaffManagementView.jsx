@@ -6,6 +6,7 @@ export function StaffManagementView() {
   const [staff, setStaff] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [generatedAuth, setGeneratedAuth] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -20,7 +21,10 @@ export function StaffManagementView() {
 
   const fetchStaff = async () => {
     try {
-      const { data } = await axios.get("http://localhost:5000/api/staff");
+      const token = localStorage.getItem("token");
+      const { data } = await axios.get("http://localhost:5000/api/staff", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (data.success) {
         setStaff(data.data);
       }
@@ -40,9 +44,13 @@ export function StaffManagementView() {
   const handleAddStaff = async (e) => {
     e.preventDefault();
     try {
-      const { data } = await axios.post("http://localhost:5000/api/staff", formData);
+      const token = localStorage.getItem("token");
+      const { data } = await axios.post("http://localhost:5000/api/staff", formData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (data.success) {
-        setStaff([data.data, ...staff]);
+        const newStaff = { ...data.data, password: data.generatedPassword };
+        setStaff([newStaff, ...staff]);
         setShowAddModal(false);
         setFormData({
           name: "",
@@ -53,6 +61,9 @@ export function StaffManagementView() {
           age: "",
           address: ""
         });
+        if (data.generatedPassword) {
+          setGeneratedAuth({ email: data.data.email, password: data.generatedPassword });
+        }
       }
     } catch (err) {
       alert("Failed to add staff: " + (err.response?.data?.message || err.message));
@@ -62,7 +73,10 @@ export function StaffManagementView() {
   const handleDelete = async (id) => {
     if (confirm("Are you sure you want to remove this staff member?")) {
       try {
-        await axios.delete(`http://localhost:5000/api/staff/${id}`);
+        const token = localStorage.getItem("token");
+        await axios.delete(`http://localhost:5000/api/staff/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setStaff(staff.filter(s => s._id !== id));
       } catch (err) {
         alert("Failed to delete staff: " + (err.response?.data?.message || err.message));
@@ -118,6 +132,7 @@ export function StaffManagementView() {
               <tr>
                 <th>Staff Member</th>
                 <th>Contact Info</th>
+                <th>Password</th>
                 <th>Designation</th>
                 <th>Demographics</th>
                 <th className="text-center">Status</th>
@@ -159,6 +174,9 @@ export function StaffManagementView() {
                         <span>{emp.phone}</span>
                       </div>
                     </td>
+                    <td className="p-4 font-mono text-xs text-slate-800 font-bold bg-slate-50/50">
+                      {emp.password || 'N/A'}
+                    </td>
                     <td className="p-4">
                       <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
                         {emp.designation}
@@ -196,6 +214,42 @@ export function StaffManagementView() {
           </table>
         </div>
       </div>
+
+      {/* Auth Generated Modal */}
+      {generatedAuth && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-6">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-slate-800 text-lg mb-1">Employee Registered</h3>
+            <p className="text-xs text-slate-500 mb-6">Store these credentials safely. They will not be shown again.</p>
+            
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-left space-y-3 mb-6">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email</label>
+                <div className="text-sm font-semibold text-slate-700">{generatedAuth.email}</div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Generated Password</label>
+                <div className="text-base font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg mt-1 select-all">
+                  {generatedAuth.password}
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(generatedAuth.password);
+                setGeneratedAuth(null);
+              }}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-colors"
+            >
+              Copy Password & Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Registration Modal */}
       {showAddModal && (

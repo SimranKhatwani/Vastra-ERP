@@ -27,16 +27,24 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Please add a password'],
       minlength: 6,
       select: false,
     },
+    passwordHash: {
+      type: String,
+      minlength: 6,
+      select: false,
+    },
+    encryptedPassword: {
+      type: String,
+      select: false, // Don't return this by default
+    },
     phone: {
       type: String,
+      match: [/^\d{10}$/, 'Phone number must be exactly 10 digits'],
     },
     role: {
       type: String,
-      enum: ['BusinessAdmin', 'Manager', 'Cashier', 'Salesperson', 'Tailor'],
       default: 'Cashier',
     },
     isActive: {
@@ -51,17 +59,29 @@ const userSchema = new mongoose.Schema(
 
 // Encrypt password using bcrypt before saving
 userSchema.pre('save', async function () {
-  if (!this.isModified('password')) {
+  const isPasswordModified = this.isModified('password');
+  const isPasswordHashModified = this.isModified('passwordHash');
+
+  if (!isPasswordModified && !isPasswordHashModified) {
     return;
   }
 
   const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  
+  if (isPasswordModified && this.password) {
+    this.password = await bcrypt.hash(this.password, salt);
+  }
+  
+  if (isPasswordHashModified && this.passwordHash) {
+    this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
+  }
 });
 
 // Match user entered password to hashed password in database
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  const hashToCompare = this.passwordHash || this.password;
+  if (!hashToCompare) return false;
+  return await bcrypt.compare(enteredPassword, hashToCompare);
 };
 
 module.exports = mongoose.model('User', userSchema);

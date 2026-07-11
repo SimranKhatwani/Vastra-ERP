@@ -5,7 +5,7 @@ export const SettingsView = ({ onAddNotification }) => {
   const [activeTab, setActiveTab] = useState("profile");
 
   // Company details
-  const [companyName, setCompanyName] = useState("Threadflow Apparel Corp");
+  const [companyName, setCompanyName] = useState("Vastra ERP");
   const [companyAddress, setCompanyAddress] = useState(
     "202-205, Linking Road, Santacruz West, Mumbai, MH - 400054",
   );
@@ -77,7 +77,7 @@ export const SettingsView = ({ onAddNotification }) => {
     setTimeout(() => {
       onAddNotification(
         "Database Saved",
-        "Backup threadflow_db_snap_20260628.sql compiled. Size: 418 MB.",
+        "Backup vastra_erp_db_snap_20260628.sql compiled. Size: 418 MB.",
         "success",
       );
     }, 1000);
@@ -181,7 +181,9 @@ export const SettingsView = ({ onAddNotification }) => {
               </label>
               <input
                 required
-                type="text"
+                type="tel"
+                pattern="\d{10}"
+                maxLength={10}
                 value={companyContact}
                 onChange={(e) => setCompanyContact(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl font-mono"
@@ -194,8 +196,6 @@ export const SettingsView = ({ onAddNotification }) => {
               </label>
               <select className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl font-bold text-slate-700">
                 <option value="INR">INR (₹) - Indian Rupee</option>
-                <option value="USD">USD ($) - US Dollars</option>
-                <option value="AED">AED (Dhs) - Dirhams</option>
               </select>
             </div>
           </div>

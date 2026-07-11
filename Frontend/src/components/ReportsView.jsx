@@ -41,7 +41,7 @@ export const ReportsView = ({
     );
     onAddNotification(
       "PDF Download Complete",
-      `Successfully downloaded threadflow_${reportType}_audit_${endDate}.pdf`,
+      `Successfully downloaded vastra_erp_${reportType}_audit_${endDate}.pdf`,
       "success",
     );
   };
@@ -54,7 +54,7 @@ export const ReportsView = ({
     );
     onAddNotification(
       "Excel Exported",
-      `Downloaded threadflow_${reportType}_ledger_${endDate}.xlsx`,
+      `Downloaded vastra_erp_${reportType}_ledger_${endDate}.xlsx`,
       "success",
     );
   };

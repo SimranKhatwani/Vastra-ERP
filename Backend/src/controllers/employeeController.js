@@ -1,4 +1,7 @@
 const Employee = require('../models/employeeModel');
+const User = require('../models/userModel');
+const { generateSecurePassword } = require('../utils/passwordGenerator');
+const { encryptPassword, decryptPassword } = require('../utils/encryption');
 
 exports.createEmployee = async (req, res) => {
   try {
@@ -9,12 +12,35 @@ exports.createEmployee = async (req, res) => {
       return res.status(400).json({ success: false, message: 'An employee with this phone number already exists' });
     }
 
+    const existingUser = await User.findOne({ email: req.body.email || `${req.body.phone}@garmenterp.com` });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already exists in the system' });
+    }
+
+    const plainPassword = generateSecurePassword();
+    const encryptedPassword = encryptPassword(plainPassword);
+
     const employee = await Employee.create({
       ...req.body,
-      tenantId
+      tenantId,
+      passwordHash: plainPassword,
+      encryptedPassword: encryptedPassword,
+      businessCode: req.user.businessCode,
     });
 
-    res.status(201).json({ success: true, data: employee });
+    await User.create({
+      tenantId,
+      businessCode: req.user.businessCode,
+      name: req.body.name,
+      email: req.body.email || `${req.body.phone}@garmenterp.com`, // fallback email if not provided
+      phone: req.body.phone,
+      role: req.body.role || 'Cashier', // fallback role
+      passwordHash: plainPassword,
+      encryptedPassword: encryptedPassword,
+      isActive: true
+    });
+
+    res.status(201).json({ success: true, data: employee, generatedPassword: plainPassword });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -23,8 +49,23 @@ exports.createEmployee = async (req, res) => {
 exports.getEmployees = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const employees = await Employee.find({ tenantId }).sort('-createdAt');
+    const employees = await Employee.find({ tenantId }).sort('-createdAt').lean();
       
+    // Decrypt passwords if user is Admin or SuperAdmin
+    if (req.user && (req.user.role === 'Admin' || req.user.role === 'BusinessAdmin' || req.user.role === 'SuperAdmin')) {
+      employees.forEach(s => {
+        if (s.encryptedPassword) {
+          try {
+            s.password = decryptPassword(s.encryptedPassword);
+          } catch (e) {
+            s.password = "Error Decrypting";
+          }
+        } else {
+          s.password = "N/A";
+        }
+      });
+    }
+
     res.status(200).json({ success: true, count: employees.length, data: employees });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

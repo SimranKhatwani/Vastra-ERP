@@ -250,6 +250,8 @@ export const EmployeeView = ({
   const [newLeaveEnd, setNewLeaveEnd] = useState("");
   const [newLeaveReason, setNewLeaveReason] = useState("");
 
+  const [generatedAuth, setGeneratedAuth] = useState(null);
+
   const [activeAttendanceSubTab, setActiveAttendanceSubTab] = useState("punch");
 
   const activeEmployee =
@@ -287,36 +289,53 @@ export const EmployeeView = ({
     );
   };
 
-  const handleCreateEmployee = (e) => {
+  const handleCreateEmployee = async (e) => {
     e.preventDefault();
     if (!formName || !formEmail) return;
 
-    const newEmp = {
-      id: `e-${Date.now()}`,
-      name: formName,
-      email: formEmail,
-      phone: formPhone || "9876543210",
-      role: formRole,
-      status: "Active",
-      attendanceRate: 100,
-      salary: formSalary,
-      commissionEarned: 0,
-      commissionRate: formCommRate,
-      monthlySales: 0,
-      salesTarget: formTarget,
-      leavesRemaining: 15,
-    };
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/employees", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: formName,
+          email: formEmail,
+          phone: formPhone || "9876543210",
+          role: formRole,
+          salary: formSalary,
+          shift: "Full-Day"
+        }),
+      });
 
-    if (setEmployees) {
-      setEmployees((prev) => [...prev, newEmp]);
+      const data = await res.json();
+      
+      if (data.success) {
+        if (setEmployees) {
+          setEmployees((prev) => [...prev, data.data]);
+        }
+        
+        onAddNotification(
+          "Roster Management",
+          `Successfully registered profile for ${formName} (${formRole}).`,
+          "success",
+        );
+        setShowAddModal(false);
+        resetForm();
+
+        if (data.generatedPassword) {
+          // Temporarily attach it so we can show the popup
+          setGeneratedAuth({ email: data.data.email, password: data.generatedPassword, name: data.data.name });
+        }
+      } else {
+        onAddNotification("Error", data.message || "Failed to create employee", "error");
+      }
+    } catch (err) {
+      onAddNotification("Error", err.message, "error");
     }
-    onAddNotification(
-      "Roster Management",
-      `Successfully registered profile for ${formName} (${formRole}).`,
-      "success",
-    );
-    setShowAddModal(false);
-    resetForm();
   };
 
   const handleUpdateEmployeeSubmit = (e) => {
@@ -2009,6 +2028,42 @@ export const EmployeeView = ({
       )}
 
       {/* ======================= HR MODALS ======================= */}
+
+      {/* Auth Generated Modal */}
+      {generatedAuth && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-6">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-slate-800 text-lg mb-1">Employee Registered</h3>
+            <p className="text-xs text-slate-500 mb-6">Store these credentials safely. They will not be shown again.</p>
+            
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-left space-y-3 mb-6">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email</label>
+                <div className="text-sm font-semibold text-slate-700">{generatedAuth.email}</div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Generated Password</label>
+                <div className="text-base font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg mt-1 select-all">
+                  {generatedAuth.password}
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(generatedAuth.password);
+                setGeneratedAuth(null);
+              }}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-colors"
+            >
+              Copy Password & Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: ADD EMPLOYEE */}
       {showAddModal && (

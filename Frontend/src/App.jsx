@@ -194,7 +194,7 @@ export default function App() {
           "integrations",
           "settings",
         ];
-      case "Admin":
+      case "BusinessAdmin":
         return [
           "dashboard",
           "billing",
@@ -209,6 +209,8 @@ export default function App() {
           "staff",
           "accounting",
           "reports",
+          "integrations",
+          "dev",
           "settings",
         ];
       case "Manager":
@@ -695,11 +697,11 @@ export default function App() {
             {!sidebarCollapsed && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-sm font-sans tracking-tight">
-                  T
+                  V
                 </div>
                 <div>
                   <h1 className="font-extrabold text-slate-800 text-xs tracking-wider uppercase">
-                    Threadflow
+                    Vastra ERP
                   </h1>
                   <span className="text-[9px] text-indigo-600 font-bold uppercase tracking-widest block">
                     v1.2 SaaS PRO

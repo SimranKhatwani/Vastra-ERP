@@ -53,7 +53,7 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
               </div>
               <div>
                 <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wider leading-tight">
-                  Threadflow
+                  Vastra ERP
                 </p>
                 <p className="text-[9px] text-indigo-600 font-bold uppercase tracking-widest">
                   Super Admin

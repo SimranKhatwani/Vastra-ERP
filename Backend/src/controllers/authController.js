@@ -15,7 +15,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide a Business ID, email, and password' });
     }
 
-    const user = await User.findOne({ email }).select('+password').populate('tenantId');
+    const user = await User.findOne({ email }).select('+password +passwordHash').populate('tenantId');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'User not found. Please contact SuperAdmin to register your business.' });

@@ -2850,7 +2850,10 @@ export const CommissionView = ({
                     Mobile Contact
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    required
+                    pattern="\d{10}"
+                    maxLength={10}
                     placeholder="99XXXXXXXX"
                     value={partnerPhone}
                     onChange={(e) => setPartnerPhone(e.target.value)}
@@ -3309,7 +3312,10 @@ export const CommissionView = ({
                     Mobile Contact
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    required
+                    pattern="\d{10}"
+                    maxLength={10}
                     placeholder="99XXXXXXXX"
                     value={infPhone}
                     onChange={(e) => setInfPhone(e.target.value)}

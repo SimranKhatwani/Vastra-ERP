@@ -15,7 +15,6 @@ const employeeSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['Admin', 'Manager', 'Cashier', 'Salesperson', 'Tailor'],
       required: true,
     },
     phone: {
@@ -45,6 +44,17 @@ const employeeSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    passwordHash: {
+      type: String,
+      select: false,
+    },
+    encryptedPassword: {
+      type: String,
+      select: true, // Need this for the admin view
+    },
+    businessCode: {
+      type: String,
+    }
   },
   {
     timestamps: true,
