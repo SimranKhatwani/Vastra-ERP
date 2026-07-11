@@ -39,7 +39,7 @@ export const BillingPOSView = ({
   const [cart, setCart] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("c-1");
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
-  const [salespersonName, setSalespersonName] = useState("");
+  const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
 
   // Inputs
@@ -173,6 +173,11 @@ export const BillingPOSView = ({
 
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
+  // Variant Selection Modal State
+  const [variantModalProduct, setVariantModalProduct] = useState(null);
+  const [variantModalSize, setVariantModalSize] = useState("M");
+  const [variantModalColor, setVariantModalColor] = useState("White");
+
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [articulationQty, setArticulationQty] = useState(1);
   const [articulationSearch, setArticulationSearch] = useState("");
@@ -243,9 +248,9 @@ export const BillingPOSView = ({
             size: prod.size,
             color: prod.color,
             quantity: qty,
-            price: prod.sellingPrice,
+            price: prod.sellingPrice || prod.price || 0,
             discount: 0,
-            gstPercent: prod.gstPercent,
+            gstPercent: prod.gstPercent || 0,
             totalPrice: sub + itemGst,
           },
         ];
@@ -362,9 +367,9 @@ export const BillingPOSView = ({
             size: prod.size,
             color: prod.color,
             quantity: 1,
-            price: prod.sellingPrice,
+            price: prod.sellingPrice || prod.price || 0,
             discount: 0,
-            gstPercent: prod.gstPercent,
+            gstPercent: prod.gstPercent || 0,
             totalPrice: sub + itemGst,
           },
         ];
@@ -493,14 +498,17 @@ export const BillingPOSView = ({
       return;
     }
 
-    const cashier = employees.find((e) => e.id === cashierId) || employees[0];
+    const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
 
     // Create Invoice object
+    const selectedSalesperson = employees.find((e) => e.id === salespersonId);
+    const finalEmployeeId = selectedSalesperson ? selectedSalesperson.id : cashier.id;
+
     const newInvoice = {
       id: `inv-${Date.now()}`,
       invoiceNo: `INV-${20260000 + invoices.length + 1}`,
       date: "2026-06-28",
-      customerId: selectedCustomerId,
+      customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
       customerName: activeCustomer.name,
       customerPhone: activeCustomer.phone,
       items: [...cart],
@@ -511,18 +519,18 @@ export const BillingPOSView = ({
       gstTotal,
       grandTotal,
       paymentMethod,
-      splitPayments:
-        paymentMethod === "Split"
-          ? [
-              { method: "Cash", amount: splitCash },
-              { method: "Card", amount: splitCard },
-              { method: "UPI", amount: splitUPI },
-            ].filter((s) => s.amount > 0)
-          : undefined,
+      splitPayments: paymentMethod === "Split"
+        ? [
+            { method: "Cash", amount: splitCash },
+            { method: "Card", amount: splitCard },
+            { method: "UPI", amount: splitUPI },
+          ].filter((s) => s.amount > 0)
+        : undefined,
+      amountPaid: paymentMethod === "Credit" ? 0 : grandTotal,
       status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
-      employeeId: cashier.id,
+      employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
-      salespersonName: salespersonName.trim() || undefined,
+      salespersonName: selectedSalesperson ? selectedSalesperson.name : undefined,
     };
 
     // If Credit, add outstanding balance to Customer's profile
@@ -545,7 +553,7 @@ export const BillingPOSView = ({
     setSplitCash(0);
     setSplitCard(0);
     setSplitUPI(0);
-    setSalespersonName("");
+    setSalespersonId("");
     setShowReceiptModal(true);
 
     onAddNotification(
@@ -893,6 +901,81 @@ export const BillingPOSView = ({
       "Redirecting to WhatsApp to send invoice...",
       "success",
     );
+  };
+
+  const handleDownloadHTML = (invoice) => {
+    const itemsHtml = invoice.items
+      .map(
+        (item) => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} (${item.size}/${item.color})</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">?${item.totalPrice}</td>
+        </tr>`
+      )
+      .join("");
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Invoice ${invoice.invoiceNo}</title>
+      <style>
+        body { font-family: 'Courier New', Courier, monospace; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; }
+        h1 { text-align: center; }
+        .header-info { margin-bottom: 20px; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th { background: #f5f5f5; text-align: left; padding: 8px; border-bottom: 2px solid #ddd; }
+        .totals { text-align: right; margin-top: 20px; font-size: 14px; }
+        .totals p { margin: 5px 0; }
+        .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #777; }
+      </style>
+    </head>
+    <body>
+      <h1>ZIVA FASHION BOUTIQUE</h1>
+      <p style="text-align: center; font-size: 12px; color: #777;">Bandra, Mumbai - GSTIN 27AABCV1942A1ZX</p>
+      
+      <div class="header-info">
+        <p><strong>Receipt No:</strong> ${invoice.invoiceNo}</p>
+        <p><strong>Date:</strong> ${new Date(invoice.date).toLocaleString()}</p>
+        <p><strong>Customer:</strong> ${invoice.customerName}</p>
+        <p><strong>Salesperson:</strong> ${invoice.salespersonName || "N/A"}</p>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th style="text-align: center;">Qty</th>
+            <th style="text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <p>Subtotal: <strong>?${invoice.subTotal}</strong></p>
+        <p>Discount: <strong>?${invoice.discountTotal}</strong></p>
+        <p>GST: <strong>?${invoice.gstTotal}</strong></p>
+        <p style="font-size: 18px; margin-top: 10px;">Grand Total: <strong>?${invoice.grandTotal}</strong></p>
+      </div>
+
+      <div class="footer">
+        <p>Thank you for shopping with us!</p>
+      </div>
+    </body>
+    </html>`;
+
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Invoice_${invoice.invoiceNo}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -1292,13 +1375,18 @@ export const BillingPOSView = ({
               <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
                 Salesperson / Staff
               </label>
-              <input
-                type="text"
-                placeholder="Enter salesperson name..."
-                value={salespersonName}
-                onChange={(e) => setSalespersonName(e.target.value)}
+              <select
+                value={salespersonId}
+                onChange={(e) => setSalespersonId(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
-              />
+              >
+                <option value="">No Salesperson (Self)</option>
+                {(employees || []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.role || 'Staff'})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Print & Bill trigger button */}
@@ -1414,12 +1502,9 @@ export const BillingPOSView = ({
                       <div
                         key={p.id}
                         onClick={() => {
-                          handleAddProductToCart(p);
-                          onAddNotification(
-                            "POS Billing",
-                            `Added ${p.name} to POS cart.`,
-                            "success",
-                          );
+                          setVariantModalProduct(p);
+                          setVariantModalSize("M");
+                          setVariantModalColor(p.color || "White");
                         }}
                         className="border border-slate-100 bg-white hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5 rounded-xl p-3 text-left transition-all cursor-pointer flex flex-col justify-between group relative"
                       >
@@ -1948,8 +2033,8 @@ export const BillingPOSView = ({
                                 productId: prod.id,
                                 name: prod.name,
                                 sku: prod.sku,
-                                price: prod.sellingPrice,
-                                totalPrice: prod.sellingPrice * it.quantity,
+                                price: prod.sellingPrice || prod.price || 0,
+                                totalPrice: (prod.sellingPrice || prod.price || 0) * it.quantity,
                                 quantity: it.quantity,
                                 size: prod.size,
                                 color: prod.color,
@@ -2578,6 +2663,69 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* MODAL: SELECT VARIANT (Size & Color) */}
+      {variantModalProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-xs w-full p-6 space-y-4 shadow-xl border border-slate-100 animate-scale-up">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                Select Options
+              </h4>
+              <button
+                onClick={() => setVariantModalProduct(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-3">{variantModalProduct.name}</p>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-slate-500 mb-1 text-xs font-semibold">Size</label>
+                  <select 
+                    value={variantModalSize}
+                    onChange={(e) => setVariantModalSize(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                  >
+                    {["XS", "S", "M", "L", "XL", "XXL", "3XL"].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1 text-xs font-semibold">Color</label>
+                  <select 
+                    value={variantModalColor}
+                    onChange={(e) => setVariantModalColor(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                  >
+                    {["White", "Black", "Red", "Blue", "Green", "Navy", "Grey", "Yellow", "Pink", "Maroon"].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const prodWithVariant = {
+                  ...variantModalProduct,
+                  size: variantModalSize,
+                  color: variantModalColor
+                };
+                handleAddProductToCart(prodWithVariant);
+                onAddNotification("POS Billing", `Added ${variantModalProduct.name} (${variantModalSize}, ${variantModalColor}) to cart.`, "success");
+                setVariantModalProduct(null);
+              }}
+              className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-md cursor-pointer mt-4"
+            >
+              Add to Cart
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: ADD RETAIL CUSTOMER */}
       {showAddCustomerModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -2616,9 +2764,15 @@ export const BillingPOSView = ({
                 <input
                   required
                   type="text"
+                  pattern="\d{10}"
+                  title="Phone number must be exactly 10 digits"
+                  maxLength="10"
                   placeholder="e.g. 9876543210"
                   value={newCustPhone}
-                  onChange={(e) => setNewCustPhone(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setNewCustPhone(val);
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
                 />
               </div>
@@ -3617,6 +3771,23 @@ export const BillingPOSView = ({
                 <Smartphone className="w-4 h-4" />
                 <span>Dispatch Bill directly to WhatsApp</span>
               </button>
+              
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button
+                  onClick={() => handleDownloadHTML(completedInvoice)}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download HTML</span>
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print Bill</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

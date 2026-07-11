@@ -381,15 +381,18 @@ export default function App() {
   const handleAddInvoice = async (inv) => {
     try {
       const token = localStorage.getItem("token");
+      console.log("Sending Invoice Payload to backend:", inv);
       const res = await fetch("http://localhost:5000/api/invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(inv)
       });
       const data = await res.json();
+      console.log("Backend response for invoice creation:", data);
       
       if (data.success) {
         setInvoices((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        addToastNotification("Success", "Invoice saved to database", "success");
         
         // Since backend handles stock deduction and loyalty points, simply refetch to sync UI
         const [resProducts, resCustomers, resEmployees] = await Promise.all([
@@ -406,9 +409,11 @@ export default function App() {
         if (dataCustomers.success) setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
         if (dataEmployees.success) setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
       } else {
-        addToastNotification("Error", data.message, "danger");
+        console.error("Invoice creation failed in backend:", data);
+        addToastNotification("Failed", data.message || "Failed to save invoice to backend", "danger");
       }
     } catch (error) {
+      console.error(error);
       addToastNotification("Error", "Failed to connect to API", "danger");
     }
   };

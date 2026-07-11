@@ -28,7 +28,7 @@ export const DashboardView = ({
   // Let's compute actual dynamic KPIs from the current state!
   const todayStr = "2026-06-28"; // Fixed system 'today' matching context
 
-  const todayInvoices = invoices.filter((inv) => inv.date === todayStr);
+  const todayInvoices = invoices.filter((inv) => inv.date && inv.date.startsWith(todayStr));
   const todaySales = todayInvoices.reduce(
     (sum, inv) => sum + inv.grandTotal,
     0,
@@ -43,7 +43,7 @@ export const DashboardView = ({
       todayProfit += (item.price - buyPrice) * item.quantity;
     });
   });
-  if (todayProfit === 0) todayProfit = todaySales * 0.45; // Fallback estimate
+  if (todayProfit === 0 && todaySales > 0) todayProfit = todaySales * 0.45; // Only fallback if we have sales but no profit margin computed
 
   const todayBillsCount = todayInvoices.length;
 
@@ -184,6 +184,12 @@ export const DashboardView = ({
   ];
 
   if (currentUser?.role?.toLowerCase() === 'salesperson') {
+    // Dynamically calculate metrics
+    const myEmployeeRecord = (employees || []).find(e => e.id === currentUser.id) || currentUser;
+    const myInvoices = (invoices || []).filter(inv => inv.employeeId === currentUser.id);
+    const myTotalSales = myInvoices.reduce((acc, inv) => acc + inv.grandTotal, 0);
+    const myCommission = myEmployeeRecord.commissionEarned || Math.floor(myTotalSales * 0.02);
+
     return (
       <div className="space-y-6 animate-fade-in pb-12" id="dashboard-view-root">
         {/* Welcome Banner */}
@@ -223,7 +229,7 @@ export const DashboardView = ({
                 My Total Sales
               </span>
               <div className="text-2xl font-bold text-slate-800 font-sans">
-                ₹{(currentUser.monthlySales || 0).toLocaleString("en-IN")}
+                ₹{myTotalSales.toLocaleString("en-IN")}
               </div>
             </div>
             <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
@@ -236,7 +242,7 @@ export const DashboardView = ({
                 My Commission Earned
               </span>
               <div className="text-2xl font-bold text-slate-800 font-sans">
-                ₹{(currentUser.commissionEarned || 0).toLocaleString("en-IN")}
+                ₹{myCommission.toLocaleString("en-IN")}
               </div>
             </div>
             <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
@@ -255,6 +261,79 @@ export const DashboardView = ({
             <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
               <Clock className="w-5 h-5" />
             </div>
+          </div>
+        </div>
+
+        {/* My Recent Sales */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden mt-6">
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <div>
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <span className="w-1.5 h-6 bg-emerald-500 rounded-full inline-block"></span>
+                My Sales Records
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Your latest approved commissions and billed invoices.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="px-5 py-4 font-semibold">Invoice No</th>
+                  <th className="px-5 py-4 font-semibold">Date</th>
+                  <th className="px-5 py-4 font-semibold">Customer</th>
+                  <th className="px-5 py-4 font-semibold">Payment</th>
+                  <th className="px-5 py-4 font-semibold text-right">Total Amount</th>
+                  <th className="px-5 py-4 font-semibold text-right">My Comm (2%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100/80 text-slate-700">
+                {myInvoices.slice(0, 10).map((inv) => (
+                  <tr
+                    key={inv.id}
+                    className="hover:bg-slate-50/80 transition-colors"
+                  >
+                    <td className="px-5 py-4">
+                      <span className="font-mono font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
+                        {inv.invoiceNo}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-xs">
+                      {new Date(inv.date).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-4 font-medium">
+                      {inv.customerName}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          inv.paymentMethod === "Credit"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {inv.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right font-bold text-slate-800">
+                      ₹{inv.grandTotal.toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-5 py-4 text-right font-bold text-emerald-600">
+                      +₹{Math.floor(inv.grandTotal * 0.02).toLocaleString("en-IN")}
+                    </td>
+                  </tr>
+                ))}
+                {myInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="px-5 py-8 text-center text-slate-400">
+                      You haven't made any sales yet. Keep going!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -606,6 +685,79 @@ export const DashboardView = ({
       </div>
 
       {/* Grid: Recent activity timeline & Top Performers */}
+      {/* Company Recent Sales */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden mt-6 mb-6">
+        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div>
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <span className="w-1.5 h-6 bg-indigo-500 rounded-full inline-block"></span>
+              Recent Company Invoices
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Latest transactions across all staff.
+            </p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider">
+              <tr>
+                <th className="px-5 py-4 font-semibold">Invoice No</th>
+                <th className="px-5 py-4 font-semibold">Date</th>
+                <th className="px-5 py-4 font-semibold">Customer</th>
+                <th className="px-5 py-4 font-semibold">Salesperson</th>
+                <th className="px-5 py-4 font-semibold">Payment</th>
+                <th className="px-5 py-4 font-semibold text-right">Total Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100/80 text-slate-700">
+              {invoices.slice(0, 5).map((inv) => (
+                <tr
+                  key={inv.id}
+                  className="hover:bg-slate-50/80 transition-colors"
+                >
+                  <td className="px-5 py-4">
+                    <span className="font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                      {inv.invoiceNo}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-xs">
+                    {new Date(inv.date).toLocaleDateString()}
+                  </td>
+                  <td className="px-5 py-4 font-medium">
+                    {inv.customerName}
+                  </td>
+                  <td className="px-5 py-4 text-xs font-semibold text-slate-600">
+                    {inv.salespersonName || inv.employeeName || 'N/A'}
+                  </td>
+                  <td className="px-5 py-4">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        inv.paymentMethod === "Credit"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {inv.paymentMethod}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-right font-bold text-slate-800">
+                    ₹{inv.grandTotal.toLocaleString("en-IN")}
+                  </td>
+                </tr>
+              ))}
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-5 py-8 text-center text-slate-400">
+                    No sales recorded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Top Selling Products */}
         <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">

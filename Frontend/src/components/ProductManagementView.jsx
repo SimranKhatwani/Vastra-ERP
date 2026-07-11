@@ -113,9 +113,9 @@ export const ProductManagementView = ({
   // Filters application
   const filteredProductsList = products.filter((p) => {
     const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode.includes(searchQuery);
+      (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (p.barcode && p.barcode.includes(searchQuery));
     const matchesCat =
       selectedCategory === "All" || p.category === selectedCategory;
     const matchesBrand = selectedBrand === "All" || p.brand === selectedBrand;
