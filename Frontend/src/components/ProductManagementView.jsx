@@ -18,6 +18,7 @@ export const ProductManagementView = ({
   onUpdateProduct,
   onDeleteProducts,
   onAddNotification,
+  currentUser,
 }) => {
   // Navigation tabs: Products, Categories, Brands
   const [activeSubTab, setActiveSubTab] = useState("products");
