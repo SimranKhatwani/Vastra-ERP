@@ -204,7 +204,11 @@ export const CommissionView = ({
 
   const [influencers, setInfluencers] = useState([]);
 
-  const [salespersonIncentives, setSalespersonIncentives] = useState([]);
+  // Fetch staffList to get real monthly targets
+  const [staffList, setStaffList] = useState([]);
+  const [editingTargetId, setEditingTargetId] = useState(null);
+  const [editingTargetValue, setEditingTargetValue] = useState("");
+  const [localPayouts, setLocalPayouts] = useState({});
 
   const [settlementHistory, setSettlementHistory] = useState([]);
 
@@ -224,14 +228,21 @@ export const CommissionView = ({
           influencersRes, 
           rulesRes, 
           settlementsRes, 
-          auditRes
+          auditRes,
+          staffRes
         ] = await Promise.all([
           fetch('/api/commissions/marketplace', { headers }),
           fetch('/api/commissions/influencers', { headers }),
           fetch('/api/commissions/rules', { headers }),
           fetch('/api/commissions/settlements', { headers }),
-          fetch('/api/commissions/audit', { headers })
+          fetch('/api/commissions/audit', { headers }),
+          fetch('/api/staff', { headers })
         ]);
+
+        if (staffRes.ok) {
+          const sData = await staffRes.json();
+          setStaffList(sData.data || []);
+        }
 
         if (marketplacesRes.ok) {
           const mData = await marketplacesRes.json();
@@ -259,6 +270,55 @@ export const CommissionView = ({
     };
     fetchData();
   }, []);
+
+  const salespersonIncentives = useMemo(() => {
+    const combinedStaff = [...staffList];
+    
+    // Add roster Salesperson employees
+    employees.forEach(emp => {
+       if (!combinedStaff.find(s => (s._id === emp.id || s.name === emp.name))) {
+          combinedStaff.push({ _id: emp.id, name: emp.name, designation: emp.role || 'Salesperson', monthlyTarget: 150000 });
+       }
+    });
+
+    // Add any salesperson names that have been entered in invoices but are missing from staff lists
+    invoices.forEach((inv) => {
+      const spName = inv.salespersonName?.trim();
+      if (spName && !combinedStaff.find(s => (s.name || '').toLowerCase() === spName.toLowerCase())) {
+         combinedStaff.push({ _id: `temp-${spName}`, name: spName, designation: 'Salesperson', monthlyTarget: 150000 });
+      }
+    });
+
+    return combinedStaff
+      .filter(s => (s.designation || '').toLowerCase().includes('sales') || s.role === 'Salesperson' || (s.designation || '').toLowerCase().includes('tailor'))
+      .map(emp => {
+        const name = emp.name;
+        const salesAchieved = invoices.reduce((sum, inv) => {
+          if ((inv.salespersonName || '').toLowerCase() === name.toLowerCase()) {
+            return sum + (inv.grandTotal || 0);
+          }
+          return sum;
+        }, 0);
+        
+        const target = emp.monthlyTarget || 150000;
+        const isTailor = (emp.designation || '').toLowerCase().includes('tailor');
+        const basePct = isTailor ? 0.05 : 0.02; // 5% for tailors, 2% for sales
+        const baseCommission = Math.round(salesAchieved * basePct);
+        const isPaid = localPayouts[emp._id];
+
+        return {
+          employeeId: emp._id,
+          employeeName: emp.name,
+          department: emp.designation || 'Retail Sales Floor',
+          role: isTailor ? 'TAILOR' : 'SALESPERSON',
+          monthlyTarget: target,
+          salesAchieved,
+          commissionRules: [`${basePct * 100}% Floor Commission`],
+          commissionPending: isPaid ? 0 : baseCommission,
+          commissionPaid: isPaid ? baseCommission : (emp.commissionEarned || 0)
+        };
+      });
+  }, [staffList, employees, invoices, localPayouts]);
 
   // Master stats counts
   const totalMarketplaceSales = useMemo(
@@ -598,47 +658,24 @@ export const CommissionView = ({
   };
 
   const handleApproveSalespersonPayout = (employeeId) => {
-    setSalespersonIncentives((prev) =>
-      prev.map((emp) => {
-        if (emp.employeeId === employeeId) {
-          if (emp.commissionPending <= 0) {
-            onAddNotification(
-              "No Dues",
-              "Commission is already fully disbursed.",
-              "info",
-            );
-            return emp;
-          }
-          const disburseAmt = emp.commissionPending;
-          onAddNotification(
-            "Commission Disbursed",
-            `Disbursed ₹${disburseAmt.toLocaleString()} incentive to ${emp.employeeName}.`,
-            "success",
-          );
-
-          // Record history
-          const hist = {
-            id: `sh-${Date.now().toString().slice(-4)}`,
-            date: "2026-06-28",
-            type: "Salesperson",
-            recipient: emp.employeeName,
-            referenceNo: `EPAY-${Math.floor(Math.random() * 800000) + 200000}`,
-            amount: disburseAmt,
-            paymentMethod: "Bank Transfer",
-            status: "Completed",
-            processedBy: "Current User",
-          };
-          setSettlementHistory([hist, ...settlementHistory]);
-
-          return {
-            ...emp,
-            commissionPaid: emp.commissionPaid + disburseAmt,
-            commissionPending: 0,
-          };
-        }
-        return emp;
-      }),
-    );
+    setLocalPayouts(prev => ({ ...prev, [employeeId]: true }));
+    onAddNotification("Payout Processed", "Funds disbursed to salesperson.", "success");
+    
+    const emp = salespersonIncentives.find(e => e.employeeId === employeeId);
+    if (emp && emp.commissionPending > 0) {
+      const hist = {
+        id: `sh-${Date.now().toString().slice(-4)}`,
+        date: new Date().toISOString().slice(0, 10),
+        type: "Salesperson",
+        recipient: emp.employeeName,
+        referenceNo: `EPAY-${Math.floor(Math.random() * 800000) + 200000}`,
+        amount: emp.commissionPending,
+        paymentMethod: "Bank Transfer",
+        status: "Completed",
+        processedBy: "Current User",
+      };
+      setSettlementHistory([hist, ...settlementHistory]);
+    }
   };
 
   const handleCreateCategorySubmit = (e) => {
@@ -1525,7 +1562,32 @@ export const CommissionView = ({
                           </p>
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-slate-700">
-                          ₹{emp.monthlyTarget.toLocaleString()}
+                          {editingTargetId === emp.employeeId ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input 
+                                type="number" 
+                                className="w-20 text-[10px] p-1 border border-slate-300 rounded font-sans font-normal outline-none focus:border-indigo-500" 
+                                value={editingTargetValue} 
+                                onChange={e => setEditingTargetValue(e.target.value)} 
+                                autoFocus
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleUpdateTarget(emp.employeeId);
+                                  if (e.key === 'Escape') setEditingTargetId(null);
+                                }}
+                              />
+                              <button onClick={() => handleUpdateTarget(emp.employeeId)} className="text-emerald-600 hover:text-emerald-800"><CheckCircle size={14}/></button>
+                              <button onClick={() => setEditingTargetId(null)} className="text-slate-400 hover:text-slate-600"><XCircle size={14}/></button>
+                            </div>
+                          ) : (
+                            <div 
+                              className="flex items-center justify-end gap-2 group cursor-pointer" 
+                              onClick={() => { setEditingTargetId(emp.employeeId); setEditingTargetValue(emp.monthlyTarget); }}
+                              title="Click to edit target"
+                            >
+                              ₹{emp.monthlyTarget.toLocaleString()}
+                              <span className="opacity-0 group-hover:opacity-100 text-indigo-400">✏️</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3.5 text-right font-mono font-extrabold text-slate-900">
                           ₹{emp.salesAchieved.toLocaleString()}

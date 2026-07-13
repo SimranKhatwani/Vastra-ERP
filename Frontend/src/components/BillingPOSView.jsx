@@ -240,7 +240,8 @@ export const BillingPOSView = ({
       if (existingIdx > -1) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + qty;
-        const sub = prod.sellingPrice * newQty;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sub = sPrice * newQty;
         const discountAmt = Math.floor(
           sub * (updated[existingIdx].discount / 100),
         );
@@ -254,7 +255,8 @@ export const BillingPOSView = ({
         };
         return updated;
       } else {
-        const sub = prod.sellingPrice * qty;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sub = sPrice * qty;
         const discountAmt = 0;
         const itemGst = Math.floor(
           (sub - discountAmt) * (prod.gstPercent / 100),
@@ -268,7 +270,7 @@ export const BillingPOSView = ({
             size: prod.size,
             color: prod.color,
             quantity: qty,
-            price: prod.sellingPrice || prod.price || 0,
+            price: Number(prod.sellingPrice) || Number(prod.price) || 0,
             discount: 0,
             gstPercent: prod.gstPercent || 0,
             totalPrice: sub + itemGst,
@@ -362,7 +364,8 @@ export const BillingPOSView = ({
       if (existingIdx > -1) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + 1;
-        const sub = prod.sellingPrice * newQty;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sub = sPrice * newQty;
         const discountAmt = Math.floor(
           sub * (updated[existingIdx].discount / 100),
         );
@@ -376,8 +379,9 @@ export const BillingPOSView = ({
         };
         return updated;
       } else {
-        const sub = prod.sellingPrice;
-        const itemGst = Math.floor(sub * (prod.gstPercent / 100));
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sub = sPrice;
+        const itemGst = Math.floor(sub * ((prod.gstPercent || 0) / 100));
         return [
           ...prev,
           {
@@ -387,7 +391,7 @@ export const BillingPOSView = ({
             size: prod.size,
             color: prod.color,
             quantity: 1,
-            price: prod.sellingPrice || prod.price || 0,
+            price: Number(prod.sellingPrice) || Number(prod.price) || 0,
             discount: 0,
             gstPercent: prod.gstPercent || 0,
             totalPrice: sub + itemGst,
@@ -1167,7 +1171,7 @@ export const BillingPOSView = ({
                           </p>
                         </div>
                         <span className="text-xs font-bold text-slate-800 shrink-0">
-                          ₹{item.totalPrice.toLocaleString()}
+                          ₹{(Number(item.totalPrice) || 0).toLocaleString()}
                         </span>
                       </div>
 
@@ -3718,7 +3722,7 @@ export const BillingPOSView = ({
                     <span>
                       {item.quantity}x {item.name.substring(0, 24)}...
                     </span>
-                    <span>₹{item.totalPrice}</span>
+                    <span>₹{(Number(item.totalPrice) || 0).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -3791,22 +3795,7 @@ export const BillingPOSView = ({
                 <span>Dispatch Bill directly to WhatsApp</span>
               </button>
               
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <button
-                  onClick={() => handleDownloadHTML(completedInvoice)}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download HTML</span>
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Print Bill</span>
-                </button>
-              </div>
+              
             </div>
           </div>
         </div>

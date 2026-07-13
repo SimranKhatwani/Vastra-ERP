@@ -24,6 +24,10 @@ const staffSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Please add a designation'],
     },
+    monthlyTarget: {
+      type: Number,
+      default: 150000,
+    },
     gender: {
       type: String,
       enum: ['Male', 'Female', 'Other'],
