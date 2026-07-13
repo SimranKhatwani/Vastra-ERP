@@ -575,6 +575,23 @@ export default function App() {
     }
   };
 
+  const handleMarkNotificationRead = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const handleUpdateCustomerBalance = async (customerId, amount) => {
     try {
       const token = localStorage.getItem("token");
@@ -898,15 +915,16 @@ export default function App() {
                     {notifications.slice(0, 5).map((n) => (
                       <div
                         key={n.id}
-                        className={`p-2.5 rounded-lg border text-[11px] ${n.read ? "bg-slate-50/50 border-slate-100 text-slate-500" : "bg-indigo-50/30 border-indigo-50 text-slate-700"}`}
+                        onClick={() => { if (!n.read) handleMarkNotificationRead(n.id); }}
+                        className={`p-2.5 rounded-lg border text-[11px] cursor-pointer transition-colors ${n.read ? "bg-slate-50 border-slate-100 text-slate-500" : "bg-indigo-50/50 border-indigo-100 text-black shadow-xs hover:bg-indigo-50"}`}
                       >
-                        <div className="flex justify-between font-bold text-[10px]">
+                        <div className={`flex justify-between text-[10px] ${n.read ? 'font-semibold' : 'font-extrabold'}`}>
                           <span>{n.title}</span>
-                          <span className="text-[8px] text-slate-400 font-mono font-normal">
+                          <span className={`text-[8px] font-mono ${n.read ? 'text-slate-400 font-normal' : 'text-slate-500 font-bold'}`}>
                             {n.timestamp}
                           </span>
                         </div>
-                        <p className="mt-0.5 leading-relaxed font-semibold">
+                        <p className={`mt-0.5 leading-relaxed ${n.read ? 'font-normal text-slate-500' : 'font-bold text-black'}`}>
                           {n.message}
                         </p>
                       </div>
