@@ -589,17 +589,17 @@ export default function App() {
   };
 
   const handleMarkNotificationRead = async (id) => {
+    // Optimistically update UI so it changes instantly hand-to-hand
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
+
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-        );
-      }
     } catch (error) {
       console.error(error);
     }
