@@ -1,4 +1,7 @@
-import React, { useState, useRef, useMemo } from "react";
+const fs = require('fs');
+const filepath = "c:/Users/BAPS/Downloads/GarmentERP/Frontend/src/components/PTImporter.jsx";
+
+const code = `import React, { useState, useRef, useMemo } from "react";
 import { UploadCloud, CheckCircle2, XCircle, FileSpreadsheet, Edit3, Save, ArrowLeft, Printer, Download, AlertTriangle, RefreshCw, FileText, Check, ChevronRight, Eye, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -38,13 +41,11 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   const [rawRows, setRawRows] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
-  const [globalValues, setGlobalValues] = useState({});
   const [parsedRows, setParsedRows] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [createdVoucher, setCreatedVoucher] = useState(null);
   const fileInputRef = useRef(null);
-  const invoiceRef = useRef(null);
 
   const processFile = (file) => {
     setIsUploading(true);
@@ -86,20 +87,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   };
 
   const handleConfirmMapping = () => {
-    const unmappedRequired = FIELDS_TO_MAP.filter(f => f.required && columnMapping[f.key] === undefined && !globalValues[f.key]);
+    const unmappedRequired = FIELDS_TO_MAP.filter(f => f.required && columnMapping[f.key] === undefined);
     if (unmappedRequired.length > 0) {
-      if (onAddNotification) onAddNotification("Mapping Required", `Please map or provide a value for required fields: ${unmappedRequired.map(f => f.label).join(", ")}`, "warning");
+      if (onAddNotification) onAddNotification("Mapping Required", \`Please map required fields: \${unmappedRequired.map(f => f.label).join(", ")}\`, "warning");
       return;
     }
     const parsed = rawRows.map((rawRow, idx) => {
       const getVal = (key) => {
         const colIdx = columnMapping[key];
-        if (colIdx !== undefined) {
-            const val = rawRow[colIdx];
-            if (val !== undefined && val !== null && String(val).trim() !== "") return String(val).trim();
-        }
-        if (globalValues[key]) return globalValues[key];
-        return "";
+        if (colIdx === undefined) return "";
+        const val = rawRow[colIdx];
+        return val === undefined || val === null ? "" : String(val).trim();
       };
       const getNum = (key) => {
         const val = getVal(key);
@@ -108,18 +106,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         return isNaN(parsedNum) ? 0 : parsedNum;
       };
 
-      const formatExcelDate = (serial) => {
-        if (!serial) return "";
-        if (isNaN(serial)) return String(serial).trim();
-        const num = parseFloat(serial);
-        const utc_days  = Math.floor(num - 25569);
-        const utc_value = utc_days * 86400;                                        
-        const date_info = new Date(utc_value * 1000);
-        return date_info.toISOString().split("T")[0];
-      };
-
       const billNo = getVal("billNo");
-      const billDate = formatExcelDate(getVal("billDate")) || new Date().toISOString().split("T")[0];
+      const billDate = getVal("billDate") || new Date().toISOString().split("T")[0];
       const vendorName = getVal("vendorName");
       const brand = getVal("brand");
       const designNo = getVal("designNo");
@@ -152,7 +140,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       }
 
       return {
-        tempId: `row-${idx}-${Date.now()}`,
+        tempId: \`row-\${idx}-\${Date.now()}\`,
         billNo, billDate, vendorName, brand, designNo, serialNumber, barcode, itemCode, itemName, subCategory, quantity, batch, topBottomSet, gender, colorPrimary, colorSecondary, size, purchaseRate, mrp, hsnCode, gstOnPurchase, gstOnSalePrice, firm, uniqueCode, typeOfGst, wspAfterGst, discountStatus, discountOnPurchase,
         errors: [], warnings: [], status: "valid", resolution: "none"
       };
@@ -174,16 +162,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       return { ...row, errors, warnings, status: errors.length > 0 ? "error" : "valid" };
     });
     setParsedRows(validated);
-  };
-
-  const handleRowChange = (index, field, value) => {
-    const updated = [...parsedRows];
-    if (field === "quantity" || field === "purchaseRate" || field === "gstOnPurchase") {
-      updated[index][field] = parseFloat(value) || 0;
-    } else {
-      updated[index][field] = value;
-    }
-    validateRows(updated);
   };
 
   const handleDrop = (e) => {
@@ -208,7 +186,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     const uniqueVendors = Array.from(new Set(parsedRows.map(r => r.vendorName)));
     uniqueVendors.forEach(vendor => {
       if (!currentSuppliers.some(s => s.name?.toLowerCase() === vendor.toLowerCase())) {
-        currentSuppliers.push({ id: `sup-${Date.now()}`, name: vendor, status: "Active" });
+        currentSuppliers.push({ id: \`sup-\${Date.now()}\`, name: vendor, status: "Active" });
       }
     });
     if(setSuppliers) setSuppliers(currentSuppliers);
@@ -255,13 +233,13 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
         // Insert products into db (simulated)
         for(let i=0; i<qty; i++) {
-            const uniqueBarcode = row.barcode || `BCODE${Math.floor(10000000 + Math.random() * 90000000)}`;
+            const uniqueBarcode = row.barcode || \`BCODE\${Math.floor(10000000 + Math.random() * 90000000)}\`;
             currentProducts.push({
-                id: `prod-${Date.now()}-${Math.random()}`,
-                name: `${row.itemName} (${row.designNo})`,
+                id: \`prod-\${Date.now()}-\${Math.random()}\`,
+                name: \`\${row.itemName} (\${row.designNo})\`,
                 category: row.itemName,
                 brand: row.brand,
-                sku: `${row.designNo}-${uniqueBarcode}`,
+                sku: \`\${row.designNo}-\${uniqueBarcode}\`,
                 barcode: uniqueBarcode,
                 itemCode: row.itemCode,
                 color: row.colorPrimary,
@@ -280,7 +258,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
     const firstRow = parsedRows[0];
     const newVoucher = {
-      id: `po-${Date.now()}`,
+      id: \`po-\${Date.now()}\`,
       invoiceNo: firstRow.billNo,
       date: firstRow.billDate,
       supplierName: firstRow.vendorName,
@@ -295,61 +273,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     setCreatedVoucher(newVoucher);
     setStep("success");
     if (onAddNotification) onAddNotification("Import Complete", "Successfully parsed 27-column PT File and generated unique barcodes!", "success");
-  };
-
-  const handleDownloadHTML = () => {
-    if (!invoiceRef.current || !createdVoucher) return;
-    
-    // Create a standalone HTML string wrapping the invoice layout
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice - ${createdVoucher.invoiceNo}</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-          @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
-        </style>
-      </head>
-      <body class="bg-white p-8">
-        ${invoiceRef.current.outerHTML}
-      </body>
-      </html>
-    `;
-    const blob = new Blob([htmlContent], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Invoice-${createdVoucher.invoiceNo}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleWhatsAppShare = () => {
-    if (!createdVoucher) return;
-    const text = `*K.R. Chhabra & Co. - Tax Invoice*\n\nInvoice No: ${createdVoucher.invoiceNo}\nDate: ${createdVoucher.date}\nBilled To: ${createdVoucher.supplierName}\nTotal Amount: Rs ${createdVoucher.grandTotal.toFixed(2)}\n\nPlease review your invoice.`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  const formatDateForDisplay = (dateStr) => {
-    if (!dateStr) return "";
-    let d = new Date(dateStr);
-    if (isNaN(d.getTime())) {
-        const serial = parseFloat(dateStr);
-        if (!isNaN(serial) && serial > 10000) {
-            d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
-        } else {
-            return dateStr;
-        }
-    }
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = String(d.getFullYear()).slice(-2);
-    return `${day}/${month}/${year}`;
   };
 
   return (
@@ -386,25 +309,15 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
             <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
                 {FIELDS_TO_MAP.map((field) => (
                     <div key={field.key} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="text-xs font-semibold w-1/3 truncate" title={field.label}>{field.label} {field.required && <span className="text-red-500">*</span>}</div>
-                        <div className="flex items-center gap-2 w-2/3">
-                            <select
-                                value={columnMapping[field.key] !== undefined ? columnMapping[field.key] : ""}
-                                onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value !== "" ? parseInt(e.target.value) : undefined })}
-                                className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
-                            >
-                                <option value="">- Column -</option>
-                                {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
-                            </select>
-                            <span className="text-[10px] text-slate-400 font-bold">OR</span>
-                            <input 
-                                type={field.key.toLowerCase().includes("date") ? "date" : "text"} 
-                                placeholder="Fixed Value" 
-                                value={globalValues[field.key] || ""} 
-                                onChange={(e) => setGlobalValues({...globalValues, [field.key]: e.target.value})}
-                                className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0" 
-                            />
-                        </div>
+                        <div className="text-xs font-semibold">{field.label} {field.required && <span className="text-red-500">*</span>}</div>
+                        <select
+                            value={columnMapping[field.key] !== undefined ? columnMapping[field.key] : ""}
+                            onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value !== "" ? parseInt(e.target.value) : undefined })}
+                            className="text-xs p-1.5 border rounded-lg bg-white outline-none w-1/2"
+                        >
+                            <option value="">-- Select Column --</option>
+                            {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                        </select>
                     </div>
                 ))}
             </div>
@@ -422,28 +335,24 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                     <thead className="bg-slate-100 text-slate-600 uppercase font-bold">
                         <tr>
                             <th className="p-3">Status</th>
-                            <th className="p-3">Vendor</th>
-                            <th className="p-3">Date</th>
-                            <th className="p-3">Bill No</th>
                             <th className="p-3">Item Name</th>
                             <th className="p-3">Design No</th>
                             <th className="p-3">Qty</th>
-                            <th className="p-3">Pur. Rate</th>
+                            <th className="p-3">Purchase Rate</th>
                             <th className="p-3">GST %</th>
+                            <th className="p-3">Firm</th>
                         </tr>
                     </thead>
                     <tbody>
                         {parsedRows.map((r, i) => (
                             <tr key={i} className="border-t border-slate-100">
                                 <td className="p-3">{r.status === "error" ? <XCircle className="text-red-500 w-4 h-4"/> : <CheckCircle2 className="text-emerald-500 w-4 h-4"/>}</td>
-                                <td className="p-1"><input value={r.vendorName} onChange={(e) => handleRowChange(i, 'vendorName', e.target.value)} className="w-24 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="date" value={r.billDate} onChange={(e) => handleRowChange(i, 'billDate', e.target.value)} className="w-28 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.billNo} onChange={(e) => handleRowChange(i, 'billNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.itemName} onChange={(e) => handleRowChange(i, 'itemName', e.target.value)} className="w-24 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.designNo} onChange={(e) => handleRowChange(i, 'designNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.quantity} onChange={(e) => handleRowChange(i, 'quantity', e.target.value)} className="w-16 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.purchaseRate} onChange={(e) => handleRowChange(i, 'purchaseRate', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.gstOnPurchase} onChange={(e) => handleRowChange(i, 'gstOnPurchase', e.target.value)} className="w-16 p-1 border rounded" /></td>
+                                <td className="p-3">{r.itemName}</td>
+                                <td className="p-3">{r.designNo}</td>
+                                <td className="p-3">{r.quantity}</td>
+                                <td className="p-3">₹{r.purchaseRate}</td>
+                                <td className="p-3">{r.gstOnPurchase}%</td>
+                                <td className="p-3">{r.firm}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -454,8 +363,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       {step === "success" && createdVoucher && (
           <div className="p-8 bg-slate-50 min-h-screen">
-             <div ref={invoiceRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
-                <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
+             <div className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
+                <div className="text-center mb-6 border-b-2 border-red-600 pb-4">
                     <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
                         <span>GSTIN : 07ACAPC2634E1ZB</span>
                         <div className="text-right">
@@ -476,9 +385,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                         <p className="text-red-600 mt-1 border-t border-slate-300 pt-1">Sale Office : 768, Ground Floor, Main Katra Neel, Chandni Chowk, Delhi-110006</p>
                     </div>
                 </div>
-                <div className="text-center mb-6">
-                    <span className="inline-block border border-black px-6 py-1 italic font-bold text-sm tracking-wide">TAX INVOICE</span>
-                </div>
 
                 <div className="flex justify-between mb-4 text-xs font-bold">
                     <div className="w-1/2">
@@ -489,19 +395,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                         <p>State Name : <span className="uppercase">DELHI</span> <span className="ml-6">State Code : 07</span></p>
                         <p>Transport : <span className="uppercase">SELF AMIT</span></p>
                     </div>
-                    <div className="w-1/2 text-right">
+                    <div className="w-1/2 text-right relative">
+                        <div className="absolute top-0 right-0 -mt-10 mr-4 border border-black px-4 py-1 italic font-bold">TAX INVOICE</div>
                         <p>Page No. 1 of 1</p>
-                        <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{createdVoucher.invoiceNo}</span> <span className="ml-4">Date {formatDateForDisplay(createdVoucher.date)}</span></p>
+                        <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{createdVoucher.invoiceNo}</span> <span className="ml-4">Date {createdVoucher.date}</span></p>
                         <p className="mt-1">State Name : DELHI <span className="ml-4">State Code 07</span></p>
-                        <div className="mt-3 text-[10px] max-w-[250px] float-right leading-tight text-right">
-                           <span className="font-bold text-slate-800 mr-1">IRN No:</span>
-                           <span className="break-all text-slate-700">3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</span>
-                        </div>
+                        <p className="mt-3 text-[10px] break-words max-w-[250px] float-right leading-tight"> IRN   No:3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</p>
                     </div>
                 </div>
 
-                <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2 mt-4 clear-both">
-                    <span>Date of Supply : {formatDateForDisplay(createdVoucher.date)}</span>
+                <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2">
+                    <span>Date of Supply : {createdVoucher.date}</span>
                     <span>Agent : </span>
                 </div>
 
@@ -559,13 +463,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
                 <div className="mt-8 flex justify-center gap-4 no-print">
                     <button onClick={() => window.print()} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
-                        <Printer className="w-4 h-4" /> Print
-                    </button>
-                    <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
-                        <Download className="w-4 h-4" /> Download HTML
-                    </button>
-                    <button onClick={handleWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
-                        Share on WhatsApp
+                        <Printer className="w-4 h-4" /> Print Invoice
                     </button>
                     <button onClick={() => setStep("upload")} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
                         Import Another PT File
@@ -577,3 +475,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     </div>
   );
 };
+\`;
+
+fs.writeFileSync(filepath, code);
+console.log('File written successfully to ' + filepath);

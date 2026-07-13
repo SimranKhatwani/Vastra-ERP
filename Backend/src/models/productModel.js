@@ -55,9 +55,23 @@ const productSchema = new mongoose.Schema(
     },
     basePrice: {
       type: Number,
-      required: [true, 'Please specify a base selling price'],
-      min: [0, 'Price cannot be negative'],
     },
+    sellingPrice: {
+      type: Number,
+      default: 0,
+    },
+    purchasePrice: {
+      type: Number,
+      default: 0,
+    },
+    mrp: {
+      type: Number,
+      default: 0,
+    },
+    sku: { type: String },
+    barcode: { type: String },
+    color: { type: String },
+    size: { type: String },
     taxRate: {
       type: Number,
       default: 0, // Percentage, e.g. 18 for 18% GST
@@ -91,6 +105,6 @@ const productSchema = new mongoose.Schema(
 productSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 
 // Ensure variant SKUs are unique per tenant (A SKU should never repeat across the entire business)
-productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { unique: true });
+productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Product', productSchema);

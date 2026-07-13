@@ -19,16 +19,18 @@ exports.createInvoice = async (req, res) => {
 
     // 2. Deduct Stock for each product
     for (const item of items) {
-      const product = await Product.findOne({ _id: item.productId, tenantId });
-      if (product) {
-        // Prevent negative stock
-        product.stock = Math.max(0, product.stock - item.quantity);
-        await product.save();
+      if (item.productId && item.productId.length === 24) {
+        const product = await Product.findOne({ _id: item.productId, tenantId });
+        if (product) {
+          // Prevent negative stock
+          product.stock = Math.max(0, product.stock - item.quantity);
+          await product.save();
+        }
       }
     }
 
     // 3. Update Customer Financials (if a customer is attached)
-    if (customerId) {
+    if (customerId && customerId.length === 24) {
       const customer = await Customer.findOne({ _id: customerId, tenantId });
       if (customer) {
         customer.totalInvoices += 1;
@@ -51,7 +53,7 @@ exports.createInvoice = async (req, res) => {
 
     // 4. Update Employee Commission (if an employee is attached)
     const { employeeId } = req.body;
-    if (employeeId) {
+    if (employeeId && employeeId.length === 24) {
       const Employee = require('../models/employeeModel');
       const employee = await Employee.findOne({ _id: employeeId, tenantId });
       if (employee) {
@@ -63,6 +65,7 @@ exports.createInvoice = async (req, res) => {
 
     res.status(201).json({ success: true, data: invoice });
   } catch (error) {
+    console.error("CREATE INVOICE ERROR:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
