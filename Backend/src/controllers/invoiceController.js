@@ -1,6 +1,10 @@
 const Invoice = require('../models/invoiceModel');
 const Product = require('../models/productModel');
 const Customer = require('../models/customerModel');
+const mongoose = require('mongoose');
+
+// Helper: check if a string is a valid MongoDB ObjectId
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
 
 exports.createInvoice = async (req, res) => {
   try {
@@ -11,58 +15,71 @@ exports.createInvoice = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invoice must contain at least one item' });
     }
 
+    // Strip the frontend-generated `id` field so Mongoose auto-generates _id
+    const invoiceData = { ...req.body };
+    delete invoiceData.id;
+
     // 1. Create the Invoice
     const invoice = await Invoice.create({
-      ...req.body,
+      ...invoiceData,
       tenantId
     });
 
-    // 2. Deduct Stock for each product
+    // 2. Deduct Stock for each product (skip custom/non-catalog items)
     for (const item of items) {
-      const product = await Product.findOne({ _id: item.productId, tenantId });
-      if (product) {
-        // Prevent negative stock
-        product.stock = Math.max(0, product.stock - item.quantity);
-        await product.save();
+      if (item.productId && isValidObjectId(item.productId)) {
+        try {
+          const product = await Product.findOne({ _id: item.productId, tenantId });
+          if (product) {
+            product.stock = Math.max(0, product.stock - item.quantity);
+            await product.save();
+          }
+        } catch (stockErr) {
+          console.warn('Stock deduction skipped for item:', item.productId, stockErr.message);
+        }
       }
     }
 
-    // 3. Update Customer Financials (if a customer is attached)
-    if (customerId) {
-      const customer = await Customer.findOne({ _id: customerId, tenantId });
-      if (customer) {
-        customer.totalInvoices += 1;
-        customer.totalSpent += grandTotal;
-        
-        // Add 5% loyalty points of grandTotal
-        customer.loyaltyPoints += Math.floor(grandTotal * 0.05);
+    // 3. Update Customer Financials (if a valid customer is attached)
+    if (customerId && isValidObjectId(customerId)) {
+      try {
+        const customer = await Customer.findOne({ _id: customerId, tenantId });
+        if (customer) {
+          customer.totalInvoices += 1;
+          customer.totalSpent += grandTotal;
+          customer.loyaltyPoints += Math.floor(grandTotal * 0.05);
 
-        // If Credit, increase outstanding balance
-        if (paymentMethod === 'Credit') {
-          customer.outstandingBalance += grandTotal;
-        } else if (amountPaid < grandTotal) {
-          // If Partial Payment, add the remainder to outstanding balance
-          customer.outstandingBalance += (grandTotal - amountPaid);
+          if (paymentMethod === 'Credit') {
+            customer.outstandingBalance += grandTotal;
+          } else if (amountPaid < grandTotal) {
+            customer.outstandingBalance += (grandTotal - amountPaid);
+          }
+
+          await customer.save();
         }
-
-        await customer.save();
+      } catch (custErr) {
+        console.warn('Customer update skipped:', custErr.message);
       }
     }
 
     // 4. Update Employee Commission (if an employee is attached)
     const { employeeId } = req.body;
-    if (employeeId) {
-      const Employee = require('../models/employeeModel');
-      const employee = await Employee.findOne({ _id: employeeId, tenantId });
-      if (employee) {
-        // Award 2% commission
-        employee.commissionEarned += Math.floor(grandTotal * 0.02);
-        await employee.save();
+    if (employeeId && isValidObjectId(employeeId)) {
+      try {
+        const Employee = require('../models/employeeModel');
+        const employee = await Employee.findOne({ _id: employeeId, tenantId });
+        if (employee) {
+          employee.commissionEarned += Math.floor(grandTotal * 0.02);
+          await employee.save();
+        }
+      } catch (empErr) {
+        console.warn('Employee commission update skipped:', empErr.message);
       }
     }
 
     res.status(201).json({ success: true, data: invoice });
   } catch (error) {
+    console.error('Invoice creation error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -41,6 +41,26 @@ export const BillingPOSView = ({
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
+  const [staffList, setStaffList] = useState([]);
+
+  // Fetch staff (salespersons)
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:5000/api/staff', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setStaffList(data.data.map(s => ({ ...s, id: s._id })));
+        }
+      } catch (err) {
+        console.error("Error fetching staff:", err);
+      }
+    };
+    fetchStaff();
+  }, []);
 
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -501,13 +521,12 @@ export const BillingPOSView = ({
     const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
 
     // Create Invoice object
-    const selectedSalesperson = employees.find((e) => e.id === salespersonId);
-    const finalEmployeeId = selectedSalesperson ? selectedSalesperson.id : cashier.id;
+    const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
+    const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
 
     const newInvoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNo: `INV-${20260000 + invoices.length + 1}`,
-      date: "2026-06-28",
+      invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
+      date: new Date().toISOString(),
       customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
       customerName: activeCustomer.name,
       customerPhone: activeCustomer.phone,
@@ -530,7 +549,7 @@ export const BillingPOSView = ({
       status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
-      salespersonName: selectedSalesperson ? selectedSalesperson.name : undefined,
+      salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
     };
 
     // If Credit, add outstanding balance to Customer's profile
@@ -763,9 +782,7 @@ export const BillingPOSView = ({
 
   // Receipt HTML downloader matching rule
   const handleDownloadReceiptHTML = (invoice) => {
-    const cashierName =
-      employees.find((e) => e.id === invoice.employeeId)?.name ||
-      invoice.employeeName;
+    const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -790,10 +807,9 @@ export const BillingPOSView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Receipt No:</b> ${invoice.invoiceNo}<br>
-          <b>Date:</b> ${invoice.date} 22:15:10<br>
-          <b>Cashier:</b> ${cashierName}<br>
-          ${invoice.salespersonName ? `<b>Salesperson:</b> ${invoice.salespersonName}<br>` : ""}
-          <b>Customer:</b> ${invoice.customerName} (${invoice.customerPhone})
+          <b>Date:</b> ${receiptDate}<br>
+          <b>Salesperson:</b> ${invoice.salespersonName || 'Admin (Self)'}<br>
+          <b>Customer:</b> ${invoice.customerName} (${invoice.customerPhone || '-'})
         </div>
         <div class="divider"></div>
         <table>
@@ -882,9 +898,9 @@ export const BillingPOSView = ({
     const msg =
       `*VASTRA ERP - INVOICE GENERATED*\n\n` +
       `*Receipt No:* ${invoice.invoiceNo}\n` +
-      `*Date:* ${invoice.date}\n` +
+      `*Date:* ${invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}\n` +
       `*Customer:* ${invoice.customerName}\n` +
-      `*Salesperson:* ${invoice.salespersonName || "N/A"}\n` +
+      `*Salesperson:* ${invoice.salespersonName || "Admin (Self)"}\n` +
       `---------------------------\n` +
       `*Apparel Items:*\n${itemsText}\n` +
       `---------------------------\n` +
@@ -1380,10 +1396,15 @@ export const BillingPOSView = ({
                 onChange={(e) => setSalespersonId(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
               >
-                <option value="">No Salesperson (Self)</option>
-                {(employees || []).map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name} ({e.role || 'Staff'})
+                <option value="">Admin (Self) / No Salesperson</option>
+                {(staffList || [])
+                  .filter(e => {
+                    const title = (e.designation || e.role || "").toLowerCase();
+                    return title.includes("salesperson") || title.includes("sales");
+                  })
+                  .map((e) => (
+                  <option key={e._id || e.id} value={e._id || e.id}>
+                    {e.name} ({e.designation || e.role || 'Staff'})
                   </option>
                 ))}
               </select>
@@ -1768,7 +1789,7 @@ export const BillingPOSView = ({
                   <th className="p-3">Invoice #</th>
                   <th className="p-3">Date</th>
                   <th className="p-3">Customer</th>
-                  <th className="p-3">Cashier</th>
+                  <th className="p-3">Salesperson</th>
                   <th className="p-3">Items</th>
                   <th className="p-3">Total Cost</th>
                   <th className="p-3">Pay Mode</th>
@@ -1776,16 +1797,16 @@ export const BillingPOSView = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
-                {invoices.slice(0, 12).map((inv, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
+                {invoices.slice(0, 50).map((inv, idx) => (
+                  <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-indigo-600">
                       {inv.invoiceNo}
                     </td>
-                    <td className="p-3">{inv.date}</td>
+                    <td className="p-3">{inv.date ? new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
                     <td className="p-3 font-medium text-slate-800">
                       {inv.customerName}
                     </td>
-                    <td className="p-3">{inv.employeeName}</td>
+                    <td className="p-3">{inv.salespersonName || 'Admin (Self)'}</td>
                     <td className="p-3 font-mono">
                       {(inv.items || []).reduce(
                         (sum, i) => sum + i.quantity,
@@ -3682,13 +3703,11 @@ export const BillingPOSView = ({
 
               <div className="flex justify-between">
                 <span>Receipt: {completedInvoice.invoiceNo}</span>
-                <span>Date: {completedInvoice.date}</span>
+                <span>Date: {completedInvoice.date ? new Date(completedInvoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}</span>
               </div>
               <div className="flex flex-col gap-0.5">
                 <span>Customer: {completedInvoice.customerName}</span>
-                {completedInvoice.salespersonName && (
-                  <span>Salesperson: {completedInvoice.salespersonName}</span>
-                )}
+                <span>Salesperson: {completedInvoice.salespersonName || 'Admin (Self)'}</span>
               </div>
 
               <div className="border-t border-dashed border-slate-300 my-2" />

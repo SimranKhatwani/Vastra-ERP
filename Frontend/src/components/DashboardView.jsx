@@ -25,93 +25,107 @@ export const DashboardView = ({
   openArticulationWithDefaults = () => {},
   currentUser = {},
 }) => {
-  // Let's compute actual dynamic KPIs from the current state!
-  const todayStr = "2026-06-28"; // Fixed system 'today' matching context
+  // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const currentMonth = now.getMonth(); // 0-indexed
+  const currentYear = now.getFullYear();
 
-  const todayInvoices = invoices.filter((inv) => inv.date && inv.date.startsWith(todayStr));
-  const todaySales = todayInvoices.reduce(
-    (sum, inv) => sum + inv.grandTotal,
-    0,
-  );
-  // Cost of Goods Sold (COGS) to calculate Profit
-  // Let's estimate today's profit by mapping invoice items back to their product purchase prices
+  // Helper: get YYYY-MM-DD from an invoice date (handles both Date objects and strings)
+  const toDateStr = (d) => {
+    try { return new Date(d).toISOString().slice(0, 10); } catch { return ""; }
+  };
+  const toMonth = (d) => { try { return new Date(d).getMonth(); } catch { return -1; } };
+  const toYear = (d) => { try { return new Date(d).getFullYear(); } catch { return -1; } };
+
+  // ─── Today's KPIs ──────────────────────────────────────────
+  const todayInvoices = invoices.filter((inv) => toDateStr(inv.date) === todayStr);
+  const todaySales = todayInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+  // Today's profit: selling price - purchase price (COGS) per item
   let todayProfit = 0;
   todayInvoices.forEach((inv) => {
-    inv.items.forEach((item) => {
-      const match = products.find((p) => p.id === item.productId);
-      const buyPrice = match ? match.purchasePrice : item.price * 0.45;
+    (inv.items || []).forEach((item) => {
+      const match = products.find((p) => p.id === item.productId || p._id === item.productId);
+      const buyPrice = match ? (match.purchasePrice || item.price * 0.45) : item.price * 0.45;
       todayProfit += (item.price - buyPrice) * item.quantity;
     });
   });
-  if (todayProfit === 0 && todaySales > 0) todayProfit = todaySales * 0.45; // Only fallback if we have sales but no profit margin computed
+  if (todayProfit === 0 && todaySales > 0) todayProfit = Math.floor(todaySales * 0.45);
 
   const todayBillsCount = todayInvoices.length;
 
-  // Monthly Revenue (June 2026)
-  const juneInvoices = invoices.filter((inv) => inv.date.startsWith("2026-06"));
-  const monthlyRevenue = juneInvoices.reduce(
-    (sum, inv) => sum + inv.grandTotal,
-    0,
+  // Average basket size (today)
+  const todayTotalItems = todayInvoices.reduce(
+    (sum, inv) => sum + (inv.items || []).reduce((s, i) => s + i.quantity, 0), 0
   );
+  const avgBasketSize = todayBillsCount > 0 ? (todayTotalItems / todayBillsCount).toFixed(1) : "0";
 
-  // Total inventory retail and cost value
+  // ─── This Month's KPIs ─────────────────────────────────────
+  const thisMonthInvoices = invoices.filter(
+    (inv) => toMonth(inv.date) === currentMonth && toYear(inv.date) === currentYear
+  );
+  const monthlyRevenue = thisMonthInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+  // ─── Monthly Revenue Chart (last 6 months from real data) ──
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthlyRevenueData = [];
+  const monthlyProfitData = [];
+  const monthlyComparisonData = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const m = (currentMonth - i + 12) % 12;
+    const y = currentMonth - i < 0 ? currentYear - 1 : currentYear;
+    const mInvoices = invoices.filter(
+      (inv) => toMonth(inv.date) === m && toYear(inv.date) === y
+    );
+    const mRevenue = mInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+    // Calculate profit from items
+    let mProfit = 0;
+    mInvoices.forEach((inv) => {
+      (inv.items || []).forEach((item) => {
+        const match = products.find((p) => p.id === item.productId || p._id === item.productId);
+        const buyPrice = match ? (match.purchasePrice || item.price * 0.45) : item.price * 0.45;
+        mProfit += (item.price - buyPrice) * item.quantity;
+      });
+    });
+    if (mProfit === 0 && mRevenue > 0) mProfit = Math.floor(mRevenue * 0.45);
+
+    // Expenses for this month
+    const mExpenses = expenses.filter(
+      (exp) => toMonth(exp.date || exp.createdAt) === m && toYear(exp.date || exp.createdAt) === y
+    ).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+    monthlyRevenueData.push({ label: monthNames[m], value: mRevenue });
+    monthlyProfitData.push({ label: monthNames[m], value: mProfit });
+    monthlyComparisonData.push({ label: monthNames[m], value: mRevenue, value2: mExpenses });
+  }
+
+  // ─── Inventory Valuation ───────────────────────────────────
   const totalCostValue = products.reduce(
-    (sum, p) => sum + p.purchasePrice * p.stock,
-    0,
+    (sum, p) => sum + (p.purchasePrice || 0) * (p.stock || 0), 0
   );
   const totalRetailValue = products.reduce(
-    (sum, p) => sum + p.sellingPrice * p.stock,
-    0,
+    (sum, p) => sum + (p.sellingPrice || 0) * (p.stock || 0), 0
   );
 
-  // Low Stock Count
-  const lowStockProducts = products.filter((p) => p.stock <= p.minStockAlert);
+  // ─── Low Stock ─────────────────────────────────────────────
+  const lowStockProducts = products.filter((p) => (p.stock || 0) <= (p.minStockAlert || 5));
   const lowStockCount = lowStockProducts.length;
 
-  // Pending payments (Credit invoices + Outstanding supplier invoices)
+  // ─── Pending Payments ──────────────────────────────────────
   const pendingCustomerCredit = customers.reduce(
-    (sum, c) => sum + c.outstandingBalance,
-    0,
+    (sum, c) => sum + (c.outstandingBalance || 0), 0
   );
   const pendingSupplierCredit = purchaseOrders
     .filter((po) => po.status === "Pending")
-    .reduce((sum, po) => sum + (po.grandTotal - po.outstandingPaid), 0);
+    .reduce((sum, po) => sum + ((po.grandTotal || 0) - (po.outstandingPaid || 0)), 0);
 
-  // Programmatic chart aggregates based on mock data
-  // Monthly revenue for the last 6 months
-  const monthlyRevenueData = [
-    { label: "Jan", value: 412000 },
-    { label: "Feb", value: 495000 },
-    { label: "Mar", value: 584000 },
-    { label: "Apr", value: 520000 },
-    { label: "May", value: 685000 },
-    { label: "Jun", value: monthlyRevenue || 712000 },
-  ];
-
-  // Sales volume comparison
-  const monthlyComparisonData = [
-    { label: "Jan", value: 412000, value2: 380000 },
-    { label: "Feb", value: 495000, value2: 450000 },
-    { label: "Mar", value: 584000, value2: 510000 },
-    { label: "Apr", value: 520000, value2: 490000 },
-    { label: "May", value: 685000, value2: 610000 },
-    { label: "Jun", value: monthlyRevenue || 712000, value2: 640000 },
-  ];
-
-  // Profit comparison
-  const monthlyProfitData = [
-    { label: "Jan", value: 185400 },
-    { label: "Feb", value: 222750 },
-    { label: "Mar", value: 262800 },
-    { label: "Apr", value: 234000 },
-    { label: "May", value: 308250 },
-    { label: "Jun", value: monthlyRevenue * 0.45 || 320400 },
-  ];
-
-  // Inventory Distribution by Category
+  // ─── Inventory Distribution (Donut Chart) ──────────────────
   const categoryCount = {};
   products.forEach((p) => {
-    categoryCount[p.category] = (categoryCount[p.category] || 0) + p.stock;
+    categoryCount[p.category || "Uncategorized"] = (categoryCount[p.category || "Uncategorized"] || 0) + (p.stock || 0);
   });
   const topCategories = Object.entries(categoryCount)
     .map(([key, val]) => ({ label: key, value: val }))
@@ -125,61 +139,45 @@ export const DashboardView = ({
     color: colorsPalette[idx % colorsPalette.length],
   }));
 
-  // Store performance
-  const stores = [
-    {
-      name: "Raymond Retail - Bandra",
-      sales: "₹4,82,500",
-      target: "₹5,00,000",
-      ratio: "96.5%",
-      trend: "up",
-    },
-    {
-      name: "Ziva Boutique - Colaba",
-      sales: "₹3,42,100",
-      target: "₹3,20,000",
-      ratio: "106.9%",
-      trend: "up",
-    },
-    {
-      name: "Biba Outlet - Phoenix Mall",
-      sales: "₹2,98,400",
-      target: "₹3,50,000",
-      ratio: "85.2%",
-      trend: "down",
-    },
-  ];
-
-  // Top Customers
+  // ─── Top Customers (real data) ─────────────────────────────
   const topCustomersSorted = [...customers]
-    .sort((a, b) => b.totalSpent - a.totalSpent)
+    .sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0))
     .slice(0, 4);
 
-  // Top Selling Products
-  const topProducts = [
+  // ─── Top Selling Products (computed from all invoices) ─────
+  const productSalesMap = {};
+  invoices.forEach((inv) => {
+    (inv.items || []).forEach((item) => {
+      const key = item.productId || item.name;
+      if (!productSalesMap[key]) {
+        productSalesMap[key] = { name: item.name, units: 0, revenue: 0, productId: item.productId };
+      }
+      productSalesMap[key].units += item.quantity;
+      productSalesMap[key].revenue += item.totalPrice || item.price * item.quantity;
+    });
+  });
+  const topProducts = Object.values(productSalesMap)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 4)
+    .map((tp) => {
+      const prod = products.find((p) => p.id === tp.productId || p._id === tp.productId);
+      return {
+        name: tp.name,
+        units: tp.units,
+        sales: `₹${tp.revenue.toLocaleString("en-IN")}`,
+        stock: prod ? (prod.stock || 0) : "-",
+      };
+    });
+
+  // ─── Store performance (single store, real) ────────────────
+  const stores = [
     {
-      name: "Raymond Executive Linen Shirt - White",
-      units: 82,
-      sales: "₹2,03,360",
-      stock: products.find((p) => p.id === "p-1")?.stock || 12,
-    },
-    {
-      name: "Zara Slim Fit Denim Jeans - Midnight Black",
-      units: 68,
-      sales: "₹1,69,320",
-      stock: products.find((p) => p.id === "p-4")?.stock || 34,
-    },
-    {
-      name: "Biba Festive Floral Saree - Red Silk",
-      units: 54,
-      sales: "₹1,56,600",
-      stock: products.find((p) => p.id === "p-7")?.stock || 5,
-    },
-    {
-      name: "Manyavar Embroidered Kurta - Gold",
-      units: 48,
-      sales: "₹1,34,400",
-      stock: products.find((p) => p.id === "p-10")?.stock || 18,
+      name: currentUser?.businessName || "Your Store",
+      sales: `₹${monthlyRevenue.toLocaleString("en-IN")}`,
+      target: `₹${(monthlyRevenue * 1.1).toLocaleString("en-IN")}`,
+      ratio: "90%",
+      billsText: todayBillsCount > 0 ? `${todayBillsCount} bills today` : "No bills yet",
+      trend: monthlyRevenue > 0 ? "up" : "down",
     },
   ];
 
@@ -357,7 +355,7 @@ export const DashboardView = ({
             System Overview & Terminal
           </h1>
           <p className="text-sm text-slate-300">
-            Live operational data and billing pipelines for June 2026.
+            Live operational data and billing pipelines — {monthNames[currentMonth]} {currentYear}.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -392,7 +390,7 @@ export const DashboardView = ({
             </div>
             <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18.4% vs last Sunday</span>
+              <span>{todayBillsCount} bill{todayBillsCount !== 1 ? 's' : ''} today</span>
             </div>
           </div>
           <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
@@ -414,7 +412,7 @@ export const DashboardView = ({
             </div>
             <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>+12.1% net margin</span>
+              <span>{todaySales > 0 ? `${((todayProfit / todaySales) * 100).toFixed(1)}% margin` : 'No sales yet'}</span>
             </div>
           </div>
           <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
@@ -433,7 +431,7 @@ export const DashboardView = ({
             </div>
             <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>Avg basket size: 2.4 items</span>
+              <span>Avg basket size: {avgBasketSize} items</span>
             </div>
           </div>
           <div className="bg-violet-50 p-2.5 rounded-lg text-violet-600">
@@ -504,19 +502,15 @@ export const DashboardView = ({
               <TrendingUp className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-semibold">June Sales Revenue</div>
+              <div className="text-sm font-semibold">{monthNames[currentMonth]} Sales Revenue</div>
               <div className="text-xs text-slate-500">
                 ₹
                 {monthlyRevenue.toLocaleString("en-IN", {
                   maximumFractionDigits: 0,
-                })}{" "}
-                (Target ₹7.5L)
+                })}
               </div>
             </div>
           </div>
-          <span className="text-xs font-mono bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
-            94.9%
-          </span>
         </div>
 
         {/* Pending Receivables / Payables */}
@@ -615,20 +609,20 @@ export const DashboardView = ({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">
-                Sales Comparison (Actual vs Target)
+                Sales Comparison (Revenue vs Expenses)
               </h2>
               <p className="text-xs text-slate-400">
-                Comparing actual wholesale orders vs retail targets
+                Comparing actual sales revenue vs recorded expenses
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-                <span className="text-slate-600">Actual Sales</span>
+                <span className="text-slate-600">Revenue</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
-                <span className="text-slate-600">Target</span>
+                <span className="text-slate-600">Expenses</span>
               </div>
             </div>
           </div>
@@ -670,7 +664,7 @@ export const DashboardView = ({
                 </div>
                 <div className="flex justify-between items-center text-[10px]">
                   <span className="text-slate-400">
-                    Target Met: {store.ratio}
+                    {store.billsText}
                   </span>
                   <span
                     className={`font-medium ${store.trend === "up" ? "text-emerald-600" : "text-amber-600"}`}
@@ -711,9 +705,9 @@ export const DashboardView = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80 text-slate-700">
-              {invoices.slice(0, 5).map((inv) => (
+              {[...invoices].reverse().slice(0, 5).map((inv, idx) => (
                 <tr
-                  key={inv.id}
+                  key={inv._id || inv.id || idx}
                   className="hover:bg-slate-50/80 transition-colors"
                 >
                   <td className="px-5 py-4">
@@ -722,13 +716,13 @@ export const DashboardView = ({
                     </span>
                   </td>
                   <td className="px-5 py-4 text-xs">
-                    {new Date(inv.date).toLocaleDateString()}
+                    {inv.date ? new Date(inv.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}
                   </td>
                   <td className="px-5 py-4 font-medium">
                     {inv.customerName}
                   </td>
                   <td className="px-5 py-4 text-xs font-semibold text-slate-600">
-                    {inv.salespersonName || inv.employeeName || 'N/A'}
+                    {inv.salespersonName || 'Admin (Self)'}
                   </td>
                   <td className="px-5 py-4">
                     <span
@@ -742,7 +736,7 @@ export const DashboardView = ({
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right font-bold text-slate-800">
-                    ₹{inv.grandTotal.toLocaleString("en-IN")}
+                    ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
                   </td>
                 </tr>
               ))}
