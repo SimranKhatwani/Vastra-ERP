@@ -37,10 +37,16 @@ export const BillingPOSView = ({
 }) => {
   // Cart state
   const [cart, setCart] = useState([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("c-1");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
+
+  useEffect(() => {
+    if (customers && customers.length > 0 && (!selectedCustomerId || !customers.find(c => c.id === selectedCustomerId))) {
+      setSelectedCustomerId(customers[0].id);
+    }
+  }, [customers, selectedCustomerId]);
   const [staffList, setStaffList] = useState([]);
 
   // Fetch staff (salespersons)
