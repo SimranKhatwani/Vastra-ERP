@@ -182,6 +182,19 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] =
     useState(false);
+  const notificationsRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setShowNotificationsDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Role-based sidebar module access helper
@@ -882,7 +895,7 @@ export default function App() {
             </div>
 
             {/* Notifications Alert with unread badges */}
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => {
                   setShowNotificationsDropdown(!showNotificationsDropdown);
@@ -915,7 +928,7 @@ export default function App() {
                     {notifications.slice(0, 5).map((n) => (
                       <div
                         key={n.id}
-                        onClick={() => { if (!n.read) handleMarkNotificationRead(n.id); }}
+                        onDoubleClick={() => { if (!n.read) handleMarkNotificationRead(n.id); }}
                         className={`p-2.5 rounded-lg border text-[11px] cursor-pointer transition-colors ${n.read ? "bg-slate-50 border-slate-100 text-slate-500" : "bg-indigo-50/50 border-indigo-100 text-black shadow-xs hover:bg-indigo-50"}`}
                       >
                         <div className={`flex justify-between text-[10px] ${n.read ? 'font-semibold' : 'font-extrabold'}`}>
