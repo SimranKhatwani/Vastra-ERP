@@ -127,12 +127,17 @@ export const DashboardView = ({
   products.forEach((p) => {
     categoryCount[p.category || "Uncategorized"] = (categoryCount[p.category || "Uncategorized"] || 0) + (p.stock || 0);
   });
-  const topCategories = Object.entries(categoryCount)
+  const sortedCategories = Object.entries(categoryCount)
     .map(([key, val]) => ({ label: key, value: val }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
+    .sort((a, b) => b.value - a.value);
 
-  const colorsPalette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+  const topCategories = sortedCategories.slice(0, 5);
+  const othersValue = sortedCategories.slice(5).reduce((sum, cat) => sum + cat.value, 0);
+  if (othersValue > 0) {
+    topCategories.push({ label: "Others", value: othersValue });
+  }
+
+  const colorsPalette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b"];
   const donutData = topCategories.map((tc, idx) => ({
     label: tc.label,
     value: tc.value,
@@ -539,7 +544,7 @@ export const DashboardView = ({
       {/* Main Analytics Graphs Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Line graph for revenue */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80 lg:col-span-2">
+        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80 lg:col-span-2 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">
@@ -560,28 +565,32 @@ export const DashboardView = ({
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <span className="text-xs text-slate-400 block">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+            <div className="space-y-1 flex flex-col h-full">
+              <span className="text-xs text-slate-400 block shrink-0">
                 Revenue Yield Curve
               </span>
-              <MiniAreaChart
-                data={monthlyRevenueData}
-                color="#6366f1"
-                height={150}
-                currency
-              />
+              <div className="flex-1 min-h-[150px]">
+                <MiniAreaChart
+                  data={monthlyRevenueData}
+                  color="#6366f1"
+                  height="100%"
+                  currency
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-xs text-slate-400 block">
+            <div className="space-y-1 flex flex-col h-full">
+              <span className="text-xs text-slate-400 block shrink-0">
                 Net Profit Margin
               </span>
-              <MiniAreaChart
-                data={monthlyProfitData}
-                color="#10b981"
-                height={150}
-                currency
-              />
+              <div className="flex-1 min-h-[150px]">
+                <MiniAreaChart
+                  data={monthlyProfitData}
+                  color="#10b981"
+                  height="100%"
+                  currency
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -705,7 +714,7 @@ export const DashboardView = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80 text-slate-700">
-              {[...invoices].reverse().slice(0, 5).map((inv, idx) => (
+              {invoices.slice(0, 5).map((inv, idx) => (
                 <tr
                   key={inv._id || inv.id || idx}
                   className="hover:bg-slate-50/80 transition-colors"
