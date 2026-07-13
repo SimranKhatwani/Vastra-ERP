@@ -25,6 +25,7 @@ const employeeRoutes = require('./routes/employeeRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const commissionRoutes = require('./routes/commissionRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -46,6 +47,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/tickets', supportTicketRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/commissions', commissionRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

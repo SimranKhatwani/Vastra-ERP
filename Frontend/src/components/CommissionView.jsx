@@ -199,401 +199,66 @@ export const CommissionView = ({
   const [infCommissionValue, setInfCommissionValue] = useState(10);
   const [infFollowers, setInfFollowers] = useState(25000);
 
-  // DEMO DATA STATE
-  const [marketplaceOrders, setMarketplaceOrders] = useState(() => [
-    {
-      id: "mpo-1",
-      marketplace: "Myntra",
-      orderId: "MYN-98234-A",
-      invoiceNo: "INV/2026/0891",
-      customerName: "Aishwarya Rai",
-      productName: "Zara Men's Chinos - Charcoal Gray (Pure Linen)",
-      sellingPrice: 1890,
-      commissionPercent: 18,
-      commissionAmount: 340.2,
-      shippingCharges: 110,
-      packagingCharges: 40,
-      tax: 226.8,
-      netSettlement: 1173,
-      orderStatus: "Delivered",
-      settlementStatus: "Settled",
-      settlementDate: "2026-06-25",
-      profit: 550,
-    },
-    {
-      id: "mpo-2",
-      marketplace: "Amazon",
-      orderId: "AMZ-1102-99",
-      invoiceNo: "INV/2026/0942",
-      customerName: "Dev Patel",
-      productName: "Raymond Men's Suits & Blazers - Royal Blue",
-      sellingPrice: 8500,
-      commissionPercent: 15,
-      commissionAmount: 1275,
-      shippingCharges: 180,
-      packagingCharges: 70,
-      tax: 1020,
-      netSettlement: 5955,
-      orderStatus: "Delivered",
-      settlementStatus: "Pending",
-      settlementDate: "-",
-      profit: 2200,
-    },
-    {
-      id: "mpo-3",
-      marketplace: "Meesho",
-      orderId: "MEE-77492-P",
-      invoiceNo: "INV/2026/0994",
-      customerName: "Geeta Phogat",
-      productName: "Biba Women's Kurtas & Kurtis - Crimson Red",
-      sellingPrice: 1250,
-      commissionPercent: 8,
-      commissionAmount: 100,
-      shippingCharges: 60,
-      packagingCharges: 25,
-      tax: 150,
-      netSettlement: 915,
-      orderStatus: "Delivered",
-      settlementStatus: "Settled",
-      settlementDate: "2026-06-28",
-      profit: 400,
-    },
-    {
-      id: "mpo-4",
-      marketplace: "Shopify Orders",
-      orderId: "SHPF-7801",
-      invoiceNo: "INV/2026/1025",
-      customerName: "Tanmay Bhat",
-      productName: "H&M Men's Hoodie - Midnight Black (Egyptian Cotton)",
-      sellingPrice: 2499,
-      commissionPercent: 2,
-      commissionAmount: 50,
-      shippingCharges: 90,
-      packagingCharges: 35,
-      tax: 300,
-      netSettlement: 2024,
-      orderStatus: "Delivered",
-      settlementStatus: "Pending",
-      settlementDate: "-",
-      profit: 1100,
-    },
-    {
-      id: "mpo-5",
-      marketplace: "Ajio",
-      orderId: "AJI-90112-L",
-      invoiceNo: "INV/2026/0854",
-      customerName: "Kriti Sanon",
-      productName: "Zara Women's Sarees - Classic White (Mulberry Silk)",
-      sellingPrice: 5999,
-      commissionPercent: 20,
-      commissionAmount: 1200,
-      shippingCharges: 150,
-      packagingCharges: 50,
-      tax: 720,
-      netSettlement: 3879,
-      orderStatus: "Delivered",
-      settlementStatus: "Settled",
-      settlementDate: "2026-06-22",
-      profit: 1600,
-    },
-    {
-      id: "mpo-6",
-      marketplace: "Flipkart",
-      orderId: "FLK-20914-B",
-      invoiceNo: "INV/2026/1090",
-      customerName: "Rohan Mehra",
-      productName: "Levis Men's Denim Jeans - Olive Drab (Denim)",
-      sellingPrice: 2199,
-      commissionPercent: 12,
-      commissionAmount: 263.9,
-      shippingCharges: 100,
-      packagingCharges: 30,
-      tax: 264,
-      netSettlement: 1541.1,
-      orderStatus: "Shipped",
-      settlementStatus: "Pending",
-      settlementDate: "-",
-      profit: 650,
-    },
-    {
-      id: "mpo-7",
-      marketplace: "Myntra",
-      orderId: "MYN-44122-C",
-      invoiceNo: "INV/2026/0771",
-      customerName: "Mira Rajput",
-      productName: "Biba Women's Ethnic Wear - Mustard Yellow",
-      sellingPrice: 4200,
-      commissionPercent: 18,
-      commissionAmount: 756,
-      shippingCharges: 130,
-      packagingCharges: 40,
-      tax: 504,
-      netSettlement: 2770,
-      orderStatus: "Returned",
-      settlementStatus: "Disputed",
-      settlementDate: "-",
-      profit: -350,
-    },
-  ]);
+  // DEMO DATA STATE (Now Dynamic)
+  const [marketplaceOrders, setMarketplaceOrders] = useState([]);
 
-  const [influencers, setInfluencers] = useState(() => [
-    {
-      id: "inf-1",
-      name: "Diya Krishna",
-      platform: "Instagram",
-      handle: "diya_krish_fashion",
-      phone: "9876543210",
-      email: "diya.krish@gmail.com",
-      referralCode: "DIYA15",
-      commissionType: "Percentage",
-      commissionValue: 12,
-      duration: "01 Jun - 30 Jun 2026",
-      status: "Active",
-      followers: 145000,
-      rating: 4.8,
-      promoCodeUsage: 142,
-      ordersGenerated: 142,
-      revenueGenerated: 324500,
-      commissionEarned: 38940,
-      commissionPending: 8400,
-      commissionPaid: 30540,
-      conversionRate: 5.4,
-    },
-    {
-      id: "inf-2",
-      name: "Sahil Shah",
-      platform: "YouTube",
-      handle: "sahilstyle_vlogs",
-      phone: "9123456780",
-      email: "sahil.shah@style.com",
-      referralCode: "SAHILSTYLE",
-      commissionType: "Fixed",
-      commissionValue: 250, // Flat 250 per sale
-      duration: "15 May - 15 Jul 2026",
-      status: "Active",
-      followers: 320000,
-      rating: 4.5,
-      promoCodeUsage: 88,
-      ordersGenerated: 88,
-      revenueGenerated: 264000,
-      commissionEarned: 22000,
-      commissionPending: 5000,
-      commissionPaid: 17000,
-      conversionRate: 3.2,
-    },
-    {
-      id: "inf-3",
-      name: "Anjali Sharma",
-      platform: "Instagram",
-      handle: "anjali_boutique_review",
-      phone: "9988776655",
-      email: "anjali.reviews@yahoo.com",
-      referralCode: "ANJALI05",
-      commissionType: "Percentage",
-      commissionValue: 8,
-      duration: "01 May - 31 May 2026",
-      status: "Completed",
-      followers: 68000,
-      rating: 4.2,
-      promoCodeUsage: 54,
-      ordersGenerated: 54,
-      revenueGenerated: 112000,
-      commissionEarned: 8960,
-      commissionPending: 0,
-      commissionPaid: 8960,
-      conversionRate: 4.1,
-    },
-    {
-      id: "inf-4",
-      name: "Kabir Oberoi",
-      platform: "Instagram",
-      handle: "kabir_wear_daily",
-      phone: "9543210987",
-      email: "kabir.wear@outlook.com",
-      referralCode: "KABIRFIT",
-      commissionType: "Percentage",
-      commissionValue: 15,
-      duration: "10 Jun - 10 Jul 2026",
-      status: "Active",
-      followers: 95000,
-      rating: 4.6,
-      promoCodeUsage: 76,
-      ordersGenerated: 76,
-      revenueGenerated: 189000,
-      commissionEarned: 28350,
-      commissionPending: 12350,
-      commissionPaid: 16000,
-      conversionRate: 4.9,
-    },
-  ]);
+  const [influencers, setInfluencers] = useState([]);
 
-  const [salespersonIncentives, setSalespersonIncentives] = useState(() => [
-    {
-      employeeId: "e-3",
-      employeeName: "Rajesh Malhotra",
-      department: "Retail Sales Floor",
-      role: "Salesperson",
-      monthlyTarget: 150000,
-      salesAchieved: 175400,
-      rating: 4.7,
-      commissionRules: [
-        "2% Floor Commission",
-        "₹1,500 Bonus above ₹1.5L Target",
-        "Product Category Commission (Casual Shirts 3%)",
-      ],
-      monthlyCommission: 7620,
-      quarterlyCommission: 21400,
-      yearlyCommission: 88500,
-      commissionPaid: 72500,
-      commissionPending: 16000,
-    },
-    {
-      employeeId: "e-4",
-      employeeName: "Simran Walia",
-      department: "Tailoring Design Section",
-      role: "Tailor",
-      monthlyTarget: 100000,
-      salesAchieved: 122000,
-      rating: 4.9,
-      commissionRules: [
-        "5% Custom Tailoring Commission",
-        "Flat ₹500 Pattern-weaving Bonus",
-      ],
-      monthlyCommission: 6600,
-      quarterlyCommission: 18200,
-      yearlyCommission: 71000,
-      commissionPaid: 65000,
-      commissionPending: 6000,
-    },
-    {
-      employeeId: "e-5",
-      employeeName: "Arjun Mehra",
-      department: "Retail Sales Floor",
-      role: "Salesperson",
-      monthlyTarget: 150000,
-      salesAchieved: 135000,
-      rating: 4.1,
-      commissionRules: ["2% Floor Commission"],
-      monthlyCommission: 2700,
-      quarterlyCommission: 9800,
-      yearlyCommission: 44000,
-      commissionPaid: 44000,
-      commissionPending: 0,
-    },
-    {
-      employeeId: "e-6",
-      employeeName: "Neha Malhotra",
-      department: "Corporate Accounts Wholesales",
-      role: "Salesperson",
-      monthlyTarget: 300000,
-      salesAchieved: 412000,
-      rating: 4.8,
-      commissionRules: [
-        "1.5% Wholesale Bulk Volume Commission",
-        "₹3,000 Target Achievement Reward",
-      ],
-      monthlyCommission: 9180,
-      quarterlyCommission: 28400,
-      yearlyCommission: 114000,
-      commissionPaid: 98000,
-      commissionPending: 16000,
-    },
-  ]);
+  const [salespersonIncentives, setSalespersonIncentives] = useState([]);
 
-  const [settlementHistory, setSettlementHistory] = useState(() => [
-    {
-      id: "sh-101",
-      date: "2026-06-28",
-      type: "Marketplace",
-      recipient: "Meesho Marketplace Inc",
-      referenceNo: "TXN-9921401",
-      amount: 47250,
-      paymentMethod: "Bank Transfer",
-      status: "Completed",
-      processedBy: "Admin (System Auto)",
-    },
-    {
-      id: "sh-102",
-      date: "2026-06-25",
-      type: "Influencer",
-      recipient: "Diya Krishna (DIYA15)",
-      referenceNo: "UPI-9824021A",
-      amount: 30540,
-      paymentMethod: "UPI",
-      status: "Completed",
-      processedBy: "Amit Trivedi (Manager)",
-    },
-    {
-      id: "sh-103",
-      date: "2026-06-24",
-      type: "Salesperson",
-      recipient: "Rajesh Malhotra",
-      referenceNo: "SAL-COMM-06-24",
-      amount: 14500,
-      paymentMethod: "Bank Transfer",
-      status: "Completed",
-      processedBy: "System Payroll Gate",
-    },
-    {
-      id: "sh-104",
-      date: "2026-06-20",
-      type: "Marketplace",
-      recipient: "Myntra Retail India",
-      referenceNo: "TXN-8821940",
-      amount: 18000,
-      paymentMethod: "Bank Transfer",
-      status: "Completed",
-      processedBy: "Admin (System Auto)",
-    },
-    {
-      id: "sh-105",
-      date: "2026-06-18",
-      type: "Influencer",
-      recipient: "Sahil Shah (SAHILSTYLE)",
-      referenceNo: "UPI-8491024L",
-      amount: 12000,
-      paymentMethod: "UPI",
-      status: "Completed",
-      processedBy: "Amit Trivedi (Manager)",
-    },
-  ]);
+  const [settlementHistory, setSettlementHistory] = useState([]);
 
-  const [auditLogs, setAuditLogs] = useState(() => [
-    {
-      id: "al-1",
-      timestamp: "2026-06-28 14:32:11",
-      user: "Amit Trivedi (Manager)",
-      action: "APPROVED_COMMISSION",
-      module: "Influencer Commission Engine",
-      details: "Approved commission ₹340.20 for invoice INV/2026/0994",
-    },
-    {
-      id: "al-2",
-      timestamp: "2026-06-28 10:11:05",
-      user: "Admin",
-      action: "CREATED_CAMPAIGN",
-      module: "Affiliate Campaign Manager",
-      details: "Created referral campaign DIYA15 with 12% split rate.",
-    },
-    {
-      id: "al-3",
-      timestamp: "2026-06-27 18:44:22",
-      user: "Admin",
-      action: "ADDED_COMMISSION_RULE",
-      module: "Salesperson Compensation Rules",
-      details:
-        'Created custom rule: "Product Category Commission (Casual Shirts 3%)" for Floor sales staff.',
-    },
-  ]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
-  const [commissionRulesList, setCommissionRulesList] = useState(() => [
-    "2% Floor Commission on Shirt Sales",
-    "5% Custom Tailoring Commission above ₹50,000 Sales",
-    "Flat ₹500 Target Achievement Bonus",
-    "3% Product Category Commission for Suits & Blazers",
-    "1.5% Wholesale Bulk Volume Commission",
-    "₹3,000 Target Achievement Reward above ₹3.0L monthly",
-  ]);
+  const [commissionRulesList, setCommissionRulesList] = useState([]);
+
+  // Fetch all commissions data dynamically
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [
+          marketplacesRes, 
+          influencersRes, 
+          rulesRes, 
+          settlementsRes, 
+          auditRes
+        ] = await Promise.all([
+          fetch('/api/commissions/marketplace', { headers }),
+          fetch('/api/commissions/influencers', { headers }),
+          fetch('/api/commissions/rules', { headers }),
+          fetch('/api/commissions/settlements', { headers }),
+          fetch('/api/commissions/audit', { headers })
+        ]);
+
+        if (marketplacesRes.ok) {
+          const mData = await marketplacesRes.json();
+          setMarketplaceOrders(mData.data || []);
+        }
+        if (influencersRes.ok) {
+          const iData = await influencersRes.json();
+          setInfluencers(iData.data || []);
+        }
+        if (rulesRes.ok) {
+          const rData = await rulesRes.json();
+          setCommissionRulesList(rData.data ? rData.data.map(r => r.ruleText) : []);
+        }
+        if (settlementsRes.ok) {
+          const sData = await settlementsRes.json();
+          setSettlementHistory(sData.data || []);
+        }
+        if (auditRes.ok) {
+          const aData = await auditRes.json();
+          setAuditLogs(aData.data || []);
+        }
+      } catch (err) {
+        console.error("Error fetching commission data", err);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Master stats counts
   const totalMarketplaceSales = useMemo(
