@@ -1641,7 +1641,10 @@ export const BillingPOSView = ({
                           className="border border-slate-100 bg-slate-50/40 hover:bg-slate-50 rounded-xl p-3.5 space-y-3 transition-all"
                         >
                           <div className="flex justify-between items-center text-xs font-semibold border-b border-slate-100/60 pb-2">
-                            <span className="font-mono font-bold text-indigo-600">
+                            <span 
+                              className="font-mono font-bold text-indigo-600 cursor-pointer hover:underline"
+                              onClick={() => handleDownloadReceiptHTML(inv)}
+                            >
                               {inv.invoiceNo}
                             </span>
                             <span className="text-slate-400 font-mono text-[10px]">
@@ -1801,7 +1804,9 @@ export const BillingPOSView = ({
                 {invoices.slice(0, 50).map((inv, idx) => (
                   <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-indigo-600">
-                      {inv.invoiceNo}
+                      <span className="cursor-pointer hover:underline" onClick={() => handleDownloadReceiptHTML(inv)}>
+                        {inv.invoiceNo}
+                      </span>
                     </td>
                     <td className="p-3">{inv.date ? new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
                     <td className="p-3 font-medium text-slate-800">
