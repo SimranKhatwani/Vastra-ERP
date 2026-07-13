@@ -33,7 +33,7 @@ const FIELDS_TO_MAP = [
   { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["discount", "disc"] }
 ];
 
-export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, purchaseOrders, setPurchaseOrders, onAddNotification }) => {
+export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, purchaseOrders, onAddPurchaseOrder, onAddNotification, onClose }) => {
   const [step, setStep] = useState("upload");
   const [rawRows, setRawRows] = useState([]);
   const [headers, setHeaders] = useState([]);
@@ -208,7 +208,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     const uniqueVendors = Array.from(new Set(parsedRows.map(r => r.vendorName)));
     uniqueVendors.forEach(vendor => {
       if (!currentSuppliers.some(s => s.name?.toLowerCase() === vendor.toLowerCase())) {
-        currentSuppliers.push({ id: `sup-${Date.now()}`, name: vendor, status: "Active" });
+        currentSuppliers.push({ 
+          id: `sup-${Date.now()}`, 
+          name: vendor, 
+          status: "Active",
+          totalOrders: 0,
+          outstandingBalance: 0,
+          contactPerson: "N/A",
+          gstin: "N/A",
+          phone: "N/A",
+          email: "N/A"
+        });
       }
     });
     if(setSuppliers) setSuppliers(currentSuppliers);
@@ -245,8 +255,12 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         gstTotal += itemGst;
         grandDisc += discAmt;
 
+        const baseProductId = `prod-${Date.now()}-${Math.random()}`;
+        
         billItems.push({
             ...row,
+            productId: baseProductId,
+            name: `${row.itemName} (${row.designNo})`,
             calculatedTaxable: taxable,
             calculatedGst: itemGst,
             calculatedTotal: taxable - discAmt + itemGst,
@@ -257,7 +271,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         for(let i=0; i<qty; i++) {
             const uniqueBarcode = row.barcode || `BCODE${Math.floor(10000000 + Math.random() * 90000000)}`;
             currentProducts.push({
-                id: `prod-${Date.now()}-${Math.random()}`,
+                id: i === 0 ? baseProductId : `prod-${Date.now()}-${Math.random()}`,
                 name: `${row.itemName} (${row.designNo})`,
                 category: row.itemName,
                 brand: row.brand,
@@ -279,10 +293,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     if(setProducts) setProducts(currentProducts);
 
     const firstRow = parsedRows[0];
+    const supplierObj = currentSuppliers.find(s => s.name?.toLowerCase() === firstRow.vendorName?.toLowerCase());
+    
     const newVoucher = {
       id: `po-${Date.now()}`,
+      poNo: firstRow.billNo,
       invoiceNo: firstRow.billNo,
       date: firstRow.billDate,
+      supplierId: supplierObj ? (supplierObj._id || supplierObj.id) : `sup-${Date.now()}`,
       supplierName: firstRow.vendorName,
       items: billItems,
       subTotal: subTotal,
@@ -291,7 +309,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       status: "Completed"
     };
     
-    if(setPurchaseOrders) setPurchaseOrders([...(purchaseOrders || []), newVoucher]);
+    if (onAddPurchaseOrder) onAddPurchaseOrder(newVoucher);
     setCreatedVoucher(newVoucher);
     setStep("success");
     if (onAddNotification) onAddNotification("Import Complete", "Successfully parsed 27-column PT File and generated unique barcodes!", "success");
@@ -353,8 +371,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="flex flex-col md:flex-row md:items-center justify-between p-6 border-b border-slate-100 bg-slate-50 gap-4">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+      {onClose && step !== "success" && (
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors z-10"
+          title="Cancel Import"
+        >
+          <XCircle className="w-5 h-5" />
+        </button>
+      )}
+      <div className="flex flex-col md:flex-row md:items-center justify-between p-6 border-b border-slate-100 bg-slate-50 gap-4 pr-16">
         <div>
           <h2 className="text-xl font-black text-slate-800 tracking-tight">PT File Importer (27 Columns)</h2>
           <p className="text-xs text-slate-500 mt-1">Import professional Vendor Invoices, auto-generate distinct barcodes per quantity, and raise bills.</p>
@@ -453,127 +480,182 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       )}
 
       {step === "success" && createdVoucher && (
-          <div className="p-8 bg-slate-50 min-h-screen">
-             <div ref={invoiceRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
-                <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
-                    <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
-                        <span>GSTIN : 07ACAPC2634E1ZB</span>
-                        <div className="text-right">
-                            <span className="text-blue-600 block">Contact : Saurabh : 92108 20005</span>
-                            <span className="text-red-600 block">Sunny # : 96546 57012</span>
-                        </div>
-                    </div>
-                    
-                    <h1 className="text-5xl font-bold text-red-600 tracking-wider" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</h1>
-                    <p className="text-sm text-green-700 italic mt-1 font-semibold">A latest Trend of Design</p>
-                    
-                    <div className="bg-blue-800 text-white inline-block px-6 py-1 mt-3 mb-2 rounded-sm text-lg font-bold tracking-widest shadow-sm">
-                        FANCY EMBROIDRIES COTTON SUITS
-                    </div>
-                    
-                    <div className="text-xs font-bold text-slate-800">
-                        <p>Head Office : 773, Gali Taliya Katra Neel, Chandni Chowk, Delhi-110006 Ph. : Shop : 011-42478096 # MANOJ JI : 96430 85400</p>
-                        <p className="text-red-600 mt-1 border-t border-slate-300 pt-1">Sale Office : 768, Ground Floor, Main Katra Neel, Chandni Chowk, Delhi-110006</p>
-                    </div>
-                </div>
-                <div className="text-center mb-6">
-                    <span className="inline-block border border-black px-6 py-1 italic font-bold text-sm tracking-wide">TAX INVOICE</span>
-                </div>
-
-                <div className="flex justify-between mb-4 text-xs font-bold">
-                    <div className="w-1/2">
-                        <p className="border-b border-black inline-block mb-1">Details of Receiver | Billed To</p>
-                        <p>Name : <span className="ml-2 uppercase">{createdVoucher.supplierName}</span></p>
-                        <p>GSTIN : <span className="ml-2">07AALPD0185E1Z1</span></p>
-                        <p className="flex"><span className="mr-2">Address :</span> <span className="uppercase">W Z 127, RAM CHOWK ,<br/>SADH NAGAR, PALAM COLONY ,<br/>NEW DELHI .</span></p>
-                        <p>State Name : <span className="uppercase">DELHI</span> <span className="ml-6">State Code : 07</span></p>
-                        <p>Transport : <span className="uppercase">SELF AMIT</span></p>
-                    </div>
-                    <div className="w-1/2 text-right">
-                        <p>Page No. 1 of 1</p>
-                        <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{createdVoucher.invoiceNo}</span> <span className="ml-4">Date {formatDateForDisplay(createdVoucher.date)}</span></p>
-                        <p className="mt-1">State Name : DELHI <span className="ml-4">State Code 07</span></p>
-                        <div className="mt-3 text-[10px] max-w-[250px] float-right leading-tight text-right">
-                           <span className="font-bold text-slate-800 mr-1">IRN No:</span>
-                           <span className="break-all text-slate-700">3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2 mt-4 clear-both">
-                    <span>Date of Supply : {formatDateForDisplay(createdVoucher.date)}</span>
-                    <span>Agent : </span>
-                </div>
-
-                <table className="w-full text-[11px] border-collapse border-b-2 border-black">
-                    <thead>
-                        <tr className="border-b border-black text-center">
-                            <th className="p-1 font-bold text-left border-r border-slate-300">S.No</th>
-                            <th className="p-1 font-bold text-left border-r border-slate-300">Code | Particulars</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Hsn</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Qty Um</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Rate</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Total</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Disc</th>
-                            <th className="p-1 font-bold border-r border-slate-300">Gst</th>
-                            <th className="p-1 font-bold text-right">Taxable</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {createdVoucher.items.map((item, idx) => (
-                            <tr key={idx} className="border-b border-slate-200 text-center uppercase">
-                                <td className="p-1 text-left border-r border-slate-300">{idx + 1}</td>
-                                <td className="p-1 text-left border-r border-slate-300 font-semibold">{item.itemCode || ""} {item.designNo} - {item.itemName}</td>
-                                <td className="p-1 border-r border-slate-300">{item.hsnCode}</td>
-                                <td className="p-1 border-r border-slate-300">{item.quantity} PCS</td>
-                                <td className="p-1 border-r border-slate-300">{item.purchaseRate.toFixed(2)}</td>
-                                <td className="p-1 border-r border-slate-300">{(item.quantity * item.purchaseRate).toFixed(2)}</td>
-                                <td className="p-1 border-r border-slate-300">{item.calculatedDisc?.toFixed(1)}</td>
-                                <td className="p-1 border-r border-slate-300">{item.gstOnPurchase.toFixed(1)}</td>
-                                <td className="p-1 text-right">{item.calculatedTaxable.toFixed(2)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                <div className="mt-4 flex justify-between items-end">
-                    <div className="text-xs font-bold">
-                        Amount In Words : <span className="uppercase">Rupees Generated Automatically Only</span>
-                        
-                        <div className="mt-6 text-red-600 text-lg uppercase tracking-wider">
-                            ACCOUNTS ENQUIRES : 8595358898
-                        </div>
-                        <div className="mt-2 text-black">
-                            <p className="text-sm underline mb-1 uppercase tracking-wide">Terms & Conditions :</p>
-                            <p>★ Payment Strictly in 25 days. ★ No Claim No Guarantee in fashioners.</p>
-                            <p>★ All Disputes subject to Delhi Jurisdiction only. ★ No Item will be accepted without barcode.</p>
-                        </div>
-                    </div>
-                    <div className="text-right text-xs font-bold flex flex-col items-end">
-                        <span>For K.R.CHHABRA & CO.</span>
-                        <div className="mt-10 border-t border-black w-48 text-center pt-1">
-                            Authorised Signatory
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-8 flex justify-center gap-4 no-print">
-                    <button onClick={() => window.print()} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
-                        <Printer className="w-4 h-4" /> Print
-                    </button>
-                    <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
-                        <Download className="w-4 h-4" /> Download HTML
-                    </button>
-                    <button onClick={handleWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
-                        Share on WhatsApp
-                    </button>
-                    <button onClick={() => setStep("upload")} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
-                        Import Another PT File
-                    </button>
-                </div>
-             </div>
-          </div>
+          <InvoiceViewer 
+             createdVoucher={createdVoucher}
+             invoiceRef={invoiceRef}
+             handlePrint={() => window.print()}
+             handleDownloadHTML={handleDownloadHTML}
+             handleWhatsAppShare={handleWhatsAppShare}
+             onClose={() => setStep("upload")}
+          />
       )}
+    </div>
+  );
+};
+
+export const InvoiceViewer = ({ createdVoucher, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, onClose }) => {
+  const formatDateForDisplay = (dateStr) => {
+    if (!dateStr) return "";
+    let d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+        const serial = parseFloat(dateStr);
+        if (!isNaN(serial) && serial > 10000) {
+            d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
+        } else {
+            return dateStr;
+        }
+    }
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = String(d.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+  };
+
+  const internalRef = React.useRef(null);
+  const activeRef = invoiceRef || internalRef;
+
+  return (
+    <div className="p-8 bg-slate-50 min-h-screen relative">
+       <div ref={activeRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
+              <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
+                  <span>GSTIN : 07ACAPC2634E1ZB</span>
+                  <div className="text-right">
+                      <span className="text-blue-600 block">Contact : Saurabh : 92108 20005</span>
+                      <span className="text-red-600 block">Sunny # : 96546 57012</span>
+                  </div>
+              </div>
+              
+              <h1 className="text-5xl font-bold text-red-600 tracking-wider" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</h1>
+              <p className="text-sm text-green-700 italic mt-1 font-semibold">A latest Trend of Design</p>
+              
+              <div className="bg-blue-800 text-white inline-block px-6 py-1 mt-3 mb-2 rounded-sm text-lg font-bold tracking-widest shadow-sm">
+                  FANCY EMBROIDRIES COTTON SUITS
+              </div>
+              
+              <div className="text-xs font-bold text-slate-800">
+                  <p>Head Office : 773, Gali Taliya Katra Neel, Chandni Chowk, Delhi-110006 Ph. : Shop : 011-42478096 # MANOJ JI : 96430 85400</p>
+                  <p className="text-red-600 mt-1 border-t border-slate-300 pt-1">Sale Office : 768, Ground Floor, Main Katra Neel, Chandni Chowk, Delhi-110006</p>
+              </div>
+          </div>
+          <div className="text-center mb-6">
+              <span className="inline-block border border-black px-6 py-1 italic font-bold text-sm tracking-wide">TAX INVOICE</span>
+          </div>
+
+          <div className="flex justify-between mb-4 text-xs font-bold">
+              <div className="w-1/2">
+                  <p className="border-b border-black inline-block mb-1">Details of Receiver | Billed To</p>
+                  <p>Name : <span className="ml-2 uppercase">{createdVoucher.supplierName}</span></p>
+                  <p>GSTIN : <span className="ml-2">07AALPD0185E1Z1</span></p>
+                  <p className="flex"><span className="mr-2">Address :</span> <span className="uppercase">W Z 127, RAM CHOWK ,<br/>SADH NAGAR, PALAM COLONY ,<br/>NEW DELHI .</span></p>
+                  <p>State Name : <span className="uppercase">DELHI</span> <span className="ml-6">State Code : 07</span></p>
+                  <p>Transport : <span className="uppercase">SELF AMIT</span></p>
+              </div>
+              <div className="w-1/2 text-right">
+                  <p>Page No. 1 of 1</p>
+                  <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{createdVoucher.poNo || createdVoucher.invoiceNo}</span> <span className="ml-4">Date {formatDateForDisplay(createdVoucher.date)}</span></p>
+                  <p className="mt-1">State Name : DELHI <span className="ml-4">State Code 07</span></p>
+                  <div className="mt-3 text-[10px] max-w-[250px] float-right leading-tight text-right">
+                     <span className="font-bold text-slate-800 mr-1">IRN No:</span>
+                     <span className="break-all text-slate-700">3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</span>
+                  </div>
+              </div>
+          </div>
+
+          <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2 mt-4 clear-both">
+              <span>Date of Supply : {formatDateForDisplay(createdVoucher.date)}</span>
+              <span>Agent : </span>
+          </div>
+
+          <table className="w-full text-[10px] text-center border-collapse border border-black font-bold">
+              <thead>
+                  <tr>
+                      <th className="border border-black p-1 w-8">SNo.</th>
+                      <th className="border border-black p-1">Description of Goods</th>
+                      <th className="border border-black p-1 w-16">HSN/SAC</th>
+                      <th className="border border-black p-1 w-12">Qty.</th>
+                      <th className="border border-black p-1 w-12">Rate</th>
+                      <th className="border border-black p-1 w-16">Amount</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  {createdVoucher.items?.map((item, idx) => (
+                      <tr key={idx}>
+                          <td className="border-x border-black p-1">{idx + 1}</td>
+                          <td className="border-x border-black p-1 text-left uppercase">{item.name || item.itemName}</td>
+                          <td className="border-x border-black p-1">{item.hsnCode || "5208"}</td>
+                          <td className="border-x border-black p-1">{item.quantity} SET</td>
+                          <td className="border-x border-black p-1">{item.purchaseRate || item.purchasePrice}</td>
+                          <td className="border-x border-black p-1">{item.calculatedTaxable || item.totalPrice}</td>
+                      </tr>
+                  ))}
+                  {/* Empty rows filler for styling */}
+                  {[...Array(Math.max(0, 5 - (createdVoucher.items?.length || 0)))].map((_, i) => (
+                      <tr key={`empty-${i}`}>
+                          <td className="border-x border-black p-1 text-transparent">.</td>
+                          <td className="border-x border-black p-1"></td>
+                          <td className="border-x border-black p-1"></td>
+                          <td className="border-x border-black p-1"></td>
+                          <td className="border-x border-black p-1"></td>
+                          <td className="border-x border-black p-1"></td>
+                      </tr>
+                  ))}
+              </tbody>
+              <tfoot>
+                  <tr className="border-t border-black">
+                      <td colSpan="3" className="border-x border-black p-1 text-right">Total</td>
+                      <td className="border-x border-black p-1">{createdVoucher.items?.reduce((s, i) => s + (i.quantity || 0), 0)} SET</td>
+                      <td className="border-x border-black p-1"></td>
+                      <td className="border-x border-black p-1">{createdVoucher.subTotal?.toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                      <td colSpan="5" className="border-x border-black p-1 text-right">CGST</td>
+                      <td className="border-x border-black p-1">{(createdVoucher.gstTotal / 2)?.toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                      <td colSpan="5" className="border-x border-black p-1 text-right">SGST</td>
+                      <td className="border-x border-black p-1">{(createdVoucher.gstTotal / 2)?.toFixed(2)}</td>
+                  </tr>
+                  <tr className="border-t border-black bg-slate-100">
+                      <td colSpan="5" className="border-x border-black p-1 text-right text-sm">Grand Total</td>
+                      <td className="border-x border-black p-1 text-sm">₹{createdVoucher.grandTotal?.toFixed(2)}</td>
+                  </tr>
+              </tfoot>
+          </table>
+
+          <div className="flex justify-between mt-4 text-[10px] font-bold">
+              <div className="w-1/2">
+                  <p className="underline mb-1">Amount in Words :</p>
+                  <p className="uppercase italic">Rupees {Math.round(createdVoucher.grandTotal)} Only</p>
+                  
+                  <p className="underline mt-4 mb-1">Terms & Conditions :</p>
+                  <ol className="list-decimal pl-4 space-y-0.5">
+                      <li>Goods once sold will not be taken back.</li>
+                      <li>Interest @ 18% p.a. will be charged if the payment is not made within the stipulated time.</li>
+                      <li>Subject to 'Delhi' Jurisdiction only.</li>
+                  </ol>
+              </div>
+              <div className="w-1/3 border border-black p-2 flex flex-col justify-between min-h-[100px]">
+                  <p className="text-right">For <span className="text-red-600 font-extrabold" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</span></p>
+                  <p className="text-right mt-12">Authorised Signatory</p>
+              </div>
+          </div>
+       </div>
+
+       <div className="mt-8 flex justify-center gap-4 no-print pb-8">
+           <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
+               Print
+           </button>
+           <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
+               Download HTML
+           </button>
+           <button onClick={handleWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
+               Share on WhatsApp
+           </button>
+           <button onClick={onClose} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
+               Import Another PT File
+           </button>
+       </div>
     </div>
   );
 };

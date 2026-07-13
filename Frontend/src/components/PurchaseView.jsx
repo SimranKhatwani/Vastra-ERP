@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { FilePlus, Check, Download } from "lucide-react";
-import { PTImporter } from "./PTImporter";
+import React, { useState, useRef } from "react";
+import { FilePlus, Check, Download, Eye } from "lucide-react";
+import { PTImporter, InvoiceViewer } from "./PTImporter";
 
 export const PurchaseView = ({
   purchaseOrders,
@@ -23,6 +23,10 @@ export const PurchaseView = ({
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poProductId, setPoProductId] = useState("");
   const [poQty, setPoQty] = useState(100);
+
+  // View Invoice state
+  const [viewingPO, setViewingPO] = useState(null);
+  const invoiceRef = useRef(null);
 
   // Pagination for POs
   const [currentPage, setCurrentPage] = useState(1);
@@ -127,6 +131,19 @@ export const PurchaseView = ({
     );
   }
 
+  if (viewingPO) {
+    return (
+      <div className="animate-fade-in pb-12">
+        <InvoiceViewer 
+          createdVoucher={viewingPO}
+          invoiceRef={invoiceRef}
+          handlePrint={() => window.print()}
+          onClose={() => setViewingPO(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in pb-12" id="purchase-mgmt-root">
       {/* Tab select */}
@@ -191,6 +208,7 @@ export const PurchaseView = ({
                     <th className="p-3.5 text-right">GST (12% Avg)</th>
                     <th className="p-3.5 text-right">Grand Total</th>
                     <th className="p-3.5 text-center">Dispatch Status</th>
+                    <th className="p-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
@@ -225,6 +243,15 @@ export const PurchaseView = ({
                             ? "Fulfilled"
                             : "Dispatched"}
                         </span>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          onClick={() => setViewingPO(po)}
+                          className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                          title="View Invoice"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
