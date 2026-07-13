@@ -783,11 +783,6 @@ export default function App() {
                     key={mod.id}
                     onClick={() => {
                       setActiveModule(mod.id);
-                      addToastNotification(
-                        "Scope Switcher",
-                        `Opened ${mod.label} sub-system portal.`,
-                        "info",
-                      );
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
                       ? "bg-indigo-50 text-indigo-700"
