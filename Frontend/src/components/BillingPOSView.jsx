@@ -884,13 +884,8 @@ export const BillingPOSView = ({
 
     const blob = new Blob([htmlContent], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `receipt_${invoice.invoiceNo}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    window.open(url, "_blank");
+    // URL.revokeObjectURL(url); // Don't revoke immediately or the new tab will fail to load the blob in some browsers
     onAddNotification(
       "File Downloader",
       `HTML Invoice ${invoice.invoiceNo} successfully generated & downloaded.`,
@@ -996,12 +991,8 @@ export const BillingPOSView = ({
     </html>`;
 
     const blob = new Blob([htmlContent], { type: "text/html" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Invoice_${invoice.invoiceNo}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
   };
 
   return (
