@@ -339,34 +339,54 @@ export const EmployeeView = ({
     }
   };
 
-  const handleUpdateEmployeeSubmit = (e) => {
+  const handleUpdateEmployeeSubmit = async (e) => {
     e.preventDefault();
     if (!editingEmp) return;
 
-    const updated = {
-      ...editingEmp,
-      name: formName,
-      email: formEmail,
-      phone: formPhone,
-      role: formRole,
-      salary: formSalary,
-      commissionRate: formCommRate,
-      salesTarget: formTarget,
-    };
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/staff/${editingEmp.id}/payroll`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          salary: formSalary,
+          commissionRate: formCommRate,
+          monthlyTarget: formTarget,
+        }),
+      });
 
-    if (setEmployees) {
-      setEmployees((prev) =>
-        prev.map((emp) => (emp.id === editingEmp.id ? updated : emp)),
-      );
+      const data = await res.json();
+      
+      if (data.success) {
+        const updated = {
+          ...editingEmp,
+          salary: data.data.salary,
+          commissionRate: data.data.commissionRate,
+          salesTarget: data.data.monthlyTarget,
+        };
+
+        if (setEmployees) {
+          setEmployees((prev) =>
+            prev.map((emp) => (emp.id === editingEmp.id ? updated : emp)),
+          );
+        }
+        onAddNotification(
+          "Payroll Management",
+          `Updated payroll configuration for ${editingEmp.name}.`,
+          "success",
+        );
+        setShowEditModal(false);
+        setEditingEmp(null);
+        resetForm();
+      } else {
+        onAddNotification("Error", data.message || "Failed to update payroll", "error");
+      }
+    } catch (err) {
+      onAddNotification("Error", "Failed to connect to API", "error");
     }
-    onAddNotification(
-      "Roster Management",
-      `Updated staff profile for ${formName}.`,
-      "success",
-    );
-    setShowEditModal(false);
-    setEditingEmp(null);
-    resetForm();
   };
 
   const handleDeleteEmployee = (id, name) => {
@@ -629,10 +649,12 @@ export const EmployeeView = ({
 
   // Filtered employees list
   const filteredEmployees = employees.filter((emp) => {
+    const roleString = (emp.designation || emp.role || "Staff").toLowerCase();
+    const nameString = (emp.name || "").toLowerCase();
     const matchesSearch =
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.role.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "All" || emp.role === roleFilter;
+      nameString.includes(searchQuery.toLowerCase()) ||
+      roleString.includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === "All" || emp.designation === roleFilter || emp.role === roleFilter;
     return matchesSearch && matchesRole;
   });
 
@@ -709,16 +731,6 @@ export const EmployeeView = ({
                   <option value="Tailor">Tailor</option>
                 </select>
               </div>
-              <button
-                onClick={() => {
-                  resetForm();
-                  setShowAddModal(true);
-                }}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center shadow-xs transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Register Staff</span>
-              </button>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -753,20 +765,20 @@ export const EmployeeView = ({
                           </td>
                           <td className="p-3.5">
                             <span className="bg-slate-100 border border-slate-200/50 text-slate-700 px-2.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase">
-                              {emp.role}
+                              {emp.designation || emp.role || 'Staff'}
                             </span>
                           </td>
                           <td className="p-3.5 text-right font-mono font-bold text-slate-800">
-                            ₹{emp.salary.toLocaleString()}
+                            ₹{(emp.salary || 0).toLocaleString()}
                           </td>
                           <td className="p-3.5 text-center">
                             <div className="flex items-center justify-center gap-1 font-bold text-slate-700 font-mono">
                               <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                              <span>{emp.attendanceRate}%</span>
+                              <span>{emp.attendanceRate || 100}%</span>
                             </div>
                           </td>
                           <td className="p-3.5 text-center font-mono text-slate-500 font-bold">
-                            {emp.leavesRemaining} days
+                            {emp.leavesRemaining || 10} days
                           </td>
                           <td
                             className="p-3.5 text-center"
@@ -848,7 +860,7 @@ export const EmployeeView = ({
                       Monthly Salary:
                     </span>
                     <span className="font-mono font-bold text-slate-850">
-                      ₹{activeEmployee.salary.toLocaleString()}
+                      ₹{(activeEmployee.salary || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -976,8 +988,8 @@ export const EmployeeView = ({
                     .reduce((sum, a) => sum + a.amount, 0);
 
                   const finalComp =
-                    emp.salary +
-                    emp.commissionEarned -
+                    (emp.salary || 0) +
+                    (emp.commissionEarned || 0) -
                     empAdvances -
                     empDeductions;
 
@@ -988,14 +1000,14 @@ export const EmployeeView = ({
                       </td>
                       <td className="p-3.5">
                         <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                          {emp.role}
+                          {emp.designation || emp.role || 'Staff'}
                         </span>
                       </td>
                       <td className="p-3.5 text-right font-mono">
-                        ₹{emp.salary.toLocaleString()}
+                        ₹{(emp.salary || 0).toLocaleString()}
                       </td>
                       <td className="p-3.5 text-right font-mono text-emerald-600 font-bold">
-                        ₹{emp.commissionEarned.toLocaleString()}
+                        ₹{(emp.commissionEarned || 0).toLocaleString()}
                       </td>
                       <td className="p-3.5 text-right font-mono text-red-500 font-bold">
                         ₹{empAdvances.toLocaleString()}
@@ -1035,11 +1047,11 @@ export const EmployeeView = ({
                 >
                   {employees
                     .filter(
-                      (e) => e.role === "Salesperson" || e.role === "Tailor",
+                      (e) => (e.designation || e.role) === "Salesperson" || (e.designation || e.role) === "Tailor",
                     )
                     .map((e) => (
                       <option key={e.id} value={e.id}>
-                        {e.name} ({e.role})
+                        {e.name} ({e.designation || e.role || "Staff"})
                       </option>
                     ))}
                 </select>
@@ -1050,23 +1062,23 @@ export const EmployeeView = ({
                   <div className="flex justify-between">
                     <span className="text-slate-400">Monthly Sales:</span>
                     <span className="text-indigo-600 font-bold">
-                      ₹{activeEmployee.monthlySales.toLocaleString()}
+                      ₹{(activeEmployee.monthlySales || 0).toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Target Level:</span>
-                    <span>₹{activeEmployee.salesTarget.toLocaleString()}</span>
+                    <span>₹{(activeEmployee.salesTarget || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Earned Rate:</span>
                     <span className="text-emerald-600 font-bold">
-                      {activeEmployee.commissionRate}%
+                      {activeEmployee.commissionRate || 0}%
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Pending Comm:</span>
                     <span className="text-violet-600 font-bold">
-                      ₹{activeEmployee.commissionEarned.toLocaleString()}
+                      ₹{(activeEmployee.commissionEarned || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -1104,11 +1116,11 @@ export const EmployeeView = ({
             </div>
             <div className="p-5 space-y-4">
               {employees
-                .filter((e) => e.role === "Salesperson")
+                .filter((e) => (e.designation || e.role) === "Salesperson")
                 .map((emp, i) => {
                   const ratio = Math.min(
                     100,
-                    (emp.monthlySales / (emp.salesTarget || 1)) * 100,
+                    ((emp.monthlySales || 0) / (emp.salesTarget || 1)) * 100,
                   );
                   return (
                     <div key={i} className="space-y-1 text-xs font-medium">
@@ -1117,8 +1129,8 @@ export const EmployeeView = ({
                           {emp.name}
                         </span>
                         <span className="text-slate-800 font-mono">
-                          ₹{emp.monthlySales.toLocaleString()} / ₹
-                          {emp.salesTarget.toLocaleString()}
+                          ₹{(emp.monthlySales || 0).toLocaleString()} / ₹
+                          {(emp.salesTarget || 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -1131,7 +1143,7 @@ export const EmployeeView = ({
                         <span>Achievement Quotient: {ratio.toFixed(0)}%</span>
                         <span className="font-bold text-violet-600">
                           Pending Settlement: ₹
-                          {emp.commissionEarned.toLocaleString()}
+                          {(emp.commissionEarned || 0).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -2071,151 +2083,13 @@ export const EmployeeView = ({
         </div>
       )}
 
-      {/* MODAL: ADD EMPLOYEE */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-scale-up">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                Register Team Member
-              </h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateEmployee} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Ramesh Tailor"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Email ID *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="e.g. ramesh@vastra.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Contact Phone
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    pattern="\d{10}"
-                    maxLength={10}
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="e.g. 9876543210"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Organizational Role
-                  </label>
-                  <select
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-700 font-bold"
-                  >
-                    <option value="Admin">Admin</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Salesperson">Salesperson</option>
-                    <option value="Tailor">Tailor</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Base Salary (₹)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formSalary}
-                    onChange={(e) => setFormSalary(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Comm. Rate (%)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formCommRate}
-                    onChange={(e) => setFormCommRate(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Sales Target (₹)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formTarget}
-                    onChange={(e) => setFormTarget(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
-                >
-                  Register Staff
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* MODAL: EDIT EMPLOYEE */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-scale-up">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                Edit Team Member
+                Edit Payroll Configuration - {editingEmp?.name}
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -2225,62 +2099,6 @@ export const EmployeeView = ({
               </button>
             </div>
             <form onSubmit={handleUpdateEmployeeSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Email ID *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Contact Phone
-                  </label>
-                  <input
-                    type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-800 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Organizational Role
-                  </label>
-                  <select
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-700 font-bold"
-                  >
-                    <option value="Admin">Admin</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Salesperson">Salesperson</option>
-                    <option value="Tailor">Tailor</option>
-                  </select>
-                </div>
-              </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>

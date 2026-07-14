@@ -28,6 +28,14 @@ const staffSchema = new mongoose.Schema(
       type: Number,
       default: 150000,
     },
+    salary: {
+      type: Number,
+      default: 0,
+    },
+    commissionRate: {
+      type: Number,
+      default: 0,
+    },
     gender: {
       type: String,
       enum: ['Male', 'Female', 'Other'],

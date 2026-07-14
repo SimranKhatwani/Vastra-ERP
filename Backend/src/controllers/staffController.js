@@ -107,3 +107,27 @@ exports.deleteStaff = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+// @desc    Update Staff Payroll Details
+// @route   PUT /api/staff/:id/payroll
+// @access  Private
+exports.updateStaffPayroll = async (req, res) => {
+  try {
+    const { salary, commissionRate, monthlyTarget } = req.body;
+    const staff = await Staff.findById(req.params.id);
+
+    if (!staff) {
+      return res.status(404).json({ success: false, message: 'Staff not found' });
+    }
+
+    // Update only the payroll fields
+    if (salary !== undefined) staff.salary = salary;
+    if (commissionRate !== undefined) staff.commissionRate = commissionRate;
+    if (monthlyTarget !== undefined) staff.monthlyTarget = monthlyTarget;
+
+    await staff.save();
+
+    res.status(200).json({ success: true, data: staff });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};

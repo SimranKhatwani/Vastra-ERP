@@ -124,7 +124,7 @@ export default function App() {
             fetch("http://localhost:5000/api/invoices", { headers: { Authorization: `Bearer ${token}` } }),
             fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } }),
             fetch("http://localhost:5000/api/purchase-orders", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/employees", { headers: { Authorization: `Bearer ${token}` } }),
+            fetch("http://localhost:5000/api/staff", { headers: { Authorization: `Bearer ${token}` } }),
             fetch("http://localhost:5000/api/expenses", { headers: { Authorization: `Bearer ${token}` } }),
             fetch("http://localhost:5000/api/tickets", { headers: { Authorization: `Bearer ${token}` } }),
             fetch("http://localhost:5000/api/notifications", { headers: { Authorization: `Bearer ${token}` } })
