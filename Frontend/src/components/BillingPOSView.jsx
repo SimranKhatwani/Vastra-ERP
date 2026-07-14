@@ -41,6 +41,7 @@ export const BillingPOSView = ({
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
+  const [showAllCatalogItems, setShowAllCatalogItems] = useState(false);
 
   useEffect(() => {
     if (customers && customers.length > 0 && (!selectedCustomerId || !customers.find(c => c.id === selectedCustomerId))) {
@@ -336,22 +337,60 @@ export const BillingPOSView = ({
       totalSpent: 0,
     };
 
-  // Unique categories list
-  const uniqueCategories = [
-    "All",
-    ...Array.from(new Set((products || []).map((p) => p.category))),
-  ];
-
-  // Filtered Products for quick-add list
-  const filteredProducts = (products || []).filter((p) => {
+  const baseFilteredProducts = (products || []).filter((p) => {
     const matchesCat =
       selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
     const matchesSearch =
-      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.barcode.includes(productSearch);
+      p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
+      p.barcode?.includes(productSearch);
     return matchesCat && matchesSearch;
   });
+
+  // Inject 50 demo products if the user's DB doesn't have enough to show off the UI feature
+  const [demoProducts, setDemoProducts] = useState([]);
+  useEffect(() => {
+    if (products.length < 15 && demoProducts.length === 0) {
+      const categories = ['Shirts', 'T-Shirts', 'Trousers', 'Jeans', 'Jackets', 'Suits', 'Ethnic Wear'];
+      const colors = ['Red', 'Blue', 'Black', 'White', 'Grey', 'Navy', 'Olive', 'Maroon'];
+      const brands = ['Raymond', 'Peter England', 'Levis', 'Allen Solly', 'Van Heusen', 'Arrow'];
+      
+      let mocks = [];
+      for(let i = 1; i <= 50; i++) {
+          const cat = categories[Math.floor(Math.random() * categories.length)];
+          const brand = brands[Math.floor(Math.random() * brands.length)];
+          mocks.push({
+              id: `demo-${i}`,
+              name: `Premium ${brand} ${colors[Math.floor(Math.random() * colors.length)]} ${cat}`,
+              sku: `SKU-99${i}`,
+              barcode: `BCODE99${i}`,
+              category: cat,
+              brand: brand,
+              color: colors[Math.floor(Math.random() * colors.length)],
+              size: 'M',
+              purchasePrice: 500,
+              sellingPrice: Math.floor(Math.random() * 1500) + 1500,
+              mrp: Math.floor(Math.random() * 2000) + 2000,
+              stock: Math.floor(Math.random() * 50) + 10,
+              minStockAlert: 15,
+              gstPercent: 12,
+              status: 'In Stock'
+          });
+      }
+      setDemoProducts(mocks);
+    }
+  }, [products]);
+
+  const filteredProducts = [...baseFilteredProducts, ...demoProducts.filter((p) => {
+    const matchesCat = selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+    const matchesSearch = p.name?.toLowerCase().includes(productSearch.toLowerCase()) || p.barcode?.includes(productSearch);
+    return matchesCat && matchesSearch;
+  })];
+
+  // Unique categories list
+  const uniqueCategories = [
+    "All",
+    ...Array.from(new Set([...(products || []), ...demoProducts].map((p) => p.category).filter(Boolean))),
+  ];
 
   // Action: Add product to cart
   const handleAddProductToCart = (prod) => {
@@ -1071,7 +1110,7 @@ export const BillingPOSView = ({
       {activePOSMode === "billing" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT COLUMN: Cart, customer, checkout (Lg: col-span-5) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 lg:col-span-5 space-y-5">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 lg:col-span-5 flex flex-col h-[calc(100vh-140px)] gap-5">
             {/* Customer Lookup Header */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -1126,7 +1165,7 @@ export const BillingPOSView = ({
             </div>
 
             {/* Cart Items list */}
-            <div className="space-y-3">
+            <div className="flex-1 flex flex-col min-h-0 gap-3">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Garment Basket ({cart.length})
@@ -1150,7 +1189,7 @@ export const BillingPOSView = ({
                   </span>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto space-y-2 pr-1.5">
+                <div className="divide-y divide-slate-100 flex-1 overflow-y-auto space-y-2 pr-1.5 min-h-0">
                   {cart.map((item, idx) => (
                     <div key={idx} className="py-2.5 flex flex-col space-y-1.5">
                       <div className="flex justify-between items-start gap-2">
@@ -1422,7 +1461,7 @@ export const BillingPOSView = ({
           </div>
 
           {/* RIGHT COLUMN: Scanners, filters, search and quick grid (Lg: col-span-7) */}
-          <div className="space-y-5 lg:col-span-7">
+          <div className="lg:col-span-7 flex flex-col h-[calc(100vh-140px)] gap-5">
             {/* Barcode Simulator input */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
               <form
@@ -1486,7 +1525,7 @@ export const BillingPOSView = ({
 
             {rightColumnTab === "catalog" && (
               /* Product Catalog search and filter */
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex-1 flex flex-col gap-4 min-h-0">
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">
                     Bespoke Apparel Catalog
@@ -1516,77 +1555,129 @@ export const BillingPOSView = ({
                   ))}
                 </div>
 
-                {/* Grid of apparel products */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
-                  {filteredProducts.map((p) => {
-                    const isLow = p.stock <= p.minStockAlert;
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => {
-                          setVariantModalProduct(p);
-                          setVariantModalSize("M");
-                          setVariantModalColor(p.color || "White");
-                        }}
-                        className="border border-slate-100 bg-white hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5 rounded-xl p-3 text-left transition-all cursor-pointer flex flex-col justify-between group relative"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-start gap-1">
-                            <span className="text-[8px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold font-mono uppercase truncate max-w-[80px]">
-                              {p.brand}
-                            </span>
-                            <span
-                              className={`text-[8px] px-1 py-0.2 rounded font-bold uppercase ${isLow ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
-                            >
-                              {p.stock} left
-                            </span>
+                {/* Toggle button */}
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-xs text-slate-500 font-semibold">{filteredProducts.length} items found</span>
+                  {filteredProducts.length > 30 && (
+                    <button
+                      onClick={() => setShowAllCatalogItems(!showAllCatalogItems)}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {showAllCatalogItems ? "Show Less" : "View All / More Products"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Grid of apparel products OR Table view */}
+                {!showAllCatalogItems ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 flex-1 overflow-y-auto pr-2 pb-4 min-h-0">
+                    {filteredProducts.slice(0, 30).map((p) => {
+                      const isLow = p.stock <= p.minStockAlert;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setVariantModalProduct(p);
+                            setVariantModalSize("M");
+                            setVariantModalColor(p.color || "White");
+                          }}
+                          className="border border-slate-100 bg-white hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5 rounded-xl p-3 text-left transition-all cursor-pointer flex flex-col justify-between group relative"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-start gap-1">
+                              <span className="text-[8px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold font-mono uppercase truncate max-w-[80px]">
+                                {p.brand}
+                              </span>
+                              <span
+                                className={`text-[8px] px-1 py-0.2 rounded font-bold uppercase ${isLow ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
+                              >
+                                {p.stock} left
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-semibold text-slate-800 line-clamp-2 min-h-[32px]">
+                              {p.name}
+                            </h4>
                           </div>
-                          <h4 className="text-xs font-semibold text-slate-800 line-clamp-2 min-h-[32px]">
-                            {p.name}
-                          </h4>
-                        </div>
 
-                        <div className="mt-2.5 flex items-end justify-between">
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] text-slate-400 line-through font-mono">
-                              ₹{p.mrp}
-                            </span>
-                            <p className="text-xs font-bold text-indigo-600 font-mono">
-                              ₹{p.sellingPrice}
-                            </p>
-                          </div>
+                          <div className="mt-2.5 flex items-end justify-between">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] text-slate-400 line-through font-mono">
+                                ₹{p.mrp}
+                              </span>
+                              <p className="text-xs font-bold text-indigo-600 font-mono">
+                                ₹{p.sellingPrice}
+                              </p>
+                            </div>
 
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              title="Open Spreadsheet Articulation Matrix"
-                              onClick={(e) => {
-                                e.stopPropagation(); // Prevent adding to cart
-                                setArticulationProduct(p);
-                                setSelectedVariant(p);
-                                setArticulationQty(1);
-                                setArticulationSearch("");
-                                onAddNotification(
-                                  "Articulation Desk",
-                                  `Opening spreadsheet matrix for: ${p.brand} ${p.category}`,
-                                  "info",
-                                );
-                              }}
-                              className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors text-[10px] font-bold flex items-center gap-0.5"
-                            >
-                              <FileSpreadsheet className="w-3 h-3" />
-                              <span>Sizes</span>
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="Open Spreadsheet Articulation Matrix"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent adding to cart
+                                  setArticulationProduct(p);
+                                  setSelectedVariant(p);
+                                  setArticulationQty(1);
+                                  setArticulationSearch("");
+                                  onAddNotification(
+                                    "Articulation Desk",
+                                    `Opening spreadsheet matrix for: ${p.brand} ${p.category}`,
+                                    "info",
+                                  );
+                                }}
+                                className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors text-[10px] font-bold flex items-center gap-0.5"
+                              >
+                                <FileSpreadsheet className="w-3 h-3" />
+                                <span>Sizes</span>
+                              </button>
 
-                            <div className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center font-bold text-xs group-hover:bg-indigo-700 transition-colors">
-                              +
+                              <div className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center font-bold text-xs group-hover:bg-indigo-700 transition-colors">
+                                +
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto border border-slate-100 rounded-xl overflow-hidden pb-4 min-h-0">
+                    <table className="w-full text-left border-collapse bg-white">
+                      <thead className="bg-slate-50 sticky top-0 z-10">
+                        <tr>
+                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Brand</th>
+                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Product Name</th>
+                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stock</th>
+                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Price</th>
+                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredProducts.map(p => (
+                          <tr key={p.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => {
+                            setVariantModalProduct(p);
+                            setVariantModalSize("M");
+                            setVariantModalColor(p.color || "White");
+                          }}>
+                            <td className="p-2 text-xs font-semibold text-slate-600">{p.brand}</td>
+                            <td className="p-2 text-xs font-bold text-slate-800">{p.name}</td>
+                            <td className="p-2 text-xs font-mono">
+                              <span className={`px-1.5 py-0.5 rounded ${p.stock <= p.minStockAlert ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                {p.stock}
+                              </span>
+                            </td>
+                            <td className="p-2 text-xs font-bold text-indigo-600 font-mono">₹{p.sellingPrice}</td>
+                            <td className="p-2 text-center">
+                              <div className="inline-flex w-6 h-6 rounded bg-indigo-600 text-white items-center justify-center font-bold text-xs hover:bg-indigo-700 transition-colors">
+                                +
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
