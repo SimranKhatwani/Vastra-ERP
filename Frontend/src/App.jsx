@@ -182,6 +182,19 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] =
     useState(false);
+  const notificationsRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setShowNotificationsDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Role-based sidebar module access helper
@@ -408,6 +421,7 @@ export default function App() {
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataCustomers.success) setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
         if (dataEmployees.success) setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
+        return true;
       } else {
         console.error("Invoice creation failed in backend:", data);
         addToastNotification("Failed", data.message || "Failed to save invoice to backend", "danger");
@@ -442,11 +456,16 @@ export default function App() {
         
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+        return true;
       } else {
+        alert("Backend Error: " + (data.message || "Unknown error"));
         addToastNotification("Error", data.message, "danger");
+        return false;
       }
     } catch (error) {
+      alert("App.jsx catch error: " + error.message);
       addToastNotification("Error", "Failed to connect to API", "danger");
+      return false;
     }
   };
 
@@ -572,6 +591,23 @@ export default function App() {
       );
     } catch (error) {
       addToastNotification("Error", "Failed to connect to API", "danger");
+    }
+  };
+
+  const handleMarkNotificationRead = async (id) => {
+    // Optimistically update UI so it changes instantly hand-to-hand
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
+
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -753,11 +789,6 @@ export default function App() {
                     key={mod.id}
                     onClick={() => {
                       setActiveModule(mod.id);
-                      addToastNotification(
-                        "Scope Switcher",
-                        `Opened ${mod.label} sub-system portal.`,
-                        "info",
-                      );
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
                       ? "bg-indigo-50 text-indigo-700"
@@ -865,7 +896,7 @@ export default function App() {
             </div>
 
             {/* Notifications Alert with unread badges */}
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => {
                   setShowNotificationsDropdown(!showNotificationsDropdown);
@@ -898,15 +929,16 @@ export default function App() {
                     {notifications.slice(0, 5).map((n) => (
                       <div
                         key={n.id}
-                        className={`p-2.5 rounded-lg border text-[11px] ${n.read ? "bg-slate-50/50 border-slate-100 text-slate-500" : "bg-indigo-50/30 border-indigo-50 text-slate-700"}`}
+                        onDoubleClick={() => { if (!n.read) handleMarkNotificationRead(n.id); }}
+                        className={`p-2.5 rounded-lg border text-[11px] cursor-pointer transition-colors ${n.read ? "bg-slate-50 border-slate-100 text-slate-500" : "bg-indigo-50/50 border-indigo-100 text-black shadow-xs hover:bg-indigo-50"}`}
                       >
-                        <div className="flex justify-between font-bold text-[10px]">
+                        <div className={`flex justify-between text-[10px] ${n.read ? 'font-semibold' : 'font-extrabold'}`}>
                           <span>{n.title}</span>
-                          <span className="text-[8px] text-slate-400 font-mono font-normal">
+                          <span className={`text-[8px] font-mono ${n.read ? 'text-slate-400 font-normal' : 'text-slate-500 font-bold'}`}>
                             {n.timestamp}
                           </span>
                         </div>
-                        <p className="mt-0.5 leading-relaxed font-semibold">
+                        <p className={`mt-0.5 leading-relaxed ${n.read ? 'font-normal text-slate-500' : 'font-bold text-black'}`}>
                           {n.message}
                         </p>
                       </div>

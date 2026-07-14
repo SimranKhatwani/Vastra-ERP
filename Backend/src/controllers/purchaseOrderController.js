@@ -40,6 +40,7 @@ exports.createPurchaseOrder = async (req, res) => {
 
     res.status(201).json({ success: true, data: po });
   } catch (error) {
+    console.error("PO Creation Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

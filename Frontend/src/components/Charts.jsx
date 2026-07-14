@@ -20,7 +20,8 @@ export const MiniAreaChart = ({
 
   const maxVal = Math.max(...data.map((d) => d.value)) * 1.15 || 100;
   const padding = 15;
-  const chartHeight = height - padding * 2;
+  const numericHeight = typeof height === 'number' ? height : 150;
+  const chartHeight = numericHeight - padding * 2;
   const chartWidth = 500;
   const pointsCount = data.length;
   const stepX = chartWidth / (pointsCount - 1 || 1);
@@ -70,7 +71,7 @@ export const MiniAreaChart = ({
   return (
     <div
       className="relative w-full flex items-stretch gap-2 pt-2"
-      style={{ height: `${height}px` }}
+      style={{ height: typeof height === 'number' ? `${height}px` : height }}
       id="mini-area-chart-container"
     >
       {/* Left aligned, non-stretched HTML Y-Axis Labels */}
@@ -437,7 +438,7 @@ export const DonutChart = ({ data, size = 140 }) => {
 
   return (
     <div
-      className="flex flex-row items-center justify-between gap-6 w-full px-2"
+      className="flex flex-wrap items-center justify-center sm:justify-start gap-4 w-full min-w-0"
       id="donut-chart-wrapper"
     >
       {/* Chart SVG wrapper with relative sizing */}
@@ -503,7 +504,7 @@ export const DonutChart = ({ data, size = 140 }) => {
       </div>
 
       {/* Side Legend with values and percentages */}
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
+      <div className="flex-1 flex flex-col gap-1 min-w-[140px]">
         {data.map((item, idx) => {
           const pct = ((item.value / total) * 100).toFixed(1);
           const isHovered = activeIndex === idx;
@@ -525,7 +526,7 @@ export const DonutChart = ({ data, size = 140 }) => {
               />
 
               <div className="flex justify-between items-center w-full min-w-0 gap-2">
-                <span className="text-[11px] font-bold text-slate-600 truncate">
+                <span className="text-[11px] font-bold text-slate-600 truncate" title={item.label}>
                   {item.label}
                 </span>
                 <span className="text-[10px] font-mono font-extrabold text-slate-500 shrink-0">

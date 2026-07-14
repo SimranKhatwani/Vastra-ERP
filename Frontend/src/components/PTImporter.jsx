@@ -33,6 +33,8 @@ const FIELDS_TO_MAP = [
   { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["discount", "disc"] }
 ];
 
+const generateObjectId = () => Math.floor(Date.now() / 1000).toString(16) + 'x'.repeat(16).replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+
 export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, purchaseOrders, onAddPurchaseOrder, onAddNotification, onClose }) => {
   const [step, setStep] = useState("upload");
   const [rawRows, setRawRows] = useState([]);
@@ -196,7 +198,12 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     if (file) processFile(file);
   };
 
-  const handleImportPTFileSubmit = () => {
+  const handleImportPTFileSubmit = async () => {
+    if (parsedRows.length === 0) {
+      if (onAddNotification) onAddNotification("Error", "No valid data to import.", "danger");
+      return;
+    }
+
     const errorCount = parsedRows.filter(r => r.status === "error").length;
     if (errorCount > 0) {
       if (onAddNotification) onAddNotification("Import Blocked", "Please resolve errors first.", "danger");
@@ -209,7 +216,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     uniqueVendors.forEach(vendor => {
       if (!currentSuppliers.some(s => s.name?.toLowerCase() === vendor.toLowerCase())) {
         currentSuppliers.push({ 
-          id: `sup-${Date.now()}`, 
+          id: generateObjectId(), 
           name: vendor, 
           status: "Active",
           totalOrders: 0,
@@ -255,12 +262,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         gstTotal += itemGst;
         grandDisc += discAmt;
 
-        const baseProductId = `prod-${Date.now()}-${Math.random()}`;
+        const baseProductId = generateObjectId();
         
         billItems.push({
             ...row,
             productId: baseProductId,
             name: `${row.itemName} (${row.designNo})`,
+            purchasePrice: rate,
+            totalPrice: taxable - discAmt + itemGst,
             calculatedTaxable: taxable,
             calculatedGst: itemGst,
             calculatedTotal: taxable - discAmt + itemGst,
@@ -271,7 +280,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         for(let i=0; i<qty; i++) {
             const uniqueBarcode = row.barcode || `BCODE${Math.floor(10000000 + Math.random() * 90000000)}`;
             currentProducts.push({
-                id: i === 0 ? baseProductId : `prod-${Date.now()}-${Math.random()}`,
+                id: i === 0 ? baseProductId : generateObjectId(),
                 name: `${row.itemName} (${row.designNo})`,
                 category: row.itemName,
                 brand: row.brand,
@@ -295,12 +304,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     const firstRow = parsedRows[0];
     const supplierObj = currentSuppliers.find(s => s.name?.toLowerCase() === firstRow.vendorName?.toLowerCase());
     
+    const getValidObjectId = (id) => {
+      if (typeof id === 'string' && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) return id;
+      return generateObjectId();
+    };
+
     const newVoucher = {
-      id: `po-${Date.now()}`,
-      poNo: firstRow.billNo,
+      id: generateObjectId(),
+      poNo: `${firstRow.billNo}-${Math.floor(Math.random() * 10000)}`,
       invoiceNo: firstRow.billNo,
       date: firstRow.billDate,
-      supplierId: supplierObj ? (supplierObj._id || supplierObj.id) : `sup-${Date.now()}`,
+      supplierId: supplierObj ? getValidObjectId(supplierObj._id || supplierObj.id) : generateObjectId(),
       supplierName: firstRow.vendorName,
       items: billItems,
       subTotal: subTotal,
@@ -309,7 +323,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       status: "Completed"
     };
     
-    if (onAddPurchaseOrder) onAddPurchaseOrder(newVoucher);
+    if (onAddPurchaseOrder) {
+      const success = await onAddPurchaseOrder(newVoucher);
+      if (!success) {
+        alert("Failed to save Purchase Order to the database. Please check the network or refresh the page and try again.");
+        return;
+      }
+    }
+    
     setCreatedVoucher(newVoucher);
     setStep("success");
     if (onAddNotification) onAddNotification("Import Complete", "Successfully parsed 27-column PT File and generated unique barcodes!", "success");
@@ -372,7 +393,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
-      {onClose && step !== "success" && (
+      {onClose && (
         <button 
           onClick={onClose}
           className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors z-10"
@@ -516,6 +537,15 @@ export const InvoiceViewer = ({ createdVoucher, invoiceRef, handlePrint, handleD
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen relative">
+       {onClose && (
+         <button 
+           onClick={onClose}
+           className="absolute top-4 right-4 p-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full transition-colors z-10"
+           title="Go Back"
+         >
+           <XCircle className="w-6 h-6" />
+         </button>
+       )}
        <div ref={activeRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
           <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
               <div className="flex justify-between text-[10px] font-bold uppercase mb-2">

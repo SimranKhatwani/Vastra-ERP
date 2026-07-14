@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const invoiceItemSchema = new mongoose.Schema({
   productId: {
     type: String,
+    // Can be an ObjectId string for catalog products or "custom-garment" for custom items
   },
   name: {
     type: String,
@@ -38,6 +39,10 @@ const invoiceItemSchema = new mongoose.Schema({
     type: Number, // (price - discount) * quantity
     required: true,
   },
+  isCustom: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const invoiceSchema = new mongoose.Schema(
@@ -65,9 +70,18 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       default: 'Walk-in Customer',
     },
+    customerPhone: {
+      type: String,
+    },
     employeeId: {
       type: String,
       // For commissions
+    },
+    employeeName: {
+      type: String,
+    },
+    salespersonName: {
+      type: String,
     },
     items: [invoiceItemSchema],
     subTotal: {
@@ -77,6 +91,9 @@ const invoiceSchema = new mongoose.Schema(
     discountTotal: {
       type: Number,
       default: 0,
+    },
+    couponCode: {
+      type: String,
     },
     couponDiscount: {
       type: Number,
@@ -95,6 +112,10 @@ const invoiceSchema = new mongoose.Schema(
       enum: ['Cash', 'Card', 'UPI', 'Wallet', 'Credit', 'Split'],
       required: true,
     },
+    splitPayments: [{
+      method: String,
+      amount: Number,
+    }],
     amountPaid: {
       type: Number,
       required: true,
