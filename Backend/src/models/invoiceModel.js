@@ -125,6 +125,20 @@ const invoiceSchema = new mongoose.Schema(
       enum: ['Paid', 'Partial', 'Unpaid'],
       default: 'Paid',
     },
+    whatsappStatus: {
+      type: String,
+      enum: ['Pending', 'Sent', 'Failed'],
+      default: 'Pending',
+    },
+    sentAt: {
+      type: Date,
+    },
+    failureReason: {
+      type: String,
+    },
+    messageId: {
+      type: String,
+    },
   },
   {
     timestamps: true,

@@ -421,14 +421,47 @@ export default function App() {
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataCustomers.success) setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
         if (dataEmployees.success) setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
-        return true;
+        // Return the full saved invoice so BillingPOSView can trigger WhatsApp dispatch
+        return data.data;
       } else {
         console.error("Invoice creation failed in backend:", data);
         addToastNotification("Failed", data.message || "Failed to save invoice to backend", "danger");
+        return null;
       }
     } catch (error) {
       console.error(error);
       addToastNotification("Error", "Failed to connect to API", "danger");
+      return null;
+    }
+  };
+
+  const handleRetryWhatsApp = async (invoiceId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/invoices/${invoiceId}/send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToastNotification("WhatsApp", "Invoice dispatched to WhatsApp successfully.", "success");
+        // Refresh invoices list so status updates reflect in history
+        const resInvoices = await fetch("http://localhost:5000/api/invoices", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dataInvoices = await resInvoices.json();
+        if (dataInvoices.success) {
+          setInvoices(dataInvoices.data.map((i) => ({ ...i, id: i._id })));
+        }
+        return true;
+      } else {
+        addToastNotification("WhatsApp Failed", data.message || "Dispatch failed.", "danger");
+        return false;
+      }
+    } catch (error) {
+      console.error("[handleRetryWhatsApp]", error);
+      addToastNotification("Error", "Failed to connect to API", "danger");
+      return false;
     }
   };
 
@@ -1062,6 +1095,7 @@ export default function App() {
               onAddCustomer={handleAddCustomer}
               onUpdateCustomerBalance={handleUpdateCustomerBalance}
               onAddNotification={addToastNotification}
+              onRetryWhatsApp={handleRetryWhatsApp}
               quickArticulateItem={quickArticulateItem}
               clearQuickArticulateItem={() => setQuickArticulateItem(null)}
             />
@@ -1190,7 +1224,7 @@ export default function App() {
           )}
 
           {activeModule === "settings" && (
-            <SettingsView onAddNotification={addToastNotification} />
+            <SettingsView onAddNotification={addToastNotification} currentUser={currentUser} />
           )}
         </main>
       </div>

@@ -2,6 +2,7 @@ const Invoice = require('../models/invoiceModel');
 const Product = require('../models/productModel');
 const Customer = require('../models/customerModel');
 const mongoose = require('mongoose');
+const { processWhatsAppDispatch } = require('../services/invoiceService');
 
 // Helper: check if a string is a valid MongoDB ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
@@ -99,7 +100,8 @@ exports.getInvoices = async (req, res) => {
 exports.getInvoiceById = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const invoice = await Invoice.findOne({ _id: req.params.id, tenantId }).populate('customerId', 'name phone email');
+    const invoice = await Invoice.findOne({ _id: req.params.id, tenantId })
+      .populate('customerId', 'name phone email whatsappNumber');
 
     if (!invoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
@@ -107,6 +109,36 @@ exports.getInvoiceById = async (req, res) => {
 
     res.status(200).json({ success: true, data: invoice });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Manually trigger or retry WhatsApp dispatch for an invoice
+exports.sendWhatsApp = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const invoice = await Invoice.findOne({ _id: req.params.id, tenantId });
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    const result = await processWhatsAppDispatch(invoice._id.toString(), tenantId.toString());
+
+    if (result.success) {
+      return res.status(200).json({
+        success: true,
+        message: 'Invoice dispatched via WhatsApp successfully.',
+        messageId: result.messageId,
+      });
+    }
+
+    return res.status(200).json({
+      success: false,
+      message: result.reason || 'WhatsApp dispatch failed.',
+    });
+  } catch (error) {
+    console.error('[invoiceController.sendWhatsApp]', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

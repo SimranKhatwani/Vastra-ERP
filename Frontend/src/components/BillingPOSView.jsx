@@ -21,9 +21,12 @@ import {
   Grid,
   FileSpreadsheet,
   Clock,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
 
 export const BillingPOSView = ({
+  currentUser,
   products = [],
   customers = [],
   employees = [],
@@ -32,6 +35,7 @@ export const BillingPOSView = ({
   onAddCustomer,
   onUpdateCustomerBalance,
   onAddNotification,
+  onRetryWhatsApp,
   quickArticulateItem,
   clearQuickArticulateItem,
 }) => {
@@ -194,6 +198,12 @@ export const BillingPOSView = ({
   const [newCustName, setNewCustName] = useState("");
   const [newCustPhone, setNewCustPhone] = useState("");
   const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustWhatsApp, setNewCustWhatsApp] = useState("");
+
+  // WhatsApp dispatch state (for receipt modal)
+  // 'idle' | 'sending' | 'success' | 'failed' | 'no_number'
+  const [whatsappDispatchState, setWhatsappDispatchState] = useState('idle');
+  const [whatsappDispatchId, setWhatsappDispatchId] = useState(null);
 
   // Selected Category filter
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
@@ -557,7 +567,7 @@ export const BillingPOSView = ({
     calculateCartTotals();
 
   // Handle checkout
-  const handleCheckoutSubmit = () => {
+  const handleCheckoutSubmit = async () => {
     if (cart.length === 0) {
       onAddNotification(
         "POS Checkout Failed",
@@ -611,9 +621,9 @@ export const BillingPOSView = ({
       );
     }
 
-    // Trigger state callbacks
-    onAddInvoice(newInvoice);
-    setCompletedInvoice(newInvoice);
+    // Trigger state callbacks — onAddInvoice now returns the saved invoice object (or null on error)
+    const savedInvoice = await onAddInvoice(newInvoice);
+    setCompletedInvoice(savedInvoice || newInvoice);
     setCart([]);
     setCouponCode("");
     setFlatDiscount(0);
@@ -629,6 +639,21 @@ export const BillingPOSView = ({
       `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`,
       "success",
     );
+
+    // ── Automatic WhatsApp Dispatch (fire-and-forget, never blocks checkout) ──
+    if (savedInvoice && savedInvoice._id && onRetryWhatsApp) {
+      setWhatsappDispatchState('sending');
+      setWhatsappDispatchId(savedInvoice._id);
+      try {
+        const ok = await onRetryWhatsApp(savedInvoice._id);
+        setWhatsappDispatchState(ok ? 'success' : 'failed');
+      } catch (err) {
+        console.error('[BillingPOSView] WhatsApp dispatch error:', err);
+        setWhatsappDispatchState('failed');
+      }
+    } else {
+      setWhatsappDispatchState('idle');
+    }
   };
 
   // Add new customer local submit
@@ -644,6 +669,7 @@ export const BillingPOSView = ({
       email:
         newCustEmail ||
         `${newCustName.toLowerCase().replace(/\s+/g, "")}@example.com`,
+      whatsappNumber: newCustWhatsApp || newCustPhone,
       outstandingBalance: 0,
       membership: "Bronze",
       walletBalance: 0,
@@ -664,6 +690,7 @@ export const BillingPOSView = ({
     setNewCustName("");
     setNewCustPhone("");
     setNewCustEmail("");
+    setNewCustWhatsApp("");
     setShowAddCustomerModal(false);
     onAddNotification(
       "CRM Engine",
@@ -1888,6 +1915,7 @@ export const BillingPOSView = ({
                   <th className="p-3">Items</th>
                   <th className="p-3">Total Cost</th>
                   <th className="p-3">Pay Mode</th>
+                  <th className="p-3">WhatsApp</th>
                   <th className="p-3">Receipt HTML</th>
                 </tr>
               </thead>
@@ -1920,6 +1948,27 @@ export const BillingPOSView = ({
                       >
                         {inv.paymentMethod}
                       </span>
+                    </td>
+                    <td className="p-3">
+                      {inv.whatsappStatus === 'Sent' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-600 flex items-center gap-1 w-fit">
+                          <CheckCircle className="w-3 h-3" /> Sent
+                        </span>
+                      )}
+                      {inv.whatsappStatus === 'Failed' && (
+                        <button
+                          onClick={() => onRetryWhatsApp && onRetryWhatsApp(inv._id || inv.id)}
+                          className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1 cursor-pointer w-fit"
+                          title={inv.failureReason || 'WhatsApp dispatch failed'}
+                        >
+                          <XCircle className="w-3 h-3" /> Retry
+                        </button>
+                      )}
+                      {!inv.whatsappStatus && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-400 w-fit">
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       <button
@@ -2908,6 +2957,25 @@ export const BillingPOSView = ({
                 />
               </div>
 
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">
+                  WhatsApp Number <span className="text-slate-400 font-normal">(optional, defaults to mobile)</span>
+                </label>
+                <input
+                  type="text"
+                  pattern="\d{10}"
+                  title="WhatsApp number must be exactly 10 digits"
+                  maxLength="10"
+                  placeholder="e.g. 9876543210"
+                  value={newCustWhatsApp}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setNewCustWhatsApp(val);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-emerald-500 outline-none font-semibold text-slate-800"
+                />
+              </div>
+
               <button
                 type="submit"
                 className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-md cursor-pointer"
@@ -3880,13 +3948,50 @@ export const BillingPOSView = ({
                 </button>
               </div>
 
-              <button
-                onClick={() => handleWhatsAppShare(completedInvoice)}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Dispatch Bill directly to WhatsApp</span>
-              </button>
+              {/* ── WhatsApp Dispatch Status ───────────────────────────── */}
+              <div className="mt-2 p-3 rounded-xl border text-xs" style={{
+                background: whatsappDispatchState === 'success' ? '#f0fdf4' : whatsappDispatchState === 'failed' ? '#fef2f2' : whatsappDispatchState === 'sending' ? '#eff6ff' : '#f8fafc',
+                borderColor: whatsappDispatchState === 'success' ? '#bbf7d0' : whatsappDispatchState === 'failed' ? '#fecaca' : whatsappDispatchState === 'sending' ? '#bfdbfe' : '#e2e8f0',
+              }}>
+                {whatsappDispatchState === 'sending' && (
+                  <div className="flex items-center gap-2 text-blue-700 font-semibold">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Dispatching invoice via WhatsApp...</span>
+                  </div>
+                )}
+                {whatsappDispatchState === 'success' && (
+                  <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Invoice sent to customer's WhatsApp successfully!</span>
+                  </div>
+                )}
+                {whatsappDispatchState === 'failed' && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-red-600 font-semibold">
+                      <XCircle className="w-4 h-4" />
+                      <span>WhatsApp dispatch failed. You can retry below.</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (whatsappDispatchId && onRetryWhatsApp) {
+                          setWhatsappDispatchState('sending');
+                          const ok = await onRetryWhatsApp(whatsappDispatchId);
+                          setWhatsappDispatchState(ok ? 'success' : 'failed');
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] cursor-pointer"
+                    >
+                      Retry WhatsApp
+                    </button>
+                  </div>
+                )}
+                {whatsappDispatchState === 'idle' && (
+                  <div className="flex items-center gap-2 text-slate-500 font-medium">
+                    <Smartphone className="w-4 h-4" />
+                    <span>WhatsApp auto-dispatch not triggered (no customer number or config).</span>
+                  </div>
+                )}
+              </div>
               
               
             </div>

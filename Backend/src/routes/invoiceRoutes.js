@@ -1,5 +1,5 @@
 const express = require('express');
-const { createInvoice, getInvoices, getInvoiceById } = require('../controllers/invoiceController');
+const { createInvoice, getInvoices, getInvoiceById, sendWhatsApp } = require('../controllers/invoiceController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -10,5 +10,9 @@ router.route('/')
 
 router.route('/:id')
   .get(protect, getInvoiceById);
+
+// WhatsApp dispatch/retry endpoint
+router.route('/:id/send-whatsapp')
+  .post(protect, sendWhatsApp);
 
 module.exports = router;

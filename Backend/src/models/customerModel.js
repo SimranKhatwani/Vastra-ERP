@@ -23,6 +23,10 @@ const customerSchema = new mongoose.Schema(
       required: [true, 'Please add a mobile number'],
       trim: true,
     },
+    whatsappNumber: {
+      type: String,
+      trim: true,
+    },
     birthday: {
       type: Date,
     },
