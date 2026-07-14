@@ -2,6 +2,7 @@ const Invoice = require('../models/invoiceModel');
 const Product = require('../models/productModel');
 const Customer = require('../models/customerModel');
 const mongoose = require('mongoose');
+const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
 const { processWhatsAppDispatch } = require('../services/invoiceService');
 
 // Helper: check if a string is a valid MongoDB ObjectId
@@ -78,6 +79,14 @@ exports.createInvoice = async (req, res) => {
       }
     }
 
+    emitToTenant(tenantId, 'invoice.created', {
+      invoice,
+      tenantId,
+      event: 'invoice.created'
+    });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
+    emitToRole('manager', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
+
     res.status(201).json({ success: true, data: invoice });
   } catch (error) {
     console.error('Invoice creation error:', error);
@@ -107,6 +116,12 @@ exports.getInvoiceById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
+    emitToTenant(tenantId, 'invoice.updated', {
+      invoice,
+      tenantId,
+      event: 'invoice.updated'
+    });
+
     res.status(200).json({ success: true, data: invoice });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -126,12 +141,24 @@ exports.sendWhatsApp = async (req, res) => {
     const result = await processWhatsAppDispatch(invoice._id.toString(), tenantId.toString());
 
     if (result.success) {
+      emitToTenant(tenantId, 'whatsapp.sent', {
+        invoice,
+        tenantId,
+        event: 'whatsapp.sent'
+      });
       return res.status(200).json({
         success: true,
         message: 'Invoice dispatched via WhatsApp successfully.',
         messageId: result.messageId,
       });
     }
+
+    emitToTenant(tenantId, 'whatsapp.failed', {
+      invoice,
+      tenantId,
+      event: 'whatsapp.failed',
+      reason: result.reason
+    });
 
     return res.status(200).json({
       success: false,

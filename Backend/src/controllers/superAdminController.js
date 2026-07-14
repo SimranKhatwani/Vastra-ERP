@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const Tenant = require('../models/tenantModel');
 const User = require('../models/userModel');
 const moment = require('moment-timezone');
+const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 const generateSuperAdminToken = () => {
   return jwt.sign({ role: 'SuperAdmin' }, process.env.JWT_SECRET, {
@@ -101,6 +102,12 @@ exports.registerBusiness = async (req, res) => {
       role: 'BusinessAdmin'
     });
 
+    emitToRole('admin', 'tenant.activity', {
+      tenant,
+      event: 'tenant.activity',
+      action: 'created'
+    });
+
     res.status(201).json({
       success: true,
       message: 'Payment verified and Business created successfully',
@@ -141,6 +148,12 @@ exports.toggleTenantStatus = async (req, res) => {
     tenant.status = tenant.status === 'Active' ? 'Suspended' : 'Active';
     await tenant.save();
 
+    emitToTenant(tenant._id, 'tenant.activity', {
+      tenant,
+      event: 'tenant.activity',
+      action: 'status_changed'
+    });
+
     res.status(200).json({ success: true, message: `Status updated to ${tenant.status}`, data: tenant });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -154,6 +167,12 @@ exports.updateTenantDetails = async (req, res) => {
 
     const tenant = await Tenant.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
     if (!tenant) return res.status(404).json({ success: false, message: "Tenant not found" });
+
+    emitToTenant(tenant._id, 'tenant.activity', {
+      tenant,
+      event: 'tenant.activity',
+      action: 'updated'
+    });
 
     res.status(200).json({ success: true, message: "Tenant updated successfully", data: tenant });
   } catch (error) {

@@ -2,6 +2,7 @@ const Employee = require('../models/employeeModel');
 const User = require('../models/userModel');
 const { generateSecurePassword } = require('../utils/passwordGenerator');
 const { encryptPassword, decryptPassword } = require('../utils/encryption');
+const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
 
 exports.createEmployee = async (req, res) => {
   try {
@@ -39,6 +40,13 @@ exports.createEmployee = async (req, res) => {
       encryptedPassword: encryptedPassword,
       isActive: true
     });
+
+    emitToTenant(tenantId, 'employee.created', {
+      employee,
+      tenantId,
+      event: 'employee.created'
+    });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
 
     res.status(201).json({ success: true, data: employee, generatedPassword: plainPassword });
   } catch (error) {
@@ -86,6 +94,12 @@ exports.updateEmployee = async (req, res) => {
       runValidators: true,
     });
 
+    emitToTenant(tenantId, 'employee.updated', {
+      employee,
+      tenantId,
+      event: 'employee.updated'
+    });
+
     res.status(200).json({ success: true, data: employee });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -121,6 +135,12 @@ exports.disburseCommission = async (req, res) => {
 
     employee.commissionEarned = Math.max(0, employee.commissionEarned - amount);
     await employee.save();
+
+    emitToTenant(tenantId, 'commission.updated', {
+      employee,
+      tenantId,
+      event: 'commission.updated'
+    });
 
     res.status(200).json({ success: true, data: employee });
   } catch (error) {

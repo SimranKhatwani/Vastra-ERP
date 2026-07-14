@@ -1,6 +1,7 @@
 const PurchaseOrder = require('../models/purchaseOrderModel');
 const Product = require('../models/productModel');
 const Supplier = require('../models/supplierModel');
+const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 exports.createPurchaseOrder = async (req, res) => {
   try {
@@ -37,6 +38,13 @@ exports.createPurchaseOrder = async (req, res) => {
         await supplier.save();
       }
     }
+
+    emitToTenant(tenantId, 'purchase.created', {
+      purchaseOrder: po,
+      tenantId,
+      event: 'purchase.created'
+    });
+    emitToRole('manager', 'purchase.created', { purchaseOrder: po, tenantId, event: 'purchase.created' });
 
     res.status(201).json({ success: true, data: po });
   } catch (error) {
@@ -88,6 +96,13 @@ exports.updatePurchaseOrder = async (req, res) => {
         }
       }
     }
+
+    emitToTenant(tenantId, 'purchase.approved', {
+      purchaseOrder: po,
+      tenantId,
+      event: 'purchase.approved'
+    });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
 
     res.status(200).json({ success: true, data: po });
   } catch (error) {

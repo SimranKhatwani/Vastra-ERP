@@ -1,4 +1,5 @@
 const Supplier = require('../models/supplierModel');
+const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 exports.createSupplier = async (req, res) => {
   try {
@@ -12,6 +13,12 @@ exports.createSupplier = async (req, res) => {
     const supplier = await Supplier.create({
       ...req.body,
       tenantId
+    });
+
+    emitToTenant(tenantId, 'supplier.updated', {
+      supplier,
+      tenantId,
+      event: 'supplier.updated'
     });
 
     res.status(201).json({ success: true, data: supplier });
@@ -43,6 +50,12 @@ exports.updateSupplier = async (req, res) => {
     supplier = await Supplier.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
+    });
+
+    emitToTenant(tenantId, 'supplier.updated', {
+      supplier,
+      tenantId,
+      event: 'supplier.updated'
     });
 
     res.status(200).json({ success: true, data: supplier });
@@ -80,6 +93,12 @@ exports.settleBalance = async (req, res) => {
 
     supplier.outstandingBalance = Math.max(0, supplier.outstandingBalance - amount);
     await supplier.save();
+
+    emitToTenant(tenantId, 'supplier.updated', {
+      supplier,
+      tenantId,
+      event: 'supplier.updated'
+    });
 
     res.status(200).json({ success: true, data: supplier });
   } catch (error) {

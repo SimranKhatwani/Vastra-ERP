@@ -1,4 +1,5 @@
 const Product = require('../models/productModel');
+const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 exports.createProduct = async (req, res) => {
   try {
@@ -13,6 +14,13 @@ exports.createProduct = async (req, res) => {
       ...req.body,
       tenantId
     });
+
+    emitToTenant(tenantId, 'inventory.updated', {
+      product,
+      tenantId,
+      event: 'inventory.updated'
+    });
+    emitToRole('manager', 'inventory.low', { product, tenantId, event: 'inventory.low' });
 
     res.status(201).json({ success: true, data: product });
   } catch (error) {
@@ -46,6 +54,12 @@ exports.updateProduct = async (req, res) => {
     product = await Product.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
+    });
+
+    emitToTenant(tenantId, 'inventory.updated', {
+      product,
+      tenantId,
+      event: 'inventory.updated'
     });
 
     res.status(200).json({ success: true, data: product });
@@ -96,6 +110,15 @@ exports.adjustStock = async (req, res) => {
     }
     
     await product.save();
+
+    emitToTenant(tenantId, 'inventory.updated', {
+      product,
+      tenantId,
+      event: 'inventory.updated'
+    });
+    if (product.stock <= product.minStockAlert) {
+      emitToTenant(tenantId, 'inventory.low', { product, tenantId, event: 'inventory.low' });
+    }
 
     res.status(200).json({ success: true, data: product });
   } catch (error) {

@@ -1,4 +1,5 @@
 const Staff = require('../models/staffModel');
+const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 // @desc    Get all Admin staff
 // @route   GET /api/staff
@@ -125,6 +126,13 @@ exports.updateStaffPayroll = async (req, res) => {
     if (monthlyTarget !== undefined) staff.monthlyTarget = monthlyTarget;
 
     await staff.save();
+
+    emitToTenant(req.user.tenantId, 'payroll.updated', {
+      staff,
+      tenantId: req.user.tenantId,
+      event: 'payroll.updated'
+    });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId: req.user.tenantId, event: 'dashboard.stats.updated' });
 
     res.status(200).json({ success: true, data: staff });
   } catch (error) {

@@ -46,6 +46,7 @@ import { UserLogin } from "./components/UserLogin";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
+import { useSocket } from "./contexts/SocketContext";
 
 // Import mock data generators
 import {
@@ -63,6 +64,8 @@ import {
 } from "./data/demoData";
 
 export default function App() {
+  const { socket, connected } = useSocket();
+
   // Master States
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -112,6 +115,50 @@ export default function App() {
     return !!localStorage.getItem("token");
   });
   
+  React.useEffect(() => {
+    if (!socket) return;
+
+    const handleRealtimeEvent = (payload) => {
+      const title = payload?.event || 'Realtime update';
+      const message = payload?.notification?.message || payload?.product?.name || payload?.invoice?.invoiceNumber || 'New update received';
+      addToastNotification(title, message, 'info');
+
+      if (payload?.notification) {
+        setNotifications((prev) => [{
+          id: payload.notification._id || payload.notification.id,
+          timestamp: 'Just now',
+          title: payload.notification.title || 'Notification',
+          message: payload.notification.message,
+          type: payload.notification.type || 'info',
+          read: false,
+        }, ...prev]);
+      }
+
+      if (payload?.event === 'inventory.updated' && payload.product) {
+        setProducts((prev) => prev.map((p) => (p.id === payload.product._id || p.id === payload.product.id ? { ...p, ...payload.product, id: payload.product._id || payload.product.id } : p)));
+      }
+
+      if (payload?.event === 'invoice.created' && payload.invoice) {
+        setInvoices((prev) => [{ ...payload.invoice, id: payload.invoice._id }, ...prev]);
+      }
+
+      if (payload?.event === 'purchase.created' || payload?.event === 'purchase.approved') {
+        setPurchaseOrders((prev) => [{ ...payload.purchaseOrder, id: payload.purchaseOrder._id }, ...prev]);
+      }
+
+      if (payload?.event === 'dashboard.stats.updated') {
+        // no-op, dashboard will re-render from state changes
+      }
+    };
+
+    const events = ['notification.created','notification.updated','inventory.updated','inventory.low','invoice.created','invoice.updated','purchase.created','purchase.approved','employee.created','employee.updated','commission.updated','supplier.updated','payroll.updated','whatsapp.sent','whatsapp.failed','tenant.activity','dashboard.stats.updated'];
+    events.forEach((eventName) => socket.on(eventName, handleRealtimeEvent));
+
+    return () => {
+      events.forEach((eventName) => socket.off(eventName, handleRealtimeEvent));
+    };
+  }, [socket]);
+
   React.useEffect(() => {
     const fetchProducts = async () => {
       if (isLoggedIn) {

@@ -1,4 +1,5 @@
 const Notification = require('../models/notificationModel');
+const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
 
 exports.createNotification = async (req, res) => {
   try {
@@ -8,6 +9,13 @@ exports.createNotification = async (req, res) => {
       ...req.body,
       tenantId
     });
+
+    emitToTenant(tenantId, 'notification.created', {
+      notification,
+      tenantId,
+      event: 'notification.created'
+    });
+    emitToRole('admin', 'notification.created', { notification, tenantId, event: 'notification.created' });
 
     res.status(201).json({ success: true, data: notification });
   } catch (error) {
@@ -37,6 +45,12 @@ exports.markAsRead = async (req, res) => {
 
     notification.read = true;
     await notification.save();
+
+    emitToTenant(tenantId, 'notification.updated', {
+      notification,
+      tenantId,
+      event: 'notification.updated'
+    });
 
     res.status(200).json({ success: true, data: notification });
   } catch (error) {

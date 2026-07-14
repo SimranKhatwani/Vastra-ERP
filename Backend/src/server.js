@@ -1,12 +1,16 @@
 require('dotenv').config();
+const http = require('http');
 const app = require('./app');
 const connectDB = require('./config/db');
+const { initializeSocket } = require('./socket/socketServer');
 
 // Connect to database first, then start server
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
+  const server = http.createServer(app);
+  initializeSocket(server);
   
-  app.listen(PORT, async () => {
+  server.listen(PORT, async () => {
     console.log(`backend running on localhost link: http://localhost:${PORT}`);
     
     // Auto-seed 50 products if none exist
