@@ -93,81 +93,8 @@ export const CustomersView = ({
 
       {/* Main CRM Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: CRM Controls & Settle Outstanding */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 lg:col-span-4 space-y-4 text-xs">
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-            Settle Credit Outstanding
-          </h4>
-          <form onSubmit={handleSettleCustomerSubmit} className="space-y-4">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">
-                Select Customer Debt Account
-              </label>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => {
-                  setSelectedCustomerId(e.target.value);
-                  const matched = customers.find(
-                    (c) => c.id === e.target.value,
-                  );
-                  if (matched) setSettleAmount(matched.outstandingBalance);
-                }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} (Outstanding: ₹{c.outstandingBalance})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {activeCustomer && (
-              <div className="bg-slate-50 p-4 rounded-xl space-y-1.5 border border-slate-100 font-mono">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Membership Tier:</span>
-                  <span className="text-indigo-600 font-bold uppercase">
-                    {activeCustomer.membership}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Total Spent:</span>
-                  <span>₹{activeCustomer.totalSpent.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Outstanding Debt:</span>
-                  <span className="text-red-500 font-bold">
-                    ₹{activeCustomer.outstandingBalance.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">
-                Payment Amount Settle (₹)
-              </label>
-              <input
-                type="number"
-                value={settleAmount || ""}
-                onChange={(e) =>
-                  setSettleAmount(Math.max(0, Number(e.target.value)))
-                }
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-md"
-            >
-              Process Debt Settlement
-            </button>
-          </form>
-        </div>
-
-        {/* Right Column: CRM Ledger Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:col-span-8">
+        {/* Main CRM Ledger Table (Full Width) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:col-span-12">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-semibold">
             <div>
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
