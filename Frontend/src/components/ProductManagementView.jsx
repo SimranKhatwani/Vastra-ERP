@@ -56,59 +56,36 @@ export const ProductManagementView = ({
   const [formStock, setFormStock] = useState(50);
   const [formMinStock, setFormMinStock] = useState(10);
 
-  // Mock Categories and Brands
-  const mockCategoriesList = [
-    {
-      id: "cat-1",
-      name: "Casual Shirts",
-      code: "CSH",
-      description: "Men & Women everyday shirts",
-      totalProducts: 34,
-    },
-    {
-      id: "cat-2",
-      name: "Formal Shirts",
-      code: "FSH",
-      description: "Premium business wear threads",
-      totalProducts: 28,
-    },
-    {
-      id: "cat-3",
-      name: "Trousers",
-      code: "TRS",
-      description: "Tailored chino trousers",
-      totalProducts: 24,
-    },
-    {
-      id: "cat-4",
-      name: "Denim Jeans",
-      code: "DNM",
-      description: "Standard indigo denim cuts",
-      totalProducts: 30,
-    },
-    {
-      id: "cat-5",
-      name: "Kurtas & Kurtis",
-      code: "KRT",
-      description: "Designer ethnic kurtis & tunics",
-      totalProducts: 45,
-    },
-    {
-      id: "cat-6",
-      name: "Sarees",
-      code: "SAR",
-      description: "Traditional pure silk banarasi sarees",
-      totalProducts: 22,
-    },
-  ];
+  // Calculate dynamic categories from products
+  const dynamicCategoriesList = React.useMemo(() => {
+    const counts = {};
+    products.forEach(p => {
+      const cat = p.category || "Uncategorized";
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    return Object.keys(counts).map((cat, idx) => ({
+      id: `cat-${idx}`,
+      name: cat,
+      code: cat.substring(0, 3).toUpperCase() + "-00" + (idx+1),
+      totalProducts: counts[cat],
+      description: `All garments under ${cat}`
+    }));
+  }, [products]);
 
-  const mockBrandsList = [
-    { id: "b-1", name: "Raymond", code: "RAY", totalProducts: 42 },
-    { id: "b-2", name: "Allen Solly", code: "ALS", totalProducts: 35 },
-    { id: "b-3", name: "Zara", code: "ZAR", totalProducts: 28 },
-    { id: "b-4", name: "Levis", code: "LEV", totalProducts: 30 },
-    { id: "b-5", name: "Biba", code: "BIB", totalProducts: 31 },
-  ];
+  // Calculate dynamic brands from products
+  const dynamicBrandsList = React.useMemo(() => {
+    const counts = {};
+    products.forEach(p => {
+      const brand = p.brand || "Generic";
+      counts[brand] = (counts[brand] || 0) + 1;
+    });
+    return Object.keys(counts).map((brand, idx) => ({
+      id: `b-${idx}`,
+      name: brand,
+      code: brand.substring(0, 3).toUpperCase(),
+      totalProducts: counts[brand]
+    }));
+  }, [products]);
 
   // Filters application
   const filteredProductsList = products.filter((p) => {
@@ -648,7 +625,7 @@ export const ProductManagementView = ({
       {/* CATEGORIES GRID SUBTAB */}
       {activeSubTab === "categories" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockCategoriesList.map((cat) => (
+          {dynamicCategoriesList.map((cat) => (
             <div
               key={cat.id}
               className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs space-y-3"
@@ -671,7 +648,7 @@ export const ProductManagementView = ({
       {/* BRANDS SUBTAB */}
       {activeSubTab === "brands" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {mockBrandsList.map((b) => (
+          {dynamicBrandsList.map((b) => (
             <div
               key={b.id}
               className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs text-center space-y-3"
@@ -740,12 +717,9 @@ export const ProductManagementView = ({
                     placeholder="Select or type custom..."
                   />
                   <datalist id="categories-list">
-                    <option value="Casual Shirts" />
-                    <option value="Formal Shirts" />
-                    <option value="Trousers" />
-                    <option value="Denim Jeans" />
-                    <option value="Kurtas & Kurtis" />
-                    <option value="Sarees" />
+                    {dynamicCategoriesList.map(cat => (
+                      <option key={cat.id} value={cat.name} />
+                    ))}
                   </datalist>
                 </div>
 
@@ -762,11 +736,9 @@ export const ProductManagementView = ({
                     placeholder="Select or type custom..."
                   />
                   <datalist id="brands-list">
-                    <option value="Raymond" />
-                    <option value="Allen Solly" />
-                    <option value="Zara" />
-                    <option value="Levis" />
-                    <option value="Biba" />
+                    {dynamicBrandsList.map(brand => (
+                      <option key={brand.id} value={brand.name} />
+                    ))}
                   </datalist>
                 </div>
 
