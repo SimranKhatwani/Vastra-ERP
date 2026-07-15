@@ -13,6 +13,7 @@ export const ReportsView = ({
   products,
   employees = [],
   customers = [],
+  setActiveModule,
   onAddNotification,
 }) => {
   const [reportType, setReportType] = useState("sales");
@@ -122,15 +123,24 @@ export const ReportsView = ({
     <div className="space-y-6 animate-fade-in pb-12" id="reports-engine-root">
       {/* Global Project Overview Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-indigo-600 text-white p-5 rounded-2xl shadow-sm space-y-1">
+        <div 
+          onClick={() => setActiveModule("products")}
+          className="bg-indigo-600 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+        >
           <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Total Project Products</span>
           <p className="text-3xl font-bold font-mono">{products?.length || 0}</p>
         </div>
-        <div className="bg-emerald-600 text-white p-5 rounded-2xl shadow-sm space-y-1">
+        <div 
+          onClick={() => setActiveModule("employees")}
+          className="bg-emerald-600 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+        >
           <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-200">Total Registered Staff</span>
           <p className="text-3xl font-bold font-mono">{employees?.length || 0}</p>
         </div>
-        <div className="bg-slate-800 text-white p-5 rounded-2xl shadow-sm space-y-1">
+        <div 
+          onClick={() => setActiveModule("customers")}
+          className="bg-slate-800 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+        >
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Retail Customers</span>
           <p className="text-3xl font-bold font-mono">{customers?.length || 0}</p>
         </div>

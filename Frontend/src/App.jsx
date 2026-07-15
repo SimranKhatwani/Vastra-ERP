@@ -1251,6 +1251,7 @@ export default function App() {
               products={products}
               employees={employees}
               customers={customers}
+              setActiveModule={setActiveModule}
               onAddNotification={addToastNotification}
             />
           )}
