@@ -225,7 +225,14 @@ export default function App() {
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
   // Navigation
-  const [activeModule, setActiveModule] = useState("dashboard");
+  const [activeModule, setActiveModule] = useState(() => {
+    return localStorage.getItem("vastraActiveModule") || "dashboard";
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("vastraActiveModule", activeModule);
+  }, [activeModule]);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] =
     useState(false);
