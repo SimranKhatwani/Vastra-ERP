@@ -731,35 +731,43 @@ export const ProductManagementView = ({
                   <label className="block text-slate-500 mb-1 font-semibold">
                     Category Group
                   </label>
-                  <select
+                  <input
+                    type="text"
+                    list="categories-list"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
-                  >
-                    <option value="Casual Shirts">Casual Shirts</option>
-                    <option value="Formal Shirts">Formal Shirts</option>
-                    <option value="Trousers">Trousers</option>
-                    <option value="Denim Jeans">Denim Jeans</option>
-                    <option value="Kurtas & Kurtis">Kurtas & Kurtis</option>
-                    <option value="Sarees">Sarees</option>
-                  </select>
+                    placeholder="Select or type custom..."
+                  />
+                  <datalist id="categories-list">
+                    <option value="Casual Shirts" />
+                    <option value="Formal Shirts" />
+                    <option value="Trousers" />
+                    <option value="Denim Jeans" />
+                    <option value="Kurtas & Kurtis" />
+                    <option value="Sarees" />
+                  </datalist>
                 </div>
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
                     Brand Label
                   </label>
-                  <select
+                  <input
+                    type="text"
+                    list="brands-list"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
-                  >
-                    <option value="Raymond">Raymond</option>
-                    <option value="Allen Solly">Allen Solly</option>
-                    <option value="Zara">Zara</option>
-                    <option value="Levis">Levis</option>
-                    <option value="Biba">Biba</option>
-                  </select>
+                    placeholder="Select or type custom..."
+                  />
+                  <datalist id="brands-list">
+                    <option value="Raymond" />
+                    <option value="Allen Solly" />
+                    <option value="Zara" />
+                    <option value="Levis" />
+                    <option value="Biba" />
+                  </datalist>
                 </div>
 
                 <div>
