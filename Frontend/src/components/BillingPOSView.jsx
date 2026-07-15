@@ -1137,7 +1137,7 @@ export const BillingPOSView = ({
       {activePOSMode === "billing" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT COLUMN: Cart, customer, checkout (Lg: col-span-5) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 lg:col-span-5 flex flex-col h-[calc(100vh-140px)] gap-5">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 lg:col-span-5 flex flex-col h-[calc(100vh-140px)] overflow-y-auto custom-scrollbar gap-5">
             {/* Customer Lookup Header */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
