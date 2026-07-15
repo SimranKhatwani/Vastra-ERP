@@ -1249,6 +1249,8 @@ export default function App() {
               invoices={invoices}
               purchaseOrders={purchaseOrders}
               products={products}
+              employees={employees}
+              customers={customers}
               onAddNotification={addToastNotification}
             />
           )}
