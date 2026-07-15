@@ -83,7 +83,7 @@ export const ReportsView = ({
     (sum, p) => sum + p.purchasePrice * p.stock,
     0,
   );
-
+  const lowStockItems = products.filter(p => p.stock <= 10);
 
   // --- EXPORT SIMULATIONS ---
   const handleExportPDFSim = () => {
@@ -122,7 +122,7 @@ export const ReportsView = ({
   return (
     <div className="space-y-6 animate-fade-in pb-12" id="reports-engine-root">
       {/* Global Project Overview Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div 
           onClick={() => setActiveModule("products")}
           className="bg-indigo-600 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
@@ -143,6 +143,13 @@ export const ReportsView = ({
         >
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Retail Customers</span>
           <p className="text-3xl font-bold font-mono">{customers?.length || 0}</p>
+        </div>
+        <div 
+          onClick={() => setReportType("stock")}
+          className="bg-rose-500 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-widest text-rose-200">Low Stock Alerts</span>
+          <p className="text-3xl font-bold font-mono">{lowStockItems.length}</p>
         </div>
       </div>
 
@@ -424,62 +431,101 @@ export const ReportsView = ({
       )}
 
       {reportType === "stock" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-            <div>
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                Live Warehouse Asset Valuation
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                Calculated inventory on floor:{" "}
-                {totalItemsCount.toLocaleString()} items
-              </p>
+        <div className="space-y-6">
+          {lowStockItems.length > 0 && (
+            <div className="bg-rose-50 rounded-2xl border border-rose-100 shadow-sm p-5 space-y-4">
+              <div className="flex justify-between items-center border-b border-rose-200 pb-3">
+                <div>
+                  <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wide">
+                    Critical Low Stock Alerts (≤ 10 Items)
+                  </h4>
+                  <p className="text-[11px] text-rose-500">
+                    These items require immediate re-ordering.
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto text-xs">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-rose-400 font-bold uppercase border-b border-rose-200 tracking-wider">
+                      <th className="p-3">Garment Style Description</th>
+                      <th className="p-3">SKU style</th>
+                      <th className="p-3 text-center font-mono">Stock Left</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rose-100 text-rose-700 font-medium">
+                    {lowStockItems.slice(0, 10).map((p, idx) => (
+                      <tr key={idx} className="hover:bg-rose-100/50">
+                        <td className="p-3 font-bold">{p.name}</td>
+                        <td className="p-3 font-mono">{p.sku}</td>
+                        <td className="p-3 text-center font-bold font-mono text-rose-600 bg-rose-100/50 rounded">
+                          {p.stock}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                Active Book Cost Assets
-              </span>
-              <span className="text-lg font-mono font-bold text-indigo-600">
-                ₹{cogsInventory.toLocaleString()}
-              </span>
-            </div>
-          </div>
+          )}
 
-          <div className="overflow-x-auto text-xs">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                  <th className="p-3">Garment Style Description</th>
-                  <th className="p-3">SKU style</th>
-                  <th className="p-3 text-center font-mono">Stock Floor</th>
-                  <th className="p-3 text-right">Unit Buy Cost</th>
-                  <th className="p-3 text-right">Unit MRP</th>
-                  <th className="p-3 text-right">Asset Cost Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                {products.slice(0, 10).map((p, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-semibold text-slate-800">
-                      {p.name}
-                    </td>
-                    <td className="p-3 font-mono">{p.sku}</td>
-                    <td className="p-3 text-center font-bold font-mono text-slate-900">
-                      {p.stock}
-                    </td>
-                    <td className="p-3 text-right font-mono">
-                      ₹{p.purchasePrice}
-                    </td>
-                    <td className="p-3 text-right font-mono text-slate-400">
-                      ₹{p.mrp}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-indigo-600">
-                      ₹{(p.purchasePrice * p.stock).toLocaleString()}
-                    </td>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Live Warehouse Asset Valuation
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Calculated inventory on floor:{" "}
+                  {totalItemsCount.toLocaleString()} items
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                  Active Book Cost Assets
+                </span>
+                <span className="text-lg font-mono font-bold text-indigo-600">
+                  ₹{cogsInventory.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto text-xs">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
+                    <th className="p-3">Garment Style Description</th>
+                    <th className="p-3">SKU style</th>
+                    <th className="p-3 text-center font-mono">Stock Floor</th>
+                    <th className="p-3 text-right">Unit Buy Cost</th>
+                    <th className="p-3 text-right">Unit MRP</th>
+                    <th className="p-3 text-right">Asset Cost Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+                  {products.slice(0, 15).map((p, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50">
+                      <td className="p-3 font-semibold text-slate-800">
+                        {p.name}
+                      </td>
+                      <td className="p-3 font-mono">{p.sku}</td>
+                      <td className="p-3 text-center font-bold font-mono text-slate-900">
+                        {p.stock}
+                      </td>
+                      <td className="p-3 text-right font-mono">
+                        ₹{p.purchasePrice}
+                      </td>
+                      <td className="p-3 text-right font-mono text-slate-400">
+                        ₹{p.mrp}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-indigo-600">
+                        ₹{(p.purchasePrice * p.stock).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
