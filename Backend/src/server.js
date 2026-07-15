@@ -50,7 +50,13 @@ connectDB().then(() => {
                   mrp: Math.floor(Math.random() * 2000) + 2000,
                   stock: Math.floor(Math.random() * 50) + 10,
                   gstPercent: 12,
-                  status: 'In Stock'
+                  status: 'In Stock',
+                  variants: [{
+                    sku: `SKU-${10000 + i}-V1`,
+                    color: color,
+                    size: size,
+                    stockQuantity: Math.floor(Math.random() * 50) + 10
+                  }]
               });
           }
           await Product.insertMany(products);
