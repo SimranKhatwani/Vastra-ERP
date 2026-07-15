@@ -14,8 +14,14 @@ export const ReportsView = ({
   onAddNotification,
 }) => {
   const [reportType, setReportType] = useState("sales");
-  const [startDate, setStartDate] = useState("2026-06-01");
-  const [endDate, setEndDate] = useState("2026-06-28");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
 
   // --- SALES DATA AGGREGATION ---
   const selectedInvoices = invoices.filter(
