@@ -1,5 +1,11 @@
 import React, { useState } from "react";
 import { FileSpreadsheet, FileDown, Filter } from "lucide-react";
+import {
+  AreaChart, Area,
+  BarChart, Bar,
+  PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 export const ReportsView = ({
   invoices,
@@ -11,39 +17,79 @@ export const ReportsView = ({
   const [startDate, setStartDate] = useState("2026-06-01");
   const [endDate, setEndDate] = useState("2026-06-28");
 
-  // Sales aggregates
+  // --- SALES DATA AGGREGATION ---
   const selectedInvoices = invoices.filter(
     (inv) => inv.date >= startDate && inv.date <= endDate,
   );
-  const totalSales = selectedInvoices.reduce(
-    (sum, inv) => sum + inv.grandTotal,
-    0,
-  );
+  
+  const totalSales = selectedInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0);
+  const totalGST = selectedInvoices.reduce((sum, inv) => sum + inv.gstTotal, 0);
 
-  // Procurement aggregates
+  // 1. Timeline Data (Revenue by Date)
+  const salesByDate = {};
+  selectedInvoices.forEach(inv => {
+    if (!salesByDate[inv.date]) salesByDate[inv.date] = 0;
+    salesByDate[inv.date] += inv.grandTotal;
+  });
+  const timelineData = Object.keys(salesByDate).map(date => ({
+    date,
+    Revenue: salesByDate[date]
+  })).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // 2. Payment Methods Data
+  const paymentMethods = {};
+  selectedInvoices.forEach(inv => {
+    const pm = inv.paymentMethod || 'Unknown';
+    if (!paymentMethods[pm]) paymentMethods[pm] = 0;
+    paymentMethods[pm] += inv.grandTotal;
+  });
+  const paymentData = Object.keys(paymentMethods).map(name => ({
+    name,
+    value: paymentMethods[name]
+  }));
+  const PIE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+  // 3. GST & Base Value Data
+  const gstByDate = {};
+  selectedInvoices.forEach(inv => {
+    if (!gstByDate[inv.date]) {
+       gstByDate[inv.date] = { date: inv.date, BaseValue: 0, GSTCollected: 0 };
+    }
+    gstByDate[inv.date].BaseValue += inv.subTotal;
+    gstByDate[inv.date].GSTCollected += inv.gstTotal;
+  });
+  const gstData = Object.values(gstByDate).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+
+  // --- PROCUREMENT DATA AGGREGATION ---
   const selectedPOs = purchaseOrders.filter(
     (po) => po.date >= startDate && po.date <= endDate,
   );
   const totalPOSpent = selectedPOs.reduce((sum, po) => sum + po.grandTotal, 0);
 
-  // Stock aggregates
+
+  // --- STOCK DATA AGGREGATION ---
   const totalItemsCount = products.reduce((sum, p) => sum + p.stock, 0);
   const cogsInventory = products.reduce(
     (sum, p) => sum + p.purchasePrice * p.stock,
     0,
   );
 
+
+  // --- EXPORT SIMULATIONS ---
   const handleExportPDFSim = () => {
     onAddNotification(
       "PDF Printer Hub",
       "Preparing vector print engine layouts...",
       "info",
     );
-    onAddNotification(
-      "PDF Download Complete",
-      `Successfully downloaded vastra_erp_${reportType}_audit_${endDate}.pdf`,
-      "success",
-    );
+    setTimeout(() => {
+      onAddNotification(
+        "PDF Download Complete",
+        `Successfully downloaded vastra_erp_${reportType}_audit_${endDate}.pdf`,
+        "success",
+      );
+    }, 1500);
   };
 
   const handleExportExcelSim = () => {
@@ -52,12 +98,17 @@ export const ReportsView = ({
       "Formulating cell metadata & totals formulas...",
       "info",
     );
-    onAddNotification(
-      "Excel Exported",
-      `Downloaded vastra_erp_${reportType}_ledger_${endDate}.xlsx`,
-      "success",
-    );
+    setTimeout(() => {
+      onAddNotification(
+        "Excel Exported",
+        `Downloaded vastra_erp_${reportType}_ledger_${endDate}.xlsx`,
+        "success",
+      );
+    }, 1500);
   };
+
+  // Custom Tooltip formatter for currency
+  const formatCurrency = (value) => `₹${value.toLocaleString()}`;
 
   return (
     <div className="space-y-6 animate-fade-in pb-12" id="reports-engine-root">
@@ -121,67 +172,153 @@ export const ReportsView = ({
         </div>
       </div>
 
-      {/* KPI Stats specific to active report */}
+      {/* KPI Stats & CHARTS specific to active report */}
       {reportType === "sales" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-            <div>
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                Queried Sales Ledger Sheets
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                Total processed turnback: {selectedInvoices.length} billing rows
-              </p>
+        <div className="space-y-6">
+          
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Cumulative Yield (Net)</span>
+              <span className="text-2xl font-mono font-bold text-indigo-600">₹{totalSales.toLocaleString()}</span>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                Cumulative Yield (Net)
-              </span>
-              <span className="text-lg font-mono font-bold text-indigo-600">
-                ₹{totalSales.toLocaleString()}
-              </span>
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">GST Tax Collected</span>
+              <span className="text-2xl font-mono font-bold text-emerald-600">₹{totalGST.toLocaleString()}</span>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Processed Invoices</span>
+              <span className="text-2xl font-mono font-bold text-slate-700">{selectedInvoices.length} Bills</span>
             </div>
           </div>
 
-          <div className="overflow-x-auto text-xs">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                  <th className="p-3">Invoice No</th>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Client</th>
-                  <th className="p-3 text-right">Items Value</th>
-                  <th className="p-3 text-right">Discount</th>
-                  <th className="p-3 text-right">GST Taxes</th>
-                  <th className="p-3 text-right">Total Billing</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                {selectedInvoices.slice(0, 10).map((inv, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-indigo-600">
-                      {inv.invoiceNo}
-                    </td>
-                    <td className="p-3">{inv.date}</td>
-                    <td className="p-3 font-semibold text-slate-800">
-                      {inv.customerName}
-                    </td>
-                    <td className="p-3 text-right font-mono">
-                      ₹{inv.subTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-emerald-600">
-                      -₹{inv.discountTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-slate-400">
-                      ₹{inv.gstTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-800">
-                      ₹{inv.grandTotal.toLocaleString()}
-                    </td>
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Sales History Timeline */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">Revenue History</h4>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={timelineData}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize: 10}} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
+                    <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                    <Area type="monotone" dataKey="Revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Payment Methods */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">Payment Methods Breakdown</h4>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {paymentData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                    <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* GST vs Base Tax Analysis */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">GST Tax & Base Value Analysis</h4>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={gstData} margin={{ top: 10, right: 0, left: 20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize: 10}} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
+                    <Tooltip formatter={(value) => formatCurrency(value)} cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                    <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} />
+                    <Bar dataKey="BaseValue" stackId="a" fill="#64748b" radius={[0, 0, 4, 4]} />
+                    <Bar dataKey="GSTCollected" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Raw Ledger Data Table */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+              Detailed Invoice Ledger
+            </h4>
+            <div className="overflow-x-auto text-xs">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
+                    <th className="p-3">Invoice No</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Client</th>
+                    <th className="p-3">Pay Route</th>
+                    <th className="p-3 text-right">Items Value</th>
+                    <th className="p-3 text-right">Discount</th>
+                    <th className="p-3 text-right">GST Taxes</th>
+                    <th className="p-3 text-right">Total Billing</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+                  {selectedInvoices.slice(0, 15).map((inv, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50">
+                      <td className="p-3 font-mono font-bold text-indigo-600">
+                        {inv.invoiceNo}
+                      </td>
+                      <td className="p-3">{inv.date}</td>
+                      <td className="p-3 font-semibold text-slate-800">
+                        {inv.customerName}
+                      </td>
+                      <td className="p-3 font-mono text-[10px] uppercase">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                          {inv.paymentMethod || 'Unknown'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-mono">
+                        ₹{inv.subTotal.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right font-mono text-emerald-600">
+                        -₹{inv.discountTotal.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right font-mono text-slate-400">
+                        ₹{inv.gstTotal.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-800">
+                        ₹{inv.grandTotal.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                  {selectedInvoices.length === 0 && (
+                     <tr>
+                       <td colSpan="8" className="p-6 text-center text-slate-400">No invoices found for this date range.</td>
+                     </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
