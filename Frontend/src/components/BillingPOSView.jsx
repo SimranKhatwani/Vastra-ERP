@@ -1369,7 +1369,7 @@ export const BillingPOSView = ({
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
                 Terminal Payment Route
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
                 {[
                   { id: "Cash", label: "Cash", icon: Coins },
                   { id: "UPI", label: "UPI QR", icon: Smartphone },
@@ -1385,8 +1385,8 @@ export const BillingPOSView = ({
                       onClick={() => setPaymentMethod(p.id)}
                       className={`py-2 px-1 flex flex-col items-center justify-center border rounded-xl gap-1 transition-all cursor-pointer ${paymentMethod === p.id ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-[10px] font-semibold">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="text-[10px] font-semibold text-center leading-tight break-words">
                         {p.label}
                       </span>
                     </button>
@@ -1454,14 +1454,14 @@ export const BillingPOSView = ({
             )}
 
             {/* Salesperson Field Column */}
-            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3">
-              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3 overflow-hidden">
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block truncate">
                 Salesperson / Staff
               </label>
               <select
                 value={salespersonId}
                 onChange={(e) => setSalespersonId(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
+                className="w-full max-w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 text-ellipsis overflow-hidden whitespace-nowrap"
               >
                 <option value="">Admin (Self) / No Salesperson</option>
                 {(staffList || [])
