@@ -344,7 +344,7 @@ export default function App() {
     );
   };
 
-  const addToastNotification = (title, msg, type = "info") => {
+  const addToastNotification = React.useCallback((title, msg, type = "info") => {
     const id = Date.now().toString();
     setToasts((prev) => [...prev, { id, title, msg, type }]);
     // Auto clear toast
@@ -369,7 +369,7 @@ export default function App() {
       read: false,
     };
     setNotifications((prev) => [newNotif, ...prev]);
-  };
+  }, []);
 
   const handleAddProduct = async (prod) => {
     try {
@@ -445,7 +445,7 @@ export default function App() {
     }
   };
 
-  const handleAddInvoice = async (inv) => {
+  const handleAddInvoice = React.useCallback(async (inv) => {
     try {
       const token = localStorage.getItem("token");
       console.log("Sending Invoice Payload to backend:", inv);
@@ -487,7 +487,7 @@ export default function App() {
       addToastNotification("Error", "Failed to connect to API", "danger");
       return null;
     }
-  };
+  }, [addToastNotification]);
 
   const handleRetryWhatsApp = async (invoiceId) => {
     try {

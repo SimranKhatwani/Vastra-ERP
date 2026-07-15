@@ -347,14 +347,16 @@ export const BillingPOSView = ({
       totalSpent: 0,
     };
 
-  const baseFilteredProducts = (products || []).filter((p) => {
-    const matchesCat =
-      selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
-    const matchesSearch =
-      p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.barcode?.includes(productSearch);
-    return matchesCat && matchesSearch;
-  });
+  const baseFilteredProducts = React.useMemo(() => {
+    return (products || []).filter((p) => {
+      const matchesCat =
+        selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+      const matchesSearch =
+        p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
+        p.barcode?.includes(productSearch);
+      return matchesCat && matchesSearch;
+    });
+  }, [products, selectedCategoryFilter, productSearch]);
 
   // Inject 50 demo products if the user's DB doesn't have enough to show off the UI feature
   const [demoProducts, setDemoProducts] = useState([]);
@@ -390,17 +392,54 @@ export const BillingPOSView = ({
     }
   }, [products]);
 
-  const filteredProducts = [...baseFilteredProducts, ...demoProducts.filter((p) => {
-    const matchesCat = selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
-    const matchesSearch = p.name?.toLowerCase().includes(productSearch.toLowerCase()) || p.barcode?.includes(productSearch);
-    return matchesCat && matchesSearch;
-  })];
+  const filteredProducts = React.useMemo(() => {
+    const filteredDemos = demoProducts.filter((p) => {
+      const matchesCat = selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+      const matchesSearch = p.name?.toLowerCase().includes(productSearch.toLowerCase()) || p.barcode?.includes(productSearch);
+      return matchesCat && matchesSearch;
+    });
+    return [...baseFilteredProducts, ...filteredDemos];
+  }, [baseFilteredProducts, demoProducts, selectedCategoryFilter, productSearch]);
 
   // Unique categories list
-  const uniqueCategories = [
-    "All",
-    ...Array.from(new Set([...(products || []), ...demoProducts].map((p) => p.category).filter(Boolean))),
-  ];
+  const uniqueCategories = React.useMemo(() => {
+    return [
+      "All",
+      ...Array.from(new Set([...(products || []), ...demoProducts].map((p) => p.category).filter(Boolean))),
+    ];
+  }, [products, demoProducts]);
+
+  const RenderedProductsTable = React.useMemo(() => {
+    return filteredProducts.map((p) => (
+      <tr
+        key={p.id}
+        className="hover:bg-slate-50 transition-colors cursor-pointer"
+        onClick={() => {
+          setVariantModalProduct(p);
+          setVariantModalSize("M");
+          setVariantModalColor(p.color || "White");
+        }}
+      >
+        <td className="p-2 text-xs font-semibold text-slate-600">{p.brand}</td>
+        <td className="p-2 text-xs font-bold text-slate-800">{p.name}</td>
+        <td className="p-2 text-xs font-mono">
+          <span
+            className={`px-1.5 py-0.5 rounded ${p.stock <= p.minStockAlert ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
+          >
+            {p.stock}
+          </span>
+        </td>
+        <td className="p-2 text-xs font-bold text-indigo-600 font-mono">
+          ₹{p.sellingPrice}
+        </td>
+        <td className="p-2 text-center">
+          <div className="inline-flex w-6 h-6 rounded bg-indigo-600 text-white items-center justify-center font-bold text-xs hover:bg-indigo-700 transition-colors">
+            +
+          </div>
+        </td>
+      </tr>
+    ));
+  }, [filteredProducts]);
 
   // Action: Add product to cart
   const handleAddProductToCart = (prod) => {
@@ -525,7 +564,7 @@ export const BillingPOSView = ({
   };
 
   // Calculations
-  const calculateCartTotals = () => {
+  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0;
     let gstTotal = 0;
@@ -561,10 +600,7 @@ export const BillingPOSView = ({
       gstTotal,
       grandTotal,
     };
-  };
-
-  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal } =
-    calculateCartTotals();
+  }, [cart, couponCode, flatDiscount]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1369,7 +1405,7 @@ export const BillingPOSView = ({
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
                 Terminal Payment Route
               </label>
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { id: "Cash", label: "Cash", icon: Coins },
                   { id: "UPI", label: "UPI QR", icon: Smartphone },
@@ -1383,7 +1419,7 @@ export const BillingPOSView = ({
                     <button
                       key={p.id}
                       onClick={() => setPaymentMethod(p.id)}
-                      className={`py-2 px-1 flex flex-col items-center justify-center border rounded-xl gap-1 transition-all cursor-pointer ${paymentMethod === p.id ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+                      className={`flex-1 min-w-[70px] py-2 px-1 flex flex-col items-center justify-center border rounded-xl gap-1 transition-all cursor-pointer ${paymentMethod === p.id ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
                       <span className="text-[10px] font-semibold text-center leading-tight break-words">
@@ -1454,14 +1490,14 @@ export const BillingPOSView = ({
             )}
 
             {/* Salesperson Field Column */}
-            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3 overflow-hidden">
-              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block truncate">
+            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3 overflow-hidden w-full min-w-0">
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block truncate w-full">
                 Salesperson / Staff
               </label>
               <select
                 value={salespersonId}
                 onChange={(e) => setSalespersonId(e.target.value)}
-                className="w-full max-w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 text-ellipsis overflow-hidden whitespace-nowrap"
+                className="w-full min-w-0 block px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 text-ellipsis overflow-hidden whitespace-nowrap"
               >
                 <option value="">Admin (Self) / No Salesperson</option>
                 {(staffList || [])
@@ -1680,27 +1716,7 @@ export const BillingPOSView = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {filteredProducts.map(p => (
-                          <tr key={p.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => {
-                            setVariantModalProduct(p);
-                            setVariantModalSize("M");
-                            setVariantModalColor(p.color || "White");
-                          }}>
-                            <td className="p-2 text-xs font-semibold text-slate-600">{p.brand}</td>
-                            <td className="p-2 text-xs font-bold text-slate-800">{p.name}</td>
-                            <td className="p-2 text-xs font-mono">
-                              <span className={`px-1.5 py-0.5 rounded ${p.stock <= p.minStockAlert ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                                {p.stock}
-                              </span>
-                            </td>
-                            <td className="p-2 text-xs font-bold text-indigo-600 font-mono">₹{p.sellingPrice}</td>
-                            <td className="p-2 text-center">
-                              <div className="inline-flex w-6 h-6 rounded bg-indigo-600 text-white items-center justify-center font-bold text-xs hover:bg-indigo-700 transition-colors">
-                                +
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {RenderedProductsTable}
                       </tbody>
                     </table>
                   </div>
