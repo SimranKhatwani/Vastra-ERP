@@ -97,7 +97,22 @@ exports.createInvoice = async (req, res) => {
 exports.getInvoices = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const invoices = await Invoice.find({ tenantId }).sort('-date');
+    const { search, fulfillmentStatus } = req.query;
+    let query = { tenantId };
+
+    if (fulfillmentStatus) {
+      query.fulfillmentStatus = fulfillmentStatus;
+    }
+
+    if (search) {
+      query.$or = [
+        { invoiceNo: { $regex: search, $options: 'i' } },
+        { customerName: { $regex: search, $options: 'i' } },
+        { customerPhone: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const invoices = await Invoice.find(query).sort('-date');
       
     res.status(200).json({ success: true, count: invoices.length, data: invoices });
   } catch (error) {
@@ -166,6 +181,48 @@ exports.sendWhatsApp = async (req, res) => {
     });
   } catch (error) {
     console.error('[invoiceController.sendWhatsApp]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.scanInvoice = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { invoiceNo } = req.params;
+    const invoice = await Invoice.findOne({ tenantId, invoiceNo }).populate('customerId', 'name phone email whatsappNumber').populate('assignedTailor', 'name');
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    res.status(200).json({ success: true, data: invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.changeDeliveryDate = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { expectedDeliveryDate } = req.body;
+    const invoice = await Invoice.findOneAndUpdate({ _id: req.params.id, tenantId }, { expectedDeliveryDate }, { new: true });
+    if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+    res.status(200).json({ success: true, data: invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.assignTailor = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { tailorId } = req.body;
+    const invoice = await Invoice.findOneAndUpdate({ _id: req.params.id, tenantId }, { assignedTailor: tailorId }, { new: true });
+    if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+    const Employee = require('../models/employeeModel');
+    if (tailorId) {
+      await Employee.findByIdAndUpdate(tailorId, { $inc: { currentWorkload: 1 } });
+    }
+    res.status(200).json({ success: true, data: invoice });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };

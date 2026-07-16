@@ -1,8 +1,10 @@
 const express = require('express');
-const { createProduct, getProducts, updateProduct, deleteProduct, adjustStock } = require('../controllers/productController');
+const { createProduct, getProducts, updateProduct, deleteProduct, adjustStock, scanProduct } = require('../controllers/productController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
+
+router.get('/scan/:barcode', protect, scanProduct);
 
 router.route('/')
   .post(protect, createProduct)
