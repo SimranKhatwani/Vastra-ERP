@@ -83,6 +83,10 @@ const invoiceSchema = new mongoose.Schema(
     salespersonName: {
       type: String,
     },
+    assignedTailor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Employee',
+    },
     items: [invoiceItemSchema],
     subTotal: {
       type: Number,

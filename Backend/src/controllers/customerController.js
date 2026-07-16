@@ -24,7 +24,17 @@ exports.createCustomer = async (req, res) => {
 exports.getCustomers = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const customers = await Customer.find({ tenantId }).sort('-createdAt');
+    const { search } = req.query;
+    let query = { tenantId };
+    
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const customers = await Customer.find(query).sort('-createdAt');
       
     res.status(200).json({ success: true, count: customers.length, data: customers });
   } catch (error) {

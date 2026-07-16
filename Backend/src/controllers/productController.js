@@ -125,3 +125,17 @@ exports.adjustStock = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.scanProduct = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { barcode } = req.params;
+    const product = await Product.findOne({ tenantId, $or: [{ sku: barcode }, { barcode: barcode }] });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    res.status(200).json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
