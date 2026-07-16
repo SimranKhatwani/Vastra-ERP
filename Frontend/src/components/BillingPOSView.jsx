@@ -1500,15 +1500,11 @@ export const BillingPOSView = ({
                 className="w-full min-w-0 block px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 text-ellipsis overflow-hidden whitespace-nowrap"
               >
                 <option value="">Admin (Self) / No Salesperson</option>
-<<<<<<< HEAD
                 {(staffList || [])
                   .filter(e => {
                     const title = (e.designation || e.role || "").toLowerCase();
                     return title.includes("sales") || title.includes("admin");
                   })
-=======
-                {(employees || [])
->>>>>>> e50d32dd99bd0bdd881871e56599abd530fe369d
                   .map((e) => (
                   <option key={e._id || e.id} value={e._id || e.id}>
                     {e.name} ({e.designation || e.role || 'Staff'})
