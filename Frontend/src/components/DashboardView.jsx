@@ -20,6 +20,7 @@ import {
   ListTodo
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
+import { QuickActionsPanel } from "./QuickActionsPanel";
 
 export const DashboardView = ({
   products = [],
@@ -500,6 +501,9 @@ export const DashboardView = ({
           </div>
         </div>
       )}
+
+      {/* Quick Actions Panel */}
+      <QuickActionsPanel />
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
