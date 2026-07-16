@@ -76,6 +76,10 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0, // Percentage, e.g. 18 for 18% GST
     },
+    fabricCode: { type: String },
+    gsm: { type: String },
+    width: { type: String },
+    uom: { type: String },
     isActive: {
       type: Boolean,
       default: true,
@@ -105,6 +109,9 @@ const productSchema = new mongoose.Schema(
 productSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 
 // Ensure variant SKUs are unique per tenant (A SKU should never repeat across the entire business)
-productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { unique: true, sparse: true });
+productSchema.index(
+  { tenantId: 1, 'variants.sku': 1 }, 
+  { unique: true, partialFilterExpression: { 'variants.sku': { $exists: true, $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Product', productSchema);

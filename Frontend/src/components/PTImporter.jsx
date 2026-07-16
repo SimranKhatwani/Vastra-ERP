@@ -224,11 +224,9 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           contactPerson: "N/A",
           gstin: "N/A",
           phone: "N/A",
-          email: "N/A"
         });
       }
     });
-    if(setSuppliers) setSuppliers(currentSuppliers);
 
     // Expand items by quantity so each barcode is unique
     let currentProducts = [...(products || [])];
@@ -298,8 +296,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
             });
         }
     });
-
-    if(setProducts) setProducts(currentProducts);
 
     const firstRow = parsedRows[0];
     const supplierObj = currentSuppliers.find(s => s.name?.toLowerCase() === firstRow.vendorName?.toLowerCase());
