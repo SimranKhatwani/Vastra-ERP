@@ -415,59 +415,78 @@ export const DashboardView = ({
               Critical tasks and alerts requiring immediate management attention.
             </p>
           </div>
-          <div className="p-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🔴</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.overdueDeliveries} Overdue Deliveries</div>
-                </div>
+          <div className="p-4 bg-slate-50/50">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              <div 
+                onClick={() => setActiveTab("billing")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-red-50 hover:border-red-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🔴</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.overdueDeliveries}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Overdue<br/>Deliveries</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🟡</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.deliveriesDueToday} Deliveries Due Today</div>
-                </div>
+              
+              <div 
+                onClick={() => setActiveTab("billing")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🟡</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.deliveriesDueToday}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Due<br/>Today</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🟠</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.vipCustomersPending} VIP Customers Pending</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("customers")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-orange-50 hover:border-orange-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🟠</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.vipCustomersPending}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">VIPs<br/>Pending</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🔵</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.salesmenAbsent} Salesmen Absent</div>
-                  <div className="text-[10px] text-slate-500">Work Reassigned</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("employees")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🔵</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.salesmenAbsent}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Absent<br/>Salesmen</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🟢</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.waitingCollection} Customers Waiting</div>
-                  <div className="text-[10px] text-slate-500">For Collection</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("billing")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🟢</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.waitingCollection}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Waiting<br/>Collection</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">⚠️</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.tailorsAtCapacity} Tailors at Capacity</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("employees")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">⚠️</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.tailorsAtCapacity}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Tailors<br/>Full</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">📩</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.messagesFailed} Messages Failed</div>
-                  <div className="text-[10px] text-slate-500">Customer Outreach</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("billing")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">📩</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.messagesFailed}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Msgs<br/>Failed</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xl">🔁</div>
-                <div>
-                  <div className="font-bold text-slate-800">{morningActions.realterCases} Re-Alter Cases</div>
-                  <div className="text-[10px] text-slate-500">Registered Today</div>
-                </div>
+
+              <div 
+                onClick={() => setActiveTab("saas")}
+                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
+              >
+                <div className="text-2xl group-hover:scale-110 transition-transform">🔁</div>
+                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.realterCases}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Re-Alter<br/>Cases</div>
               </div>
             </div>
           </div>
