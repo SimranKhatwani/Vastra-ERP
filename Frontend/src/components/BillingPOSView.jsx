@@ -1501,10 +1501,6 @@ export const BillingPOSView = ({
               >
                 <option value="">Admin (Self) / No Salesperson</option>
                 {(staffList || [])
-                  .filter(e => {
-                    const title = (e.designation || e.role || "").toLowerCase();
-                    return title.includes("salesperson") || title.includes("sales");
-                  })
                   .map((e) => (
                   <option key={e._id || e.id} value={e._id || e.id}>
                     {e.name} ({e.designation || e.role || 'Staff'})
