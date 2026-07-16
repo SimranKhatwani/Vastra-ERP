@@ -556,6 +556,77 @@ export default function App() {
     }
   };
 
+  const handleUpdatePurchaseOrder = async (id, po) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/purchase-orders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(po)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setPurchaseOrders((prev) => prev.map(p => p.id === id ? {...data.data, id: data.data._id} : p));
+        
+        const [resProducts, resSuppliers] = await Promise.all([
+          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        
+        const dataProducts = await resProducts.json();
+        const dataSuppliers = await resSuppliers.json();
+        
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+        return true;
+      } else {
+        alert("Backend Error: " + (data.message || "Unknown error"));
+        addToastNotification("Error", data.message, "danger");
+        return false;
+      }
+    } catch (error) {
+      alert("App.jsx catch error: " + error.message);
+      addToastNotification("Error", "Failed to connect to API", "danger");
+      return false;
+    }
+  };
+
+  const handleDeletePurchaseOrder = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/purchase-orders/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setPurchaseOrders((prev) => prev.filter(p => p.id !== id));
+        
+        const [resProducts, resSuppliers] = await Promise.all([
+          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        
+        const dataProducts = await resProducts.json();
+        const dataSuppliers = await resSuppliers.json();
+        
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+        return true;
+      } else {
+        alert("Backend Error: " + (data.message || "Unknown error"));
+        addToastNotification("Error", data.message, "danger");
+        return false;
+      }
+    } catch (error) {
+      alert("App.jsx catch error: " + error.message);
+      addToastNotification("Error", "Failed to connect to API", "danger");
+      return false;
+    }
+  };
+
   const handleSettleSupplierBalance = async (supplierId, amount) => {
     try {
       const token = localStorage.getItem("token");
@@ -1215,6 +1286,8 @@ export default function App() {
               products={products}
               setProducts={setProducts}
               onAddPurchaseOrder={handleAddPurchaseOrder}
+              onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+              onDeletePurchaseOrder={handleDeletePurchaseOrder}
               onSettleSupplierBalance={handleSettleSupplierBalance}
               onAddNotification={addToastNotification}
             />

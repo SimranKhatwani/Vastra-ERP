@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
-import { FilePlus, Check, Download, Eye } from "lucide-react";
+import { FilePlus, Check, Download, Eye, Trash2, Pencil } from "lucide-react";
 import { PTImporter, InvoiceViewer } from "./PTImporter";
+import { ManualPurchaseEntry } from "./ManualPurchaseEntry";
 
 export const PurchaseView = ({
   purchaseOrders,
@@ -9,11 +10,15 @@ export const PurchaseView = ({
   products,
   setProducts,
   onAddPurchaseOrder,
+  onUpdatePurchaseOrder,
+  onDeletePurchaseOrder,
   onSettleSupplierBalance,
   onAddNotification,
 }) => {
   const [activeTab, setActiveTab] = useState("pos");
   const [showImporter, setShowImporter] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [editingPO, setEditingPO] = useState(null);
   // Outstanding Payout form state
   const [selectedSupplierPayoutId, setSelectedSupplierPayoutId] = useState("");
   const [payoutAmount, setPayoutAmount] = useState(5000);
@@ -131,6 +136,24 @@ export const PurchaseView = ({
     );
   }
 
+  if (showManualEntry || editingPO) {
+    return (
+      <div className="animate-fade-in pb-12">
+        <ManualPurchaseEntry
+          initialPO={editingPO}
+          isEditMode={!!editingPO}
+          onAddPurchaseOrder={onAddPurchaseOrder}
+          onUpdatePurchaseOrder={onUpdatePurchaseOrder}
+          onAddNotification={onAddNotification}
+          onClose={() => {
+            setShowManualEntry(false);
+            setEditingPO(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (viewingPO) {
     return (
       <div className="animate-fade-in pb-12">
@@ -183,6 +206,13 @@ export const PurchaseView = ({
               >
                 <Download className="w-4 h-4" />
                 <span>Import PT File</span>
+              </button>
+              <button
+                onClick={() => setShowManualEntry(true)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-700 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <FilePlus className="w-4 h-4" />
+                <span>Manual Entry</span>
               </button>
               <button
                 onClick={() => setShowPOModal(true)}
@@ -245,13 +275,33 @@ export const PurchaseView = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => setViewingPO(po)}
-                          className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                          title="View Invoice"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setViewingPO(po)}
+                            className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                            title="View Invoice"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingPO(po)}
+                            className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Edit Purchase Order"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm("Are you sure you want to delete this Purchase Order? This will automatically reverse the stock and supplier balance additions.")) {
+                                onDeletePurchaseOrder(po.id);
+                              }
+                            }}
+                            className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Delete Purchase Order"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
