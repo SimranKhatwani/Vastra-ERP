@@ -1490,7 +1490,7 @@ export const BillingPOSView = ({
             )}
 
             {/* Salesperson Field Column */}
-            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3 overflow-hidden w-full min-w-0">
+            <div className="space-y-1 bg-slate-50 border border-slate-100 rounded-xl p-3 shrink-0 w-full min-w-0">
               <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block truncate w-full">
                 Salesperson / Staff
               </label>
