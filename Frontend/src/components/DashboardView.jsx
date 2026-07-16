@@ -20,6 +20,7 @@ import {
   ListTodo
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
+import { QuickActionsPanel } from "./QuickActionsPanel";
 
 export const DashboardView = ({
   products = [],
@@ -501,6 +502,9 @@ export const DashboardView = ({
         </div>
       )}
 
+      {/* Quick Actions Panel */}
+      <QuickActionsPanel />
+
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Today's Sales */}
@@ -592,39 +596,6 @@ export const DashboardView = ({
         </div>
       </div>
 
-      {/* Quick Actions Panel */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-indigo-500 rounded-full inline-block"></span>
-            Quick Actions
-          </h3>
-          <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Fast Access</p>
-        </div>
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {[
-            { label: "New Alteration", icon: Scissors, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", tab: "articulation" },
-            { label: "Scan Bill", icon: Receipt, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-100", tab: "billing" },
-            { label: "Scan Item", icon: Scan, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", tab: "billing" },
-            { label: "Search Customer", icon: Search, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100", tab: "customers" },
-            { label: "Search Bill", icon: Search, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-100", tab: "dashboard" },
-            { label: "Search Barcode", icon: Scan, color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-100", tab: "products" },
-            { label: "Print Tag", icon: Printer, color: "text-fuchsia-600", bg: "bg-fuchsia-50", border: "border-fuchsia-100", tab: "products" },
-            { label: "Send WhatsApp", icon: MessageCircle, color: "text-green-600", bg: "bg-green-50", border: "border-green-100", tab: "dashboard" }
-          ].map((action, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveTab(action.tab)}
-              className={`flex flex-col items-center justify-center p-4 h-24 rounded-xl border ${action.border} ${action.bg} hover:bg-white transition-all shadow-sm hover:shadow group`}
-            >
-              <action.icon className={`w-7 h-7 mb-3 ${action.color} group-hover:scale-110 transition-transform`} />
-              <span className="text-xs font-bold text-slate-600 text-center leading-tight">
-                {action.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Alert Banners & Second Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
