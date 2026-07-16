@@ -453,7 +453,7 @@ export const BillingPOSView = ({
 
     setCart((prev) => {
       const existingIdx = prev.findIndex(
-        (item) => item.productId === prod.id && !item.isCustom,
+        (item) => item.productId === (prod._id || prod.id) && item.size === prod.size && item.color === prod.color && !item.isCustom,
       );
       if (existingIdx > -1) {
         const updated = [...prev];
@@ -464,7 +464,7 @@ export const BillingPOSView = ({
           sub * (updated[existingIdx].discount / 100),
         );
         const itemGst = Math.floor(
-          (sub - discountAmt) * (prod.gstPercent / 100),
+          (sub - discountAmt) * ((prod.gstPercent || 0) / 100),
         );
         updated[existingIdx] = {
           ...updated[existingIdx],
@@ -479,7 +479,7 @@ export const BillingPOSView = ({
         return [
           ...prev,
           {
-            productId: prod.id,
+            productId: prod._id || prod.id,
             name: prod.name,
             sku: prod.sku,
             size: prod.size,
@@ -1228,7 +1228,7 @@ export const BillingPOSView = ({
             </div>
 
             {/* Cart Items list */}
-            <div className="flex-1 flex flex-col min-h-0 gap-3">
+            <div className="flex flex-col gap-3 flex-shrink-0 min-h-[150px]">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Garment Basket ({cart.length})
@@ -1252,7 +1252,7 @@ export const BillingPOSView = ({
                   </span>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 flex-1 overflow-y-auto space-y-2 pr-1.5 min-h-0">
+                <div className="divide-y divide-slate-100 flex flex-col space-y-2 pr-1.5">
                   {cart.map((item, idx) => (
                     <div key={idx} className="py-2.5 flex flex-col space-y-1.5">
                       <div className="flex justify-between items-start gap-2">
