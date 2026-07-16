@@ -30,8 +30,8 @@ export const DashboardView = ({
   expenses = [],
   notifications = [],
   auditLogs = [],
-  setActiveTab = (_tab) => {},
-  openArticulationWithDefaults = () => {},
+  setActiveTab = (_tab) => { },
+  openArticulationWithDefaults = () => { },
   currentUser = {},
 }) => {
   const [morningActions, setMorningActions] = React.useState(null);
@@ -342,11 +342,10 @@ export const DashboardView = ({
                     </td>
                     <td className="px-5 py-4">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          inv.paymentMethod === "Credit"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${inv.paymentMethod === "Credit"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-emerald-100 text-emerald-700"
+                          }`}
                       >
                         {inv.paymentMethod}
                       </span>
@@ -426,76 +425,76 @@ export const DashboardView = ({
           </div>
           <div className="p-4 bg-slate-50/50">
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-              <div 
+              <div
                 onClick={() => setActiveTab("billing")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-red-50 hover:border-red-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🔴</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.overdueDeliveries}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Overdue<br/>Deliveries</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Overdue<br />Deliveries</div>
               </div>
-              
-              <div 
+
+              <div
                 onClick={() => setActiveTab("billing")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🟡</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.deliveriesDueToday}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Due<br/>Today</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Due<br />Today</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("customers")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-orange-50 hover:border-orange-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🟠</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.vipCustomersPending}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">VIPs<br/>Pending</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">VIPs<br />Pending</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("employees")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🔵</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.salesmenAbsent}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Absent<br/>Salesmen</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Absent<br />Salesmen</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("billing")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🟢</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.waitingCollection}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Waiting<br/>Collection</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Waiting<br />Collection</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("employees")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">⚠️</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.tailorsAtCapacity}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Tailors<br/>Full</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Tailors<br />Full</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("billing")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">📩</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.messagesFailed}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Msgs<br/>Failed</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Msgs<br />Failed</div>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab("saas")}
                 className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
               >
                 <div className="text-2xl group-hover:scale-110 transition-transform">🔁</div>
                 <div className="font-black text-slate-800 text-xl leading-none">{morningActions.realterCases}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Re-Alter<br/>Cases</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Re-Alter<br />Cases</div>
               </div>
             </div>
           </div>
@@ -604,17 +603,15 @@ export const DashboardView = ({
         </div>
         <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {[
-            { label: "New Alteration", icon: Scissors, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", tab: "billing" },
+            { label: "New Alteration", icon: Scissors, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", tab: "articulation" },
             { label: "Scan Bill", icon: Receipt, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-100", tab: "billing" },
             { label: "Scan Item", icon: Scan, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100", tab: "billing" },
             { label: "Search Customer", icon: Search, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100", tab: "customers" },
             { label: "Search Bill", icon: Search, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-100", tab: "dashboard" },
             { label: "Search Barcode", icon: Scan, color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-100", tab: "products" },
             { label: "Print Tag", icon: Printer, color: "text-fuchsia-600", bg: "bg-fuchsia-50", border: "border-fuchsia-100", tab: "products" },
-            { label: "Send WhatsApp", icon: MessageCircle, color: "text-green-600", bg: "bg-green-50", border: "border-green-100", tab: "dashboard" },
-            { label: "Assign Tailor", icon: UserPlus, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100", tab: "employees" },
-            { label: "Change Del. Date", icon: Calendar, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-100", tab: "billing" },
-            { label: "Open Pending", icon: ListTodo, color: "text-teal-600", bg: "bg-teal-50", border: "border-teal-100", tab: "inventory" },
+            { label: "Send WhatsApp", icon: MessageCircle, color: "text-green-600", bg: "bg-green-50", border: "border-green-100", tab: "dashboard" }
+
           ].map((action, i) => (
             <button
               key={i}
@@ -893,11 +890,10 @@ export const DashboardView = ({
                   </td>
                   <td className="px-5 py-4">
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        inv.paymentMethod === "Credit"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-emerald-100 text-emerald-700"
-                      }`}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${inv.paymentMethod === "Credit"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-emerald-100 text-emerald-700"
+                        }`}
                     >
                       {inv.paymentMethod}
                     </span>
