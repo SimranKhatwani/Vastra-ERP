@@ -182,7 +182,7 @@ export const QuickActionsPanel = () => {
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fast Access</span>
       </div>
       <div className="p-5">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {actions.map((action) => (
             <div 
               key={action.id}
