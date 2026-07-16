@@ -601,7 +601,7 @@ export const DashboardView = ({
           </h3>
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Fast Access</p>
         </div>
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {[
             { label: "New Alteration", icon: Scissors, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100", tab: "articulation" },
             { label: "Scan Bill", icon: Receipt, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-100", tab: "billing" },
@@ -611,15 +611,14 @@ export const DashboardView = ({
             { label: "Search Barcode", icon: Scan, color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-100", tab: "products" },
             { label: "Print Tag", icon: Printer, color: "text-fuchsia-600", bg: "bg-fuchsia-50", border: "border-fuchsia-100", tab: "products" },
             { label: "Send WhatsApp", icon: MessageCircle, color: "text-green-600", bg: "bg-green-50", border: "border-green-100", tab: "dashboard" }
-
           ].map((action, i) => (
             <button
               key={i}
               onClick={() => setActiveTab(action.tab)}
-              className={`flex flex-col items-center justify-center p-3 rounded-xl border ${action.border} ${action.bg} hover:bg-white transition-all shadow-sm hover:shadow group`}
+              className={`flex flex-col items-center justify-center p-4 h-24 rounded-xl border ${action.border} ${action.bg} hover:bg-white transition-all shadow-sm hover:shadow group`}
             >
-              <action.icon className={`w-5 h-5 mb-2 ${action.color} group-hover:scale-110 transition-transform`} />
-              <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">
+              <action.icon className={`w-7 h-7 mb-3 ${action.color} group-hover:scale-110 transition-transform`} />
+              <span className="text-xs font-bold text-slate-600 text-center leading-tight">
                 {action.label}
               </span>
             </button>
