@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Scissors, Receipt, Scan, Search, ScanLine, Printer, MessageCircle, X, Loader2 } from 'lucide-react';
 
 export const QuickActionsPanel = () => {
@@ -7,6 +7,51 @@ export const QuickActionsPanel = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  
+  // Suggestion states
+  const [suggestions, setSuggestions] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (!inputValue || inputValue.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+      
+      // Only auto-suggest for search-based modals
+      if (!['search_customer', 'search_bill', 'scan_bill', 'scan_item', 'search_barcode'].includes(activeModal)) {
+        return;
+      }
+
+      setIsSearching(true);
+      const token = localStorage.getItem('token');
+      try {
+        let res;
+        if (activeModal === 'search_customer') {
+          res = await fetch(`http://localhost:5000/api/customers?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+        } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
+          res = await fetch(`http://localhost:5000/api/invoices?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+        } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
+          res = await fetch(`http://localhost:5000/api/products?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+        }
+        
+        if (res) {
+          const data = await res.json();
+          if (data.success) {
+            setSuggestions(data.data || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch suggestions', err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(fetchSuggestions, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [inputValue, activeModal]);
 
   const actions = [
     { id: 'alteration', label: 'New Alteration', icon: Scissors, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100' },
@@ -24,6 +69,7 @@ export const QuickActionsPanel = () => {
     setInputValue('');
     setResult(null);
     setError('');
+    setSuggestions([]);
   };
 
   const closeModal = () => {
@@ -114,7 +160,7 @@ export const QuickActionsPanel = () => {
           
           <div className="p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-semibold text-slate-700 mb-1">{inputLabel}</label>
                 {activeModal === 'alteration' ? (
                   <textarea 
@@ -132,7 +178,40 @@ export const QuickActionsPanel = () => {
                     className="w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                     required
                     autoFocus
+                    autoComplete="off"
                   />
+                )}
+                
+                {/* Suggestions Dropdown */}
+                {suggestions.length > 0 && !result && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-10">
+                    {suggestions.map((item, idx) => (
+                      <div 
+                        key={item._id || idx}
+                        onClick={() => {
+                          if (activeModal === 'search_customer') {
+                            setInputValue(item.phone || item.name);
+                          } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
+                            setInputValue(item.invoiceNo);
+                          } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
+                            setInputValue(item.barcode || item.sku);
+                          }
+                          setSuggestions([]);
+                        }}
+                        className="p-3 border-b border-slate-50 last:border-0 hover:bg-indigo-50 cursor-pointer transition-colors"
+                      >
+                        {activeModal === 'search_customer' && (
+                          <div className="text-sm font-medium text-slate-700">{item.name} <span className="text-slate-400 text-xs ml-2">{item.phone}</span></div>
+                        )}
+                        {(activeModal === 'search_bill' || activeModal === 'scan_bill') && (
+                          <div className="text-sm font-medium text-slate-700">{item.invoiceNo} <span className="text-slate-400 text-xs ml-2">{item.customerName}</span></div>
+                        )}
+                        {(activeModal === 'scan_item' || activeModal === 'search_barcode') && (
+                          <div className="text-sm font-medium text-slate-700">{item.name} <span className="text-slate-400 text-xs ml-2">{item.barcode || item.sku}</span></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
               <button 
