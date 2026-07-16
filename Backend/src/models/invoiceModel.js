@@ -125,6 +125,14 @@ const invoiceSchema = new mongoose.Schema(
       enum: ['Paid', 'Partial', 'Unpaid'],
       default: 'Paid',
     },
+    expectedDeliveryDate: {
+      type: Date,
+    },
+    fulfillmentStatus: {
+      type: String,
+      enum: ['Pending', 'Ready For Collection', 'Delivered'],
+      default: 'Pending',
+    },
     whatsappStatus: {
       type: String,
       enum: ['Pending', 'Sent', 'Failed'],

@@ -44,6 +44,19 @@ const employeeSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    attendanceStatus: {
+      type: String,
+      enum: ['Present', 'Absent', 'On Leave'],
+      default: 'Present',
+    },
+    currentWorkload: {
+      type: Number,
+      default: 0,
+    },
+    maxCapacity: {
+      type: Number,
+      default: 10,
+    },
     passwordHash: {
       type: String,
       select: false,

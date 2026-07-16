@@ -1,5 +1,7 @@
 const Customer = require('../models/customerModel');
 const Invoice = require('../models/invoiceModel');
+const Employee = require('../models/employeeModel');
+const SupportTicket = require('../models/supportTicketModel');
 
 // @desc    Get Morning Action metrics for dashboard
 // @route   GET /api/dashboard/morning-actions
@@ -7,31 +9,78 @@ const Invoice = require('../models/invoiceModel');
 exports.getMorningActions = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
+    
+    // Set up today's date boundaries
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
 
-    // 1. Get Real VIP Customers Pending (Gold/Platinum tier with outstanding balance)
+    // 1. VIP Customers Pending
     const vipPendingCount = await Customer.countDocuments({
       tenantId,
       tier: { $in: ['Gold', 'Platinum'] },
       outstandingBalance: { $gt: 0 },
     });
 
-    // 2. Get Real Customer Messages Failed (whatsappStatus === 'Failed')
+    // 2. Customer Messages Failed
     const failedMessagesCount = await Invoice.countDocuments({
       tenantId,
       whatsappStatus: 'Failed',
     });
+    
+    // 3. Overdue Deliveries (expected delivery was before today, and not delivered)
+    const overdueDeliveries = await Invoice.countDocuments({
+      tenantId,
+      expectedDeliveryDate: { $lt: startOfToday },
+      fulfillmentStatus: { $ne: 'Delivered' }
+    });
 
-    // 3. Simulated Metrics (to match user requirements exactly)
-    // In a real scenario, these would query Delivery models, Employee Attendance, etc.
+    // 4. Deliveries Due Today
+    const deliveriesDueToday = await Invoice.countDocuments({
+      tenantId,
+      expectedDeliveryDate: { $gte: startOfToday, $lte: endOfToday },
+      fulfillmentStatus: { $ne: 'Delivered' }
+    });
+
+    // 5. Waiting Collection
+    const waitingCollection = await Invoice.countDocuments({
+      tenantId,
+      fulfillmentStatus: 'Ready For Collection'
+    });
+
+    // 6. Salesmen Absent
+    const salesmenAbsent = await Employee.countDocuments({
+      tenantId,
+      role: { $regex: /sales/i },
+      attendanceStatus: 'Absent'
+    });
+
+    // 7. Tailors at Capacity
+    const tailorsData = await Employee.find({
+      tenantId,
+      role: { $regex: /tailor/i }
+    });
+    const tailorsAtCapacity = tailorsData.filter(t => t.currentWorkload >= t.maxCapacity).length;
+
+    // 8. Re-Alter Cases Registered Today
+    const realterCases = await SupportTicket.countDocuments({
+      tenantId,
+      createdAt: { $gte: startOfToday, $lte: endOfToday },
+      status: 'Open',
+      subject: { $regex: /alter|re-alter/i }
+    });
+
     const morningActions = {
-      overdueDeliveries: 7,          // 🔴
-      deliveriesDueToday: 12,        // 🟡
-      vipCustomersPending: vipPendingCount > 0 ? vipPendingCount : 4, // 🟠 (Fallback to 4 if 0 to show UI)
-      salesmenAbsent: 3,             // 🔵
-      waitingCollection: 9,          // 🟢
-      tailorsAtCapacity: 2,          // ⚠️
-      messagesFailed: failedMessagesCount > 0 ? failedMessagesCount : 5, // 📩 (Fallback to 5 if 0)
-      realterCases: 2,               // 🔁
+      overdueDeliveries,
+      deliveriesDueToday,
+      vipCustomersPending: vipPendingCount,
+      salesmenAbsent,
+      waitingCollection,
+      tailorsAtCapacity,
+      messagesFailed: failedMessagesCount,
+      realterCases,
     };
 
     res.status(200).json({
