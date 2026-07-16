@@ -27,6 +27,7 @@ const supportTicketRoutes = require('./routes/supportTicketRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const commissionRoutes = require('./routes/commissionRoutes');
 const whatsappConfigRoutes = require('./routes/whatsappConfigRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -50,6 +51,7 @@ app.use('/api/tickets', supportTicketRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/whatsapp-config', whatsappConfigRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

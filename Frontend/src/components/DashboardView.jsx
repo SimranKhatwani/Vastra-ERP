@@ -25,6 +25,28 @@ export const DashboardView = ({
   openArticulationWithDefaults = () => {},
   currentUser = {},
 }) => {
+  const [morningActions, setMorningActions] = React.useState(null);
+
+  React.useEffect(() => {
+    if (currentUser?.role?.toLowerCase() !== 'salesperson') {
+      const fetchMorningActions = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await fetch("http://localhost:5000/api/dashboard/morning-actions", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMorningActions(data.data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch morning actions", error);
+        }
+      };
+      fetchMorningActions();
+    }
+  }, [currentUser]);
+
   // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -380,6 +402,77 @@ export const DashboardView = ({
           </button>
         </div>
       </div>
+
+      {/* Morning Action Dashboard */}
+      {morningActions && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden mb-6">
+          <div className="p-5 border-b border-slate-100 bg-red-50/30">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Today You Need to Focus On
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Critical tasks and alerts requiring immediate management attention.
+            </p>
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🔴</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.overdueDeliveries} Overdue Deliveries</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🟡</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.deliveriesDueToday} Deliveries Due Today</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🟠</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.vipCustomersPending} VIP Customers Pending</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🔵</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.salesmenAbsent} Salesmen Absent</div>
+                  <div className="text-[10px] text-slate-500">Work Reassigned</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🟢</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.waitingCollection} Customers Waiting</div>
+                  <div className="text-[10px] text-slate-500">For Collection</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">⚠️</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.tailorsAtCapacity} Tailors at Capacity</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">📩</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.messagesFailed} Messages Failed</div>
+                  <div className="text-[10px] text-slate-500">Customer Outreach</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xl">🔁</div>
+                <div>
+                  <div className="font-bold text-slate-800">{morningActions.realterCases} Re-Alter Cases</div>
+                  <div className="text-[10px] text-slate-500">Registered Today</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
