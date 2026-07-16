@@ -324,9 +324,10 @@ export const ManualPurchaseEntry = ({
                       type={c.type === "number" ? "number" : "text"} 
                       min={c.type === "number" ? "0" : undefined} 
                       step={c.type === "number" ? "any" : undefined} 
-                      value={item[c.key]} 
+                      value={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? "FS" : item[c.key]} 
                       onChange={e => updateItem(item.id, c.key, e.target.value)} 
-                      className={`w-full p-2 text-xs border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none bg-white transition-all shadow-sm ${c.type === "number" ? "text-left font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : ''}`} 
+                      disabled={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree"))}
+                      className={`w-full p-2 text-xs border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm ${c.type === "number" ? "text-left font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : 'bg-white'} ${c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-70' : ''}`} 
                       placeholder={c.required ? "Required" : ""} 
                     />
                   </div>

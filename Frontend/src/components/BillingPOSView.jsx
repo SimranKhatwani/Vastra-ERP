@@ -2785,16 +2785,18 @@ export const BillingPOSView = ({
               <p className="text-xs font-semibold text-slate-600 mb-3">{variantModalProduct.name}</p>
               
               <div className="space-y-3">
-                <div>
-                  <label className="block text-slate-500 mb-1 text-xs font-semibold">Size</label>
-                  <select 
-                    value={variantModalSize}
-                    onChange={(e) => setVariantModalSize(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
-                  >
-                    {["XS", "S", "M", "L", "XL", "XXL", "3XL"].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+                {!(variantModalProduct.category || "").toLowerCase().includes("saree") && !(variantModalProduct.name || "").toLowerCase().includes("saree") && (
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-xs font-semibold">Size</label>
+                    <select 
+                      value={variantModalSize}
+                      onChange={(e) => setVariantModalSize(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                    >
+                      {["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-slate-500 mb-1 text-xs font-semibold">Color</label>
                   <select 
@@ -2811,13 +2813,14 @@ export const BillingPOSView = ({
             <button
               type="button"
               onClick={() => {
+                const finalSize = ((variantModalProduct.category || "").toLowerCase().includes("saree") || (variantModalProduct.name || "").toLowerCase().includes("saree")) ? "FS" : variantModalSize;
                 const prodWithVariant = {
                   ...variantModalProduct,
-                  size: variantModalSize,
+                  size: finalSize,
                   color: variantModalColor
                 };
                 handleAddProductToCart(prodWithVariant);
-                onAddNotification("POS Billing", `Added ${variantModalProduct.name} (${variantModalSize}, ${variantModalColor}) to cart.`, "success");
+                onAddNotification("POS Billing", `Added ${variantModalProduct.name} (${finalSize}, ${variantModalColor}) to cart.`, "success");
                 setVariantModalProduct(null);
               }}
               className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-md cursor-pointer mt-4"

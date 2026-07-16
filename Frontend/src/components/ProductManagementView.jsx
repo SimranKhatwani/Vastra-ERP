@@ -214,7 +214,7 @@ export const ProductManagementView = ({
         sku: formSKU || `SKU-${Date.now().toString().substring(8)}`,
         barcode: formBarcode,
         color: formColor || "Classic White",
-        size: formSize,
+        size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
         purchasePrice: formPurchasePrice,
         sellingPrice: formSellingPrice,
         mrp: formMRP,
@@ -245,7 +245,7 @@ export const ProductManagementView = ({
           sku: formSKU,
           barcode: formBarcode,
           color: formColor,
-          size: formSize,
+          size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
           purchasePrice: formPurchasePrice,
           sellingPrice: formSellingPrice,
           mrp: formMRP,
@@ -786,9 +786,10 @@ export const ProductManagementView = ({
                     Sizing Code
                   </label>
                   <select
-                    value={formSize}
+                    value={formCategory.toLowerCase().includes("saree") ? "FS" : formSize}
                     onChange={(e) => setFormSize(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
+                    disabled={formCategory.toLowerCase().includes("saree")}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="XS">XS</option>
                     <option value="S">S</option>
@@ -796,6 +797,7 @@ export const ProductManagementView = ({
                     <option value="L">L</option>
                     <option value="XL">XL</option>
                     <option value="XXL">XXL</option>
+                    <option value="FS">FS (Free Size)</option>
                   </select>
                 </div>
               </div>
