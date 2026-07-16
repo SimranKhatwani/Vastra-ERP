@@ -1098,7 +1098,7 @@ export const BillingPOSView = ({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12" id="billing-pos-root">
+    <div className="space-y-6 animate-fade-in" id="billing-pos-root">
       {/* POS Mode Selectors */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -1500,11 +1500,15 @@ export const BillingPOSView = ({
                 className="w-full min-w-0 block px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 text-ellipsis overflow-hidden whitespace-nowrap"
               >
                 <option value="">Admin (Self) / No Salesperson</option>
+<<<<<<< HEAD
                 {(staffList || [])
                   .filter(e => {
                     const title = (e.designation || e.role || "").toLowerCase();
                     return title.includes("sales") || title.includes("admin");
                   })
+=======
+                {(employees || [])
+>>>>>>> e50d32dd99bd0bdd881871e56599abd530fe369d
                   .map((e) => (
                   <option key={e._id || e.id} value={e._id || e.id}>
                     {e.name} ({e.designation || e.role || 'Staff'})
@@ -1621,106 +1625,25 @@ export const BillingPOSView = ({
                 {/* Toggle button */}
                 <div className="flex justify-between items-center mt-2">
                   <span className="text-xs text-slate-500 font-semibold">{filteredProducts.length} items found</span>
-                  {filteredProducts.length > 30 && (
-                    <button
-                      onClick={() => setShowAllCatalogItems(!showAllCatalogItems)}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      {showAllCatalogItems ? "Show Less" : "View All / More Products"}
-                    </button>
-                  )}
                 </div>
 
-                {/* Grid of apparel products OR Table view */}
-                {!showAllCatalogItems ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 flex-1 overflow-y-auto pr-2 pb-4 min-h-0">
-                    {filteredProducts.slice(0, 30).map((p) => {
-                      const isLow = p.stock <= p.minStockAlert;
-                      return (
-                        <div
-                          key={p.id}
-                          onClick={() => {
-                            setVariantModalProduct(p);
-                            setVariantModalSize("M");
-                            setVariantModalColor(p.color || "White");
-                          }}
-                          className="border border-slate-100 bg-white hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5 rounded-xl p-3 text-left transition-all cursor-pointer flex flex-col justify-between group relative"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-start gap-1">
-                              <span className="text-[8px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold font-mono uppercase truncate max-w-[80px]">
-                                {p.brand}
-                              </span>
-                              <span
-                                className={`text-[8px] px-1 py-0.2 rounded font-bold uppercase ${isLow ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
-                              >
-                                {p.stock} left
-                              </span>
-                            </div>
-                            <h4 className="text-xs font-semibold text-slate-800 line-clamp-2 min-h-[32px]">
-                              {p.name}
-                            </h4>
-                          </div>
-
-                          <div className="mt-2.5 flex items-end justify-between">
-                            <div className="space-y-0.5">
-                              <span className="text-[10px] text-slate-400 line-through font-mono">
-                                ₹{p.mrp}
-                              </span>
-                              <p className="text-xs font-bold text-indigo-600 font-mono">
-                                ₹{p.sellingPrice}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                title="Open Spreadsheet Articulation Matrix"
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Prevent adding to cart
-                                  setArticulationProduct(p);
-                                  setSelectedVariant(p);
-                                  setArticulationQty(1);
-                                  setArticulationSearch("");
-                                  onAddNotification(
-                                    "Articulation Desk",
-                                    `Opening spreadsheet matrix for: ${p.brand} ${p.category}`,
-                                    "info",
-                                  );
-                                }}
-                                className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors text-[10px] font-bold flex items-center gap-0.5"
-                              >
-                                <FileSpreadsheet className="w-3 h-3" />
-                                <span>Sizes</span>
-                              </button>
-
-                              <div className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center font-bold text-xs group-hover:bg-indigo-700 transition-colors">
-                                +
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex-1 overflow-y-auto border border-slate-100 rounded-xl overflow-hidden pb-4 min-h-0">
-                    <table className="w-full text-left border-collapse bg-white">
-                      <thead className="bg-slate-50 sticky top-0 z-10">
-                        <tr>
-                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Brand</th>
-                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Product Name</th>
-                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stock</th>
-                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Price</th>
-                          <th className="p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {RenderedProductsTable}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {/* Table view (Form Format) */}
+                <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl overflow-hidden min-h-0 shadow-sm mt-2">
+                  <table className="w-full text-left border-collapse bg-white">
+                    <thead className="bg-slate-100 sticky top-0 z-10 shadow-xs">
+                      <tr>
+                        <th className="p-2.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">Brand</th>
+                        <th className="p-2.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">Product Name</th>
+                        <th className="p-2.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">Stock</th>
+                        <th className="p-2.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">Price</th>
+                        <th className="p-2.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {RenderedProductsTable}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
