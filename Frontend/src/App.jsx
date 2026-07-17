@@ -202,31 +202,40 @@ export default function App() {
           const dataNotifications = await resNotifications.json();
 
           if (dataProducts.success) {
-            setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
+            const arr = dataProducts.data.map(p => ({...p, id: p._id}));
+            setProducts(arr.length > 0 ? arr : demoProductsData);
           }
           if (dataCustomers.success) {
-            setCustomers(dataCustomers.data.map(c => ({...c, id: c._id})));
+            const arr = dataCustomers.data.map(c => ({...c, id: c._id}));
+            setCustomers(arr.length > 0 ? arr : demoCustomersData);
           }
           if (dataInvoices.success) {
-            setInvoices(dataInvoices.data.map(i => ({...i, id: i._id})));
+            const arr = dataInvoices.data.map(i => ({...i, id: i._id}));
+            setInvoices(arr.length > 0 ? arr : demoInvoicesData);
           }
           if (dataSuppliers.success) {
-            setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+            const arr = dataSuppliers.data.map(s => ({...s, id: s._id}));
+            setSuppliers(arr.length > 0 ? arr : demoSuppliersData);
           }
           if (dataPurchaseOrders.success) {
-            setPurchaseOrders(dataPurchaseOrders.data.map(p => ({...p, id: p._id})));
+            const arr = dataPurchaseOrders.data.map(p => ({...p, id: p._id}));
+            setPurchaseOrders(arr.length > 0 ? arr : demoPurchaseOrdersData);
           }
           if (dataEmployees.success) {
-            setEmployees(dataEmployees.data.map(e => ({...e, id: e._id})));
+            const arr = dataEmployees.data.map(e => ({...e, id: e._id}));
+            setEmployees(arr.length > 0 ? arr : demoEmployeesData);
           }
           if (dataExpenses.success) {
-            setExpenses(dataExpenses.data.map(e => ({...e, id: e._id})));
+            const arr = dataExpenses.data.map(e => ({...e, id: e._id}));
+            setExpenses(arr.length > 0 ? arr : demoExpensesData);
           }
           if (dataTickets.success) {
-            setSupportTickets(dataTickets.data.map(t => ({...t, id: t._id})));
+            const arr = dataTickets.data.map(t => ({...t, id: t._id}));
+            setSupportTickets(arr.length > 0 ? arr : demoSupportTicketsData);
           }
           if (dataNotifications.success) {
-            setNotifications(dataNotifications.data.map(n => ({...n, id: n._id})));
+            const arr = dataNotifications.data.map(n => ({...n, id: n._id}));
+            setNotifications(arr.length > 0 ? arr : demoNotificationsData);
           }
         } catch (error) {
           console.error("Failed to fetch data", error);

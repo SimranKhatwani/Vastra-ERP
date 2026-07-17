@@ -606,13 +606,16 @@ export const ProductManagementView = ({
                                 <Edit className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => {
-                                  onDeleteProducts([p.id]);
-                                  onAddNotification(
-                                    "Catalog Item Deleted",
-                                    `Removed "${p.name}" from products ledger.`,
-                                    "danger",
-                                  );
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Are you sure you want to permanently delete "${p.name}"?`)) {
+                                    onDeleteProducts([p.id]);
+                                    onAddNotification(
+                                      "Catalog Item Deleted",
+                                      `Removed "${p.name}" from products ledger.`,
+                                      "danger",
+                                    );
+                                  }
                                 }}
                                 className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
                               >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, ShieldBan, CheckCircle, User, Phone, Mail, MapPin } from "lucide-react";
 import axios from "axios";
+import { generateDemoEmployees } from "../data/demoData";
 
 export function StaffManagementView() {
   const [staff, setStaff] = useState([]);
@@ -22,14 +23,16 @@ export function StaffManagementView() {
   const fetchStaff = async () => {
     try {
       const token = localStorage.getItem("token");
+      if (!token) throw new Error("Offline Mode");
       const { data } = await axios.get("http://localhost:5000/api/staff", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data.success) {
-        setStaff(data.data);
+        setStaff(data.data.length > 0 ? data.data : generateDemoEmployees());
       }
     } catch (error) {
-      console.error("Failed to fetch staff:", error);
+      console.warn("Failed to fetch staff, using demo data:", error.message);
+      setStaff(generateDemoEmployees());
     }
   };
 
@@ -148,7 +151,7 @@ export function StaffManagementView() {
                 </tr>
               ) : (
                 filteredStaff.map((emp) => (
-                  <tr key={emp._id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={emp._id || emp.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
@@ -158,7 +161,7 @@ export function StaffManagementView() {
                           <p className="font-bold text-slate-800 text-sm">{emp.name}</p>
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded w-fit">
-                              ID: {emp._id.substring(0, 8)}
+                              ID: {(emp._id || emp.id || "").toString().substring(0, 8)}
                             </span>
                           </div>
                         </div>
@@ -195,12 +198,12 @@ export function StaffManagementView() {
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-1.5 font-bold text-emerald-600 bg-emerald-50 w-fit mx-auto px-2 py-1 rounded-lg">
                         <CheckCircle className="w-3.5 h-3.5" />
-                        <span className="text-[10px] uppercase">Active</span>
+                        <span className="text-[10px] uppercase">{emp.status || "Active"}</span>
                       </div>
                     </td>
                     <td className="p-4 text-center">
                       <button
-                        onClick={() => handleDelete(emp._id)}
+                        onClick={() => handleDelete(emp._id || emp.id)}
                         className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                         title="Remove Staff"
                       >

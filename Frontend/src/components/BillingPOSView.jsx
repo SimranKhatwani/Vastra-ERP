@@ -1732,25 +1732,37 @@ export const BillingPOSView = ({
                 </div>
               )}
 
-              {/* Salesperson & Generate Invoice */}
-              <div className="flex gap-2 items-center">
-                <select
-                  value={salespersonId}
-                  onChange={(e) => setSalespersonId(e.target.value)}
-                  className="w-1/3 min-w-0 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
-                >
-                  <option value="">No Salesperson</option>
+              {/* Salesperson Selection Grid */}
+              <div className="mb-4">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                  <span>Assigned Salesperson</span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                  <button
+                    onClick={() => setSalespersonId("")}
+                    className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${!salespersonId ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-slate-50"}`}
+                  >
+                    Self (Admin)
+                  </button>
                   {(staffList || [])
                     .filter(e => {
                       const title = (e.designation || e.role || "").toLowerCase();
                       return title.includes("sales") || title.includes("admin");
                     })
                     .map((e) => (
-                    <option key={e._id || e.id} value={e._id || e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
+                      <button
+                        key={e._id || e.id}
+                        onClick={() => setSalespersonId(e._id || e.id)}
+                        className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${(e._id || e.id) === salespersonId ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-slate-50"}`}
+                      >
+                        {e.name.split(' ')[0]}
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* Generate Invoice */}
+              <div className="flex gap-2 items-center">
 
                 <button
                   id="btn-generate-bill"
