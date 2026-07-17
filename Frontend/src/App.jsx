@@ -21,6 +21,7 @@ import {
   Percent,
   LogOut,
   TableProperties,
+  ShieldAlert,
 } from "lucide-react";
 
 // Import sub components
@@ -41,6 +42,9 @@ import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { StaffManagementView } from "./components/StaffManagementView";
+import AttendanceDashboardView from "./components/AttendanceDashboardView";
+import AttendancePolicySettings from "./components/AttendancePolicySettings";
+import ManagerReviewPanel from "./components/ManagerReviewPanel";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -260,6 +264,9 @@ export default function App() {
           "developer",
           "integrations",
           "settings",
+          "attendance-dashboard",
+          "manager-review",
+          "attendance-settings",
         ];
       case "businessadmin":
         return [
@@ -279,6 +286,9 @@ export default function App() {
           "integrations",
           "dev",
           "settings",
+          "attendance-dashboard",
+          "manager-review",
+          "attendance-settings",
         ];
       case "manager":
         return [
@@ -294,6 +304,8 @@ export default function App() {
           "employees",
           "reports",
           "settings",
+          "attendance-dashboard",
+          "manager-review",
         ];
       case "cashier":
         return [
@@ -304,6 +316,7 @@ export default function App() {
           "purchase",
           "customers",
           "accounting",
+          "attendance-dashboard",
         ];
       case "salesperson":
         return [
@@ -313,9 +326,10 @@ export default function App() {
           "products",
           "purchase",
           "employees",
+          "attendance-dashboard",
         ];
       case "tailor":
-        return ["articulation", "inventory_articulation", "inventory"];
+        return ["articulation", "inventory_articulation", "inventory", "attendance-dashboard"];
       default:
         return ["billing"];
     }
@@ -856,6 +870,9 @@ export default function App() {
     { id: "developer", label: "Developer Gate APIs", icon: Terminal },
     { id: "integrations", label: "Channel connectors", icon: Globe },
     { id: "settings", label: "System Configurations", icon: Settings },
+    { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
+    { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
+    { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
   ];
 
   // Toast Overlay Renderer
@@ -1355,6 +1372,18 @@ export default function App() {
 
           {activeModule === "settings" && (
             <SettingsView onAddNotification={addToastNotification} currentUser={currentUser} />
+          )}
+
+          {activeModule === "attendance-dashboard" && (
+            <AttendanceDashboardView employees={employees} token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
+          )}
+
+          {activeModule === "manager-review" && (
+            <ManagerReviewPanel token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
+          )}
+
+          {activeModule === "attendance-settings" && (
+            <AttendancePolicySettings token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
           )}
         </main>
       </div>
