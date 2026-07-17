@@ -142,9 +142,14 @@ export const DashboardView = ({
     (sum, p) => sum + (p.sellingPrice || 0) * (p.stock || 0), 0
   );
 
-  // ─── Low Stock ─────────────────────────────────────────────
-  const lowStockProducts = products.filter((p) => (p.stock || 0) <= (p.minStockAlert || 5));
+  // ─── Stock Metrics ─────────────────────────────────────────
+  const lowStockProducts = products.filter((p) => p.status === 'Low Stock');
   const lowStockCount = lowStockProducts.length;
+  const outOfStockProducts = products.filter((p) => p.status === 'Out of Stock');
+  const outOfStockCount = outOfStockProducts.length;
+  const inStockProducts = products.filter((p) => p.status === 'In Stock');
+  const inStockCount = inStockProducts.length;
+  const totalProductsCount = products.length;
 
   // ─── Pending Payments ──────────────────────────────────────
   const pendingCustomerCredit = customers.reduce(
@@ -596,9 +601,28 @@ export const DashboardView = ({
         </div>
       </div>
 
+      {/* Inventory KPI Stats Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+        <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200/80 flex flex-col gap-2 cursor-pointer hover:border-slate-300 transition-colors" onClick={() => setActiveTab('products')}>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Products</span>
+          <div className="text-2xl font-black text-slate-800">{totalProductsCount}</div>
+        </div>
+        <div className="bg-emerald-50 p-4 rounded-xl shadow-xs border border-emerald-100 flex flex-col gap-2 cursor-pointer hover:border-emerald-200 transition-colors" onClick={() => setActiveTab('products')}>
+          <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">In Stock</span>
+          <div className="text-2xl font-black text-emerald-700">{inStockCount}</div>
+        </div>
+        <div className="bg-orange-50 p-4 rounded-xl shadow-xs border border-orange-100 flex flex-col gap-2 cursor-pointer hover:border-orange-200 transition-colors" onClick={() => setActiveTab('products')}>
+          <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">Low Stock</span>
+          <div className="text-2xl font-black text-orange-700">{lowStockCount}</div>
+        </div>
+        <div className="bg-red-50 p-4 rounded-xl shadow-xs border border-red-100 flex flex-col gap-2 cursor-pointer hover:border-red-200 transition-colors" onClick={() => setActiveTab('products')}>
+          <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider">Out of Stock</span>
+          <div className="text-2xl font-black text-red-700">{outOfStockCount}</div>
+        </div>
+      </div>
 
       {/* Alert Banners & Second Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
         {/* Low stock alerts panel */}
         <div
           className={`p-4 rounded-xl border flex items-center justify-between ${lowStockCount > 0 ? "bg-amber-50/70 border-amber-200 text-amber-900" : "bg-slate-50 border-slate-200 text-slate-700"}`}

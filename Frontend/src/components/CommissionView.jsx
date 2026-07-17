@@ -231,12 +231,12 @@ export const CommissionView = ({
           auditRes,
           staffRes
         ] = await Promise.all([
-          fetch('/api/commissions/marketplace', { headers }),
-          fetch('/api/commissions/influencers', { headers }),
-          fetch('/api/commissions/rules', { headers }),
-          fetch('/api/commissions/settlements', { headers }),
-          fetch('/api/commissions/audit', { headers }),
-          fetch('/api/staff', { headers })
+          fetch('http://localhost:5000/api/commissions/marketplace', { headers }),
+          fetch('http://localhost:5000/api/commissions/influencers', { headers }),
+          fetch('http://localhost:5000/api/commissions/rules', { headers }),
+          fetch('http://localhost:5000/api/commissions/settlements', { headers }),
+          fetch('http://localhost:5000/api/commissions/audit', { headers }),
+          fetch('http://localhost:5000/api/staff', { headers })
         ]);
 
         if (staffRes.ok) {

@@ -89,9 +89,33 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'Stock cannot be negative'],
     },
-    minStockAlert: {
+    openingStock: {
       type: Number,
-      default: 10,
+      default: 0,
+      min: [0, 'Opening stock cannot be negative'],
+    },
+    purchasedQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    soldQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    reservedQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    threshold: {
+      type: Number,
+      default: 0,
+    },
+    stockPercentage: {
+      type: Number,
+      default: 0,
     },
     status: {
       type: String,

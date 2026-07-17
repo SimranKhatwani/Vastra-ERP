@@ -4,6 +4,7 @@ const Customer = require('../models/customerModel');
 const mongoose = require('mongoose');
 const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
 const { processWhatsAppDispatch } = require('../services/invoiceService');
+const { calculateStockStatus } = require('../services/stockCalculationService');
 
 // Helper: check if a string is a valid MongoDB ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id) && String(new mongoose.Types.ObjectId(id)) === id;
@@ -33,8 +34,14 @@ exports.createInvoice = async (req, res) => {
         try {
           const product = await Product.findOne({ _id: item.productId, tenantId });
           if (product) {
-            product.stock = Math.max(0, product.stock - item.quantity);
+            product.soldQuantity = (product.soldQuantity || 0) + item.quantity;
+            calculateStockStatus(product);
             await product.save();
+
+            emitToTenant(tenantId, 'inventory.updated', { product, tenantId, event: 'inventory.updated' });
+            if (product.status === 'Low Stock') {
+              emitToTenant(tenantId, 'inventory.low', { product, tenantId, event: 'inventory.low' });
+            }
           }
         } catch (stockErr) {
           console.warn('Stock deduction skipped for item:', item.productId, stockErr.message);

@@ -29,8 +29,7 @@ import { DashboardView } from "./components/DashboardView";
 import { BillingPOSView } from "./components/BillingPOSView";
 import { ArticulationView } from "./components/ArticulationView";
 import { ProductManagementView } from "./components/ProductManagementView";
-import { InventoryView } from "./components/InventoryView";
-import { InventoryArticulationWindow } from "./components/InventoryArticulationWindow";
+
 import { PurchaseView } from "./components/PurchaseView";
 import { CustomersView } from "./components/CustomersView";
 import { EmployeeView } from "./components/EmployeeView";
@@ -133,9 +132,17 @@ export default function App() {
     if (!socket) return;
 
     const handleRealtimeEvent = (payload) => {
-      const title = payload?.event || 'Realtime update';
-      const message = payload?.notification?.message || payload?.product?.name || payload?.invoice?.invoiceNumber || 'New update received';
-      addToastNotification(title, message, 'info');
+      if (payload?.event === 'inventory.low' && payload.product) {
+        addToastNotification(
+          "Low Stock Alert",
+          `${payload.product.name} (SKU ${payload.product.sku}) has reached Low Stock. Remaining Quantity: ${payload.product.stock}`,
+          "warning"
+        );
+      } else {
+        const title = payload?.event || 'Realtime update';
+        const message = payload?.notification?.message || payload?.product?.name || payload?.invoice?.invoiceNumber || 'New update received';
+        addToastNotification(title, message, 'info');
+      }
 
       if (payload?.notification) {
         setNotifications((prev) => [{
@@ -348,7 +355,7 @@ export default function App() {
           "attendance-dashboard",
         ];
       case "tailor":
-        return ["articulation", "inventory_articulation", "inventory", "attendance-dashboard"];
+        return ["articulation", "attendance-dashboard"];
       default:
         return ["billing"];
     }
@@ -898,12 +905,6 @@ export default function App() {
     { id: "articulation", label: "Tailoring & Garments", icon: Scissors },
     { id: "commissions", label: "Channel & Staff Commissions", icon: Percent },
     { id: "products", label: "Products & Catalogs", icon: Tags },
-    { id: "inventory", label: "Inventories & Stocks", icon: Warehouse },
-    {
-      id: "inventory_articulation",
-      label: "Articulation Window",
-      icon: TableProperties,
-    },
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
@@ -1317,28 +1318,6 @@ export default function App() {
             />
           )}
 
-          {activeModule === "inventory" && (
-            <InventoryView
-              products={products}
-              onAdjustStock={handleAdjustStock}
-              onAddNotification={addToastNotification}
-            />
-          )}
-
-          {activeModule === "inventory_articulation" && (
-            <InventoryArticulationWindow
-              products={products}
-              setProducts={setProducts}
-              suppliers={suppliers}
-              setSuppliers={setSuppliers}
-              purchaseOrders={purchaseOrders}
-              setPurchaseOrders={setPurchaseOrders}
-              invoices={invoices}
-              setInvoices={setInvoices}
-              onAdjustStock={handleAdjustStock}
-              onAddNotification={addToastNotification}
-            />
-          )}
 
           {activeModule === "purchase" && (
             <PurchaseView

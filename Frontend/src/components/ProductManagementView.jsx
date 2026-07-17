@@ -101,12 +101,12 @@ export const ProductManagementView = ({
     const matchesBrand = selectedBrand === "All" || p.brand === selectedBrand;
     let matchesStatus = true;
     if (selectedStatus === "In Stock")
-      matchesStatus = p.stock > p.minStockAlert;
+      matchesStatus = p.status === 'In Stock';
     else if (selectedStatus === "Low Stock")
-      matchesStatus = p.stock > 0 && p.stock <= p.minStockAlert;
-    else if (selectedStatus === "Out of Stock") matchesStatus = p.stock === 0;
+      matchesStatus = p.status === 'Low Stock';
+    else if (selectedStatus === "Out of Stock") matchesStatus = p.status === 'Out of Stock';
 
-    return matchesSearch && matchesCat && matchesBrand && matchesStatus;
+    return matchesSearch && matchesCat && matchesBrand && matchesStatus && (activeSubTab === 'low_stock' ? p.status === 'Low Stock' : true);
   });
 
   // Group products by style (Name + Brand)
@@ -127,13 +127,21 @@ export const ProductManagementView = ({
            if (p.color) groups[key].colorsAvailable.add(p.color);
            groups[key].variants.push(p);
            groups[key].stock += (p.stock || 0);
+           groups[key].openingStock = (groups[key].openingStock || 0) + (p.openingStock || 0);
+           groups[key].purchasedQuantity = (groups[key].purchasedQuantity || 0) + (p.purchasedQuantity || 0);
+           groups[key].threshold = (groups[key].threshold || 0) + (p.threshold || 0);
        }
     });
-    return Object.values(groups).map(g => ({
-       ...g,
-       size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
-       color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
-    }));
+    return Object.values(groups).map(g => {
+       const totalIncoming = (g.openingStock || 0) + (g.purchasedQuantity || 0);
+       const stockPercentage = totalIncoming > 0 ? Number(((g.stock / totalIncoming) * 100).toFixed(1)) : 0;
+       return {
+         ...g,
+         stockPercentage,
+         size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
+         color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
+       };
+    });
   }, [filteredProductsList]);
 
   // Pagination logic
@@ -367,6 +375,12 @@ export const ProductManagementView = ({
           >
             Brand Assets
           </button>
+          <button
+            onClick={() => setActiveSubTab("low_stock")}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer ${activeSubTab === "low_stock" ? "bg-orange-500 text-white shadow-xs" : "text-orange-600 hover:text-orange-700 bg-orange-50"}`}
+          >
+            Low Stock Products
+          </button>
         </div>
 
         {activeSubTab === "products" && currentUser?.role?.toLowerCase() !== 'salesperson' && (
@@ -397,7 +411,7 @@ export const ProductManagementView = ({
       </div>
 
       {/* RENDER PRODUCTS LIST */}
-      {activeSubTab === "products" && (
+      {(activeSubTab === "products" || activeSubTab === "low_stock") && (
         <div className="space-y-4">
           <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 bg-indigo-50/50 px-4 py-2 rounded-xl border border-indigo-100 w-fit">
             <span className="font-bold text-slate-700 mr-2">Stock Legend:</span>
@@ -517,10 +531,21 @@ export const ProductManagementView = ({
                     <th className="p-3.5">Garment Style</th>
                     <th className="p-3.5">SKU & Barcode</th>
                     <th className="p-3.5">Color / Size</th>
-                    <th className="p-3.5 text-right">Cost Price</th>
-                    <th className="p-3.5 text-right">Retail MRP</th>
-                    <th className="p-3.5 text-right">Selling Price</th>
-                    <th className="p-3.5 text-center">In Stock</th>
+                    {activeSubTab === 'low_stock' ? (
+                      <>
+                        <th className="p-3.5 text-center">Opening Qty</th>
+                        <th className="p-3.5 text-center">Current Qty</th>
+                        <th className="p-3.5 text-center">Threshold</th>
+                        <th className="p-3.5 text-center">Stock %</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="p-3.5 text-right">Cost Price</th>
+                        <th className="p-3.5 text-right">Retail MRP</th>
+                        <th className="p-3.5 text-right">Selling Price</th>
+                        <th className="p-3.5 text-center">In Stock</th>
+                      </>
+                    )}
                     <th className="p-3.5 text-center">Status</th>
                     <th className="p-3.5 text-center">Actions</th>
                   </tr>
@@ -573,27 +598,42 @@ export const ProductManagementView = ({
                             {p.size}
                           </span>
                         </td>
-                        <td className="p-3.5 text-right font-mono">
-                          ₹{p.purchasePrice}
-                        </td>
-                        <td className="p-3.5 text-right font-mono text-slate-400 line-through">
-                          ₹{p.mrp}
-                        </td>
-                        <td className="p-3.5 text-right font-mono font-bold text-indigo-600">
-                          ₹{p.sellingPrice}
-                        </td>
-                        <td className="p-3.5 text-center font-bold font-mono">
-                          {p.stock}
-                        </td>
+                        {activeSubTab === 'low_stock' ? (
+                          <>
+                            <td className="p-3.5 text-center font-mono text-slate-500">
+                              {p.openingStock || 0}
+                            </td>
+                            <td className="p-3.5 text-center font-bold font-mono text-indigo-600">
+                              {p.stock || 0}
+                            </td>
+                            <td className="p-3.5 text-center font-mono text-slate-500">
+                              {p.threshold || 0}
+                            </td>
+                            <td className="p-3.5 text-center font-mono font-semibold">
+                              {p.stockPercentage || 0}%
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-3.5 text-right font-mono">
+                              ₹{p.purchasePrice}
+                            </td>
+                            <td className="p-3.5 text-right font-mono text-slate-400 line-through">
+                              ₹{p.mrp}
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-bold text-indigo-600">
+                              ₹{p.sellingPrice}
+                            </td>
+                            <td className="p-3.5 text-center font-bold font-mono">
+                              {p.stock}
+                            </td>
+                          </>
+                        )}
                         <td className="p-3.5 text-center">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${p.stock === 0 ? "bg-red-100 text-red-700" : p.stock <= p.minStockAlert ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${p.status === 'Out of Stock' ? "bg-red-100 text-red-700" : p.status === 'Low Stock' ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"}`}
                           >
-                            {p.stock === 0
-                              ? "OUT"
-                              : p.stock <= p.minStockAlert
-                                ? "LOW"
-                                : "SAFE"}
+                            {p.status || 'In Stock'}
                           </span>
                         </td>
                         <td className="p-3.5 text-center">

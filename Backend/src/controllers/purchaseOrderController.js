@@ -2,6 +2,7 @@ const PurchaseOrder = require('../models/purchaseOrderModel');
 const Product = require('../models/productModel');
 const Supplier = require('../models/supplierModel');
 const purchaseService = require('../services/purchaseService');
+const { calculateStockStatus } = require('../services/stockCalculationService');
 const { emitToTenant, emitToRole } = require('../socket/socketServer');
 
 exports.createPurchaseOrder = async (req, res) => {
@@ -55,7 +56,8 @@ exports.updatePurchaseOrder = async (req, res) => {
       for (const item of po.items) {
         const product = await Product.findOne({ _id: item.productId, tenantId });
         if (product) {
-          product.stock = Math.max(0, product.stock - item.quantity);
+          product.purchasedQuantity = Math.max(0, (product.purchasedQuantity || 0) - item.quantity);
+          calculateStockStatus(product);
           await product.save();
         }
       }
@@ -105,7 +107,8 @@ exports.deletePurchaseOrder = async (req, res) => {
       for (const item of po.items) {
         const product = await Product.findOne({ _id: item.productId, tenantId });
         if (product) {
-          product.stock = Math.max(0, product.stock - item.quantity);
+          product.purchasedQuantity = Math.max(0, (product.purchasedQuantity || 0) - item.quantity);
+          calculateStockStatus(product);
           await product.save();
         }
       }

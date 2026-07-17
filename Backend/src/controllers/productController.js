@@ -1,5 +1,6 @@
 const Product = require('../models/productModel');
 const { emitToTenant, emitToRole } = require('../socket/socketServer');
+const { calculateStockStatus } = require('../services/stockCalculationService');
 
 exports.createProduct = async (req, res) => {
   try {
@@ -10,10 +11,12 @@ exports.createProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Product name already exists' });
     }
 
-    const product = await Product.create({
+    const product = new Product({
       ...req.body,
       tenantId
     });
+    calculateStockStatus(product);
+    await product.save();
 
     emitToTenant(tenantId, 'inventory.updated', {
       product,
@@ -51,10 +54,9 @@ exports.updateProduct = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    Object.assign(product, req.body);
+    calculateStockStatus(product);
+    await product.save();
 
     emitToTenant(tenantId, 'inventory.updated', {
       product,
@@ -98,16 +100,8 @@ exports.adjustStock = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    product.stock = Math.max(0, product.stock + amount);
-    
-    // Update status based on stock level
-    if (product.stock === 0) {
-      product.status = 'Out of Stock';
-    } else if (product.stock <= product.minStockAlert) {
-      product.status = 'Low Stock';
-    } else {
-      product.status = 'In Stock';
-    }
+    product.openingStock = Math.max(0, (product.openingStock || 0) + amount);
+    calculateStockStatus(product);
     
     await product.save();
 
@@ -116,7 +110,7 @@ exports.adjustStock = async (req, res) => {
       tenantId,
       event: 'inventory.updated'
     });
-    if (product.stock <= product.minStockAlert) {
+    if (product.status === 'Low Stock') {
       emitToTenant(tenantId, 'inventory.low', { product, tenantId, event: 'inventory.low' });
     }
 

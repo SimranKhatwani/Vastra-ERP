@@ -1,4 +1,5 @@
 const Product = require('../models/productModel');
+const { calculateStockStatus } = require('../services/stockCalculationService');
 
 exports.upsertProduct = async (tenantId, productData) => {
   // Try to find the product by SKU or Barcode first
@@ -12,7 +13,7 @@ exports.upsertProduct = async (tenantId, productData) => {
 
   if (product) {
     // Update existing product's stock and details
-    product.stock += (productData.stock || 0);
+    product.purchasedQuantity = (product.purchasedQuantity || 0) + (productData.stock || 0);
     if (productData.purchasePrice) product.purchasePrice = productData.purchasePrice;
     
     // Check if new properties from Manual Entry exist and update them
@@ -21,21 +22,28 @@ exports.upsertProduct = async (tenantId, productData) => {
     if (productData.width) product.width = productData.width;
     if (productData.uom) product.uom = productData.uom;
     
+    calculateStockStatus(product);
     await product.save();
     return product;
   } else {
     // Create new product
-    return await Product.create({
+    productData.purchasedQuantity = productData.stock || 0;
+    delete productData.stock;
+    const newProduct = new Product({
       tenantId,
       ...productData
     });
+    calculateStockStatus(newProduct);
+    await newProduct.save();
+    return newProduct;
   }
 };
 
 exports.addStock = async (tenantId, productId, quantity) => {
   const product = await Product.findOne({ _id: productId, tenantId });
   if (product) {
-    product.stock += quantity;
+    product.purchasedQuantity = (product.purchasedQuantity || 0) + quantity;
+    calculateStockStatus(product);
     await product.save();
   }
   return product;
