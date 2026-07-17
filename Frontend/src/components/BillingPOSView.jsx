@@ -477,7 +477,7 @@ export const BillingPOSView = ({
   const baseFilteredProducts = React.useMemo(() => {
     return (products || []).filter((p) => {
       const matchesCat =
-        selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+        selectedCategoryFilter === "All" || p.category?.toLowerCase() === selectedCategoryFilter.toLowerCase();
       const q = debouncedProductSearch.toLowerCase();
       const matchesSearch =
         !q ||
@@ -531,7 +531,7 @@ export const BillingPOSView = ({
 
   const filteredProducts = React.useMemo(() => {
     const filteredDemos = demoProducts.filter((p) => {
-      const matchesCat = selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+      const matchesCat = selectedCategoryFilter === "All" || p.category?.toLowerCase() === selectedCategoryFilter.toLowerCase();
       const q = debouncedProductSearch.toLowerCase();
       const matchesSearch =
         !q ||
@@ -544,7 +544,32 @@ export const BillingPOSView = ({
         p.size?.toLowerCase().includes(q);
       return matchesCat && matchesSearch;
     });
-    return [...baseFilteredProducts, ...filteredDemos].slice(0, 50); // Virtual slicing for performance
+
+    const combined = [...baseFilteredProducts, ...filteredDemos];
+    const groups = {};
+    combined.forEach(p => {
+       const baseName = p.name ? p.name.split('-')[0].trim().toLowerCase() : '';
+       const key = `${baseName}-${p.brand?.trim().toLowerCase()}`;
+       if (!groups[key]) {
+           groups[key] = { 
+             ...p, 
+             sizesAvailable: new Set(p.size ? [p.size] : []), 
+             colorsAvailable: new Set(p.color ? [p.color] : []),
+             variants: [p] 
+           };
+       } else {
+           if (p.size) groups[key].sizesAvailable.add(p.size);
+           if (p.color) groups[key].colorsAvailable.add(p.color);
+           groups[key].variants.push(p);
+           groups[key].stock += (p.stock || 0);
+       }
+    });
+
+    return Object.values(groups).map(g => ({
+       ...g,
+       size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
+       color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
+    })).slice(0, 50); // Virtual slicing for performance
   }, [baseFilteredProducts, demoProducts, selectedCategoryFilter, debouncedProductSearch]);
 
   // Unique categories list
@@ -567,7 +592,11 @@ export const BillingPOSView = ({
           key={p.id || p._id}
           className={`transition-colors cursor-pointer border-b border-slate-100 ${isSelected ? "bg-indigo-50" : "hover:bg-slate-50"}`}
           onClick={() => {
-            setQtyModalProduct(p);
+            setQtyModalProduct({
+              ...p,
+              ...(p.variants ? p.variants[0] : {}),
+              variants: p.variants
+            });
             setQtyModalValue(1);
           }}
         >
@@ -591,7 +620,11 @@ export const BillingPOSView = ({
               className="inline-flex px-3 py-1.5 rounded-lg bg-indigo-600 text-white items-center justify-center font-bold text-[10px] hover:bg-indigo-700 transition-colors uppercase tracking-wider"
               onClick={(e) => {
                 e.stopPropagation();
-                setQtyModalProduct(p);
+                setQtyModalProduct({
+                  ...p,
+                  ...(p.variants ? p.variants[0] : {}),
+                  variants: p.variants
+                });
                 setQtyModalValue(1);
               }}
             >
@@ -698,7 +731,11 @@ export const BillingPOSView = ({
       e.preventDefault();
       if (isProductDropdownOpen && focusedProductIndex >= 0 && filteredProducts[focusedProductIndex]) {
         // Add from dropdown via Quantity Modal
-        setQtyModalProduct(filteredProducts[focusedProductIndex]);
+        setQtyModalProduct({
+          ...filteredProducts[focusedProductIndex],
+          ...(filteredProducts[focusedProductIndex].variants ? filteredProducts[focusedProductIndex].variants[0] : {}),
+          variants: filteredProducts[focusedProductIndex].variants
+        });
         setQtyModalValue(1);
         setIsProductDropdownOpen(false);
       } else {
@@ -1769,7 +1806,11 @@ export const BillingPOSView = ({
                             key={p.id || p._id} 
                             className={`border-b border-slate-100 cursor-pointer transition-colors ${focusedProductIndex === idx ? 'bg-indigo-100' : 'hover:bg-slate-50'}`}
                             onClick={() => {
-                              setQtyModalProduct(p);
+                              setQtyModalProduct({
+                                ...p,
+                                ...(p.variants ? p.variants[0] : {}),
+                                variants: p.variants
+                              });
                               setQtyModalValue(1);
                               setIsProductDropdownOpen(false);
                             }}
@@ -1802,7 +1843,7 @@ export const BillingPOSView = ({
             {/* Categories & Toggle */}
             <div className="flex gap-4 items-center shrink-0">
                <div className="flex-1 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {["All", "Sarees", "Kurtas", "Shirts", "Trousers", "Denim", "Ethnic"].map((cat, idx) => (
+                  {uniqueCategories.map((cat, idx) => (
                     <button
                       key={idx}
                       id={`btn-cat-${cat}`}
@@ -4169,21 +4210,55 @@ export const BillingPOSView = ({
               {/* Size & Color Selectors */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Size</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex justify-between items-center">
+                    <span>Size</span>
+                    <span className="flex items-center gap-1.5 text-[8px] tracking-normal font-medium bg-slate-100 px-1.5 py-0.5 rounded">
+                      <span>🟢 Safe</span>
+                      <span>🟡 Low</span>
+                      <span>🔴 Out</span>
+                    </span>
+                  </label>
                   <select 
                     value={qtyModalProduct.size || ""} 
-                    onChange={(e) => setQtyModalProduct({...qtyModalProduct, size: e.target.value})}
+                    onChange={(e) => {
+                      const newSize = e.target.value;
+                      const matching = qtyModalProduct.variants?.find(v => v.size === newSize && v.color === qtyModalProduct.color) || qtyModalProduct.variants?.find(v => v.size === newSize);
+                      setQtyModalProduct({
+                        ...qtyModalProduct,
+                        ...(matching || {}),
+                        size: newSize,
+                        variants: qtyModalProduct.variants
+                      });
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="">Default Size</option>
-                    {uniqueSizes.map(s => <option key={s} value={s}>{s}</option>)}
+                    {uniqueSizes.map(s => {
+                       const variant = qtyModalProduct.variants?.find(v => v.size === s && v.color === qtyModalProduct.color) || qtyModalProduct.variants?.find(v => v.size === s);
+                       let emoji = "";
+                       if (variant) {
+                          if (variant.stock <= 0) emoji = "🔴 ";
+                          else if (variant.stock <= (variant.minStockAlert || 5)) emoji = "🟡 ";
+                          else emoji = "🟢 ";
+                       }
+                       return <option key={s} value={s}>{emoji}{s}</option>;
+                    })}
                   </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Color</label>
                   <select 
                     value={qtyModalProduct.color || ""} 
-                    onChange={(e) => setQtyModalProduct({...qtyModalProduct, color: e.target.value})}
+                    onChange={(e) => {
+                      const newColor = e.target.value;
+                      const matching = qtyModalProduct.variants?.find(v => v.color === newColor && v.size === qtyModalProduct.size) || qtyModalProduct.variants?.find(v => v.color === newColor);
+                      setQtyModalProduct({
+                        ...qtyModalProduct,
+                        ...(matching || {}),
+                        color: newColor,
+                        variants: qtyModalProduct.variants
+                      });
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="">Default Color</option>

@@ -49,6 +49,7 @@ export const ProductManagementView = ({
   const [formBarcode, setFormBarcode] = useState("");
   const [formColor, setFormColor] = useState("");
   const [formSize, setFormSize] = useState("M");
+  const [formVariants, setFormVariants] = useState([]);
   const [formPurchasePrice, setFormPurchasePrice] = useState(500);
   const [formMRP, setFormMRP] = useState(1200);
   const [formSellingPrice, setFormSellingPrice] = useState(1000);
@@ -94,7 +95,7 @@ export const ProductManagementView = ({
       (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.barcode && p.barcode.includes(searchQuery));
     const matchesCat =
-      selectedCategory === "All" || p.category === selectedCategory;
+      selectedCategory === "All" || p.category?.toLowerCase() === selectedCategory.toLowerCase();
     const matchesBrand = selectedBrand === "All" || p.brand === selectedBrand;
     let matchesStatus = true;
     if (selectedStatus === "In Stock")
@@ -106,11 +107,38 @@ export const ProductManagementView = ({
     return matchesSearch && matchesCat && matchesBrand && matchesStatus;
   });
 
+  // Group products by style (Name + Brand)
+  const groupedProductsList = React.useMemo(() => {
+    const groups = {};
+    filteredProductsList.forEach(p => {
+       const baseName = p.name ? p.name.split('-')[0].trim().toLowerCase() : '';
+       const key = `${baseName}-${p.brand?.trim().toLowerCase()}`;
+       if (!groups[key]) {
+           groups[key] = { 
+             ...p, 
+             sizesAvailable: new Set(p.size ? [p.size] : []), 
+             colorsAvailable: new Set(p.color ? [p.color] : []),
+             variants: [p] 
+           };
+       } else {
+           if (p.size) groups[key].sizesAvailable.add(p.size);
+           if (p.color) groups[key].colorsAvailable.add(p.color);
+           groups[key].variants.push(p);
+           groups[key].stock += (p.stock || 0);
+       }
+    });
+    return Object.values(groups).map(g => ({
+       ...g,
+       size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
+       color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
+    }));
+  }, [filteredProductsList]);
+
   // Pagination logic
-  const totalItems = filteredProductsList.length;
+  const totalItems = groupedProductsList.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedProducts = filteredProductsList.slice(
+  const paginatedProducts = groupedProductsList.slice(
     startIndex,
     startIndex + itemsPerPage,
   );
@@ -174,6 +202,7 @@ export const ProductManagementView = ({
     setFormBarcode(`890${String(100000000 + products.length + 1)}`);
     setFormColor("");
     setFormSize("M");
+    setFormVariants([]);
     setFormPurchasePrice(450);
     setFormMRP(1200);
     setFormSellingPrice(999);
@@ -193,6 +222,7 @@ export const ProductManagementView = ({
     setFormBarcode(prod.barcode);
     setFormColor(prod.color);
     setFormSize(prod.size);
+    setFormVariants(prod.variants || []);
     setFormPurchasePrice(prod.purchasePrice);
     setFormMRP(prod.mrp);
     setFormSellingPrice(prod.sellingPrice);
@@ -367,6 +397,12 @@ export const ProductManagementView = ({
       {/* RENDER PRODUCTS LIST */}
       {activeSubTab === "products" && (
         <div className="space-y-4">
+          <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 bg-indigo-50/50 px-4 py-2 rounded-xl border border-indigo-100 w-fit">
+            <span className="font-bold text-slate-700 mr-2">Stock Legend:</span>
+            <span className="flex items-center gap-1"><span className="text-xs">🟢</span> In Stock</span>
+            <span className="flex items-center gap-1"><span className="text-xs">🟡</span> Low Stock</span>
+            <span className="flex items-center gap-1"><span className="text-xs">🔴</span> Out of Stock / Unconfigured</span>
+          </div>
           {/* Filters Bar */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center justify-between text-xs font-semibold">
             <div className="relative w-full md:w-72">
@@ -493,9 +529,14 @@ export const ProductManagementView = ({
                     return (
                       <tr
                         key={idx}
-                        className={`hover:bg-slate-50/50 transition-colors ${isSelected ? "bg-indigo-50/20" : ""}`}
+                        className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${isSelected ? "bg-indigo-50/20" : ""}`}
+                        onClick={() => {
+                          if (currentUser?.role?.toLowerCase() !== 'salesperson') {
+                            openEditModal(p);
+                          }
+                        }}
                       >
-                        <td className="p-3.5 text-center">
+                        <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -628,7 +669,11 @@ export const ProductManagementView = ({
           {dynamicCategoriesList.map((cat) => (
             <div
               key={cat.id}
-              className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs space-y-3"
+              onClick={() => {
+                setSelectedCategory(cat.name);
+                setActiveSubTab("products");
+              }}
+              className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs space-y-3 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all"
             >
               <div className="flex justify-between items-start">
                 <span className="bg-indigo-50 text-indigo-600 font-mono font-bold text-xs px-2 py-0.5 rounded">
@@ -651,7 +696,11 @@ export const ProductManagementView = ({
           {dynamicBrandsList.map((b) => (
             <div
               key={b.id}
-              className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs text-center space-y-3"
+              onClick={() => {
+                setSelectedBrand(b.name);
+                setActiveSubTab("products");
+              }}
+              className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs text-center space-y-3 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all"
             >
               <div className="w-12 h-12 rounded-full bg-slate-100 mx-auto flex items-center justify-center font-mono font-bold text-lg text-slate-600">
                 {b.name[0]}
@@ -782,8 +831,13 @@ export const ProductManagementView = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 mb-1 font-semibold">
-                    Sizing Code
+                  <label className="text-slate-500 mb-1 font-semibold flex justify-between items-center">
+                    <span>Sizing Code</span>
+                    <span className="flex items-center gap-1.5 text-[9px] font-medium bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                      <span>🟢 In Stock</span>
+                      <span>🟡 Low</span>
+                      <span>🔴 Out</span>
+                    </span>
                   </label>
                   <select
                     value={formCategory.toLowerCase().includes("saree") ? "FS" : formSize}
@@ -791,13 +845,16 @@ export const ProductManagementView = ({
                     disabled={formCategory.toLowerCase().includes("saree")}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <option value="XS">XS</option>
-                    <option value="S">S</option>
-                    <option value="M">M</option>
-                    <option value="L">L</option>
-                    <option value="XL">XL</option>
-                    <option value="XXL">XXL</option>
-                    <option value="FS">FS (Free Size)</option>
+                    {["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"].map(s => {
+                       const variant = formVariants.find(v => v.size === s);
+                       let emoji = "🔴 "; // Default to Out of Stock for unconfigured sizes
+                       if (variant) {
+                          if (variant.stock <= 0) emoji = "🔴 ";
+                          else if (variant.stock <= (variant.minStockAlert || 5)) emoji = "🟡 ";
+                          else emoji = "🟢 ";
+                       }
+                       return <option key={s} value={s}>{emoji}{s}</option>;
+                    })}
                   </select>
                 </div>
               </div>

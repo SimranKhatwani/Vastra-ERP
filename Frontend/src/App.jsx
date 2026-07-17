@@ -67,23 +67,33 @@ import {
   generateAuditLogs,
 } from "./data/demoData";
 
+const demoProductsData = generateDemoProducts();
+const demoCustomersData = generateDemoCustomers();
+const demoSuppliersData = generateDemoSuppliers();
+const demoEmployeesData = generateDemoEmployees();
+const demoInvoicesData = generateDemoInvoices(demoCustomersData, demoProductsData, demoEmployeesData);
+const demoPurchaseOrdersData = generateDemoPurchaseOrders(demoSuppliersData, demoProductsData);
+const demoExpensesData = generateExpenses();
+const demoTenantsData = generateSaaSTenants();
+const demoSupportTicketsData = generateSupportTickets();
+const demoNotificationsData = generateNotifications();
+const demoAuditLogsData = generateAuditLogs();
+
 export default function App() {
   const { socket, connected } = useSocket();
 
   // Master States
-  const [products, setProducts] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
-
-  const [expenses, setExpenses] = useState([]);
-  const [tenants, setTenants] = useState([]); // Removed static mock data
-  const [supportTickets, setSupportTickets] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [auditLogs, setAuditLogs] = useState(() => generateAuditLogs());
+  const [products, setProducts] = useState(demoProductsData);
+  const [customers, setCustomers] = useState(demoCustomersData);
+  const [suppliers, setSuppliers] = useState(demoSuppliersData);
+  const [employees, setEmployees] = useState(demoEmployeesData);
+  const [invoices, setInvoices] = useState(demoInvoicesData);
+  const [purchaseOrders, setPurchaseOrders] = useState(demoPurchaseOrdersData);
+  const [expenses, setExpenses] = useState(demoExpensesData);
+  const [tenants, setTenants] = useState(demoTenantsData); 
+  const [supportTickets, setSupportTickets] = useState(demoSupportTicketsData);
+  const [notifications, setNotifications] = useState(demoNotificationsData);
+  const [auditLogs, setAuditLogs] = useState(demoAuditLogsData);
 
   // Auth & Session States
   const [currentUser, setCurrentUser] = useState(() => {
