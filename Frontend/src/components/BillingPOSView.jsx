@@ -48,6 +48,24 @@ export const BillingPOSView = ({
   const [showAllCatalogItems, setShowAllCatalogItems] = useState(false);
 
   useEffect(() => {
+    const pendingItem = localStorage.getItem("pending_pos_cart_item");
+    if (pendingItem) {
+      try {
+        const p = JSON.parse(pendingItem);
+        localStorage.removeItem("pending_pos_cart_item");
+        setQtyModalProduct({
+          ...p,
+          ...(p.variants ? p.variants[0] : {}),
+          variants: p.variants || [p]
+        });
+        setQtyModalValue(1);
+      } catch (e) {
+        console.error("Failed to parse pending cart item", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (customers && customers.length > 0 && (!selectedCustomerId || !customers.find(c => c.id === selectedCustomerId))) {
       setSelectedCustomerId(customers[0].id);
     }
@@ -265,6 +283,13 @@ export const BillingPOSView = ({
         e.preventDefault();
       }
 
+      // If the receipt modal is open, close it on Escape
+      if (completedInvoice && e.key === "Escape") {
+        e.preventDefault();
+        setCompletedInvoice(null);
+        return;
+      }
+
       // If a modal (like quantity) is open, handle its keys separately
       if (qtyModalProduct) {
         if (e.key === "Escape") {
@@ -334,7 +359,7 @@ export const BillingPOSView = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [qtyModalProduct, cart, heldBills, selectedCustomerId]); // Re-bind if these states change so handleHoldBill gets latest state
+  }, [qtyModalProduct, cart, heldBills, selectedCustomerId, completedInvoice]); // Re-bind if these states change so handleHoldBill gets latest state
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
   // Variant Selection Modal State

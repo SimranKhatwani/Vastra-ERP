@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  ShoppingCart,
 } from "lucide-react";
 
 export const ProductManagementView = ({
@@ -19,6 +20,7 @@ export const ProductManagementView = ({
   onDeleteProducts,
   onAddNotification,
   currentUser,
+  onNavigate,
 }) => {
   // Navigation tabs: Products, Categories, Brands
   const [activeSubTab, setActiveSubTab] = useState("products");
@@ -948,6 +950,23 @@ export const ProductManagementView = ({
                 >
                   Cancel
                 </button>
+                {modalMode === "edit" && onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                       const p = products.find(prod => prod.id === editingProductId);
+                       if (p) {
+                         localStorage.setItem("pending_pos_cart_item", JSON.stringify(p));
+                         setShowProductModal(false);
+                         onNavigate("billing");
+                       }
+                    }}
+                    className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold hover:bg-indigo-200 shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    Send to POS Cart
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-md cursor-pointer"
