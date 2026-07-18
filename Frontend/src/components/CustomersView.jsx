@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Gift } from "lucide-react";
 
 export const CustomersView = ({
@@ -10,11 +10,61 @@ export const CustomersView = ({
   const [membershipFilter, setMembershipFilter] = useState("All");
   const [selectedCustomerId, setSelectedCustomerId] = useState("c-1");
   const [settleAmount, setSettleAmount] = useState(1000);
+  const [activeTab, setActiveTab] = useState("directory");
+  const [loyaltySettings, setLoyaltySettings] = useState({ enabled: true, rupeesPerPoint: 20 });
+  const [isSaving, setIsSaving] = useState(false);
 
-  // CRM birthday check for Today (June 28, 2026)
+  useEffect(() => {
+    const fetchLoyaltySettings = async () => {
+      try {
+        const res = await fetch("/api/customers/loyalty-settings", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          setLoyaltySettings({
+            enabled: data.data.enabled,
+            rupeesPerPoint: data.data.rupeesPerPoint || 20
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load loyalty settings", err);
+      }
+    };
+    fetchLoyaltySettings();
+  }, []);
+
+  const handleSaveLoyaltySettings = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/customers/loyalty-settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(loyaltySettings),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification("Settings Saved", "Loyalty configuration updated successfully.", "success");
+      } else {
+        onAddNotification("Error", data.message || "Failed to update settings", "error");
+      }
+    } catch (err) {
+      onAddNotification("Error", "Network error occurred", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // CRM birthday check
   const birthdayReminders = customers.filter((c) => {
-    const parts = c.birthday.split("-");
-    return parts[1] === "06" && parts[2] === "28";
+    if (!c.birthday) return false;
+    const parts = new Date(c.birthday).toISOString().split("T")[0].split("-");
+    const today = new Date();
+    return parseInt(parts[1]) === today.getMonth() + 1 && parseInt(parts[2]) === today.getDate();
   });
 
   const activeCustomer =
@@ -25,7 +75,7 @@ export const CustomersView = ({
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.phone.includes(searchQuery);
     const matchesMembership =
-      membershipFilter === "All" || c.membership === membershipFilter;
+      membershipFilter === "All" || (c.tier || c.membership) === membershipFilter;
     return matchesSearch && matchesMembership;
   });
 
@@ -91,10 +141,34 @@ export const CustomersView = ({
         </div>
       )}
 
-      {/* Main CRM Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Main CRM Ledger Table (Full Width) */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:col-span-12">
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 mb-6">
+        <button
+          onClick={() => setActiveTab("directory")}
+          className={`py-2 px-4 text-xs font-bold transition-all ${
+            activeTab === "directory"
+              ? "border-b-2 border-indigo-600 text-indigo-600"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Customer Directory
+        </button>
+        <button
+          onClick={() => setActiveTab("loyalty_config")}
+          className={`py-2 px-4 text-xs font-bold transition-all ${
+            activeTab === "loyalty_config"
+              ? "border-b-2 border-indigo-600 text-indigo-600"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Loyalty Points Configuration
+        </button>
+      </div>
+
+      {activeTab === "directory" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Main CRM Ledger Table (Full Width) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:col-span-12">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-semibold">
             <div>
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
@@ -143,14 +217,19 @@ export const CustomersView = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                {filteredCustomers.slice(0, 10).map((cust, idx) => {
-                  const isBdayToday = cust.birthday.endsWith("06-28");
+                {filteredCustomers.map((cust, idx) => {
+                  const tierValue = cust.tier || cust.membership || "Bronze";
+                  const isBdayToday = cust.birthday
+                    ? (() => { const d = new Date(cust.birthday); const t = new Date(); return d.getMonth() === t.getMonth() && d.getDate() === t.getDate(); })()
+                    : false;
                   const tierColor =
-                    cust.membership === "Platinum"
+                    tierValue === "Platinum"
                       ? "bg-slate-950 text-amber-400"
-                      : cust.membership === "Gold"
+                      : tierValue === "Gold"
                         ? "bg-amber-100 text-amber-800"
-                        : "bg-slate-100 text-slate-700";
+                        : tierValue === "Silver"
+                          ? "bg-slate-200 text-slate-700"
+                          : "bg-slate-100 text-slate-700";
                   return (
                     <tr key={idx} className="hover:bg-slate-50/50">
                       <td className="p-3.5">
@@ -168,7 +247,7 @@ export const CustomersView = ({
                             <span
                               className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${tierColor}`}
                             >
-                              {cust.membership}
+                              {tierValue}
                             </span>
                           </div>
                         </div>
@@ -196,10 +275,12 @@ export const CustomersView = ({
                             <Gift className="w-3 h-3" />
                             <span>TODAY</span>
                           </span>
-                        ) : (
+                        ) : cust.birthday ? (
                           <span className="text-slate-400 font-mono text-[10px]">
-                            {cust.birthday}
+                            {new Date(cust.birthday).toLocaleDateString("en-IN")}
                           </span>
+                        ) : (
+                          <span className="text-slate-300 text-[10px]">—</span>
                         )}
                       </td>
                     </tr>
@@ -210,6 +291,85 @@ export const CustomersView = ({
           </div>
         </div>
       </div>
+      )}
+
+      {activeTab === "loyalty_config" && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-2xl mx-auto">
+          <div className="mb-6">
+            <h3 className="text-lg font-bold text-slate-800">Loyalty Points Configuration</h3>
+            <p className="text-xs text-slate-500">Configure how customers earn loyalty points on their purchases.</p>
+          </div>
+
+          <form onSubmit={handleSaveLoyaltySettings} className="space-y-6">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+              <input
+                type="checkbox"
+                id="loyalty-enabled"
+                checked={loyaltySettings.enabled}
+                onChange={(e) => setLoyaltySettings({ ...loyaltySettings, enabled: e.target.checked })}
+                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+              />
+              <label htmlFor="loyalty-enabled" className="text-sm font-bold text-slate-700 cursor-pointer">
+                Enable Loyalty Program
+              </label>
+            </div>
+
+            <div className={`space-y-4 ${!loyaltySettings.enabled ? "opacity-50 pointer-events-none" : ""}`}>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Earning Rule</label>
+                <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-sm font-semibold text-slate-600">For every</span>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={loyaltySettings.rupeesPerPoint}
+                      onChange={(e) => setLoyaltySettings({ ...loyaltySettings, rupeesPerPoint: parseInt(e.target.value) || 0 })}
+                      className="w-24 pl-7 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm font-bold focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-slate-600">spent, customer earns <strong className="text-indigo-600">1 Point</strong></span>
+                </div>
+              </div>
+
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-xs">
+                <h4 className="font-bold text-blue-800 mb-2">Example Calculation</h4>
+                <table className="w-full text-left max-w-xs text-slate-600">
+                  <tbody>
+                    <tr className="border-b border-blue-100/50">
+                      <td className="py-1">Bill Amount: ₹100</td>
+                      <td className="py-1 font-bold">{(100 / (loyaltySettings.rupeesPerPoint || 1)).toFixed(0)} Points</td>
+                    </tr>
+                    <tr className="border-b border-blue-100/50">
+                      <td className="py-1">Bill Amount: ₹500</td>
+                      <td className="py-1 font-bold">{(500 / (loyaltySettings.rupeesPerPoint || 1)).toFixed(0)} Points</td>
+                    </tr>
+                    <tr className="border-b border-blue-100/50">
+                      <td className="py-1">Bill Amount: ₹1,000</td>
+                      <td className="py-1 font-bold">{(1000 / (loyaltySettings.rupeesPerPoint || 1)).toFixed(0)} Points</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1">Bill Amount: ₹5,000</td>
+                      <td className="py-1 font-bold">{(5000 / (loyaltySettings.rupeesPerPoint || 1)).toFixed(0)} Points</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-sm transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : "Save Configuration"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

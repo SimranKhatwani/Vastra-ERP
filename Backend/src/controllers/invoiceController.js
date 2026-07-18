@@ -52,11 +52,22 @@ exports.createInvoice = async (req, res) => {
     // 3. Update Customer Financials (if a valid customer is attached)
     if (customerId && isValidObjectId(customerId)) {
       try {
+        const LoyaltySettings = require('../models/loyaltySettingsModel');
         const customer = await Customer.findOne({ _id: customerId, tenantId });
         if (customer) {
           customer.totalInvoices += 1;
           customer.totalSpent += grandTotal;
-          customer.loyaltyPoints += Math.floor(grandTotal * 0.05);
+          
+          // Loyalty Points Calculation
+          let loyaltySettings = await LoyaltySettings.findOne({ tenantId });
+          if (!loyaltySettings) {
+            loyaltySettings = { enabled: true, rupeesPerPoint: 20 };
+          }
+          
+          if (loyaltySettings.enabled && loyaltySettings.rupeesPerPoint > 0) {
+            const pointsEarned = Math.floor(grandTotal / loyaltySettings.rupeesPerPoint);
+            customer.loyaltyPoints += pointsEarned;
+          }
 
           if (paymentMethod === 'Credit') {
             customer.outstandingBalance += grandTotal;

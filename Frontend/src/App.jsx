@@ -83,7 +83,7 @@ export default function App() {
 
   // Master States
   const [products, setProducts] = useState(demoProductsData);
-  const [customers, setCustomers] = useState(demoCustomersData);
+  const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState(demoSuppliersData);
   const [employees, setEmployees] = useState(demoEmployeesData);
   const [invoices, setInvoices] = useState(demoInvoicesData);
@@ -214,7 +214,7 @@ export default function App() {
           }
           if (dataCustomers.success) {
             const arr = dataCustomers.data.map(c => ({...c, id: c._id}));
-            setCustomers(arr.length > 0 ? arr : demoCustomersData);
+            setCustomers(arr);
           }
           if (dataInvoices.success) {
             const arr = dataInvoices.data.map(i => ({...i, id: i._id}));

@@ -1,4 +1,5 @@
 const Customer = require('../models/customerModel');
+const LoyaltySettings = require('../models/loyaltySettingsModel');
 
 exports.createCustomer = async (req, res) => {
   try {
@@ -102,6 +103,52 @@ exports.settleBalance = async (req, res) => {
     await customer.save();
 
     res.status(200).json({ success: true, data: customer });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get loyalty settings
+// @route   GET /api/customers/loyalty-settings
+// @access  Private
+exports.getLoyaltySettings = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    let settings = await LoyaltySettings.findOne({ tenantId });
+
+    if (!settings) {
+      settings = await LoyaltySettings.create({ tenantId });
+    }
+
+    res.status(200).json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update loyalty settings
+// @route   PUT /api/customers/loyalty-settings
+// @access  Private
+exports.updateLoyaltySettings = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { enabled, rupeesPerPoint } = req.body;
+
+    let settings = await LoyaltySettings.findOne({ tenantId });
+
+    if (!settings) {
+      settings = await LoyaltySettings.create({
+        tenantId,
+        enabled,
+        rupeesPerPoint
+      });
+    } else {
+      settings.enabled = enabled !== undefined ? enabled : settings.enabled;
+      settings.rupeesPerPoint = rupeesPerPoint || settings.rupeesPerPoint;
+      await settings.save();
+    }
+
+    res.status(200).json({ success: true, data: settings });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

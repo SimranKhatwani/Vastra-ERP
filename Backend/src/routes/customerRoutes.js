@@ -8,6 +8,11 @@ router.route('/')
   .post(protect, createCustomer)
   .get(protect, getCustomers);
 
+const { getLoyaltySettings, updateLoyaltySettings } = require('../controllers/customerController');
+router.route('/loyalty-settings')
+  .get(protect, getLoyaltySettings)
+  .put(protect, updateLoyaltySettings);
+
 router.route('/:id')
   .put(protect, updateCustomer)
   .delete(protect, deleteCustomer);
