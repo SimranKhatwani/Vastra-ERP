@@ -116,3 +116,87 @@ exports.createAuditLog = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// 6. Staff Commission Engine
+const CommissionHistory = require('../models/commissionHistoryModel');
+const CommissionSettings = require('../models/commissionSettingsModel');
+const Employee = require('../models/employeeModel');
+
+exports.getCommissionHistory = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const history = await CommissionHistory.find({ tenantId }).sort('-createdAt').lean();
+    res.status(200).json({ success: true, count: history.length, data: history });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getCommissionStats = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const history = await CommissionHistory.find({ tenantId }).lean();
+    
+    let totalToday = 0;
+    history.forEach(h => {
+      if (new Date(h.createdAt) >= today) {
+        totalToday += h.commissionAmount;
+      }
+    });
+
+    const breakdown = await CommissionHistory.aggregate([
+      { $match: { tenantId } },
+      {
+        $group: {
+          _id: "$employeeRole",
+          totalCommission: { $sum: "$commissionAmount" },
+          pendingCommission: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "Pending"] }, "$commissionAmount", 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        totalToday,
+        breakdown
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSettings = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    let settings = await CommissionSettings.findOne({ tenantId });
+    if (!settings) {
+      settings = await CommissionSettings.create({ tenantId });
+    }
+    res.status(200).json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateSettings = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    let settings = await CommissionSettings.findOneAndUpdate(
+      { tenantId },
+      req.body,
+      { new: true, upsert: true, runValidators: true }
+    );
+    res.status(200).json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

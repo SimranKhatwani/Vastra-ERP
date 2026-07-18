@@ -865,6 +865,41 @@ export const EmployeeView = ({
                   </div>
                 </div>
 
+                {/* Commission Summary */}
+                {activeEmployee.commissionSummary && (
+                  <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl space-y-2">
+                    <h4 className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider mb-2">
+                      Commission Summary
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Products Sold</span>
+                        <span className="font-mono font-extrabold text-indigo-700">{activeEmployee.commissionSummary.totalProductsSold || 0}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Today</span>
+                        <span className="font-mono font-extrabold text-indigo-700">₹{activeEmployee.commissionSummary.today || 0}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Monthly</span>
+                        <span className="font-mono font-extrabold text-indigo-700">₹{activeEmployee.commissionSummary.monthly || 0}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Lifetime</span>
+                        <span className="font-mono font-extrabold text-indigo-700">₹{activeEmployee.commissionSummary.lifetime || 0}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-orange-400 block font-bold uppercase">Pending</span>
+                        <span className="font-mono font-extrabold text-orange-600">₹{activeEmployee.commissionSummary.pending || 0}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-50">
+                        <span className="text-[9px] text-emerald-400 block font-bold uppercase">Paid</span>
+                        <span className="font-mono font-extrabold text-emerald-600">₹{activeEmployee.commissionSummary.paid || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Documents Vault */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">

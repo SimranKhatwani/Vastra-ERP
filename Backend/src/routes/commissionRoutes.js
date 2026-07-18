@@ -39,4 +39,22 @@ router.route('/audit')
   .get(protect, getAuditLogs)
   .post(protect, createAuditLog);
 
+// Staff Commissions
+const {
+  getCommissionHistory,
+  getCommissionStats,
+  getSettings,
+  updateSettings
+} = require('../controllers/commissionController');
+
+router.route('/staff/history')
+  .get(protect, getCommissionHistory);
+
+router.route('/staff/stats')
+  .get(protect, getCommissionStats);
+
+router.route('/staff/settings')
+  .get(protect, getSettings)
+  .put(protect, updateSettings);
+
 module.exports = router;

@@ -64,11 +64,23 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
   const [waFetchStatus, setWaFetchStatus] = useState(null); // null | 'loaded' | 'error'
   const [showToken, setShowToken] = useState(false);
 
+  const [commSettings, setCommSettings] = useState({
+    isEnabled: true,
+    salespersonPercentage: 1.5,
+    workerPercentage: 0.5,
+    calculationBasis: "Net Selling Price"
+  });
+  const [commLoading, setCommLoading] = useState(false);
+  const [commSaving, setCommSaving] = useState(false);
+
   const isAdminRole = ["BusinessAdmin", "Admin", "SuperAdmin"].includes(currentUser?.role);
 
   useEffect(() => {
     if (activeTab === "whatsapp") {
       fetchWaConfig();
+    }
+    if (activeTab === "commissions") {
+      fetchCommConfig();
     }
   }, [activeTab]);
 
@@ -129,18 +141,64 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
           "success",
         );
       } else {
-        onAddNotification("Save Failed", data.message || "Could not save config.", "danger");
+        onAddNotification(data.message || "Failed to save config", "error");
       }
     } catch (err) {
-      onAddNotification("Error", "Failed to connect to backend.", "danger");
+      console.error("[SettingsView] saveWaConfig error:", err);
+      onAddNotification("An error occurred while saving.", "error");
     } finally {
       setWaSaving(false);
     }
   };
 
-  const togglePermission = (idx, field) => {
+  const fetchCommConfig = async () => {
+    setCommLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/commissions/staff/settings", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setCommSettings(data.data);
+      }
+    } catch (err) {
+      console.error("fetchCommConfig error:", err);
+    } finally {
+      setCommLoading(false);
+    }
+  };
+
+  const handleSaveCommConfig = async (e) => {
+    e.preventDefault();
+    if (!isAdminRole) return;
+    setCommSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/commissions/staff/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(commSettings),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification("Commission config saved successfully!", "success");
+      } else {
+        onAddNotification(data.message || "Failed to save", "error");
+      }
+    } catch (err) {
+      onAddNotification("Error saving commission config.", "error");
+    } finally {
+      setCommSaving(false);
+    }
+  };
+
+  const handlePermissionChange = (roleIndex, permKey) => {
     setPermissions((prev) =>
-      prev.map((p, i) => (i === idx ? { ...p, [field]: !p[field] } : p)),
+      prev.map((p, i) => (i === roleIndex ? { ...p, [permKey]: !p[permKey] } : p)),
     );
     onAddNotification(
       "RBAC Matrix Changed",
@@ -216,7 +274,13 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
             className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 ${activeTab === "whatsapp" ? "bg-white text-emerald-700" : "text-slate-500 hover:text-slate-800"}`}
           >
             <Smartphone className="w-3.5 h-3.5" />
-            WhatsApp Configuration
+            WhatsApp API
+          </button>
+          <button
+            onClick={() => setActiveTab("commissions")}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 ${activeTab === "commissions" ? "bg-white text-indigo-700" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            Commission Engine
           </button>
         </div>
       </div>
@@ -635,6 +699,94 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
             </ol>
           </div>
         </div>
+      )}
+      {/* COMMISSION SETTINGS TAB */}
+      {activeTab === "commissions" && (
+        <form
+          onSubmit={handleSaveCommConfig}
+          className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs max-w-2xl"
+        >
+          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-slate-100">
+            <h3 className="text-sm font-extrabold text-slate-800">
+              Staff Commission Engine configuration
+            </h3>
+            {commLoading && <Loader className="w-4 h-4 animate-spin text-slate-400" />}
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
+              <div>
+                <p className="text-xs font-bold text-slate-800">Enable Automated Commissions</p>
+                <p className="text-[10px] text-slate-500">Automatically disburse commission to staff upon checkout</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={commSettings.isEnabled}
+                  onChange={(e) =>
+                    setCommSettings({ ...commSettings, isEnabled: e.target.checked })
+                  }
+                  disabled={!isAdminRole}
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 block">
+                  Salesperson Percentage (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  required
+                  disabled={!isAdminRole}
+                  value={commSettings.salespersonPercentage}
+                  onChange={(e) =>
+                    setCommSettings({
+                      ...commSettings,
+                      salespersonPercentage: Number(e.target.value),
+                    })
+                  }
+                  className="w-full bg-slate-50 text-slate-800 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-100 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 block">
+                  Worker Percentage (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  required
+                  disabled={!isAdminRole}
+                  value={commSettings.workerPercentage}
+                  onChange={(e) =>
+                    setCommSettings({
+                      ...commSettings,
+                      workerPercentage: Number(e.target.value),
+                    })
+                  }
+                  className="w-full bg-slate-50 text-slate-800 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-100 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-slate-100">
+              <button
+                type="submit"
+                disabled={!isAdminRole || commSaving}
+                className="w-full bg-slate-800 hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {commSaving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {commSaving ? "Saving..." : "Save Configuration"}
+              </button>
+            </div>
+          </div>
+        </form>
       )}
     </div>
   );

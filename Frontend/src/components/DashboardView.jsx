@@ -36,6 +36,7 @@ export const DashboardView = ({
   currentUser = {},
 }) => {
   const [morningActions, setMorningActions] = React.useState(null);
+  const [commStats, setCommStats] = React.useState(null);
 
   React.useEffect(() => {
     if (currentUser?.role?.toLowerCase() !== 'salesperson') {
@@ -55,6 +56,23 @@ export const DashboardView = ({
       };
       fetchMorningActions();
     }
+    
+    // Fetch Commission Stats
+    const fetchCommStats = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:5000/api/commissions/staff/stats", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setCommStats(data.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch commission stats", error);
+      }
+    };
+    fetchCommStats();
   }, [currentUser]);
 
   // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
@@ -511,7 +529,7 @@ export const DashboardView = ({
       <QuickActionsPanel />
 
       {/* KPI Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Today's Sales */}
         <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
           <div className="space-y-2">
@@ -597,6 +615,27 @@ export const DashboardView = ({
           </div>
           <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
             <Layers className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Staff Commissions Today */}
+        <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+              Staff Commissions
+            </span>
+            <div className="text-2xl font-bold text-slate-800 font-sans">
+              ₹
+              {(commStats?.totalToday || 0).toLocaleString("en-IN", {
+                maximumFractionDigits: 0,
+              })}
+            </div>
+            <div className="flex items-center gap-1 text-xs text-indigo-500 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab("commissions")}>
+              <span>View full ledger ➔</span>
+            </div>
+          </div>
+          <div className="bg-fuchsia-50 p-2.5 rounded-lg text-fuchsia-600">
+            <Sparkles className="w-5 h-5" />
           </div>
         </div>
       </div>

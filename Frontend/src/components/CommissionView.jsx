@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import axios from "axios";
 import {
   Sparkles,
   Search,
@@ -17,6 +18,7 @@ import {
   Activity,
   Award,
 } from "lucide-react";
+import { StaffCommissionPanel } from "./StaffCommissionPanel";
 
 // High fidelity types for Commission Module
 
@@ -271,6 +273,25 @@ export const CommissionView = ({
     fetchData();
   }, []);
 
+  // Fetch Staff Stats
+  const [staffStats, setStaffStats] = useState(null);
+  useEffect(() => {
+    const fetchStaffStats = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get("http://localhost:5000/api/commissions/staff/stats", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data.success) {
+          setStaffStats(res.data.data.breakdown);
+        }
+      } catch (err) {
+        console.error("Failed to fetch staff stats", err);
+      }
+    };
+    fetchStaffStats();
+  }, []);
+
   const salespersonIncentives = useMemo(() => {
     const combinedStaff = [...staffList];
     
@@ -355,22 +376,37 @@ export const CommissionView = ({
     [influencers],
   );
 
-  const totalSalespersonCommissions = useMemo(
-    () =>
-      salespersonIncentives.reduce(
-        (sum, item) => sum + item.monthlyCommission,
-        0,
-      ),
-    [salespersonIncentives],
-  );
-  const pendingSalespersonCommissions = useMemo(
-    () =>
-      salespersonIncentives.reduce(
-        (sum, item) => sum + item.commissionPending,
-        0,
-      ),
-    [salespersonIncentives],
-  );
+  const totalSalespersonCommissions = useMemo(() => {
+    if (Array.isArray(staffStats)) {
+      const sp = staffStats.find(s => s._id === 'Salesperson');
+      return sp ? sp.totalCommission : 0;
+    }
+    return 0;
+  }, [staffStats]);
+
+  const pendingSalespersonCommissions = useMemo(() => {
+    if (Array.isArray(staffStats)) {
+      const sp = staffStats.find(s => s._id === 'Salesperson');
+      return sp ? sp.pendingCommission : 0;
+    }
+    return 0;
+  }, [staffStats]);
+
+  const totalWorkerCommissions = useMemo(() => {
+    if (Array.isArray(staffStats)) {
+      const w = staffStats.find(s => s._id === 'Worker');
+      return w ? w.totalCommission : 0;
+    }
+    return 0;
+  }, [staffStats]);
+
+  const pendingWorkerCommissions = useMemo(() => {
+    if (Array.isArray(staffStats)) {
+      const w = staffStats.find(s => s._id === 'Worker');
+      return w ? w.pendingCommission : 0;
+    }
+    return 0;
+  }, [staffStats]);
 
   // Handle Sort
   const requestSort = (key) => {
@@ -928,7 +964,7 @@ export const CommissionView = ({
       </div>
 
       {/* Overview Analytics Bento Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Metric 1 */}
         <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4.5">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -988,6 +1024,24 @@ export const CommissionView = ({
 
         {/* Metric 4 */}
         <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4.5">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">
+              Worker Incentives
+            </p>
+            <h3 className="text-base font-extrabold text-slate-800 font-mono mt-0.5">
+              ₹{totalWorkerCommissions.toLocaleString("en-IN")}
+            </h3>
+            <span className="text-[9px] text-blue-600 font-bold font-mono">
+              Pending payout: ₹{pendingWorkerCommissions.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {/* Metric 5 */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4.5">
           <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
             <DollarSign className="w-5 h-5" />
           </div>
@@ -1000,12 +1054,14 @@ export const CommissionView = ({
               {(
                 pendingMarketplaceSettlement +
                 pendingInfluencerCommission +
-                pendingSalespersonCommissions
+                pendingSalespersonCommissions +
+                pendingWorkerCommissions
               ).toLocaleString()}
             </h3>
             <span className="text-[9px] text-indigo-600 font-bold">
               Unreleased liabilities
             </span>
+
           </div>
         </div>
       </div>
@@ -1022,6 +1078,16 @@ export const CommissionView = ({
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === "salesperson" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Salesperson Performance
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("worker");
+              setSearchQuery("");
+              setStatusFilter("All");
+            }}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === "worker" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            Worker Performance
           </button>
 
           {/* Dynamic categories */}
@@ -1506,410 +1572,14 @@ export const CommissionView = ({
 
       {/* 3. SALESPERSON COMMISSION */}
       {activeTab === "salesperson" && (
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Internal Employee Commission & Achievements
-                </h3>
-                <p className="text-[10px] text-slate-400">
-                  Configured target thresholds vs actual sales recorded at
-                  boutique counters.
-                </p>
-              </div>
-              <span className="text-[9px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded">
-                Active staff: {salespersonIncentives.length}
-              </span>
-            </div>
-
-            <div className="overflow-x-auto text-xs">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
-                    <th className="p-3.5">Employee Info</th>
-                    <th className="p-3.5">Department & Role</th>
-                    <th className="p-3.5 text-right">Target set</th>
-                    <th className="p-3.5 text-right">Sales achieved</th>
-                    <th className="p-3.5">Target Achievement</th>
-                    <th className="p-3.5">Active Commission Rules</th>
-                    <th className="p-3.5 text-right">Pending Commission</th>
-                    <th className="p-3.5 text-right">Paid Dues</th>
-                    <th className="p-3.5 text-center">Payout</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {salespersonIncentives.map((emp) => {
-                    const achievementPct = Math.round(
-                      (emp.salesAchieved / emp.monthlyTarget) * 100,
-                    );
-                    return (
-                      <tr key={emp.employeeId} className="hover:bg-slate-50/40">
-                        <td className="p-3.5">
-                          <p className="font-bold text-slate-800">
-                            {emp.employeeName}
-                          </p>
-                          <p className="text-[9px] font-mono text-slate-400">
-                            ID: {emp.employeeId}
-                          </p>
-                        </td>
-                        <td className="p-3.5">
-                          <p className="font-semibold text-slate-600">
-                            {emp.department}
-                          </p>
-                          <p className="text-[9px] font-mono text-indigo-600 uppercase font-bold">
-                            {emp.role}
-                          </p>
-                        </td>
-                        <td className="p-3.5 text-right font-mono font-bold text-slate-700">
-                          {editingTargetId === emp.employeeId ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <input 
-                                type="number" 
-                                className="w-20 text-[10px] p-1 border border-slate-300 rounded font-sans font-normal outline-none focus:border-indigo-500" 
-                                value={editingTargetValue} 
-                                onChange={e => setEditingTargetValue(e.target.value)} 
-                                autoFocus
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') handleUpdateTarget(emp.employeeId);
-                                  if (e.key === 'Escape') setEditingTargetId(null);
-                                }}
-                              />
-                              <button onClick={() => handleUpdateTarget(emp.employeeId)} className="text-emerald-600 hover:text-emerald-800"><CheckCircle size={14}/></button>
-                              <button onClick={() => setEditingTargetId(null)} className="text-slate-400 hover:text-slate-600"><XCircle size={14}/></button>
-                            </div>
-                          ) : (
-                            <div 
-                              className="flex items-center justify-end gap-2 group cursor-pointer" 
-                              onClick={() => { setEditingTargetId(emp.employeeId); setEditingTargetValue(emp.monthlyTarget); }}
-                              title="Click to edit target"
-                            >
-                              ₹{emp.monthlyTarget.toLocaleString()}
-                              <span className="opacity-0 group-hover:opacity-100 text-indigo-400">✏️</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-3.5 text-right font-mono font-extrabold text-slate-900">
-                          ₹{emp.salesAchieved.toLocaleString()}
-                        </td>
-                        <td className="p-3.5">
-                          <div className="space-y-1 w-28">
-                            <div className="flex justify-between text-[9px] font-bold font-mono">
-                              <span
-                                className={
-                                  achievementPct >= 100
-                                    ? "text-emerald-600 animate-pulse"
-                                    : "text-amber-600"
-                                }
-                              >
-                                {achievementPct}%
-                              </span>
-                              <span className="text-slate-400">of target</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${achievementPct >= 100 ? "bg-emerald-500" : "bg-indigo-500"}`}
-                                style={{
-                                  width: `${Math.min(100, achievementPct)}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3.5 max-w-[180px]">
-                          <div className="flex flex-wrap gap-1">
-                            {emp.commissionRules.map((rule, ri) => (
-                              <span
-                                key={ri}
-                                className="bg-slate-50 text-[8px] text-slate-500 border border-slate-200/60 px-1 py-0.2 rounded truncate max-w-[170px]"
-                                title={rule}
-                              >
-                                {rule}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="p-3.5 text-right font-mono font-extrabold text-amber-600">
-                          ₹{emp.commissionPending.toLocaleString()}
-                        </td>
-                        <td className="p-3.5 text-right font-mono text-emerald-600 font-bold">
-                          ₹{emp.commissionPaid.toLocaleString()}
-                        </td>
-                        <td className="p-3.5 text-center">
-                          {emp.commissionPending > 0 ? (
-                            <button
-                              onClick={() =>
-                                handleApproveSalespersonPayout(emp.employeeId)
-                              }
-                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-bold uppercase transition-all cursor-pointer shadow-xs"
-                            >
-                              Pay
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">
-                              Settled
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* REAL-TIME SALESPERSON PRODUCTS SOLD LEDGER */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-            {/* Left: Salespeople selector column */}
-            <div className="lg:col-span-4 bg-white border border-slate-100 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="border-b border-slate-100 pb-3">
-                <span className="text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full uppercase">
-                  Staff Sales Ledger
-                </span>
-                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide mt-1.5">
-                  Choose Salesperson
-                </h3>
-                <p className="text-[10px] text-slate-400">
-                  Select any sales representative to fetch their real-time
-                  boutique checkout history.
-                </p>
-              </div>
-
-              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                {salespeopleNames.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-xs">
-                    No active salesperson records found.
-                  </div>
-                ) : (
-                  salespeopleNames.map((name) => {
-                    const isSelected = currentSalesperson === name;
-                    const historyList = salespersonSalesHistory[name] || [];
-                    const qtySold = historyList.reduce(
-                      (sum, item) => sum + item.quantity,
-                      0,
-                    );
-                    const rev = historyList.reduce(
-                      (sum, item) => sum + item.totalPrice,
-                      0,
-                    );
-
-                    return (
-                      <button
-                        key={name}
-                        onClick={() => setSelectedSalesperson(name)}
-                        className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left cursor-pointer group ${
-                          isSelected
-                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-850 shadow-xs"
-                            : "bg-white border-slate-100 hover:bg-slate-50 text-slate-700 hover:border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs transition-colors ${
-                              isSelected
-                                ? "bg-indigo-600 text-white shadow-xs"
-                                : "bg-slate-100 text-slate-600 group-hover:bg-indigo-100 group-hover:text-indigo-700"
-                            }`}
-                          >
-                            {name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase() || "SP"}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold leading-tight truncate max-w-[140px]">
-                              {name}
-                            </p>
-                            <p className="text-[9px] text-slate-400 font-semibold mt-0.5">
-                              {qtySold} items sold till date
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right font-mono">
-                          <span
-                            className={`text-[10px] font-extrabold block ${isSelected ? "text-indigo-700" : "text-slate-800"}`}
-                          >
-                            ₹{rev.toLocaleString()}
-                          </span>
-                          <span className="text-[8px] text-slate-400 block font-sans">
-                            Revenue
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Right: Products list */}
-            <div className="lg:col-span-8 bg-white border border-slate-100 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4">
-              {(() => {
-                const rawHistory = currentSalesperson
-                  ? salespersonSalesHistory[currentSalesperson] || []
-                  : [];
-                const currentSalespersonStats = {
-                  totalQty: rawHistory.reduce(
-                    (sum, item) => sum + item.quantity,
-                    0,
-                  ),
-                  totalRevenue: rawHistory.reduce(
-                    (sum, item) => sum + item.totalPrice,
-                    0,
-                  ),
-                };
-
-                const filteredSoldProducts = (() => {
-                  if (!currentSalesperson) return [];
-                  if (!soldProductsSearchQuery.trim()) return rawHistory;
-                  const q = soldProductsSearchQuery.toLowerCase();
-                  return rawHistory.filter(
-                    (item) =>
-                      item.productName.toLowerCase().includes(q) ||
-                      item.sku.toLowerCase().includes(q) ||
-                      item.invoiceNo.toLowerCase().includes(q) ||
-                      item.customerName.toLowerCase().includes(q),
-                  );
-                })();
-
-                return (
-                  <>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                          Sales History: {currentSalesperson || "None selected"}
-                        </h4>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="text-xs text-slate-650 font-bold">
-                            Total Items Sold:{" "}
-                            <span className="text-indigo-600 font-mono font-extrabold">
-                              {currentSalespersonStats.totalQty} units
-                            </span>
-                          </span>
-                          <span className="text-xs text-slate-655 font-bold">
-                            Total Checkout Value:{" "}
-                            <span className="text-emerald-600 font-mono font-extrabold">
-                              ₹
-                              {currentSalespersonStats.totalRevenue.toLocaleString()}
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="relative w-full sm:w-56 shrink-0">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-                        <input
-                          type="text"
-                          placeholder="Search sold products..."
-                          value={soldProductsSearchQuery}
-                          onChange={(e) =>
-                            setSoldProductsSearchQuery(e.target.value)
-                          }
-                          className="w-full bg-slate-50 pl-8 pr-3 py-1.5 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold border border-slate-100 text-slate-700"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto text-[11px] font-medium text-slate-600 flex-1 min-h-[220px]">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-extrabold uppercase tracking-wider text-[9px]">
-                            <th className="p-2.5">Date / Invoice</th>
-                            <th className="p-2.5">Product Name</th>
-                            <th className="p-2.5">Variant Specs</th>
-                            <th className="p-2.5 text-center">Qty</th>
-                            <th className="p-2.5 text-right">Unit Price</th>
-                            <th className="p-2.5 text-right font-bold text-indigo-600">
-                              Total Price
-                            </th>
-                            <th className="p-2.5">Customer</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {filteredSoldProducts.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={7}
-                                className="p-12 text-center text-slate-400"
-                              >
-                                <ShoppingCart className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-                                <p className="font-semibold text-xs">
-                                  No checkout entries registered for this
-                                  salesperson.
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-0.5 font-normal">
-                                  Checkout items with this salesperson selected
-                                  at POS billing to update automatically.
-                                </p>
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredSoldProducts.map((item) => (
-                              <tr
-                                key={item.id}
-                                className="hover:bg-slate-50/45 transition-colors"
-                              >
-                                <td className="p-2.5">
-                                  <p className="font-mono font-bold text-slate-800">
-                                    {item.invoiceNo}
-                                  </p>
-                                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                    {item.date}
-                                  </p>
-                                </td>
-                                <td
-                                  className="p-2.5 font-bold text-slate-700 max-w-[160px] truncate animate-fade-in"
-                                  title={item.productName}
-                                >
-                                  {item.productName}
-                                </td>
-                                <td className="p-2.5">
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="bg-slate-100 px-1.5 py-0.2 rounded text-[8px] font-bold text-slate-500 uppercase">
-                                      {item.size}
-                                    </span>
-                                    <span className="bg-indigo-50 px-1.5 py-0.2 rounded text-[8px] font-bold text-indigo-600 uppercase">
-                                      {item.color}
-                                    </span>
-                                    <span
-                                      className="text-[9px] text-slate-400 font-mono truncate max-w-[80px]"
-                                      title={item.sku}
-                                    >
-                                      {item.sku}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="p-2.5 text-center font-mono font-bold text-slate-800">
-                                  {item.quantity}
-                                </td>
-                                <td className="p-2.5 text-right font-mono text-slate-650">
-                                  ₹{item.price.toLocaleString()}
-                                </td>
-                                <td className="p-2.5 text-right font-mono font-extrabold text-indigo-700 bg-indigo-50/10">
-                                  ₹{item.totalPrice.toLocaleString()}
-                                </td>
-                                <td
-                                  className="p-2.5 truncate max-w-[100px] font-bold text-slate-650"
-                                  title={item.customerName}
-                                >
-                                  {item.customerName}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
+        <StaffCommissionPanel role="Salesperson" onAddNotification={onAddNotification} />
       )}
+      
+      {/* 4. WORKER COMMISSION */}
+      {activeTab === "worker" && (
+        <StaffCommissionPanel role="Worker" onAddNotification={onAddNotification} />
+      )}
+
 
       {/* RULES TAB */}
       {activeTab === "rules" && (
@@ -2267,6 +1937,16 @@ export const CommissionView = ({
                       </p>
                       <p className="text-lg font-bold mt-1 font-mono text-amber-400">
                         ₹{pendingSettlement.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-slate-950/40 border border-slate-800 p-3.5 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">
+                        Settlement Rate
+                      </p>
+                      <p className="text-lg font-bold mt-1 font-mono text-white">
+                        {totalRevenue > 0 
+                          ? `${Math.round(((totalRevenue - pendingSettlement) / totalRevenue) * 100)}%` 
+                          : "0%"}
                       </p>
                     </div>
                   </div>

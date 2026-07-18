@@ -40,6 +40,17 @@ const employeeSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    commissionSummary: {
+      today: { type: Number, default: 0 },
+      weekly: { type: Number, default: 0 },
+      monthly: { type: Number, default: 0 },
+      yearly: { type: Number, default: 0 },
+      lifetime: { type: Number, default: 0 },
+      pending: { type: Number, default: 0 },
+      paid: { type: Number, default: 0 },
+      lastCommissionDate: { type: Date },
+      totalProductsSold: { type: Number, default: 0 }
+    },
     isActive: {
       type: Boolean,
       default: true,

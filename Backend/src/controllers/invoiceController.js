@@ -71,19 +71,90 @@ exports.createInvoice = async (req, res) => {
       }
     }
 
-    // 4. Update Employee Commission (if an employee is attached)
-    const { employeeId } = req.body;
-    if (employeeId && isValidObjectId(employeeId)) {
-      try {
-        const Employee = require('../models/employeeModel');
-        const employee = await Employee.findOne({ _id: employeeId, tenantId });
-        if (employee) {
-          employee.commissionEarned += Math.floor(grandTotal * 0.02);
-          await employee.save();
-        }
-      } catch (empErr) {
-        console.warn('Employee commission update skipped:', empErr.message);
+    // 4. Update Employee Commission (Product-wise)
+    try {
+      const CommissionSettings = require('../models/commissionSettingsModel');
+      const CommissionHistory = require('../models/commissionHistoryModel');
+      const Employee = require('../models/employeeModel');
+
+      let settings = await CommissionSettings.findOne({ tenantId });
+      if (!settings) {
+        settings = {
+          isEnabled: true,
+          salespersonPercentage: 1.5,
+          workerPercentage: 0.5,
+          calculationBasis: 'Net Selling Price'
+        };
       }
+
+      if (settings.isEnabled) {
+        for (let i = 0; i < invoice.items.length; i++) {
+          const item = invoice.items[i];
+          const netAmount = item.totalPrice; // This is (price - discount) * quantity
+          
+          let totalCommissionForThisItem = 0;
+
+          // Helper to process commission for a role
+          const processCommission = async (empId, empName, role, percentage) => {
+            if (!empId || !isValidObjectId(empId)) return 0;
+            
+            const commAmount = Number((netAmount * (percentage / 100)).toFixed(2));
+            if (commAmount <= 0) return 0;
+
+            await CommissionHistory.create({
+              tenantId,
+              invoiceId: invoice._id,
+              invoiceNo: invoice.invoiceNo,
+              productId: item.productId,
+              productName: item.name,
+              employeeId: empId,
+              employeeName: empName,
+              employeeRole: role,
+              sellingPrice: item.price,
+              quantity: item.quantity,
+              netAmountBasis: netAmount,
+              commissionPercentage: percentage,
+              commissionAmount: commAmount,
+              status: 'Pending'
+            });
+
+            await Employee.updateOne(
+              { _id: empId, tenantId },
+              { 
+                $inc: {
+                  'commissionEarned': commAmount,
+                  'commissionSummary.pending': commAmount,
+                  'commissionSummary.today': commAmount,
+                  'commissionSummary.weekly': commAmount,
+                  'commissionSummary.monthly': commAmount,
+                  'commissionSummary.yearly': commAmount,
+                  'commissionSummary.lifetime': commAmount,
+                  'commissionSummary.totalProductsSold': item.quantity
+                }
+              }
+            );
+
+            return commAmount;
+          };
+
+          const spComm = await processCommission(item.salespersonId, item.salespersonName, 'Salesperson', settings.salespersonPercentage);
+          const wComm = await processCommission(item.workerId, item.workerName, 'Worker', settings.workerPercentage);
+
+          // Update the invoice item itself with commission details
+          if (spComm > 0 || wComm > 0) {
+            item.commissionPercentageSalesperson = settings.salespersonPercentage;
+            item.commissionPercentageWorker = settings.workerPercentage;
+            item.commissionAmountSalesperson = spComm;
+            item.commissionAmountWorker = wComm;
+            item.totalCommission = spComm + wComm;
+            item.commissionStatus = 'Pending';
+          }
+        }
+        await invoice.save(); // save the updated item commissions
+        emitToTenant(tenantId, 'commission.updated', { event: 'commission.updated' });
+      }
+    } catch (commErr) {
+      console.warn('Product-wise commission update skipped or failed:', commErr.message);
     }
 
     emitToTenant(tenantId, 'invoice.created', {

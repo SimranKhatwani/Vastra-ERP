@@ -52,8 +52,8 @@ export const BillingPOSView = ({
   const [configError, setConfigError] = useState("");
 
   // Filtered employees for assignment
-  const salespersonList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("sales")), [employees]);
-  const workerList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("worker")), [employees]);
+  const salespersonList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("salesperson")), [employees]);
+  const workerList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase() === "worker"), [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
@@ -4195,8 +4195,9 @@ export const BillingPOSView = ({
       {/* Quick Add Quantity & Configuration Modal */}
       {qtyModalProduct && (() => {
         // Compute sizes/colors based on variants array if available, otherwise use a generic Garment sizing standard
-        const uniqueSizes = qtyModalProduct.variants?.length ? [...new Set(qtyModalProduct.variants.map(v => v.size).filter(Boolean))] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
-        const uniqueColors = qtyModalProduct.variants?.length ? [...new Set(qtyModalProduct.variants.map(v => v.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
+        const hasVariants = Array.isArray(qtyModalProduct.variants) && qtyModalProduct.variants.length > 0;
+        const uniqueSizes = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.size).filter(Boolean))] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
+        const uniqueColors = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
 
         const handleAdd = () => {
           if (!configSalesperson) {
@@ -4374,8 +4375,6 @@ export const BillingPOSView = ({
             </div>
           </div>
         );
-      })()}
-
       })()}
 
     </div>

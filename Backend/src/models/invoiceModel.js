@@ -55,6 +55,31 @@ const invoiceItemSchema = new mongoose.Schema({
   workerName: {
     type: String,
   },
+  commissionPercentageSalesperson: {
+    type: Number,
+    default: 0,
+  },
+  commissionPercentageWorker: {
+    type: Number,
+    default: 0,
+  },
+  commissionAmountSalesperson: {
+    type: Number,
+    default: 0,
+  },
+  commissionAmountWorker: {
+    type: Number,
+    default: 0,
+  },
+  totalCommission: {
+    type: Number,
+    default: 0,
+  },
+  commissionStatus: {
+    type: String,
+    enum: ['Pending', 'Paid', 'Cancelled'],
+    default: 'Pending',
+  }
 });
 
 const invoiceSchema = new mongoose.Schema(
