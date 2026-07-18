@@ -351,7 +351,6 @@ export default function App() {
           "articulation",
           "products",
           "purchase",
-          "employees",
           "attendance-dashboard",
         ];
       case "tailor":

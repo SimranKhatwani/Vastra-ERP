@@ -17,7 +17,7 @@ export const EmployeeView = ({
   onAddNotification,
   currentUser = {},
 }) => {
-  const [activeTab, setActiveTab] = useState(currentUser?.role?.toLowerCase() === 'salesperson' ? "commissions" : "roster");
+  const [activeTab, setActiveTab] = useState("roster");
   const [selectedEmpId, setSelectedEmpId] = useState("e-3");
   const [bonusAmount, setBonusAmount] = useState(1000);
 
@@ -678,26 +678,7 @@ export const EmployeeView = ({
               </button>
             </>
           )}
-          <button
-            onClick={() => setActiveTab("commissions")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "commissions" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Commission Engine
-          </button>
-          <button
-            onClick={() => setActiveTab("attendance")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "attendance" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Biometric Attendance
-          </button>
-          {currentUser?.role?.toLowerCase() !== 'salesperson' && (
-            <button
-              onClick={() => setActiveTab("advances")}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "advances" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              Advances & Deductions
-            </button>
-          )}
+
         </div>
       </div>
 
@@ -1063,7 +1044,7 @@ export const EmployeeView = ({
       )}
 
       {/* COMMISSIONS ENGINE */}
-      {activeTab === "commissions" && (
+      {false && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Disburse commissions box */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 lg:col-span-4 space-y-4 text-xs">
@@ -1190,7 +1171,7 @@ export const EmployeeView = ({
       )}
 
       {/* BIOMETRIC ATTENDANCE TAB - REFACTORED TO MODULE 2.4 STAFF ATTENDANCE & MANAGEMENT */}
-      {activeTab === "attendance" && (
+      {false && (
         <div className="space-y-6">
           {/* Sub-navigation bar specifically for Staff Attendance & Management */}
           <div className="flex border-b border-slate-100 pb-2">
@@ -1948,7 +1929,7 @@ export const EmployeeView = ({
       )}
 
       {/* ADVANCES & DEDUCTIONS TAB */}
-      {activeTab === "advances" && (
+      {false && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="bg-white rounded-2xl border border-slate-100 p-5 lg:col-span-4 space-y-4 text-xs">
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
