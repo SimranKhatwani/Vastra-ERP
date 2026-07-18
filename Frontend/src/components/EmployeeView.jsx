@@ -17,7 +17,8 @@ export const EmployeeView = ({
   onAddNotification,
   currentUser = {},
 }) => {
-  const [activeTab, setActiveTab] = useState("roster");
+  const [activeTab, setActiveTab] = useState("payroll");
+  const [tempEdits, setTempEdits] = useState({});
   const [selectedEmpId, setSelectedEmpId] = useState("e-3");
   const [bonusAmount, setBonusAmount] = useState(1000);
 
@@ -389,6 +390,46 @@ export const EmployeeView = ({
     }
   };
 
+  const handleSaveInlineEdits = async (empId) => {
+    const edits = tempEdits[empId];
+    if (!edits) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const bodyPayload = {};
+      if (edits.salary !== undefined) bodyPayload.salary = edits.salary;
+      if (edits.disbursedDate !== undefined) bodyPayload.disbursedDate = edits.disbursedDate;
+
+      const res = await fetch(`http://localhost:5000/api/employees/${empId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        if (setEmployees) {
+          setEmployees((prev) =>
+            prev.map((emp) => (emp.id === empId ? { ...emp, salary: data.data.salary, disbursedDate: data.data.disbursedDate } : emp))
+          );
+        }
+        setTempEdits((prev) => {
+          const copy = { ...prev };
+          delete copy[empId];
+          return copy;
+        });
+        onAddNotification("Payroll Updated", "Employee salary and disbursement date saved successfully.", "success");
+      } else {
+        onAddNotification("Error", data.message || "Failed to update employee", "error");
+      }
+    } catch (err) {
+      onAddNotification("Error", "Network error occurred", "error");
+    }
+  };
+
   const handleDeleteEmployee = (id, name) => {
     if (
       confirm(
@@ -665,12 +706,6 @@ export const EmployeeView = ({
           {currentUser?.role?.toLowerCase() !== 'salesperson' && (
             <>
               <button
-                onClick={() => setActiveTab("roster")}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "roster" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-              >
-                Staff Directory
-              </button>
-              <button
                 onClick={() => setActiveTab("payroll")}
                 className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${activeTab === "payroll" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
               >
@@ -683,7 +718,7 @@ export const EmployeeView = ({
       </div>
 
       {/* ROSTER DIRECTORY */}
-      {activeTab === "roster" && (
+      {false && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT: MASTER DIRECTORY LIST */}
           <div className="lg:col-span-8 space-y-4">
@@ -978,36 +1013,22 @@ export const EmployeeView = ({
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
                   <th className="p-3.5">Employee</th>
                   <th className="p-3.5">Job Level</th>
-                  <th className="p-3.5 text-right font-mono">Base Salary</th>
+                  <th className="p-3.5 text-right font-mono">Base Salary (₹)</th>
                   <th className="p-3.5 text-right font-mono">
                     Commission Paid
                   </th>
-                  <th className="p-3.5 text-right font-mono">Advances Owed</th>
                   <th className="p-3.5 text-right font-mono">
                     Total Compensation
                   </th>
                   <th className="p-3.5 text-center">Disbursed Date</th>
+                  <th className="p-3.5 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
                 {employees.map((emp, idx) => {
-                  // Calculate total approved advances for this employee
-                  const empAdvances = advances
-                    .filter(
-                      (a) => a.empName === emp.name && a.type === "Advance",
-                    )
-                    .reduce((sum, a) => sum + a.amount, 0);
-                  const empDeductions = advances
-                    .filter(
-                      (a) => a.empName === emp.name && a.type === "Deduction",
-                    )
-                    .reduce((sum, a) => sum + a.amount, 0);
-
-                  const finalComp =
-                    (emp.salary || 0) +
-                    (emp.commissionEarned || 0) -
-                    empAdvances -
-                    empDeductions;
+                  const currentSalary = tempEdits[emp.id]?.salary ?? emp.salary ?? 0;
+                  const finalComp = currentSalary + (emp.commissionEarned || 0);
+                  const currentDate = tempEdits[emp.id]?.disbursedDate ?? emp.disbursedDate ?? "2026-06-25";
 
                   return (
                     <tr key={idx} className="hover:bg-slate-50/50">
@@ -1020,19 +1041,54 @@ export const EmployeeView = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-right font-mono">
-                        ₹{(emp.salary || 0).toLocaleString()}
+                        <input
+                          type="number"
+                          value={currentSalary}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setTempEdits((prev) => ({
+                              ...prev,
+                              [emp.id]: {
+                                ...prev[emp.id],
+                                salary: val,
+                              },
+                            }));
+                          }}
+                          className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
                       </td>
                       <td className="p-3.5 text-right font-mono text-emerald-600 font-bold">
                         ₹{(emp.commissionEarned || 0).toLocaleString()}
                       </td>
-                      <td className="p-3.5 text-right font-mono text-red-500 font-bold">
-                        ₹{empAdvances.toLocaleString()}
-                      </td>
                       <td className="p-3.5 text-right font-mono font-bold text-slate-800">
                         ₹{finalComp.toLocaleString()}
                       </td>
-                      <td className="p-3.5 text-center text-slate-400 font-mono">
-                        2026-06-25
+                      <td className="p-3.5 text-center font-mono">
+                        <input
+                          type="date"
+                          value={currentDate}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTempEdits((prev) => ({
+                              ...prev,
+                              [emp.id]: {
+                                ...prev[emp.id],
+                                disbursedDate: val,
+                              },
+                            }));
+                          }}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none text-xs text-slate-700"
+                        />
+                      </td>
+                      <td className="p-3.5 text-center">
+                        {(tempEdits[emp.id]?.salary !== undefined || tempEdits[emp.id]?.disbursedDate !== undefined) && (
+                          <button
+                            onClick={() => handleSaveInlineEdits(emp.id)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

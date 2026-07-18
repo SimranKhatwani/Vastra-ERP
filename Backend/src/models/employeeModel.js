@@ -78,6 +78,10 @@ const employeeSchema = new mongoose.Schema(
     },
     businessCode: {
       type: String,
+    },
+    disbursedDate: {
+      type: String,
+      default: '2026-06-25',
     }
   },
   {
