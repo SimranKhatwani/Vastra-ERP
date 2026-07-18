@@ -41,6 +41,19 @@ export const BillingPOSView = ({
 }) => {
   // Cart state
   const [cart, setCart] = useState([]);
+
+  // Product Configuration Modal state
+  const [configModalProduct, setConfigModalProduct] = useState(null);
+  const [configQty, setConfigQty] = useState(1);
+  const [configSize, setConfigSize] = useState("");
+  const [configColor, setConfigColor] = useState("");
+  const [configSalesperson, setConfigSalesperson] = useState(null);
+  const [configWorker, setConfigWorker] = useState(null);
+  const [configError, setConfigError] = useState("");
+
+  // Filtered employees for assignment
+  const salespersonList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("sales")), [employees]);
+  const workerList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("worker")), [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
@@ -402,51 +415,15 @@ export const BillingPOSView = ({
       );
     }
 
-    setCart((prev) => {
-      const existingIdx = prev.findIndex(
-        (item) => item.productId === prod.id && !item.isCustom,
-      );
-      if (existingIdx > -1) {
-        const updated = [...prev];
-        const newQty = updated[existingIdx].quantity + qty;
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
-        const sub = sPrice * newQty;
-        const discountAmt = Math.floor(
-          sub * (updated[existingIdx].discount / 100),
-        );
-        const itemGst = Math.floor(
-          (sub - discountAmt) * (prod.gstPercent / 100),
-        );
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          quantity: newQty,
-          totalPrice: sub - discountAmt + itemGst,
-        };
-        return updated;
-      } else {
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
-        const sub = sPrice * qty;
-        const discountAmt = 0;
-        const itemGst = Math.floor(
-          (sub - discountAmt) * (prod.gstPercent / 100),
-        );
-        return [
-          ...prev,
-          {
-            productId: prod.id,
-            name: prod.name,
-            sku: prod.sku,
-            size: prod.size,
-            color: prod.color,
-            quantity: qty,
-            price: Number(prod.sellingPrice) || Number(prod.price) || 0,
-            discount: 0,
-            gstPercent: prod.gstPercent || 0,
-            totalPrice: sub + itemGst,
-          },
-        ];
-      }
+    setQtyModalProduct({
+      ...prod,
+      ...(prod.variants ? prod.variants[0] : {}),
+      variants: prod.variants || [prod]
     });
+    setQtyModalValue(qty);
+    setConfigSalesperson(null);
+    setConfigWorker(null);
+
   };
 
   // Handle articulated items forwarded from Customizer
@@ -661,7 +638,7 @@ export const BillingPOSView = ({
     });
   }, [filteredProducts, focusedProductIndex]);
 
-  // Action: Add product to cart
+  // Action: Add product to cart (opens configuration modal)
   const handleAddProductToCart = (prod) => {
     if (prod.stock <= 0) {
       onAddNotification(
@@ -670,14 +647,26 @@ export const BillingPOSView = ({
         "warning",
       );
     }
+    
+    setQtyModalProduct({
+      ...prod,
+      ...(prod.variants ? prod.variants[0] : {}),
+      variants: prod.variants || [prod]
+    });
+    setQtyModalValue(1);
+    setConfigSalesperson(null);
+    setConfigWorker(null);
+  };
 
+  // Action: Finalize product addition from configuration modal
+  const finalizeAddToCart = (prod, customQty, customSize, customColor, spId, spName, wId, wName) => {
     setCart((prev) => {
       const existingIdx = prev.findIndex(
-        (item) => item.productId === (prod._id || prod.id) && item.size === prod.size && item.color === prod.color && !item.isCustom,
+        (item) => item.productId === (prod._id || prod.id) && item.size === customSize && item.color === customColor && item.salespersonId === spId && item.workerId === wId && !item.isCustom,
       );
       if (existingIdx > -1) {
         const updated = [...prev];
-        const newQty = updated[existingIdx].quantity + 1;
+        const newQty = updated[existingIdx].quantity + customQty;
         const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
         const sub = sPrice * newQty;
         const discountAmt = Math.floor(
@@ -694,7 +683,7 @@ export const BillingPOSView = ({
         return updated;
       } else {
         const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
-        const sub = sPrice;
+        const sub = sPrice * customQty;
         const itemGst = Math.floor(sub * ((prod.gstPercent || 0) / 100));
         return [
           ...prev,
@@ -702,9 +691,13 @@ export const BillingPOSView = ({
             productId: prod._id || prod.id,
             name: prod.name,
             sku: prod.sku,
-            size: prod.size,
-            color: prod.color,
-            quantity: 1,
+            size: customSize,
+            color: customColor,
+            salespersonId: spId,
+            salespersonName: spName,
+            workerId: wId,
+            workerName: wName,
+            quantity: customQty,
             price: Number(prod.sellingPrice) || Number(prod.price) || 0,
             discount: 0,
             gstPercent: prod.gstPercent || 0,
@@ -1177,8 +1170,7 @@ export const BillingPOSView = ({
         <div class="details">
           <b>Receipt No:</b> ${invoice.invoiceNo}<br>
           <b>Date:</b> ${receiptDate}<br>
-          <b>Salesperson:</b> ${invoice.salespersonName || 'Admin (Self)'}<br>
-          <b>Customer:</b> ${invoice.customerName} (${invoice.customerPhone || '-'})
+          <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
         </div>
         <div class="divider"></div>
         <table>
@@ -1264,7 +1256,7 @@ export const BillingPOSView = ({
       `*Receipt No:* ${invoice.invoiceNo}\n` +
       `*Date:* ${invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}\n` +
       `*Customer:* ${invoice.customerName}\n` +
-      `*Salesperson:* ${invoice.salespersonName || "Admin (Self)"}\n` +
+      (invoice.customerPhone ? `*Contact:* ${invoice.customerPhone}\n` : "") +
       `---------------------------\n` +
       `*Apparel Items:*\n${itemsText}\n` +
       `---------------------------\n` +
@@ -1320,7 +1312,7 @@ export const BillingPOSView = ({
         <p><strong>Receipt No:</strong> ${invoice.invoiceNo}</p>
         <p><strong>Date:</strong> ${new Date(invoice.date).toLocaleString()}</p>
         <p><strong>Customer:</strong> ${invoice.customerName}</p>
-        <p><strong>Salesperson:</strong> ${invoice.salespersonName || "N/A"}</p>
+        ${invoice.customerPhone ? `<p><strong>Phone:</strong> ${invoice.customerPhone}</p>` : ''}
       </div>
 
       <table>
@@ -1552,6 +1544,12 @@ export const BillingPOSView = ({
                               </span>
                             )}
                           </p>
+                          {(item.salespersonName || item.workerName) && (
+                            <p className="text-[9.5px] font-semibold text-slate-400 mt-0.5">
+                              {item.salespersonName && <span className="mr-2">Sales: <span className="text-indigo-600">{item.salespersonName}</span></span>}
+                              {item.workerName && <span>Worker: <span className="text-emerald-600">{item.workerName}</span></span>}
+                            </p>
+                          )}
                         </div>
                         <span className="text-xs font-bold text-indigo-600 shrink-0 font-mono">
                           ₹{(Number(item.totalPrice) || 0).toLocaleString()}
@@ -1732,34 +1730,6 @@ export const BillingPOSView = ({
                 </div>
               )}
 
-              {/* Salesperson Selection Grid */}
-              <div className="mb-4">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between items-center">
-                  <span>Assigned Salesperson</span>
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-                  <button
-                    onClick={() => setSalespersonId("")}
-                    className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${!salespersonId ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-slate-50"}`}
-                  >
-                    Self (Admin)
-                  </button>
-                  {(staffList || [])
-                    .filter(e => {
-                      const title = (e.designation || e.role || "").toLowerCase();
-                      return title.includes("sales") || title.includes("admin");
-                    })
-                    .map((e) => (
-                      <button
-                        key={e._id || e.id}
-                        onClick={() => setSalespersonId(e._id || e.id)}
-                        className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${(e._id || e.id) === salespersonId ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-slate-50"}`}
-                      >
-                        {e.name.split(' ')[0]}
-                      </button>
-                    ))}
-                </div>
-              </div>
 
               {/* Generate Invoice */}
               <div className="flex gap-2 items-center">
@@ -2025,14 +1995,6 @@ export const BillingPOSView = ({
 
                           <div className="border-t border-slate-100/60 pt-2 flex justify-between items-center">
                             <div className="text-[10px] text-slate-400 space-y-0.5">
-                              {inv.salespersonName && (
-                                <p>
-                                  Salesperson:{" "}
-                                  <span className="font-bold text-slate-600">
-                                    {inv.salespersonName}
-                                  </span>
-                                </p>
-                              )}
                               <p>
                                 Pay Mode:{" "}
                                 <span className="font-bold text-slate-600">
@@ -2142,7 +2104,6 @@ export const BillingPOSView = ({
                   <th className="p-3">Invoice #</th>
                   <th className="p-3">Date</th>
                   <th className="p-3">Customer</th>
-                  <th className="p-3">Salesperson</th>
                   <th className="p-3">Items</th>
                   <th className="p-3">Total Cost</th>
                   <th className="p-3">Pay Mode</th>
@@ -2162,7 +2123,6 @@ export const BillingPOSView = ({
                     <td className="p-3 font-medium text-slate-800">
                       {inv.customerName}
                     </td>
-                    <td className="p-3">{inv.salespersonName || 'Admin (Self)'}</td>
                     <td className="p-3 font-mono">
                       {(inv.items || []).reduce(
                         (sum, i) => sum + i.quantity,
@@ -4106,7 +4066,6 @@ export const BillingPOSView = ({
               </div>
               <div className="flex flex-col gap-0.5">
                 <span>Customer: {completedInvoice.customerName}</span>
-                <span>Salesperson: {completedInvoice.salespersonName || 'Admin (Self)'}</span>
               </div>
 
               <div className="border-t border-dashed border-slate-300 my-2" />
@@ -4233,27 +4192,61 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* Quick Add Quantity Modal */}
+      {/* Quick Add Quantity & Configuration Modal */}
       {qtyModalProduct && (() => {
         // Compute sizes/colors based on variants array if available, otherwise use a generic Garment sizing standard
         const uniqueSizes = qtyModalProduct.variants?.length ? [...new Set(qtyModalProduct.variants.map(v => v.size).filter(Boolean))] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
         const uniqueColors = qtyModalProduct.variants?.length ? [...new Set(qtyModalProduct.variants.map(v => v.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
 
+        const handleAdd = () => {
+          if (!configSalesperson) {
+            onAddNotification("Validation Error", "Please select a Salesperson.", "danger");
+            return;
+          }
+          if (!configWorker) {
+            onAddNotification("Validation Error", "Please select a Worker.", "danger");
+            return;
+          }
+
+          finalizeAddToCart(
+            qtyModalProduct,
+            qtyModalValue,
+            qtyModalProduct.size || (uniqueSizes.length > 0 ? uniqueSizes[0] : ""),
+            qtyModalProduct.color || (uniqueColors.length > 0 ? uniqueColors[0] : ""),
+            configSalesperson.id || configSalesperson._id,
+            configSalesperson.name,
+            configWorker.id || configWorker._id,
+            configWorker.name
+          );
+          
+          onAddNotification("POS Billing", `Added ${qtyModalValue}x ${qtyModalProduct.name} to cart.`, "success");
+          setQtyModalProduct(null);
+          setTimeout(() => { searchInputRef.current?.focus(); }, 100);
+        };
+
         return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-scale-up">
-              <h3 className="text-sm font-bold text-slate-800 mb-4 line-clamp-1">Add to Cart: {qtyModalProduct.name}</h3>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-scale-up my-auto">
               
-              {/* Size & Color Selectors */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="mb-5 pb-4 border-b border-slate-100 flex justify-between items-start">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex justify-between items-center">
+                  <h3 className="text-lg font-black text-slate-800 leading-tight mb-1">{qtyModalProduct.name}</h3>
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">{qtyModalProduct.sku}</span>
+                    <span>{qtyModalProduct.brand}</span>
+                    <span className="text-indigo-600 font-bold">₹{qtyModalProduct.sellingPrice || qtyModalProduct.price}</span>
+                    <span className="text-emerald-600">Stock: {qtyModalProduct.stock}</span>
+                  </div>
+                </div>
+                <button onClick={() => setQtyModalProduct(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
                     <span>Size</span>
-                    <span className="flex items-center gap-1.5 text-[8px] tracking-normal font-medium bg-slate-100 px-1.5 py-0.5 rounded">
-                      <span>🟢 Safe</span>
-                      <span>🟡 Low</span>
-                      <span>🔴 Out</span>
-                    </span>
                   </label>
                   <select 
                     value={qtyModalProduct.size || ""} 
@@ -4267,7 +4260,7 @@ export const BillingPOSView = ({
                         variants: qtyModalProduct.variants
                       });
                     }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="">Default Size</option>
                     {uniqueSizes.map(s => {
@@ -4283,7 +4276,7 @@ export const BillingPOSView = ({
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Color</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Color</label>
                   <select 
                     value={qtyModalProduct.color || ""} 
                     onChange={(e) => {
@@ -4296,7 +4289,7 @@ export const BillingPOSView = ({
                         variants: qtyModalProduct.variants
                       });
                     }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="">Default Color</option>
                     {uniqueColors.map(c => <option key={c} value={c}>{c}</option>)}
@@ -4304,52 +4297,85 @@ export const BillingPOSView = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4">
-                <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Quantity</span>
-                <div className="flex items-center gap-3">
+              <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+                <span className="text-sm text-slate-600 font-bold uppercase tracking-wider">Quantity</span>
+                <div className="flex items-center gap-4">
                   <button 
                     onClick={() => setQtyModalValue(prev => Math.max(1, prev - 1))}
-                    className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
+                    className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
                   >
-                    <Minus className="w-4 h-4" />
+                    <Minus className="w-5 h-5" />
                   </button>
-                  <span className="text-lg font-bold font-mono text-slate-800 min-w-[20px] text-center">
+                  <span className="text-2xl font-black font-mono text-slate-800 min-w-[30px] text-center">
                     {qtyModalValue}
                   </span>
                   <button 
                     onClick={() => setQtyModalValue(prev => prev + 1)}
-                    className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
+                    className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="mb-5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Assign Salesperson</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {salespersonList.map(emp => (
+                    <div 
+                      key={emp.id || emp._id}
+                      onClick={() => setConfigSalesperson(emp)}
+                      className={`p-2 rounded-lg border text-center cursor-pointer transition-all ${configSalesperson?.id === emp.id || configSalesperson?._id === emp._id ? "bg-indigo-50 border-indigo-500 shadow-sm" : "bg-white border-slate-200 hover:border-indigo-300"}`}
+                    >
+                      <div className={`text-xs font-bold ${configSalesperson?.id === emp.id || configSalesperson?._id === emp._id ? "text-indigo-700" : "text-slate-700"}`}>{emp.name}</div>
+                    </div>
+                  ))}
+                  {salespersonList.length === 0 && (
+                    <div className="col-span-3 text-xs text-slate-400 italic">No active salespersons found.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Assign Worker</label>
+                <div className="grid grid-cols-3 gap-2 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
+                  {workerList.map(emp => (
+                    <div 
+                      key={emp.id || emp._id}
+                      onClick={() => setConfigWorker(emp)}
+                      className={`p-2 rounded-lg border text-center cursor-pointer transition-all ${configWorker?.id === emp.id || configWorker?._id === emp._id ? "bg-emerald-50 border-emerald-500 shadow-sm" : "bg-white border-slate-200 hover:border-emerald-300"}`}
+                    >
+                      <div className={`text-xs font-bold ${configWorker?.id === emp.id || configWorker?._id === emp._id ? "text-emerald-700" : "text-slate-700"}`}>{emp.name}</div>
+                    </div>
+                  ))}
+                  {workerList.length === 0 && (
+                    <div className="col-span-3 text-xs text-slate-400 italic">No active workers found.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
                 <button 
                   onClick={() => setQtyModalProduct(null)}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors cursor-pointer"
                 >
                   Cancel (Esc)
                 </button>
                 <button 
                   ref={qtyInputRef}
-                  onClick={() => {
-                    for (let i = 0; i < qtyModalValue; i++) {
-                       handleAddProductToCart(qtyModalProduct);
-                    }
-                    onAddNotification("Added", `Added ${qtyModalValue}x ${qtyModalProduct.name} (${qtyModalProduct.size || ''} ${qtyModalProduct.color || ''})`, "success");
-                    setQtyModalProduct(null);
-                    setTimeout(() => { searchInputRef.current?.focus(); }, 100);
-                  }}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer"
+                  onClick={handleAdd}
+                  className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold rounded-xl text-sm transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Add Items (Enter)
+                  <span>Add Items (Enter)</span>
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
+
             </div>
           </div>
         );
+      })()}
+
       })()}
 
     </div>

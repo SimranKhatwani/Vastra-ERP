@@ -43,6 +43,18 @@ const invoiceItemSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  salespersonId: {
+    type: String,
+  },
+  salespersonName: {
+    type: String,
+  },
+  workerId: {
+    type: String,
+  },
+  workerName: {
+    type: String,
+  },
 });
 
 const invoiceSchema = new mongoose.Schema(
