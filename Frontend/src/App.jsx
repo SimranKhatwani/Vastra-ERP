@@ -1337,6 +1337,7 @@ export default function App() {
           {activeModule === "customers" && (
             <CustomersView
               customers={customers}
+              invoices={invoices}
               onSettleCustomerBalance={handleSettleCustomerBalance}
               onAddNotification={addToastNotification}
             />

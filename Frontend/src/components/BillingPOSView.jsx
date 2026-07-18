@@ -1471,7 +1471,7 @@ export const BillingPOSView = ({
                         }}
                       >
                          <p className="text-xs font-bold text-slate-800">{c.name}</p>
-                         <p className="text-[10px] font-mono text-slate-500">{c.phone} - {c.membership}</p>
+                         <p className="text-[10px] font-mono text-slate-500">{c.phone}</p>
                       </div>
                     ))}
                   </div>
@@ -3930,12 +3930,6 @@ export const BillingPOSView = ({
                               </p>
                               <p className="mt-0.5 font-bold text-white">
                                 {activeCustomer.name}
-                              </p>
-                              <p className="text-[9px] text-slate-400">
-                                Membership:{" "}
-                                <span className="text-emerald-400 font-bold">
-                                  {activeCustomer.membership}
-                                </span>
                               </p>
                             </div>
                           )}
