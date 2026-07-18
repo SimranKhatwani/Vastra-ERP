@@ -200,3 +200,19 @@ exports.updateSettings = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.markCommissionsPaid = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const tenantId = req.user.tenantId;
+    
+    await CommissionHistory.updateMany(
+      { tenantId, employeeId, status: 'Pending' },
+      { $set: { status: 'Paid' } }
+    );
+    
+    res.status(200).json({ success: true, message: 'Commissions marked as paid' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -124,6 +124,28 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
     }
   };
 
+  const handleMarkPaid = async (employeeId) => {
+    try {
+      const response = await fetch(`/api/commissions/staff/pay/${employeeId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        onAddNotification("Commissions marked as paid", "success");
+        fetchCommissions();
+        window.dispatchEvent(new Event("commission.updated"));
+      } else {
+        onAddNotification(data.message || "Failed to mark as paid", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      onAddNotification("An error occurred", "error");
+    }
+  };
+
   useEffect(() => {
     fetchCommissions();
     // Setup Socket.IO listener if needed, or rely on parent
@@ -212,7 +234,21 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
                     <td className="p-3.5 text-center font-bold text-indigo-600">{emp.percentage}%</td>
                     <td className="p-3.5 text-right font-mono font-bold text-indigo-600">₹{emp.totalCommission.toFixed(2)}</td>
                     <td className="p-3.5 text-right font-mono font-bold text-orange-600">₹{emp.pending.toFixed(2)}</td>
-                    <td className="p-3.5 text-right font-mono font-bold text-emerald-600">₹{emp.paid.toFixed(2)}</td>
+                    <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
+                      <div className="flex items-center justify-end gap-2">
+                        {emp.pending > 0 && (
+                          <input 
+                            type="checkbox" 
+                            className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            onChange={(e) => {
+                              if(e.target.checked) handleMarkPaid(emp.id);
+                            }}
+                            title="Mark pending commissions as paid"
+                          />
+                        )}
+                        <span>₹{emp.paid.toFixed(2)}</span>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

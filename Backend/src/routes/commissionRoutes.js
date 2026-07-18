@@ -44,7 +44,8 @@ const {
   getCommissionHistory,
   getCommissionStats,
   getSettings,
-  updateSettings
+  updateSettings,
+  markCommissionsPaid
 } = require('../controllers/commissionController');
 
 router.route('/staff/history')
@@ -56,5 +57,8 @@ router.route('/staff/stats')
 router.route('/staff/settings')
   .get(protect, getSettings)
   .put(protect, updateSettings);
+
+router.route('/staff/pay/:employeeId')
+  .put(protect, markCommissionsPaid);
 
 module.exports = router;
