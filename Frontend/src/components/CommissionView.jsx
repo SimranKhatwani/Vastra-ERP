@@ -216,7 +216,12 @@ export const CommissionView = ({
 
   const [auditLogs, setAuditLogs] = useState([]);
 
-  const [commissionRulesList, setCommissionRulesList] = useState([]);
+  const [commissionSettings, setCommissionSettings] = useState({
+    isEnabled: true,
+    salespersonPercentage: 1.5,
+    workerPercentage: 0.5,
+    calculationBasis: 'Selling Price'
+  });
 
   // Fetch all commissions data dynamically
   React.useEffect(() => {
@@ -235,7 +240,7 @@ export const CommissionView = ({
         ] = await Promise.all([
           fetch('http://localhost:5000/api/commissions/marketplace', { headers }),
           fetch('http://localhost:5000/api/commissions/influencers', { headers }),
-          fetch('http://localhost:5000/api/commissions/rules', { headers }),
+          fetch('http://localhost:5000/api/commissions/staff/settings', { headers }),
           fetch('http://localhost:5000/api/commissions/settlements', { headers }),
           fetch('http://localhost:5000/api/commissions/audit', { headers }),
           fetch('http://localhost:5000/api/staff', { headers })
@@ -255,8 +260,8 @@ export const CommissionView = ({
           setInfluencers(iData.data || []);
         }
         if (rulesRes.ok) {
-          const rData = await rulesRes.json();
-          setCommissionRulesList(rData.data ? rData.data.map(r => r.ruleText) : []);
+          const sData = await rulesRes.json();
+          if (sData.data) setCommissionSettings(sData.data);
         }
         if (settlementsRes.ok) {
           const sData = await settlementsRes.json();
@@ -1435,121 +1440,98 @@ export const CommissionView = ({
 
       {/* RULES TAB */}
       {activeTab === "rules" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs space-y-6">
             <div>
               <h3 className="text-base font-extrabold text-slate-800">
-                Compensation Rules Library
+                Staff Commission Engine Rules
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Define automated rules that trigger bonuses and incentive
-                disbursements at billing checkout.
+                Configure the automated percentages for salesperson and worker commissions.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              {commissionRulesList.map((rule, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 border border-slate-100 rounded-xl bg-slate-50/50 flex justify-between items-center hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                      {idx + 1}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700">{rule}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">
-                        System Code: COM-RULE-{100 + idx}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setCommissionRulesList((prev) =>
-                        prev.filter((_, ri) => ri !== idx),
-                      );
-                      onAddNotification(
-                        "Rule Suspended",
-                        "Commission rule revoked from calculation engine.",
-                        "warning",
-                      );
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg cursor-pointer transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs space-y-5">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              Create Auto Commission Rule
-            </h4>
-
             <form
-              onSubmit={(e) => {
+              className="space-y-5"
+              onSubmit={async (e) => {
                 e.preventDefault();
-                const ruleInput = e.target.ruleName.value;
-                if (!ruleInput) return;
-                setCommissionRulesList([...commissionRulesList, ruleInput]);
-                onAddNotification(
-                  "Commission Rule Live",
-                  "New bonus rule has been saved to checkout engine.",
-                  "success",
-                );
-                e.target.reset();
+                try {
+                  const token = localStorage.getItem("token");
+                  const res = await fetch('http://localhost:5000/api/commissions/staff/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify(commissionSettings)
+                  });
+                  if (res.ok) {
+                    onAddNotification("Settings Saved", "Commission rules updated successfully.", "success");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  onAddNotification("Error", "Failed to save settings.", "error");
+                }
               }}
-              className="space-y-4 text-xs"
             >
-              <div>
-                <label className="block text-slate-500 font-semibold mb-1">
-                  Incentive Description Rule *
+              <div className="flex items-center justify-between p-4 border border-slate-100 rounded-xl bg-slate-50/50">
+                <div>
+                  <p className="text-sm font-bold text-slate-700">Enable Automated Commissions</p>
+                  <p className="text-xs text-slate-500">Calculate commissions during checkout automatically.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={commissionSettings.isEnabled}
+                    onChange={(e) => setCommissionSettings({...commissionSettings, isEnabled: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
-                <input
-                  type="text"
-                  name="ruleName"
-                  placeholder="e.g. 5% on Shirt sales above ₹10,000"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  required
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Salesperson Commission (%)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                  value={commissionSettings.salespersonPercentage}
+                  onChange={(e) => setCommissionSettings({...commissionSettings, salespersonPercentage: Number(e.target.value)})}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-500 font-semibold mb-1">
-                  Trigger Event
-                </label>
-                <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-700 outline-none cursor-pointer">
-                  <option>Individual Counter Sale</option>
-                  <option>Category Target Threshold</option>
-                  <option>Brand-wise wholesale quota</option>
-                  <option>Monthly aggregate sales</option>
-                </select>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Worker/Tailor Commission (%)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                  value={commissionSettings.workerPercentage}
+                  onChange={(e) => setCommissionSettings({...commissionSettings, workerPercentage: Number(e.target.value)})}
+                />
               </div>
 
               <div>
-                <label className="block text-slate-500 font-semibold mb-1">
-                  Calculation Type
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="p-2 border border-slate-200 rounded-xl flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="calc" defaultChecked />
-                    <span>Percentage %</span>
-                  </label>
-                  <label className="p-2 border border-slate-200 rounded-xl flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="calc" />
-                    <span>Flat Cash ₹</span>
-                  </label>
-                </div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Calculation Basis</label>
+                <select
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                  value={commissionSettings.calculationBasis}
+                  onChange={(e) => setCommissionSettings({...commissionSettings, calculationBasis: e.target.value})}
+                >
+                  <option value="Selling Price">Selling Price</option>
+                  <option value="Net Selling Price">Net Selling Price</option>
+                  <option value="After Discount">After Discount</option>
+                  <option value="Before GST">Before GST</option>
+                </select>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer uppercase tracking-wider"
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg"
               >
-                Inject Rule Spec
+                Save Engine Configuration
               </button>
             </form>
           </div>
