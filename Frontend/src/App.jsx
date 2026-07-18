@@ -1289,6 +1289,9 @@ export default function App() {
 
           {activeModule === "articulation" && (
             <ArticulationView
+              customers={customers}
+              employees={employees}
+              products={products}
               onAddCustomToCart={(customItem) => {
                 setQuickArticulateItem(customItem);
                 setActiveModule("billing");
