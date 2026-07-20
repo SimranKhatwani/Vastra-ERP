@@ -279,6 +279,52 @@ export const InventoryView = ({
     }
   };
 
+  // Dynamic MongoDB Batches states
+  const [dbBatches, setDbBatches] = useState([]);
+  const [batchesLoading, setBatchesLoading] = useState(false);
+  const [batchesError, setBatchesError] = useState(null);
+  const [selectedBatchDetail, setSelectedBatchDetail] = useState(null);
+  const [batchesSearch, setBatchesSearch] = useState("");
+  const [batchesFilterStatus, setBatchesFilterStatus] = useState("");
+
+  const fetchBatches = React.useCallback(async () => {
+    setBatchesLoading(true);
+    setBatchesError(null);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setBatchesError("Authentication required.");
+        setBatchesLoading(false);
+        return;
+      }
+      const params = new URLSearchParams({
+        search: batchesSearch,
+        status: batchesFilterStatus
+      });
+      const res = await fetch(`http://localhost:5000/api/batches?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDbBatches(json.data || []);
+      } else {
+        setBatchesError(json.message || "Failed to load batches.");
+      }
+    } catch (err) {
+      setBatchesError(err.message || "Connection failure to api server.");
+    } finally {
+      setBatchesLoading(false);
+    }
+  }, [batchesSearch, batchesFilterStatus]);
+
+  React.useEffect(() => {
+    if (activeTab === "batches") {
+      fetchBatches();
+    }
+  }, [activeTab, fetchBatches]);
+
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [retProductId, setRetProductId] = useState("");
   const [retQty, setRetQty] = useState(5);
@@ -426,39 +472,54 @@ export const InventoryView = ({
     }
   };
 
-  // Batch Tracking Functions
-  const handleCreateBatch = (e) => {
+  const handleCreateBatch = async (e) => {
     e.preventDefault();
     if (!batchNo || !batchProductId || batchQty <= 0) return;
 
-    const targetProduct = products.find((p) => p.id === batchProductId);
+    const targetProduct = products.find((p) => p._id === batchProductId || p.id === batchProductId);
     const targetWh = warehouses.find((w) => w.id === batchWhId);
     if (!targetProduct || !targetWh) return;
 
-    const newBatch = {
-      id: `b-${Date.now()}`,
-      batchNo,
-      productId: batchProductId,
-      productName: targetProduct.name,
-      quantity: batchQty,
-      manufacturingDate: batchMfgDate,
-      expiryDate: batchExpDate,
-      warehouseId: batchWhId,
-      warehouseName: targetWh.name,
-    };
-
-    setBatches((prev) => [newBatch, ...prev]);
-    onAdjustStock(batchProductId, batchQty, "FINISHED_GOODS_RECEIVED", "Batch Registration", batchNo, `Batch registration with ${batchQty} units`); // Add to catalog stock
-
-    onAddNotification(
-      "Batch Registered",
-      `Logged textile production batch ${batchNo} with ${batchQty} items inside ${targetWh.name}.`,
-      "success",
-    );
-    setShowBatchModal(false);
-    setBatchNo("");
-    setBatchProductId("");
-    setBatchQty(50);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/batches", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          batchNo,
+          productId: targetProduct._id || targetProduct.id,
+          warehouseId: batchWhId,
+          purchaseQty: batchQty,
+          availableQty: batchQty,
+          costPrice: targetProduct.purchasePrice || 0,
+          sellingPrice: targetProduct.sellingPrice || 0,
+          mrp: targetProduct.mrp || 0,
+          status: "Available",
+          remarks: "Manual batch entry registration"
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAdjustStock(targetProduct._id || targetProduct.id, batchQty, "FINISHED_GOODS_RECEIVED", "Batch Registration", batchNo, `Batch registration with ${batchQty} units`);
+        onAddNotification(
+          "Batch Registered",
+          `Logged textile production batch ${batchNo} with ${batchQty} items inside ${targetWh.name}.`,
+          "success",
+        );
+        setShowBatchModal(false);
+        setBatchNo("");
+        setBatchProductId("");
+        setBatchQty(50);
+        fetchBatches();
+      } else {
+        onAddNotification("Registration Failed", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
   };
 
   // Stock Transfer Function
@@ -821,6 +882,16 @@ export const InventoryView = ({
     const match = computedWarehouses.find(w => w.id === selectedWarehouseDetail.id);
     return match ? match.capacity : selectedWarehouseDetail.capacity;
   }, [selectedWarehouseDetail, computedWarehouses]);
+
+  const batchStats = React.useMemo(() => {
+    let total = dbBatches.length;
+    let active = dbBatches.filter(b => b.status !== "Closed").length;
+    let closed = dbBatches.filter(b => b.status === "Closed").length;
+    let totalValue = dbBatches.reduce((acc, b) => acc + (b.availableQty * b.costPrice), 0);
+    let reserved = dbBatches.reduce((acc, b) => acc + (b.reservedQty || 0), 0);
+    let lowStock = dbBatches.filter(b => b.availableQty <= 10 && b.status !== "Closed").length;
+    return { total, active, closed, totalValue, reserved, lowStock };
+  }, [dbBatches]);
 
   // Mock activities filtered by selected warehouse
   const warehouseActivities = React.useMemo(() => {
@@ -1786,75 +1857,470 @@ export const InventoryView = ({
         )
       )}
 
-      {/* TAB: BATCH TRACKING */}
+      {/* TAB: BATCH TRACKING (MongoDB DYNAMIC BATCHES) */}
       {activeTab === "batches" && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
-            <div>
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Garment Production Batch Ledger
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Trace manufacturing dates, fabrics, lots, and shelf locations.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleExportCSV("Batches")}
-                className="p-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowBatchModal(true)}
-                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Register Batch</span>
-              </button>
-            </div>
-          </div>
+        <div className="space-y-6 text-xs">
+          {/* Detail Workspace Overlay/View */}
+          {selectedBatchDetail ? (
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200/60 shadow-xs space-y-6 animate-fade-in font-semibold text-slate-600">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      setSelectedBatchDetail(null);
+                      fetchBatches();
+                    }}
+                    className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-600 font-bold transition-colors cursor-pointer"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Back to Batch Directory</span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">
+                      Batch Workspace: {selectedBatchDetail.batchNo}
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
+                      selectedBatchDetail.status === "Closed"
+                        ? "bg-slate-100 text-slate-500 border-slate-200"
+                        : selectedBatchDetail.status === "Reserved"
+                          ? "bg-amber-50 text-amber-600 border-amber-200"
+                          : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                    }`}>
+                      {selectedBatchDetail.status}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onAddNotification("QC Verified", `QC checked and verified for batch ${selectedBatchDetail.batchNo}`, "success")}
+                    className="px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold cursor-pointer"
+                  >
+                    Approve QC
+                  </button>
+                  <button
+                    onClick={() => onAddNotification("Barcode Printed", `Barcode queue loaded for batch ${selectedBatchDetail.batchNo}`, "info")}
+                    className="px-3 py-1.5 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-lg font-bold cursor-pointer"
+                  >
+                    Print Barcode
+                  </button>
+                </div>
+              </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden text-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                    <th className="p-3.5">Batch Number</th>
-                    <th className="p-3.5">Garment Product</th>
-                    <th className="p-3.5">Assigned Depot</th>
-                    <th className="p-3.5 text-right">Mfg Qty</th>
-                    <th className="p-3.5">Mfg Date</th>
-                    <th className="p-3.5">Expiry Date</th>
-                    <th className="p-3.5 text-center">Trace Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                  {batches.map((b, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3.5 font-mono font-bold text-indigo-600">
-                        {b.batchNo}
-                      </td>
-                      <td className="p-3.5 font-semibold text-slate-800">
-                        {b.productName}
-                      </td>
-                      <td className="p-3.5">{b.warehouseName}</td>
-                      <td className="p-3.5 text-right font-mono font-bold">
-                        {b.quantity} units
-                      </td>
-                      <td className="p-3.5 font-mono">{b.manufacturingDate}</td>
-                      <td className="p-3.5 font-mono">{b.expiryDate}</td>
-                      <td className="p-3.5 text-center">
-                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] rounded-full font-bold">
-                          Traceable
+              {/* Three Column Details Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* Column 1: Batch & Stock Info */}
+                <div className="space-y-6">
+                  {/* Batch Information */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Batch Traceability Info
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Batch Number</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.batchNo}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Invoice Number</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.purchaseInvoiceNo || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Purchase Order</span>
+                        <span className="text-indigo-600 font-mono font-bold">
+                          {selectedBatchDetail.purchaseOrderId?.poNo || "N/A"}
                         </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Supplier Partner</span>
+                        <span className="text-slate-800 font-bold">
+                          {selectedBatchDetail.supplierId?.name || "Global Fabrics"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Purchase Date</span>
+                        <span className="text-slate-800">
+                          {selectedBatchDetail.purchaseDate ? new Date(selectedBatchDetail.purchaseDate).toLocaleDateString() : "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Received Date</span>
+                        <span className="text-slate-800">
+                          {selectedBatchDetail.receivedDate ? new Date(selectedBatchDetail.receivedDate).toLocaleDateString() : "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Warehouse Depot</span>
+                        <span className="text-slate-800 font-bold">
+                          {warehouses.find(w => w.id === selectedBatchDetail.warehouseId)?.name || "Main Storage Room"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Storage Location</span>
+                        <span className="text-slate-800 font-mono font-bold">
+                          {selectedBatchDetail.rack || "RCK-A"} / {selectedBatchDetail.shelf || "SHLF-1"}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[10px]">Created By</span>
+                        <span className="text-slate-500 font-bold">{selectedBatchDetail.createdBy || "System Admin"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stock Information */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Stock Ledger Audits
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Opening Quantity</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.purchaseQty} units</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Purchased Quantity</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.purchaseQty} units</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Sold Quantity</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.soldQty || 0} units</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Reserved Quantity</span>
+                        <span className="text-amber-600 font-mono font-bold">{selectedBatchDetail.reservedQty || 0} units</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Returned Quantity</span>
+                        <span className="text-red-500 font-mono font-bold">{selectedBatchDetail.returnedQty || 0} units</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Available Quantity</span>
+                        <span className="text-emerald-600 font-mono font-extrabold text-sm block">
+                          {selectedBatchDetail.availableQty} units
+                        </span>
+                      </div>
+                      <div className="col-span-2 pt-2 border-t border-slate-100">
+                        <span className="text-slate-400 block text-[10px]">Current Batch Value</span>
+                        <span className="text-indigo-600 font-mono font-extrabold text-sm block">
+                          ₹{(selectedBatchDetail.availableQty * selectedBatchDetail.costPrice).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 2: Product & Financial Details */}
+                <div className="space-y-6">
+                  {/* Product Information */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Product Characteristics
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-[11px]">
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[10px]">Product Name</span>
+                        <span className="text-slate-800 font-bold block">{selectedBatchDetail.productId?.name || "Custom Fabric Roll"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Product SKU</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.productId?.sku || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Barcode</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.productId?.barcode || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Category</span>
+                        <span className="text-slate-800 font-bold">{selectedBatchDetail.productId?.category || "Uncategorized"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Brand</span>
+                        <span className="text-slate-800 font-bold">{selectedBatchDetail.productId?.brand || "Generic"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Size / Dimension</span>
+                        <span className="text-slate-800 font-bold">{selectedBatchDetail.productId?.size || "Custom"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Primary Color</span>
+                        <span className="text-slate-800 font-bold">{selectedBatchDetail.productId?.color || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Fabric Structure</span>
+                        <span className="text-slate-800 font-bold">{selectedBatchDetail.productId?.fabricCode || "Cotton Weave"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Fabric Weight (GSM)</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.productId?.gsm || "N/A"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financial Details */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Commercial Ledger Value
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Purchase / Cost Price</span>
+                        <span className="text-slate-800 font-mono font-bold">₹{selectedBatchDetail.costPrice}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Maximum Retail Price (MRP)</span>
+                        <span className="text-slate-800 font-mono font-bold">₹{selectedBatchDetail.mrp || selectedBatchDetail.sellingPrice}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Selling Price</span>
+                        <span className="text-emerald-600 font-mono font-bold">₹{selectedBatchDetail.sellingPrice}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Lot Discount</span>
+                        <span className="text-indigo-600 font-mono font-bold">{selectedBatchDetail.discount || 0}%</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[10px]">Applied GST Levy</span>
+                        <span className="text-slate-800 font-mono font-bold">{selectedBatchDetail.gst || 12}% GST Standard</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 3: Actions & Timeline */}
+                <div className="space-y-6">
+                  {/* Actions Panel */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-3">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Batch Actions Workspace
+                    </h4>
+                    
+                    <button
+                      onClick={() => onAddNotification("Label Printed", `Compilation label generated for batch ${selectedBatchDetail.batchNo}`, "success")}
+                      className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                      📄 Print Batch Label
+                    </button>
+                    <button
+                      onClick={() => onAddNotification("Trace Logs Ready", "Audit history compiled to console.", "info")}
+                      className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                      📜 View Batch History
+                    </button>
+                    <button
+                      onClick={() => {
+                        const amt = parseInt(prompt("Enter amount to reserve:", "5"));
+                        if (amt > 0) {
+                          onAddNotification("Stock Reserved", `${amt} units of batch ${selectedBatchDetail.batchNo} allocated to reserve queue.`, "success");
+                        }
+                      }}
+                      className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors text-amber-700 bg-amber-50/20"
+                    >
+                      🔒 Allocate Reserve Stock
+                    </button>
+                  </div>
+
+                  {/* Timeline */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
+                      Trace Timeline Flow
+                    </h4>
+                    <div className="space-y-4 relative pl-4 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                      {[
+                        { label: "Created", key: "Created" },
+                        { label: "Received", key: "Received" },
+                        { label: "QC Checked", key: "QC" },
+                        { label: "Available", key: "Available" },
+                        { label: "Reserved", key: "Reserved" },
+                        { label: "Sold Out", key: "Sold" },
+                        { label: "Closed", key: "Closed" }
+                      ].map((t, idx) => {
+                        const states = ["Created", "Received", "QC", "Available", "Reserved", "Sold", "Closed"];
+                        const currentIdx = states.indexOf(selectedBatchDetail.status);
+                        const isDone = states.indexOf(t.key) <= currentIdx;
+                        return (
+                          <div key={idx} className="flex items-center gap-3 text-[11px]">
+                            <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 z-10 ${
+                              isDone ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                            }`}>
+                              {isDone && <span className="w-1 h-1 bg-white rounded-full" />}
+                            </span>
+                            <span className={isDone ? "text-slate-800 font-extrabold" : "text-slate-400 font-bold"}>
+                              {t.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Summary Statistics Row */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Total Batches</span>
+                  <span className="text-slate-800 font-extrabold text-lg block">{batchStats.total}</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Active Lots</span>
+                  <span className="text-emerald-600 font-extrabold text-lg block">{batchStats.active}</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Closed Lots</span>
+                  <span className="text-slate-400 font-extrabold text-lg block">{batchStats.closed}</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Batch Val</span>
+                  <span className="text-indigo-600 font-extrabold text-lg block">₹{Math.round(batchStats.totalValue).toLocaleString()}</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Reserved</span>
+                  <span className="text-amber-600 font-extrabold text-lg block">{batchStats.reserved} units</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Low Stock</span>
+                  <span className="text-red-500 font-extrabold text-lg block">{batchStats.lowStock} lots</span>
+                </div>
+              </div>
+
+              {/* Main Directory panel */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-xs font-semibold">
+                  <div>
+                    <h3 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                      Garment Production Batch Ledger
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Trace manufacturing dates, fabrics, lots, cost profiles, and status values.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      placeholder="Search batch lot No..."
+                      value={batchesSearch}
+                      onChange={(e) => setBatchesSearch(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] outline-none w-full sm:w-44 text-slate-700"
+                    />
+                    <select
+                      value={batchesFilterStatus}
+                      onChange={(e) => setBatchesFilterStatus(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] outline-none text-slate-700 font-bold"
+                    >
+                      <option value="">All Status</option>
+                      <option value="Available">Available</option>
+                      <option value="Reserved">Reserved</option>
+                      <option value="Closed">Closed</option>
+                    </select>
+                    <button
+                      onClick={() => fetchBatches()}
+                      className="px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 font-bold cursor-pointer bg-white"
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => setShowBatchModal(true)}
+                      className="bg-slate-950 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[11px] font-extrabold flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Lot</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table lists */}
+                {batchesLoading ? (
+                  <div className="py-12 text-center text-slate-400 animate-pulse font-sans font-bold">
+                    ⚡ Synchronizing MongoDB batch registry...
+                  </div>
+                ) : batchesError ? (
+                  <div className="p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl leading-relaxed font-semibold">
+                    ❌ {batchesError}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden text-[11px]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-400 font-extrabold uppercase border-b border-slate-100 tracking-wider">
+                            <th className="p-3.5">Batch No</th>
+                            <th className="p-3.5">Product</th>
+                            <th className="p-3.5">SKU</th>
+                            <th className="p-3.5">Supplier</th>
+                            <th className="p-3.5">Purchase Date</th>
+                            <th className="p-3.5 text-center">Purchased Qty</th>
+                            <th className="p-3.5 text-center">Available Qty</th>
+                            <th className="p-3.5 text-center">Reserved Qty</th>
+                            <th className="p-3.5">Warehouse</th>
+                            <th className="p-3.5 text-right">Cost Price</th>
+                            <th className="p-3.5 text-right">Selling Price</th>
+                            <th className="p-3.5 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+                          {dbBatches.map((b) => (
+                            <tr
+                              key={b._id}
+                              onClick={() => setSelectedBatchDetail(b)}
+                              className="hover:bg-slate-50/50 cursor-pointer transition-colors"
+                            >
+                              <td className="p-3.5 font-mono font-bold text-indigo-600">
+                                {b.batchNo}
+                              </td>
+                              <td className="p-3.5 font-semibold text-slate-800">
+                                {b.productId?.name || "Custom Fabric Lot"}
+                              </td>
+                              <td className="p-3.5 font-mono text-[10px] text-slate-400">
+                                {b.productId?.sku || "N/A"}
+                              </td>
+                              <td className="p-3.5">
+                                {b.supplierId?.name || "Global Fabrics"}
+                              </td>
+                              <td className="p-3.5 font-mono">
+                                {b.purchaseDate ? new Date(b.purchaseDate).toLocaleDateString() : "N/A"}
+                              </td>
+                              <td className="p-3.5 text-center font-mono font-bold">{b.purchaseQty} units</td>
+                              <td className="p-3.5 text-center font-mono font-extrabold text-slate-800">{b.availableQty} units</td>
+                              <td className="p-3.5 text-center font-mono text-amber-600 font-bold">{b.reservedQty || 0} units</td>
+                              <td className="p-3.5 font-semibold text-slate-700">
+                                {warehouses.find(w => w.id === b.warehouseId)?.name || "Bandra Central"}
+                              </td>
+                              <td className="p-3.5 text-right font-mono">₹{b.costPrice}</td>
+                              <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{b.sellingPrice}</td>
+                              <td className="p-3.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                                  b.status === "Closed"
+                                    ? "bg-slate-100 text-slate-500 border-slate-200"
+                                    : b.status === "Reserved"
+                                      ? "bg-amber-50 text-amber-600 border-amber-200"
+                                      : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                }`}>
+                                  {b.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          {dbBatches.length === 0 && (
+                            <tr>
+                              <td colSpan="12" className="p-8 text-center text-slate-400 font-sans font-medium">
+                                No production batches registered in database.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

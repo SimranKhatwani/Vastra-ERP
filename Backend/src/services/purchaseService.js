@@ -108,6 +108,35 @@ exports.processPurchaseVoucher = async (tenantId, voucherData) => {
             performedBy: voucherData.performedBy || 'Procurement Manager',
             remarks: `Procurement entry from supplier: ${supplier.name}`
           });
+
+          // Create dynamic batch for purchase item
+          try {
+            const Batch = require('../models/batchModel');
+            const batchNo = `BAT-${Date.now().toString().slice(-4)}-${Math.floor(1000 + Math.random() * 9000)}`;
+            await Batch.create({
+              tenantId,
+              batchNo,
+              productId: product._id,
+              supplierId: supplierId,
+              purchaseOrderId: newPO._id,
+              purchaseInvoiceNo: newPO.invoiceNo || `PINV-${newPO.poNo.slice(-5)}`,
+              warehouseId: 'w-1',
+              rack: 'RCK-A',
+              shelf: 'SHLF-1',
+              purchaseDate: newPO.date,
+              receivedDate: new Date(),
+              createdBy: voucherData.performedBy || 'Procurement Manager',
+              purchaseQty: item.quantity,
+              availableQty: item.quantity,
+              costPrice: product.purchasePrice || 0,
+              sellingPrice: product.sellingPrice || 0,
+              mrp: product.mrp || 0,
+              status: 'Available',
+              remarks: `Auto-generated batch for purchase: ${newPO.poNo}`
+            });
+          } catch (batchErr) {
+            console.error('Batch creation failed for purchase item:', batchErr.message);
+          }
         }
       }
     } catch (moveErr) {

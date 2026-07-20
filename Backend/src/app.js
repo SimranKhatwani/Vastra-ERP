@@ -30,6 +30,7 @@ const whatsappConfigRoutes = require('./routes/whatsappConfigRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const inventoryMovementRoutes = require('./routes/inventoryMovementRoutes');
+const batchRoutes = require('./routes/batchRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -56,6 +57,7 @@ app.use('/api/whatsapp-config', whatsappConfigRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/inventory-movements', inventoryMovementRoutes);
+app.use('/api/batches', batchRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {
