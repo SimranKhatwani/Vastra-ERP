@@ -40,6 +40,21 @@ const connectDB = async () => {
       }
     }, 2000);
 
+    // Auto-fix products script to populate productCode
+    setTimeout(async () => {
+      try {
+        const Product = require('../models/productModel');
+        const prds = await Product.find({ productCode: { $exists: false } });
+        for (const p of prds) {
+          p.productCode = 'PRD-' + p._id.toString().substring(18).toUpperCase();
+          await p.save();
+          console.log(`[Auto-Fix] Migrated productCode for product: ${p.name}`);
+        }
+      } catch (err) {
+        console.error("[Auto-Fix] Error migrating productCode:", err.message);
+      }
+    }, 4000);
+
   } catch (error) {
     console.error(`Error: ${error.message}`);
     process.exit(1);

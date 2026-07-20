@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.get('/scan/:barcode', protect, scanProduct);
 
+
 router.route('/')
   .post(protect, createProduct)
   .get(protect, getProducts);

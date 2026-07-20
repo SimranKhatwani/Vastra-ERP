@@ -69,6 +69,7 @@ const productSchema = new mongoose.Schema(
       default: 0,
     },
     sku: { type: String },
+    productCode: { type: String, index: true },
     barcode: { type: String },
     color: { type: String },
     size: { type: String },
@@ -137,5 +138,12 @@ productSchema.index(
   { tenantId: 1, 'variants.sku': 1 }, 
   { unique: true, partialFilterExpression: { 'variants.sku': { $exists: true, $type: 'string' } } }
 );
+
+// Pre-save hook to generate unique productCode if not present
+productSchema.pre('save', function () {
+  if (!this.productCode) {
+    this.productCode = 'PRD-' + this._id.toString().substring(18).toUpperCase();
+  }
+});
 
 module.exports = mongoose.model('Product', productSchema);
