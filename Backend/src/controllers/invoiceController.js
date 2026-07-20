@@ -38,6 +38,24 @@ exports.createInvoice = async (req, res) => {
             calculateStockStatus(product);
             await product.save();
 
+            // Log OUTBOUND movement for sale
+            try {
+              const inventoryMovementService = require('../services/inventoryMovementService');
+              await inventoryMovementService.createMovement(tenantId, {
+                product,
+                movementType: 'OUTBOUND',
+                activity: 'POS_SALE',
+                quantity: item.quantity,
+                referenceType: 'Invoice',
+                referenceId: invoice._id,
+                referenceNumber: invoice.invoiceNo || '',
+                performedBy: req.user ? req.user.name : 'Billing POS',
+                remarks: 'Billing checkout stock issue'
+              });
+            } catch (moveErr) {
+              console.error('Movement logging failed for sale:', moveErr.message);
+            }
+
             emitToTenant(tenantId, 'inventory.updated', { product, tenantId, event: 'inventory.updated' });
             if (product.status === 'Low Stock') {
               emitToTenant(tenantId, 'inventory.low', { product, tenantId, event: 'inventory.low' });

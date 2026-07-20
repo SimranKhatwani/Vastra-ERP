@@ -514,9 +514,42 @@ export const ArticulationView = ({
     onAddNotification("Draft Saved", `Bespoke customization draft logged under ${orderNo}.`, "success");
   };
 
+  const logMovementToBackend = async (data) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      await fetch("http://localhost:5000/api/inventory-movements", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+    } catch (err) {
+      console.error("Failed to log movement to backend:", err.message);
+    }
+  };
+
   const handleReserveFabric = () => {
     setIsFabricReserved(true);
     onAddNotification("Fabric Allocated", `${totalFabricRequired} meters of ${selectedFabric.name} reserved in stock.`, "success");
+
+    if (selectedFabric && selectedFabric.id) {
+      const matchedProd = products.find(p => p._id === selectedFabric.id || p.id === selectedFabric.id);
+      if (matchedProd) {
+        logMovementToBackend({
+          productId: matchedProd._id || matchedProd.id,
+          movementType: "OUTBOUND",
+          activity: "MATERIAL_ISSUE",
+          quantity: Math.ceil(totalFabricRequired),
+          referenceType: "Job Card",
+          referenceNumber: orderNo,
+          remarks: `Fabric reserved for bespoke ${selectedGarment} order ${orderNo}`
+        });
+      }
+    }
   };
 
   const handleGenerateJobCard = () => {
@@ -527,6 +560,21 @@ export const ArticulationView = ({
   const handleSendToProduction = () => {
     setOrderStatus("In Production");
     onAddNotification("Production Stage Loaded", `Garment sent to workflow line. Assigned: ${selectedTailor.name}.`, "success");
+
+    if (selectedFabric && selectedFabric.id) {
+      const matchedProd = products.find(p => p._id === selectedFabric.id || p.id === selectedFabric.id);
+      if (matchedProd) {
+        logMovementToBackend({
+          productId: matchedProd._id || matchedProd.id,
+          movementType: "OUTBOUND",
+          activity: "MATERIAL_ISSUE",
+          quantity: Math.ceil(totalFabricRequired),
+          referenceType: "Job Card",
+          referenceNumber: orderNo,
+          remarks: `Fabric issued to tailor ${selectedTailor.name} for bespoke ${selectedGarment}`
+        });
+      }
+    }
   };
 
   const handlePushToPOS = () => {
@@ -552,6 +600,21 @@ export const ArticulationView = ({
     };
     onAddCustomToCart(itemPayload);
     onAddNotification("Sent to Billing", "Bespoke custom ticket pushed successfully to boutique POS queue.", "success");
+
+    if (selectedFabric && selectedFabric.id) {
+      const matchedProd = products.find(p => p._id === selectedFabric.id || p.id === selectedFabric.id);
+      if (matchedProd) {
+        logMovementToBackend({
+          productId: matchedProd._id || matchedProd.id,
+          movementType: "INBOUND",
+          activity: "FINISHED_GOODS_RECEIVED",
+          quantity: 1,
+          referenceType: "Job Card",
+          referenceNumber: orderNo,
+          remarks: `Finished bespoke ${selectedGarment} received in showroom stock`
+        });
+      }
+    }
   };
 
   const handleLoadPreviousMeasurements = () => {

@@ -472,13 +472,13 @@ export default function App() {
     }
   };
 
-  const handleAdjustStock = async (productId, amount) => {
+  const handleAdjustStock = async (productId, amount, activity = "ADJUSTMENT", referenceType = "Stock Adjustment", referenceNumber = "", remarks = "") => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`http://localhost:5000/api/products/${productId}/adjust-stock`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount })
+        body: JSON.stringify({ amount, activity, referenceType, referenceNumber, remarks })
       });
       const data = await res.json();
       if (data.success) {

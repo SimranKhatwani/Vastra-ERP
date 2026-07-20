@@ -42,6 +42,7 @@ exports.processPurchaseVoucher = async (tenantId, voucherData) => {
     
     // 2. Process Items (Products & Stock)
     const processedItems = [];
+    const productsMap = {};
     for (const item of voucherData.items) {
       // Create or update the product based on barcode/sku
       const productObj = await productRepo.upsertProduct(tenantId, {
@@ -69,6 +70,7 @@ exports.processPurchaseVoucher = async (tenantId, voucherData) => {
         purchasePrice: productObj.purchasePrice,
         totalPrice: item.totalPrice || item.amount || (productObj.purchasePrice * (item.quantity || 1)),
       });
+      productsMap[productObj._id.toString()] = productObj;
     }
 
     // 3. Create the Purchase Order
@@ -88,6 +90,29 @@ exports.processPurchaseVoucher = async (tenantId, voucherData) => {
       status: voucherData.status || 'Completed',
       outstandingPaid: outstandingPaid,
     });
+
+    // Log INBOUND movement for purchase order receipt
+    try {
+      const inventoryMovementService = require('./inventoryMovementService');
+      for (const item of processedItems) {
+        const product = productsMap[item.productId.toString()];
+        if (product) {
+          await inventoryMovementService.createMovement(tenantId, {
+            product,
+            movementType: 'INBOUND',
+            activity: 'PURCHASE_RECEIVED',
+            quantity: item.quantity,
+            referenceType: 'Purchase Order',
+            referenceId: newPO._id,
+            referenceNumber: newPO.poNo || '',
+            performedBy: voucherData.performedBy || 'Procurement Manager',
+            remarks: `Procurement entry from supplier: ${supplier.name}`
+          });
+        }
+      }
+    } catch (moveErr) {
+      console.error('Movement logging failed for purchase received:', moveErr.message);
+    }
     
     // 4. Update Supplier Balance
     if (outstandingDebt > 0) {

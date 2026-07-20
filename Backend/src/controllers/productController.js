@@ -92,7 +92,7 @@ exports.deleteProduct = async (req, res) => {
 exports.adjustStock = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const { amount } = req.body;
+    const { amount, activity = 'ADJUSTMENT', referenceType = 'Stock Adjustment', referenceNumber, remarks } = req.body;
     
     let product = await Product.findOne({ _id: req.params.id, tenantId });
 
@@ -104,6 +104,24 @@ exports.adjustStock = async (req, res) => {
     calculateStockStatus(product);
     
     await product.save();
+
+    // Log ADJUSTMENT movement
+    try {
+      const inventoryMovementService = require('../services/inventoryMovementService');
+      await inventoryMovementService.createMovement(tenantId, {
+        product,
+        movementType: amount >= 0 ? 'INBOUND' : 'OUTBOUND',
+        activity,
+        quantity: Math.abs(amount),
+        referenceType,
+        referenceId: product._id.toString(),
+        referenceNumber: referenceNumber || `ADJ-${Date.now().toString().slice(-6)}`,
+        performedBy: req.user ? req.user.name : 'System Admin',
+        remarks: remarks || 'Manual stock adjustment log entry'
+      });
+    } catch (moveErr) {
+      console.error('Movement logging failed for adjustStock:', moveErr.message);
+    }
 
     emitToTenant(tenantId, 'inventory.updated', {
       product,
