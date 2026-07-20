@@ -34,6 +34,7 @@ import { ProductManagementView } from "./components/ProductManagementView";
 import { PurchaseView } from "./components/PurchaseView";
 import { InventoryView } from "./components/InventoryView";
 import { StockManagementView } from "./components/StockManagementView";
+import { BillingSalesView } from "./components/BillingSalesView";
 import { CustomersView } from "./components/CustomersView";
 import { EmployeeView } from "./components/EmployeeView";
 import { AccountingView } from "./components/AccountingView";
@@ -315,6 +316,7 @@ export default function App() {
           "products",
           "inventory",
           "stock-management",
+          "billing-sales",
           "purchase",
           "customers",
           "employees",
@@ -338,6 +340,7 @@ export default function App() {
           "products",
           "inventory",
           "stock-management",
+          "billing-sales",
           "purchase",
           "customers",
           "employees",
@@ -350,6 +353,7 @@ export default function App() {
         return [
           "dashboard",
           "billing",
+          "billing-sales",
           "articulation",
           "products",
           "purchase",
@@ -919,6 +923,7 @@ export default function App() {
     { id: "products", label: "Products & Catalogs", icon: Tags },
     { id: "inventory", label: "Inventory Management Module", icon: Warehouse },
     { id: "stock-management", label: "Stock Management Module", icon: ClipboardCheck },
+    { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
@@ -1348,6 +1353,15 @@ export default function App() {
           {activeModule === "stock-management" && (
             <StockManagementView
               products={products}
+              onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "billing-sales" && (
+            <BillingSalesView
+              products={products}
+              customers={customers}
+              employees={employees}
               onAddNotification={addToastNotification}
             />
           )}
