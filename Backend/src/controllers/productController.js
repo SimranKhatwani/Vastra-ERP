@@ -151,3 +151,37 @@ exports.scanProduct = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Tax Configuration Endpoints
+const TaxConfig = require('../models/taxConfigModel');
+
+exports.getTaxConfig = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    let config = await TaxConfig.findOne({ tenantId });
+    if (!config) {
+      config = await TaxConfig.create({ tenantId, cgstRate: 5, sgstRate: 5 });
+    }
+    res.status(200).json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateTaxConfig = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { cgstRate, sgstRate } = req.body;
+    let config = await TaxConfig.findOne({ tenantId });
+    if (!config) {
+      config = new TaxConfig({ tenantId, cgstRate, sgstRate });
+    } else {
+      config.cgstRate = cgstRate;
+      config.sgstRate = sgstRate;
+    }
+    await config.save();
+    res.status(200).json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

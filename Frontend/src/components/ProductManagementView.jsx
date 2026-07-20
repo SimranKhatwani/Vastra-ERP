@@ -22,8 +22,60 @@ export const ProductManagementView = ({
   currentUser,
   onNavigate,
 }) => {
-  // Navigation tabs: Products, Categories, Brands
   const [activeSubTab, setActiveSubTab] = useState("products");
+
+  // GST & SGST Config States
+  const [cgstPercent, setCgstPercent] = useState(5);
+  const [sgstPercent, setSgstPercent] = useState(5);
+  const [taxLoading, setTaxLoading] = useState(false);
+
+  const fetchTaxConfig = async () => {
+    setTaxLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/products/tax-config", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setCgstPercent(json.data.cgstRate);
+        setSgstPercent(json.data.sgstRate);
+      }
+    } catch (err) {
+      console.error("Failed to load tax config:", err);
+    } finally {
+      setTaxLoading(false);
+    }
+  };
+
+  const handleSaveTaxConfig = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/products/tax-config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ cgstRate: cgstPercent, sgstRate: sgstPercent })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAddNotification("Config Saved", "GST & SGST settings updated successfully.", "success");
+      } else {
+        onAddNotification("Error", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeSubTab === "gst-config") {
+      fetchTaxConfig();
+    }
+  }, [activeSubTab]);
 
   // Search/Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -380,6 +432,12 @@ export const ProductManagementView = ({
             className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer ${activeSubTab === "low_stock" ? "bg-orange-500 text-white shadow-xs" : "text-orange-600 hover:text-orange-700 bg-orange-50"}`}
           >
             Low Stock Products
+          </button>
+          <button
+            onClick={() => setActiveSubTab("gst-config")}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer ${activeSubTab === "gst-config" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            GST & SGST Configuration
           </button>
         </div>
 
@@ -766,6 +824,64 @@ export const ProductManagementView = ({
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* GST & SGST CONFIGURATION SUBTAB */}
+      {activeSubTab === "gst-config" && (
+        <div className="max-w-md bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">GST & SGST Configuration</h3>
+            <p className="text-[10px] text-slate-400">Configure default tax percentages applied on POS Billing checkouts.</p>
+          </div>
+
+          {taxLoading ? (
+            <div className="p-8 text-center text-slate-400 font-bold animate-pulse">Loading settings from database...</div>
+          ) : (
+            <form onSubmit={handleSaveTaxConfig} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">CGST Rate (%)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    max={100}
+                    value={cgstPercent}
+                    onChange={(e) => setCgstPercent(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono font-bold text-slate-800 outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">SGST Rate (%)</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    max={100}
+                    value={sgstPercent}
+                    onChange={(e) => setSgstPercent(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono font-bold text-slate-800 outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-100">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Preview Applied Total Tax</span>
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-slate-600">Total Tax Rate (CGST + SGST)</span>
+                  <span className="text-indigo-600 font-mono">{cgstPercent + sgstPercent}%</span>
+                </div>
+              </div>
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer transition-colors"
+                >
+                  Save Tax Configuration
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
 

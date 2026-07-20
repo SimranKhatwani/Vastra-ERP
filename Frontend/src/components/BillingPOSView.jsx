@@ -42,6 +42,30 @@ export const BillingPOSView = ({
   // Cart state
   const [cart, setCart] = useState([]);
 
+  // GST & SGST Configurations
+  const [cgstRate, setCgstRate] = useState(5);
+  const [sgstRate, setSgstRate] = useState(5);
+
+  const fetchTaxConfig = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/products/tax-config", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setCgstRate(json.data.cgstRate || 5);
+        setSgstRate(json.data.sgstRate || 5);
+      }
+    } catch (err) {
+      console.error("Failed to load tax configs in BillingPOS:", err);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchTaxConfig();
+  }, []);
+
   // Product Configuration Modal state
   const [configModalProduct, setConfigModalProduct] = useState(null);
   const [configQty, setConfigQty] = useState(1);
@@ -828,17 +852,13 @@ export const BillingPOSView = ({
   const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0;
-    let gstTotal = 0;
 
     cart.forEach((item) => {
       const sub = item.price * item.quantity;
       const disc = Math.floor(sub * (item.discount / 100));
-      const taxable = sub - disc;
-      const gst = Math.floor(taxable * (item.gstPercent / 100));
 
       subTotal += sub;
       discountTotal += disc;
-      gstTotal += gst;
     });
 
     // Handle flat discount & coupon code
@@ -852,7 +872,12 @@ export const BillingPOSView = ({
     }
 
     const totalDiscount = discountTotal + flatDiscount + couponDiscount;
-    const grandTotal = Math.max(0, subTotal - totalDiscount + gstTotal);
+    const taxable = Math.max(0, subTotal - totalDiscount);
+
+    // Apply default CGST + SGST config dynamically
+    const totalTaxRate = cgstRate + sgstRate;
+    const gstTotal = Math.floor(taxable * (totalTaxRate / 100));
+    const grandTotal = taxable + gstTotal;
 
     return {
       subTotal,
@@ -861,7 +886,7 @@ export const BillingPOSView = ({
       gstTotal,
       grandTotal,
     };
-  }, [cart, couponCode, flatDiscount]);
+  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1670,7 +1695,7 @@ export const BillingPOSView = ({
                   </div>
                 )}
                 <div className="flex justify-between text-slate-500 pb-2 border-b border-slate-200/60 mb-2">
-                  <span>GST Tax (CGST+SGST)</span>
+                  <span>CGST ({cgstRate}%) + SGST ({sgstRate}%)</span>
                   <span className="font-mono font-semibold">₹{gstTotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-end">
