@@ -804,7 +804,7 @@ export const InventoryView = ({
                       {p.name}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      SKU: {p.sku} | Threshold: {p.minStockAlert} units
+                      Code: PRD-{(p._id || p.id || "").toString().substring(Math.max(0, (p._id || p.id || "").toString().length - 6)).toUpperCase()} | SKU: {p.sku} | Threshold: {p.minStockAlert} units
                     </span>
                   </div>
                   <div className="text-right">

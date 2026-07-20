@@ -34,11 +34,9 @@ export const ArticulationView = ({
   const defaultCustomers = useMemo(() => {
     if (customers && customers.length > 0) return customers;
     return [
-      { id: "c-101", _id: "c-101", name: "Amit Sharma", phone: "9876543210", email: "amit.sharma@example.com", code: "C-1001", loyaltyPoints: 240 },
-      { id: "c-102", _id: "c-102", name: "Priya Patel", phone: "8765432109", email: "priya.patel@example.com", code: "C-1002", loyaltyPoints: 180 },
-      { id: "c-103", _id: "c-103", name: "Rajesh Kumar", phone: "7654321098", email: "rajesh.kumar@example.com", code: "C-1003", loyaltyPoints: 50 },
-      { id: "c-104", _id: "c-104", name: "Ananya Sen", phone: "6543210987", email: "ananya.sen@example.com", code: "C-1004", loyaltyPoints: 310 },
-      { id: "c-105", _id: "c-105", name: "Vikram Malhotra", phone: "9988776655", email: "vikram.m@example.com", code: "C-1005", loyaltyPoints: 420 },
+      { id: "c-101", _id: "c-101", name: "Aditya", phone: "9823456789", email: "aditya@example.com", code: "C-1001", loyaltyPoints: 150 },
+      { id: "c-102", _id: "c-102", name: "Yash", phone: "9812345678", email: "yash@example.com", code: "C-1002", loyaltyPoints: 120 },
+      { id: "c-103", _id: "c-103", name: "Vikas", phone: "9834567890", email: "vikas@example.com", code: "C-1003", loyaltyPoints: 80 }
     ];
   }, [customers]);
 
@@ -238,6 +236,36 @@ export const ArticulationView = ({
       c.code.toLowerCase().includes(customerSearch.toLowerCase())
     );
   }, [defaultCustomers, customerSearch]);
+
+  // ─── DATABASE LOAD SYNC EFFECTS ───
+  useEffect(() => {
+    if (customers && customers.length > 0) {
+      const isMock = !selectedCustomer || selectedCustomer.id === "c-101" || selectedCustomer.id === "c-102" || selectedCustomer.id === "c-103" || selectedCustomer.id === "c-104" || selectedCustomer.id === "c-105";
+      if (isMock) {
+        setSelectedCustomer(defaultCustomers[0]);
+      }
+    }
+  }, [customers, defaultCustomers]);
+
+  useEffect(() => {
+    const dbFabrics = (products || []).filter(p => (p.category || "").toLowerCase() === "fabric" || (p.type || "").toLowerCase() === "fabric");
+    if (dbFabrics.length > 0) {
+      const isMock = !selectedFabric || selectedFabric.id === "fb-1" || selectedFabric.id === "fb-2" || selectedFabric.id === "fb-3" || selectedFabric.id === "fb-4" || selectedFabric.id === "fb-5" || selectedFabric.id === "fb-6";
+      if (isMock) {
+        setSelectedFabric(defaultFabrics[0]);
+      }
+    }
+  }, [products, defaultFabrics]);
+
+  useEffect(() => {
+    const dbTailors = (employees || []).filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
+    if (dbTailors.length > 0) {
+      const isMock = !selectedTailor || selectedTailor.id === "tr-1" || selectedTailor.id === "tr-2" || selectedTailor.id === "tr-3" || selectedTailor.id === "tr-4" || selectedTailor.id === "tr-5";
+      if (isMock) {
+        setSelectedTailor(defaultTailors[0]);
+      }
+    }
+  }, [employees, defaultTailors]);
 
   // ─── KEYBOARD LISTENERS (HOTKEYS & NAVIGATION) ───
   useEffect(() => {

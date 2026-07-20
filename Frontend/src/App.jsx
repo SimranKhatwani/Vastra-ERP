@@ -198,6 +198,14 @@ export default function App() {
             fetch("http://localhost:5000/api/notifications", { headers: { Authorization: `Bearer ${token}` } })
           ]);
           
+          if (resProducts.status === 401 || resCustomers.status === 401 || resInvoices.status === 401) {
+            setIsLoggedIn(false);
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            addToastNotification("Auth Service", "Session expired. Please log in again.", "warning");
+            return;
+          }
+
           const dataProducts = await resProducts.json();
           const dataCustomers = await resCustomers.json();
           const dataInvoices = await resInvoices.json();
@@ -1049,6 +1057,8 @@ export default function App() {
               <button
                 onClick={() => {
                   setIsLoggedIn(false);
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
                   addToastNotification(
                     "Auth Service",
                     "Multi-tenant session terminated.",

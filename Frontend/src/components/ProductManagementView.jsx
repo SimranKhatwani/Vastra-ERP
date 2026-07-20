@@ -572,10 +572,15 @@ export const ProductManagementView = ({
                           />
                         </td>
                         <td className="p-3.5">
-                          <div>
-                            <p className="font-bold text-slate-800 leading-tight">
-                              {p.name}
-                            </p>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-1.5">
+                              <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono shrink-0">
+                                PRD-{p.id ? p.id.toString().substring(Math.max(0, p.id.toString().length - 6)).toUpperCase() : "TEMP"}
+                              </span>
+                              <p className="font-bold text-slate-800 leading-tight">
+                                {p.name}
+                              </p>
+                            </div>
                             <span className="text-[10px] text-slate-400 font-medium">
                               {p.category} | {p.brand}
                             </span>
@@ -797,6 +802,20 @@ export const ProductManagementView = ({
                     placeholder="e.g. Raymond Executive Silk Kurta"
                   />
                 </div>
+
+                {modalMode === "edit" && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-500 mb-1 font-semibold">
+                      Unique Product ID (Read-Only)
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`PRD-${editingProductId ? editingProductId.toString().substring(Math.max(0, editingProductId.toString().length - 6)).toUpperCase() : ""}`}
+                      className="w-full bg-slate-100 border border-slate-250 px-3 py-2 rounded-xl font-mono text-slate-500"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">

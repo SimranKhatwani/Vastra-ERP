@@ -481,11 +481,14 @@ export const BillingPOSView = ({
       const matchesCat =
         selectedCategoryFilter === "All" || p.category?.toLowerCase() === selectedCategoryFilter.toLowerCase();
       const q = debouncedProductSearch.toLowerCase();
+      const prdIdStr = p._id || p.id || "";
+      const prdCode = `prd-${prdIdStr.toString().substring(Math.max(0, prdIdStr.toString().length - 6)).toLowerCase()}`;
       const matchesSearch =
         !q ||
         p.name?.toLowerCase().includes(q) ||
         p.barcode?.toLowerCase().includes(q) ||
         p.sku?.toLowerCase().includes(q) ||
+        prdCode.includes(q) ||
         p.brand?.toLowerCase().includes(q) ||
         p.category?.toLowerCase().includes(q) ||
         p.color?.toLowerCase().includes(q) ||
@@ -535,11 +538,14 @@ export const BillingPOSView = ({
     const filteredDemos = demoProducts.filter((p) => {
       const matchesCat = selectedCategoryFilter === "All" || p.category?.toLowerCase() === selectedCategoryFilter.toLowerCase();
       const q = debouncedProductSearch.toLowerCase();
+      const prdIdStr = p._id || p.id || "";
+      const prdCode = `prd-${prdIdStr.toString().substring(Math.max(0, prdIdStr.toString().length - 6)).toLowerCase()}`;
       const matchesSearch =
         !q ||
         p.name?.toLowerCase().includes(q) ||
         p.barcode?.toLowerCase().includes(q) ||
         p.sku?.toLowerCase().includes(q) ||
+        prdCode.includes(q) ||
         p.brand?.toLowerCase().includes(q) ||
         p.category?.toLowerCase().includes(q) ||
         p.color?.toLowerCase().includes(q) ||
@@ -602,7 +608,12 @@ export const BillingPOSView = ({
             setQtyModalValue(1);
           }}
         >
-          <td className="p-2.5 text-[11px] text-slate-500 font-mono">{p.sku}</td>
+          <td className="p-2.5 text-[11px] text-slate-500 font-mono">
+            <span className="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-[8px] font-extrabold block mb-0.5 w-fit uppercase font-mono">
+              PRD-{p._id || p.id ? (p._id || p.id).toString().substring(Math.max(0, (p._id || p.id).toString().length - 6)).toUpperCase() : "TEMP"}
+            </span>
+            {p.sku}
+          </td>
           <td className="p-2.5 text-xs font-bold text-slate-800">{p.name}</td>
           <td className="p-2.5 text-[11px] font-semibold text-slate-600">{p.brand}</td>
           <td className="p-2.5 text-[11px] font-semibold text-slate-600">{p.size}</td>
@@ -1537,7 +1548,7 @@ export const BillingPOSView = ({
                             {item.name}
                           </p>
                           <p className="text-[10px] text-slate-500 font-mono">
-                            {item.sku} | Size: {item.size} | Color: {item.color}{" "}
+                            PRD-{(item._id || item.id || "").toString().substring(Math.max(0, (item._id || item.id || "").toString().length - 6)).toUpperCase()} | {item.sku} | Size: {item.size} | Color: {item.color}{" "}
                             {item.isCustom && (
                               <span className="bg-violet-100 text-violet-700 px-1 py-0.2 rounded font-sans font-bold uppercase text-[8px] ml-1">
                                 Customized
