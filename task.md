@@ -1,0 +1,10 @@
+- [x] Create MongoDB model `batchModel.js`
+- [x] Create backend controller `batchController.js` with filter/CRUD handlers
+- [x] Create backend routes `batchRoutes.js` and mount it in `app.js`
+- [x] Hook batch auto-creation inside `purchaseService.js` on purchase receipt
+- [x] Update frontend states, load functions, and calculations inside `InventoryView.jsx`
+- [x] Implement Batch Tracking dashboard summary cards
+- [x] Implement Batch detailed drilldown workspace showing timeline, actions, and ledger properties
+- [x] Bind active event handlers and modals to Approve QC, Print Barcode, Print Label, View History, and Reserve Stock
+- [x] Verify build passes cleanly
+- [x] Update walkthrough.md and finalize task

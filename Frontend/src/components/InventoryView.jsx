@@ -155,7 +155,6 @@ export const InventoryView = ({
       referenceNo: "TO-20260602",
     },
   ]);
-  const [showTransferModal, setShowTransferModal] = useState(false);
   const [xferProductId, setXferProductId] = useState("");
   const [xferQty, setXferQty] = useState(20);
   const [xferSourceWhId, setXferSourceWhId] = useState("w-3");
@@ -211,7 +210,7 @@ export const InventoryView = ({
         setMovementsLoading(false);
         return;
       }
-      
+
       const params = new URLSearchParams({
         page: movementsPage,
         limit: movementsLimit,
@@ -228,7 +227,7 @@ export const InventoryView = ({
           Authorization: `Bearer ${token}`
         }
       });
-      
+
       const json = await res.json();
       if (json.success) {
         setDbMovements(json.data || []);
@@ -325,6 +324,312 @@ export const InventoryView = ({
     }
   }, [activeTab, fetchBatches]);
 
+  // States for batch workspace actions modals
+  const [showBarcodePrint, setShowBarcodePrint] = useState(false);
+  const [showLabelPrint, setShowLabelPrint] = useState(false);
+  const [showBatchHistory, setShowBatchHistory] = useState(false);
+  const [batchHistoryLogs, setBatchHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Approve QC Handler
+  const handleApproveQC = async () => {
+    if (!selectedBatchDetail) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/batches/${selectedBatchDetail._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: "QC" })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSelectedBatchDetail(json.data);
+        onAddNotification("QC Approved", `Batch ${selectedBatchDetail.batchNo} status updated to QC verification.`, "success");
+        fetchBatches();
+      } else {
+        onAddNotification("Update Failed", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
+  };
+
+  // View Batch History Handler
+  const handleViewBatchHistory = async () => {
+    if (!selectedBatchDetail) return;
+    setShowBatchHistory(true);
+    setHistoryLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const prodId = selectedBatchDetail.productId?._id || selectedBatchDetail.productId;
+      const res = await fetch(`http://localhost:5000/api/inventory-movements?productId=${prodId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setBatchHistoryLogs(json.data || []);
+      } else {
+        setBatchHistoryLogs([]);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Reserve Stock Handler
+  const handleReserveBatchStock = async () => {
+    if (!selectedBatchDetail) return;
+    const amountStr = prompt(`Enter quantity to reserve (Available: ${selectedBatchDetail.availableQty}):`, "10");
+    if (!amountStr) return;
+    const amount = parseInt(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid positive number.");
+      return;
+    }
+    if (amount > selectedBatchDetail.availableQty) {
+      alert(`Cannot reserve ${amount} units. Only ${selectedBatchDetail.availableQty} available.`);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const newAvail = selectedBatchDetail.availableQty - amount;
+      const newReserved = (selectedBatchDetail.reservedQty || 0) + amount;
+      const res = await fetch(`http://localhost:5000/api/batches/${selectedBatchDetail._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          availableQty: newAvail,
+          reservedQty: newReserved,
+          status: newAvail === 0 ? "Reserved" : selectedBatchDetail.status
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSelectedBatchDetail(json.data);
+        onAdjustStock(selectedBatchDetail.productId?._id || selectedBatchDetail.productId, -amount, "MATERIAL_ISSUE", "Reserve Allocation", selectedBatchDetail.batchNo, `Reserved ${amount} units from batch`);
+        onAddNotification("Stock Reserved", `Successfully allocated ${amount} units of batch ${selectedBatchDetail.batchNo} to reserve.`, "success");
+        fetchBatches();
+      } else {
+        onAddNotification("Allocation Failed", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
+  };
+
+  // ========== MULTI-LOCATION INVENTORY STATES ==========
+  const [locTransfers, setLocTransfers] = useState([]);
+  const [locTransfersLoading, setLocTransfersLoading] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [tfSourceId, setTfSourceId] = useState("w-1");
+  const [tfDestId, setTfDestId] = useState("w-2");
+  const [tfProductId, setTfProductId] = useState("");
+  const [tfQty, setTfQty] = useState(20);
+  const [tfRemarks, setTfRemarks] = useState("");
+
+  const locations = React.useMemo(() => {
+    return warehouses.map((w) => {
+      let totalProducts = 0;
+      let stockValue = 0;
+      let availableStock = 0;
+      let reservedStock = 0;
+      let lowStockCount = 0;
+
+      products.forEach((p, idx) => {
+        let qty = 0;
+        if (w.id === "w-1" || w.id.toString().includes("w-1")) {
+          qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
+        } else if (w.id === "w-2" || w.id.toString().includes("w-2")) {
+          qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
+        } else {
+          qty = Math.floor(p.stock * 0.4);
+        }
+        if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
+        if (qty > 0) {
+          totalProducts++;
+          const reserved = Math.floor(qty * 0.1);
+          const available = qty - reserved;
+          stockValue += qty * (p.price || 500);
+          availableStock += available;
+          reservedStock += reserved;
+          if (available <= 10) lowStockCount++;
+        }
+      });
+
+      const inTransit = locTransfers
+        .filter(t => (t.destinationLocationId === w.id && t.status === "In Transit") || (t.sourceLocationId === w.id && t.status === "Dispatched"))
+        .reduce((sum, t) => sum + t.quantity, 0);
+
+      return {
+        ...w,
+        totalProducts,
+        stockValue,
+        availableStock,
+        reservedStock,
+        lowStockCount,
+        inTransit
+      };
+    });
+  }, [warehouses, products, locTransfers]);
+
+  const locationProductStock = React.useMemo(() => {
+    if (!selectedLocation) return [];
+    return products.map((p, idx) => {
+      let qty = 0;
+      if (selectedLocation.id === "w-1" || selectedLocation.id.toString().includes("w-1")) {
+        qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
+      } else if (selectedLocation.id === "w-2" || selectedLocation.id.toString().includes("w-2")) {
+        qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
+      } else {
+        qty = Math.floor(p.stock * 0.4);
+      }
+      if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
+      if (qty <= 0) return null;
+      const reserved = Math.floor(qty * 0.1);
+      const available = qty - reserved;
+      const inTransit = locTransfers
+        .filter(t => t.productId?._id === p.id && t.destinationLocationId === selectedLocation.id && t.status === "In Transit")
+        .reduce((sum, t) => sum + t.quantity, 0);
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku || "N/A",
+        batch: `BAT-2026-00${(idx % 3) + 1}`,
+        available,
+        reserved,
+        inTransit,
+        lastUpdated: new Date().toLocaleDateString()
+      };
+    }).filter(Boolean);
+  }, [selectedLocation, products, locTransfers]);
+
+  const locStats = React.useMemo(() => {
+    const totalLocations = locations.length;
+    const totalStock = locations.reduce((s, l) => s + l.availableStock + l.reservedStock, 0);
+    const stockInTransit = locTransfers.filter(t => ["Dispatched", "In Transit"].includes(t.status)).reduce((s, t) => s + t.quantity, 0);
+    const pendingTransfers = locTransfers.filter(t => t.status === "Requested" || t.status === "Approved").length;
+    const lowStockLocations = locations.filter(l => l.lowStockCount > 0).length;
+    return { totalLocations, totalStock, stockInTransit, pendingTransfers, lowStockLocations };
+  }, [locations, locTransfers]);
+
+  const fetchLocTransfers = React.useCallback(async () => {
+    setLocTransfersLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/location-transfers", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) setLocTransfers(json.data || []);
+    } catch (err) {
+      console.error("Failed to fetch transfers:", err);
+    } finally {
+      setLocTransfersLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab === "locations") {
+      fetchLocTransfers();
+    }
+  }, [activeTab, fetchLocTransfers]);
+
+  const handleCreateTransfer = async (e) => {
+    e.preventDefault();
+    if (!tfProductId) {
+      alert("Please select a product to transfer.");
+      return;
+    }
+    const srcW = warehouses.find(w => w.id === tfSourceId);
+    const dstW = warehouses.find(w => w.id === tfDestId);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/location-transfers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sourceLocationId: tfSourceId,
+          sourceLocationName: srcW?.name || tfSourceId,
+          destinationLocationId: tfDestId,
+          destinationLocationName: dstW?.name || tfDestId,
+          productId: tfProductId,
+          quantity: tfQty,
+          remarks: tfRemarks
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAddNotification("Transfer Created", `Transfer ${json.data.transferNo} has been requested.`, "success");
+        setShowTransferModal(false);
+        setTfRemarks("");
+        fetchLocTransfers();
+      } else {
+        onAddNotification("Error", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
+  };
+
+  const handleUpdateTransferStatus = async (transferId, newStatus) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/location-transfers/${transferId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAddNotification("Status Updated", `Transfer updated to "${newStatus}".`, "success");
+        fetchLocTransfers();
+      } else {
+        onAddNotification("Error", json.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification("Connection Error", err.message, "danger");
+    }
+  };
+
+  const locLowStockAlerts = React.useMemo(() => {
+    const alerts = [];
+    locations.forEach(loc => {
+      products.forEach((p, idx) => {
+        let qty = 0;
+        if (loc.id === "w-1" || loc.id.toString().includes("w-1")) {
+          qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
+        } else if (loc.id === "w-2" || loc.id.toString().includes("w-2")) {
+          qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
+        } else {
+          qty = Math.floor(p.stock * 0.4);
+        }
+        if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
+        if (qty > 0 && qty <= 10) {
+          alerts.push({ locationName: loc.name, locationId: loc.id, productName: p.name, productId: p.id, available: qty });
+        }
+      });
+    });
+    return alerts;
+  }, [locations, products]);
+
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [retProductId, setRetProductId] = useState("");
   const [retQty, setRetQty] = useState(5);
@@ -408,15 +713,15 @@ export const InventoryView = ({
         prev.map((w) =>
           w.id === editingWarehouse.id
             ? {
-                ...w,
-                name: whName,
-                code: whCode,
-                location: whLocation,
-                manager: whManager,
-                phone: whPhone,
-                email: whEmail,
-                capacity: whCapacity,
-              }
+              ...w,
+              name: whName,
+              code: whCode,
+              location: whLocation,
+              manager: whManager,
+              phone: whPhone,
+              email: whEmail,
+              capacity: whCapacity,
+            }
             : w,
         ),
       );
@@ -568,7 +873,7 @@ export const InventoryView = ({
 
     // Update state
     setTransfers((prev) => [newXfer, ...prev]);
-    
+
     // Log TRANSFER OUT
     logMovementToBackend({
       productId: xferProductId,
@@ -896,7 +1201,7 @@ export const InventoryView = ({
   // Mock activities filtered by selected warehouse
   const warehouseActivities = React.useMemo(() => {
     if (!selectedWarehouseDetail) return { received: [], issued: [], transfers: [], adjustments: [], audits: [] };
-    
+
     // Inbound Stock Received
     const received = [
       { date: "2026-07-15 10:30", product: "Raymond Executive Linen Shirt", sku: "RAY-SHIRT-W", batch: "BAT-2026-001", qty: 100, supplier: "Pratibha Syntex Ltd", status: "Completed" },
@@ -912,7 +1217,7 @@ export const InventoryView = ({
     ];
 
     // Transfers
-    const activeTransfers = transfers.filter(t => 
+    const activeTransfers = transfers.filter(t =>
       t.sourceWarehouseId === selectedWarehouseDetail.id || t.destWarehouseId === selectedWarehouseDetail.id
     );
 
@@ -1026,6 +1331,15 @@ export const InventoryView = ({
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === "warehouses" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Warehouse Depots
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("locations");
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === "locations" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            Multi-Location Inventory
           </button>
           <button
             onClick={() => {
@@ -1143,33 +1457,29 @@ export const InventoryView = ({
             <div className="bg-slate-100/80 p-1 rounded-xl flex gap-1 w-fit shadow-2xs border border-slate-200/50">
               <button
                 onClick={() => setWarehouseSubTab("general")}
-                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
-                  warehouseSubTab === "general" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${warehouseSubTab === "general" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 General Details
               </button>
               <button
                 onClick={() => setWarehouseSubTab("stock")}
-                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
-                  warehouseSubTab === "stock" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${warehouseSubTab === "stock" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 Warehouse Stock
               </button>
               <button
                 onClick={() => setWarehouseSubTab("activities")}
-                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
-                  warehouseSubTab === "activities" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${warehouseSubTab === "activities" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 Warehouse Activities
               </button>
               <button
                 onClick={() => setWarehouseSubTab("reports")}
-                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
-                  warehouseSubTab === "reports" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`px-4 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${warehouseSubTab === "reports" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 Warehouse Reports
               </button>
@@ -1211,7 +1521,7 @@ export const InventoryView = ({
                   </div>
                 </div>
 
-                 {/* Right Card: Storage metrics */}
+                {/* Right Card: Storage metrics */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4">
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider pb-2 border-b border-slate-100">
                     Logistics Capacity Load
@@ -1309,9 +1619,8 @@ export const InventoryView = ({
                       <button
                         key={tab}
                         onClick={() => setSelectedActivityTab(tab)}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide cursor-pointer transition-all ${
-                          selectedActivityTab === tab ? "bg-white text-slate-800 shadow-2xs" : "text-slate-500 hover:text-slate-800"
-                        }`}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide cursor-pointer transition-all ${selectedActivityTab === tab ? "bg-white text-slate-800 shadow-2xs" : "text-slate-500 hover:text-slate-800"
+                          }`}
                       >
                         {tab}
                       </button>
@@ -1342,9 +1651,8 @@ export const InventoryView = ({
                               <td className="p-3 text-center font-bold text-emerald-600">+{row.qty}</td>
                               <td className="p-3 font-sans text-slate-600 font-bold">{row.supplier}</td>
                               <td className="p-3 text-center font-sans">
-                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${
-                                  row.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${row.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                                  }`}>
                                   {row.status}
                                 </span>
                               </td>
@@ -1377,9 +1685,8 @@ export const InventoryView = ({
                               <td className="p-3 text-center font-semibold text-indigo-600">{row.invoice}</td>
                               <td className="p-3 font-sans text-slate-600 font-bold">{row.customer}</td>
                               <td className="p-3 text-center font-sans">
-                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${
-                                  row.status === "Completed" ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${row.status === "Completed" ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"
+                                  }`}>
                                   {row.status}
                                 </span>
                               </td>
@@ -1412,9 +1719,8 @@ export const InventoryView = ({
                               <td className="p-3 font-sans text-slate-500">{row.sourceWarehouseName}</td>
                               <td className="p-3 font-sans text-slate-500">{row.destWarehouseName}</td>
                               <td className="p-3 text-center font-sans">
-                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${
-                                  row.status === "Completed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${row.status === "Completed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                                  }`}>
                                   {row.status}
                                 </span>
                               </td>
@@ -1489,9 +1795,8 @@ export const InventoryView = ({
                               </td>
                               <td className="p-3 font-sans text-slate-600 font-bold">{row.auditor}</td>
                               <td className="p-3 text-center font-sans">
-                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${
-                                  row.status === "Adjusted" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase ${row.status === "Adjusted" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                                  }`}>
                                   {row.status}
                                 </span>
                               </td>
@@ -1531,9 +1836,8 @@ export const InventoryView = ({
                       <button
                         key={rep.id}
                         onClick={() => setSelectedReportTab(rep.id)}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide cursor-pointer transition-all ${
-                          selectedReportTab === rep.id ? "bg-white text-slate-800 shadow-2xs" : "text-slate-500 hover:text-slate-800"
-                        }`}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide cursor-pointer transition-all ${selectedReportTab === rep.id ? "bg-white text-slate-800 shadow-2xs" : "text-slate-500 hover:text-slate-800"
+                          }`}
                       >
                         {rep.label}
                       </button>
@@ -1857,6 +2161,371 @@ export const InventoryView = ({
         )
       )}
 
+      {/* TAB: MULTI-LOCATION INVENTORY */}
+      {activeTab === "locations" && (
+        selectedLocation ? (
+          /* ========== LOCATION DRILLDOWN ========== */
+          <div className="space-y-6 animate-scale-up text-xs font-semibold text-slate-600">
+            {/* Header */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setSelectedLocation(null)}
+                  className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-600 font-bold transition-colors cursor-pointer"
+                >
+                  &larr; Back to All Locations
+                </button>
+                <h3 className="text-lg font-extrabold text-slate-800">{selectedLocation.name}</h3>
+                <p className="text-slate-400 text-[10px]">{selectedLocation.location} &middot; Code: {selectedLocation.code}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setShowTransferModal(true); setTfSourceId(selectedLocation.id); }}
+                  className="px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg font-bold cursor-pointer"
+                >
+                  + New Transfer From Here
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Products</span>
+                <span className="text-lg font-extrabold text-slate-800 block">{selectedLocation.totalProducts}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Available Stock</span>
+                <span className="text-lg font-extrabold text-emerald-600 block">{selectedLocation.availableStock}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Reserved</span>
+                <span className="text-lg font-extrabold text-amber-600 block">{selectedLocation.reservedStock}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">In Transit</span>
+                <span className="text-lg font-extrabold text-indigo-600 block">{selectedLocation.inTransit}</span>
+              </div>
+            </div>
+
+            {/* Product Stock Table */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Product Stock at {selectedLocation.name}</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Product</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">SKU</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Batch</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Available</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Reserved</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">In Transit</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Last Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {locationProductStock.map((item) => (
+                      <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="p-3 font-bold text-slate-800">{item.name}</td>
+                        <td className="p-3 font-mono text-indigo-600 font-bold">{item.sku}</td>
+                        <td className="p-3 font-mono text-slate-500">{item.batch}</td>
+                        <td className="p-3 text-center font-mono font-bold text-emerald-600">{item.available}</td>
+                        <td className="p-3 text-center font-mono font-bold text-amber-600">{item.reserved}</td>
+                        <td className="p-3 text-center font-mono font-bold text-indigo-600">{item.inTransit}</td>
+                        <td className="p-3 text-slate-400 font-mono">{item.lastUpdated}</td>
+                      </tr>
+                    ))}
+                    {locationProductStock.length === 0 && (
+                      <tr><td colSpan="7" className="p-8 text-center text-slate-400">No products stocked at this location.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Transfer History for this Location */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Transfer History (This Location)</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Transfer No</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Source</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Destination</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Product</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Date</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Qty</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Status</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {locTransfers
+                      .filter(t => t.sourceLocationId === selectedLocation.id || t.destinationLocationId === selectedLocation.id)
+                      .map((t) => (
+                        <tr key={t._id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                          <td className="p-3 font-mono font-bold text-indigo-600">{t.transferNo}</td>
+                          <td className="p-3 font-bold text-slate-700">{t.sourceLocationName}</td>
+                          <td className="p-3 font-bold text-slate-700">{t.destinationLocationName}</td>
+                          <td className="p-3 text-slate-600">{t.productName}</td>
+                          <td className="p-3 font-mono text-slate-400">{new Date(t.date).toLocaleDateString()}</td>
+                          <td className="p-3 text-center font-mono font-bold text-slate-800">{t.quantity}</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${t.status === "Completed" ? "bg-emerald-50 text-emerald-600"
+                                : t.status === "In Transit" || t.status === "Dispatched" ? "bg-blue-50 text-blue-600"
+                                  : t.status === "Requested" || t.status === "Approved" ? "bg-amber-50 text-amber-600"
+                                    : "bg-slate-100 text-slate-500"
+                              }`}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            {t.status === "Requested" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Approved")} className="px-2 py-1 bg-amber-500 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-amber-600">Approve</button>
+                            )}
+                            {t.status === "Approved" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Dispatched")} className="px-2 py-1 bg-blue-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-blue-700">Dispatch</button>
+                            )}
+                            {t.status === "Dispatched" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "In Transit")} className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-indigo-700">In Transit</button>
+                            )}
+                            {t.status === "In Transit" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Received")} className="px-2 py-1 bg-purple-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-purple-700">Receive</button>
+                            )}
+                            {t.status === "Received" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Completed")} className="px-2 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-emerald-700">Complete</button>
+                            )}
+                            {t.status === "Completed" && (
+                              <span className="text-emerald-500 font-bold text-[9px]">&#10003; Done</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    {locTransfers.filter(t => t.sourceLocationId === selectedLocation.id || t.destinationLocationId === selectedLocation.id).length === 0 && (
+                      <tr><td colSpan="8" className="p-8 text-center text-slate-400">No transfers involving this location.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ========== MAIN MULTI-LOCATION DASHBOARD ========== */
+          <div className="space-y-6 text-xs">
+
+            {/* Dashboard Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Total Locations</span>
+                <span className="text-xl font-extrabold text-slate-800 block">{locStats.totalLocations}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Total Stock</span>
+                <span className="text-xl font-extrabold text-emerald-600 block">{locStats.totalStock.toLocaleString()}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Stock In Transit</span>
+                <span className="text-xl font-extrabold text-blue-600 block">{locStats.stockInTransit}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Pending Transfers</span>
+                <span className="text-xl font-extrabold text-amber-600 block">{locStats.pendingTransfers}</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Low Stock Locations</span>
+                <span className="text-xl font-extrabold text-red-500 block">{locStats.lowStockLocations}</span>
+              </div>
+            </div>
+
+            {/* Location Table */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">All Inventory Locations</h4>
+                <button
+                  onClick={() => setShowTransferModal(true)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-bold text-[11px] cursor-pointer hover:bg-indigo-700"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> New Stock Transfer
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Location</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Products</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Stock Value</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Available</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Reserved</th>
+                      <th className="p-3 text-center text-slate-500 font-bold uppercase">Low Stock</th>
+                      <th className="p-3 text-left text-slate-500 font-bold uppercase">Manager</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {locations.map((loc) => (
+                      <tr
+                        key={loc.id}
+                        onClick={() => setSelectedLocation(loc)}
+                        className="border-b border-slate-50 hover:bg-indigo-50/40 cursor-pointer transition-colors"
+                      >
+                        <td className="p-3">
+                          <span className="font-bold text-slate-800 block">{loc.name}</span>
+                          <span className="text-[10px] text-slate-400">{loc.location}</span>
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-slate-800">{loc.totalProducts}</td>
+                        <td className="p-3 text-center font-mono font-bold text-indigo-600">₹{loc.stockValue.toLocaleString()}</td>
+                        <td className="p-3 text-center font-mono font-bold text-emerald-600">{loc.availableStock}</td>
+                        <td className="p-3 text-center font-mono font-bold text-amber-600">{loc.reservedStock}</td>
+                        <td className="p-3 text-center">
+                          {loc.lowStockCount > 0 ? (
+                            <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[9px] font-bold">{loc.lowStockCount} items</span>
+                          ) : (
+                            <span className="bg-emerald-50 text-emerald-500 px-2 py-0.5 rounded-full text-[9px] font-bold">OK</span>
+                          )}
+                        </td>
+                        <td className="p-3 font-bold text-slate-700">{loc.manager}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Transfer Status Pipeline Visual */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">Transfer Status Pipeline</h4>
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl overflow-x-auto gap-2">
+                {["Requested", "Approved", "Dispatched", "In Transit", "Received", "Completed"].map((stage, idx) => {
+                  const count = locTransfers.filter(t => t.status === stage).length;
+                  return (
+                    <React.Fragment key={stage}>
+                      <div className="flex flex-col items-center min-w-[80px]">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm ${count > 0
+                            ? stage === "Completed" ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700"
+                            : "bg-slate-100 text-slate-400"
+                          }`}>
+                          {count}
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-500 mt-1 text-center">{stage}</span>
+                      </div>
+                      {idx < 5 && (
+                        <div className="text-slate-300 font-bold text-lg flex-shrink-0">&rarr;</div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Transfer History */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Transfer History</h4>
+              </div>
+              {locTransfersLoading ? (
+                <div className="p-12 text-center text-slate-400 animate-pulse font-bold">Loading transfers...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-100">
+                        <th className="p-3 text-left text-slate-500 font-bold uppercase">Transfer No</th>
+                        <th className="p-3 text-left text-slate-500 font-bold uppercase">Source</th>
+                        <th className="p-3 text-left text-slate-500 font-bold uppercase">Destination</th>
+                        <th className="p-3 text-left text-slate-500 font-bold uppercase">Date</th>
+                        <th className="p-3 text-center text-slate-500 font-bold uppercase">Qty</th>
+                        <th className="p-3 text-center text-slate-500 font-bold uppercase">Status</th>
+                        <th className="p-3 text-center text-slate-500 font-bold uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {locTransfers.map((t) => (
+                        <tr key={t._id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                          <td className="p-3 font-mono font-bold text-indigo-600">{t.transferNo}</td>
+                          <td className="p-3 font-bold text-slate-700">{t.sourceLocationName}</td>
+                          <td className="p-3 font-bold text-slate-700">{t.destinationLocationName}</td>
+                          <td className="p-3 font-mono text-slate-400">{new Date(t.date).toLocaleDateString()}</td>
+                          <td className="p-3 text-center font-mono font-bold text-slate-800">{t.quantity}</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${t.status === "Completed" ? "bg-emerald-50 text-emerald-600"
+                                : t.status === "In Transit" || t.status === "Dispatched" ? "bg-blue-50 text-blue-600"
+                                  : t.status === "Requested" || t.status === "Approved" ? "bg-amber-50 text-amber-600"
+                                    : "bg-slate-100 text-slate-500"
+                              }`}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            {t.status === "Requested" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Approved")} className="px-2 py-1 bg-amber-500 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-amber-600">Approve</button>
+                            )}
+                            {t.status === "Approved" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Dispatched")} className="px-2 py-1 bg-blue-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-blue-700">Dispatch</button>
+                            )}
+                            {t.status === "Dispatched" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "In Transit")} className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-indigo-700">Mark Transit</button>
+                            )}
+                            {t.status === "In Transit" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Received")} className="px-2 py-1 bg-purple-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-purple-700">Receive</button>
+                            )}
+                            {t.status === "Received" && (
+                              <button onClick={() => handleUpdateTransferStatus(t._id, "Completed")} className="px-2 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-emerald-700">Complete</button>
+                            )}
+                            {t.status === "Completed" && (
+                              <span className="text-emerald-500 font-bold text-[9px]">&#10003; Done</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {locTransfers.length === 0 && (
+                        <tr><td colSpan="7" className="p-8 text-center text-slate-400 font-medium">No transfer records found.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Low Stock Alerts */}
+            {locLowStockAlerts.length > 0 && (
+              <div className="bg-red-50/50 p-5 rounded-2xl border border-red-100 shadow-xs">
+                <h4 className="text-xs font-bold text-red-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Low Stock Location Alerts
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {locLowStockAlerts.slice(0, 9).map((alert, i) => (
+                    <div key={i} className="bg-white p-3 rounded-xl border border-red-100 flex items-center justify-between">
+                      <div>
+                        <span className="text-slate-800 font-bold text-[11px] block">{alert.locationName}</span>
+                        <span className="text-[10px] text-slate-400 block">{alert.productName}</span>
+                        <span className="text-red-500 font-bold text-[10px]">Only {alert.available} left</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowTransferModal(true);
+                          setTfDestId(alert.locationId);
+                          setTfProductId(alert.productId);
+                          setTfQty(20);
+                        }}
+                        className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg font-bold text-[9px] cursor-pointer hover:bg-indigo-700 whitespace-nowrap"
+                      >
+                        Transfer Stock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
       {/* TAB: BATCH TRACKING (MongoDB DYNAMIC BATCHES) */}
       {activeTab === "batches" && (
         <div className="space-y-6 text-xs">
@@ -1879,27 +2548,26 @@ export const InventoryView = ({
                     <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">
                       Batch Workspace: {selectedBatchDetail.batchNo}
                     </h3>
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
-                      selectedBatchDetail.status === "Closed"
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${selectedBatchDetail.status === "Closed"
                         ? "bg-slate-100 text-slate-500 border-slate-200"
                         : selectedBatchDetail.status === "Reserved"
                           ? "bg-amber-50 text-amber-600 border-amber-200"
                           : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                    }`}>
+                      }`}>
                       {selectedBatchDetail.status}
                     </span>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onAddNotification("QC Verified", `QC checked and verified for batch ${selectedBatchDetail.batchNo}`, "success")}
+                    onClick={handleApproveQC}
                     className="px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold cursor-pointer"
                   >
                     Approve QC
                   </button>
                   <button
-                    onClick={() => onAddNotification("Barcode Printed", `Barcode queue loaded for batch ${selectedBatchDetail.batchNo}`, "info")}
+                    onClick={() => setShowBarcodePrint(true)}
                     className="px-3 py-1.5 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-lg font-bold cursor-pointer"
                   >
                     Print Barcode
@@ -1909,7 +2577,7 @@ export const InventoryView = ({
 
               {/* Three Column Details Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
+
                 {/* Column 1: Batch & Stock Info */}
                 <div className="space-y-6">
                   {/* Batch Information */}
@@ -2095,26 +2763,21 @@ export const InventoryView = ({
                     <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-50">
                       Batch Actions Workspace
                     </h4>
-                    
+
                     <button
-                      onClick={() => onAddNotification("Label Printed", `Compilation label generated for batch ${selectedBatchDetail.batchNo}`, "success")}
+                      onClick={() => setShowLabelPrint(true)}
                       className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors"
                     >
                       📄 Print Batch Label
                     </button>
                     <button
-                      onClick={() => onAddNotification("Trace Logs Ready", "Audit history compiled to console.", "info")}
+                      onClick={handleViewBatchHistory}
                       className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors"
                     >
                       📜 View Batch History
                     </button>
                     <button
-                      onClick={() => {
-                        const amt = parseInt(prompt("Enter amount to reserve:", "5"));
-                        if (amt > 0) {
-                          onAddNotification("Stock Reserved", `${amt} units of batch ${selectedBatchDetail.batchNo} allocated to reserve queue.`, "success");
-                        }
-                      }}
+                      onClick={handleReserveBatchStock}
                       className="w-full text-left py-2 px-3 border border-slate-100 hover:bg-slate-50 rounded-xl font-bold flex items-center gap-2 cursor-pointer transition-colors text-amber-700 bg-amber-50/20"
                     >
                       🔒 Allocate Reserve Stock
@@ -2141,9 +2804,8 @@ export const InventoryView = ({
                         const isDone = states.indexOf(t.key) <= currentIdx;
                         return (
                           <div key={idx} className="flex items-center gap-3 text-[11px]">
-                            <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 z-10 ${
-                              isDone ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
-                            }`}>
+                            <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 z-10 ${isDone ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                              }`}>
                               {isDone && <span className="w-1 h-1 bg-white rounded-full" />}
                             </span>
                             <span className={isDone ? "text-slate-800 font-extrabold" : "text-slate-400 font-bold"}>
@@ -2199,7 +2861,7 @@ export const InventoryView = ({
                       Trace manufacturing dates, fabrics, lots, cost profiles, and status values.
                     </p>
                   </div>
-                  
+
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <input
                       type="text"
@@ -2294,13 +2956,12 @@ export const InventoryView = ({
                               <td className="p-3.5 text-right font-mono">₹{b.costPrice}</td>
                               <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{b.sellingPrice}</td>
                               <td className="p-3.5 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
-                                  b.status === "Closed"
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${b.status === "Closed"
                                     ? "bg-slate-100 text-slate-500 border-slate-200"
                                     : b.status === "Reserved"
                                       ? "bg-amber-50 text-amber-600 border-amber-200"
                                       : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                }`}>
+                                  }`}>
                                   {b.status}
                                 </span>
                               </td>
@@ -2827,13 +3488,12 @@ export const InventoryView = ({
                       </td>
                       <td className="p-3">
                         <span
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                            log.movementType === "INBOUND"
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${log.movementType === "INBOUND"
                               ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
                               : log.movementType === "OUTBOUND"
                                 ? "bg-red-50 text-red-600 border border-red-200"
                                 : "bg-indigo-50 text-indigo-600 border border-indigo-200"
-                          }`}
+                            }`}
                         >
                           {log.movementType}
                         </span>
@@ -2844,9 +3504,8 @@ export const InventoryView = ({
                         </span>
                       </td>
                       <td
-                        className={`p-3 text-center font-bold font-mono ${
-                          log.movementType === "INBOUND" ? "text-emerald-600" : "text-red-500"
-                        }`}
+                        className={`p-3 text-center font-bold font-mono ${log.movementType === "INBOUND" ? "text-emerald-600" : "text-red-500"
+                          }`}
                       >
                         {log.movementType === "INBOUND" ? `+${log.quantity}` : `-${log.quantity}`}
                       </td>
@@ -3144,112 +3803,6 @@ export const InventoryView = ({
         </div>
       )}
 
-      {/* STOCK TRANSFER MODAL */}
-      {showTransferModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Initiate Internal Depot Transfer
-            </h3>
-            <form onSubmit={handleInitiateTransfer} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1">
-                  Garment Item SKU
-                </label>
-                <select
-                  required
-                  value={xferProductId}
-                  onChange={(e) => setXferProductId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                >
-                  <option value="">Select Item...</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (Available: {p.stock} units)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">
-                    Source Depot
-                  </label>
-                  <select
-                    value={xferSourceWhId}
-                    onChange={(e) => setXferSourceWhId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">
-                    Destination Depot
-                  </label>
-                  <select
-                    value={xferDestWhId}
-                    onChange={(e) => setXferDestWhId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">
-                    Transfer Qty
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={xferQty}
-                    onChange={(e) => setXferQty(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono font-bold text-slate-800 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">
-                    Reference TO Number
-                  </label>
-                  <input
-                    type="text"
-                    value={xferRef}
-                    onChange={(e) => setXferRef(e.target.value)}
-                    placeholder="e.g. TO-20261182"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-800 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowTransferModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
-                >
-                  Dispatch Stock
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* STOCK RETURN MODAL */}
       {showReturnModal && (
@@ -3453,6 +4006,290 @@ export const InventoryView = ({
                   className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
                 >
                   Record Findings
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PRINT BARCODE */}
+      {showBarcodePrint && selectedBatchDetail && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in font-semibold text-slate-600">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl text-center">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+              Print Batch Barcode
+            </h3>
+            <div className="border-2 border-dashed border-slate-200 p-4 rounded-xl bg-slate-50 flex flex-col items-center justify-center space-y-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                {selectedBatchDetail.productId?.brand || "VastraERP Custom"}
+              </span>
+              <span className="text-slate-800 font-extrabold text-xs">
+                {selectedBatchDetail.productId?.name || "Garment Item"}
+              </span>
+
+              {/* CSS Mock Barcode Pattern */}
+              <div className="flex items-center justify-center gap-[1.5px] h-10 w-44 bg-white px-2 py-1.5 border border-slate-200 rounded">
+                {[1, 3, 1, 2, 4, 1, 2, 3, 1, 4, 2, 1, 3, 1, 2, 1, 4, 1, 2, 3, 1, 2, 1, 3, 4, 1, 2, 1].map((w, i) => (
+                  <div key={i} className="bg-slate-900 h-full" style={{ width: `${w}px` }} />
+                ))}
+              </div>
+
+              <span className="font-mono text-slate-600 font-bold text-[10px]">
+                {selectedBatchDetail.productId?.barcode || selectedBatchDetail.batchNo}
+              </span>
+              <span className="font-mono text-indigo-600 font-extrabold text-sm block">
+                ₹{selectedBatchDetail.sellingPrice}
+              </span>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => setShowBarcodePrint(false)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  window.print();
+                  onAddNotification("Printed", "Sent barcode print job to hardware dispatcher.", "success");
+                  setShowBarcodePrint(false);
+                }}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
+              >
+                Dispatch Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PRINT BATCH LABEL */}
+      {showLabelPrint && selectedBatchDetail && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in font-semibold text-slate-600">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider text-center">
+              Print Batch Dispatch Label
+            </h3>
+
+            <div className="border border-slate-200 p-4 rounded-xl bg-slate-50/50 space-y-3 font-semibold text-[11px] text-slate-600">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Batch Lot</span>
+                  <span className="text-slate-800 font-mono font-extrabold">{selectedBatchDetail.batchNo}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Qty</span>
+                  <span className="text-slate-800 font-mono font-extrabold">{selectedBatchDetail.availableQty} Units</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-slate-400 text-[10px] block">Garment Product</span>
+                <span className="text-slate-800 font-bold block">{selectedBatchDetail.productId?.name}</span>
+                <span className="text-[10px] text-indigo-600 font-mono block">SKU: {selectedBatchDetail.productId?.sku}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 text-[10px]">
+                <div>
+                  <span className="text-slate-400 block">Warehouse location</span>
+                  <span className="text-slate-700 font-bold">
+                    {warehouses.find(w => w.id === selectedBatchDetail.warehouseId)?.name || "Default"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Rack / Shelf</span>
+                  <span className="text-slate-700 font-mono font-bold">{selectedBatchDetail.rack || "A"} / {selectedBatchDetail.shelf || "1"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Supplier</span>
+                  <span className="text-slate-700 font-bold">{selectedBatchDetail.supplierId?.name || "Global Fabrics"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Date Received</span>
+                  <span className="text-slate-700 font-mono font-bold">
+                    {selectedBatchDetail.receivedDate ? new Date(selectedBatchDetail.receivedDate).toLocaleDateString() : "N/A"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => setShowLabelPrint(false)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  window.print();
+                  onAddNotification("Label Printed", "Label dispatched to thermal printer.", "success");
+                  setShowLabelPrint(false);
+                }}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
+              >
+                Print Thermal Label
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: BATCH HISTORY */}
+      {showBatchHistory && selectedBatchDetail && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in font-semibold text-slate-600 font-semibold">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 border border-slate-100 shadow-xl text-slate-600">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+              Batch Ledger Audit Log
+            </h3>
+            <p className="text-[10px] text-slate-400 font-medium">Telemetry movement records logged for this product structure in MongoDB.</p>
+
+            <div className="border border-slate-200 rounded-xl max-h-60 overflow-y-auto bg-slate-50/50 p-2">
+              {historyLoading ? (
+                <div className="p-8 text-center text-slate-400 animate-pulse font-sans font-bold">
+                  ⚡ Compiling audit history lines...
+                </div>
+              ) : batchHistoryLogs.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 font-medium font-sans">
+                  No movement logs captured for this item.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {batchHistoryLogs.map((log) => (
+                    <div key={log._id} className="p-2.5 bg-white border border-slate-100 rounded-lg flex justify-between items-center text-[10.5px]">
+                      <div>
+                        <span className="text-[9.5px] text-slate-400 block font-mono">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </span>
+                        <span className="text-slate-800 font-bold block">{log.remarks || "Stock transaction log"}</span>
+                        <span className="text-[9.5px] text-indigo-600 font-bold font-mono">
+                          {log.referenceType}: {log.referenceNumber}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] block mb-1 text-center ${log.movementType === "INBOUND" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                          }`}>
+                          {log.movementType}
+                        </span>
+                        <span className={`font-mono font-bold ${log.movementType === "INBOUND" ? "text-emerald-600" : "text-red-500"
+                          }`}>
+                          {log.movementType === "INBOUND" ? `+${log.quantity}` : `-${log.quantity}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => setShowBatchHistory(false)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CREATE STOCK TRANSFER */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in font-semibold text-slate-600">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+              Create Stock Transfer
+            </h3>
+
+            {/* Transfer Flow Visual */}
+            <div className="bg-slate-50 p-4 rounded-xl flex flex-col items-center gap-2 text-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Source</span>
+              <span className="text-slate-800 font-bold text-[11px]">{warehouses.find(w => w.id === tfSourceId)?.name || "Select Source"}</span>
+              <span className="text-indigo-400 text-lg font-bold">&darr;</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Destination</span>
+              <span className="text-slate-800 font-bold text-[11px]">{warehouses.find(w => w.id === tfDestId)?.name || "Select Destination"}</span>
+              <span className="text-indigo-400 text-lg font-bold">&darr;</span>
+              <span className="text-indigo-600 font-extrabold">{tfQty} Units</span>
+            </div>
+
+            <form onSubmit={handleCreateTransfer} className="space-y-3">
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Source Location</label>
+                <select
+                  value={tfSourceId}
+                  onChange={(e) => setTfSourceId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Destination Location</label>
+                <select
+                  value={tfDestId}
+                  onChange={(e) => setTfDestId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Product</label>
+                <select
+                  required
+                  value={tfProductId}
+                  onChange={(e) => setTfProductId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                >
+                  <option value="">Select Product...</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={tfQty}
+                    onChange={(e) => setTfQty(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono font-bold text-slate-800 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Remarks</label>
+                  <input
+                    type="text"
+                    value={tfRemarks}
+                    onChange={(e) => setTfRemarks(e.target.value)}
+                    placeholder="e.g. Weekend replenishment"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold cursor-pointer hover:bg-indigo-700"
+                >
+                  Request Transfer
                 </button>
               </div>
             </form>
