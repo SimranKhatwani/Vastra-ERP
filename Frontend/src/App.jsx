@@ -22,6 +22,7 @@ import {
   LogOut,
   TableProperties,
   ShieldAlert,
+  ClipboardCheck,
 } from "lucide-react";
 
 // Import sub components
@@ -32,6 +33,7 @@ import { ProductManagementView } from "./components/ProductManagementView";
 
 import { PurchaseView } from "./components/PurchaseView";
 import { InventoryView } from "./components/InventoryView";
+import { StockManagementView } from "./components/StockManagementView";
 import { CustomersView } from "./components/CustomersView";
 import { EmployeeView } from "./components/EmployeeView";
 import { AccountingView } from "./components/AccountingView";
@@ -312,6 +314,7 @@ export default function App() {
           "commissions",
           "products",
           "inventory",
+          "stock-management",
           "purchase",
           "customers",
           "employees",
@@ -334,6 +337,7 @@ export default function App() {
           "commissions",
           "products",
           "inventory",
+          "stock-management",
           "purchase",
           "customers",
           "employees",
@@ -914,6 +918,7 @@ export default function App() {
     { id: "commissions", label: "Channel & Staff Commissions", icon: Percent },
     { id: "products", label: "Products & Catalogs", icon: Tags },
     { id: "inventory", label: "Inventory Management Module", icon: Warehouse },
+    { id: "stock-management", label: "Stock Management Module", icon: ClipboardCheck },
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
@@ -1336,6 +1341,13 @@ export default function App() {
             <InventoryView
               products={products}
               onAdjustStock={handleAdjustStock}
+              onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "stock-management" && (
+            <StockManagementView
+              products={products}
               onAddNotification={addToastNotification}
             />
           )}

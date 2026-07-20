@@ -32,6 +32,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const inventoryMovementRoutes = require('./routes/inventoryMovementRoutes');
 const batchRoutes = require('./routes/batchRoutes');
 const locationTransferRoutes = require('./routes/locationTransferRoutes');
+const stockManagementRoutes = require('./routes/stockManagementRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -60,6 +61,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/inventory-movements', inventoryMovementRoutes);
 app.use('/api/batches', batchRoutes);
 app.use('/api/location-transfers', locationTransferRoutes);
+app.use('/api/stock-management', stockManagementRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {
