@@ -718,24 +718,6 @@ export const StockManagementView = ({
               </button>
             </div>
           </div>
-
-          {/* Pipeline stages summary */}
-          <div className="grid grid-cols-6 gap-2 bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs overflow-x-auto">
-            {["Requested", "Approved", "Dispatched", "In Transit", "Received", "Completed"].map((stage, idx) => {
-              const count = transfers.filter(t => t.status === stage).length;
-              return (
-                <div key={stage} className="text-center p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                  <div className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center font-black text-sm mb-1 ${
-                    count > 0 ? "bg-indigo-50 text-indigo-600 border border-indigo-200" : "bg-slate-50 text-slate-300"
-                  }`}>
-                    {count}
-                  </div>
-                  <span className="text-[9px] font-extrabold uppercase text-slate-400 block">{stage}</span>
-                </div>
-              );
-            })}
-          </div>
-
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             {transfersLoading ? (
               <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Fetching transfers from MongoDB...</div>
@@ -773,24 +755,18 @@ export const StockManagementView = ({
                           </span>
                         </td>
                         <td className="p-3.5 text-center">
-                          {t.status === "Requested" && (
-                            <button onClick={() => handleUpdateTransferStatus(t._id, "Approved")} className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold text-[9px] cursor-pointer">Approve</button>
-                          )}
-                          {t.status === "Approved" && (
-                            <button onClick={() => handleUpdateTransferStatus(t._id, "Dispatched")} className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-[9px] cursor-pointer">Dispatch</button>
-                          )}
-                          {t.status === "Dispatched" && (
-                            <button onClick={() => handleUpdateTransferStatus(t._id, "In Transit")} className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold text-[9px] cursor-pointer">In Transit</button>
-                          )}
-                          {t.status === "In Transit" && (
-                            <button onClick={() => handleUpdateTransferStatus(t._id, "Received")} className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold text-[9px] cursor-pointer">Receive</button>
-                          )}
-                          {t.status === "Received" && (
-                            <button onClick={() => handleUpdateTransferStatus(t._id, "Completed")} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-[9px] cursor-pointer">Complete</button>
-                          )}
-                          {t.status === "Completed" && (
-                            <span className="text-emerald-500 font-extrabold text-[10px]">&check; Completed</span>
-                          )}
+                          <select
+                            value={t.status}
+                            onChange={(e) => handleUpdateTransferStatus(t._id, e.target.value)}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-extrabold text-slate-700 outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                          >
+                            <option value="Requested">Requested</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Dispatched">Dispatched</option>
+                            <option value="In Transit">In Transit</option>
+                            <option value="Received">Received</option>
+                            <option value="Completed">Completed</option>
+                          </select>
                         </td>
                       </tr>
                     ))}

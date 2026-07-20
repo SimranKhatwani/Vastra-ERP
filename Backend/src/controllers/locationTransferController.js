@@ -120,6 +120,7 @@ exports.updateTransferStatus = async (req, res) => {
     if (product) {
       const operator = req.user ? req.user.name : 'System Dispatcher';
       
+      // --- FORWARD TRANSITIONS ---
       // Reduce stock at source when Dispatched
       if (status === 'Dispatched' && prevStatus !== 'Dispatched') {
         product.openingStock = Math.max(0, (product.openingStock || 0) - transfer.quantity);
@@ -153,6 +154,45 @@ exports.updateTransferStatus = async (req, res) => {
           referenceNumber: transfer.transferNo,
           performedBy: operator,
           remarks: `Transfer Completed: INBOUND to ${transfer.destinationLocationName}`
+        });
+      }
+
+      // --- BACKWARD/ROLLBACK TRANSITIONS ---
+      // If moving away from Completed, reverse the INBOUND stock addition
+      if (status !== 'Completed' && prevStatus === 'Completed') {
+        product.openingStock = Math.max(0, (product.openingStock || 0) - transfer.quantity);
+        await product.save();
+
+        await inventoryMovementService.createMovement(tenantId, {
+          product,
+          movementType: 'OUTBOUND',
+          activity: 'STOCK_TRANSFER_ROLLBACK',
+          quantity: transfer.quantity,
+          referenceType: 'Transfer Rollback',
+          referenceId: transfer._id.toString(),
+          referenceNumber: transfer.transferNo,
+          performedBy: operator,
+          remarks: `Transfer Rolled Back: OUTBOUND subtraction from ${transfer.destinationLocationName}`
+        });
+      }
+
+      // If moving back to Requested or Approved from a status where stock was already deducted
+      const isBeforeDispatched = ['Requested', 'Approved'].includes(status);
+      const wasDispatchedOrLater = ['Dispatched', 'In Transit', 'Received', 'Completed'].includes(prevStatus);
+      if (isBeforeDispatched && wasDispatchedOrLater) {
+        product.openingStock = (product.openingStock || 0) + transfer.quantity;
+        await product.save();
+
+        await inventoryMovementService.createMovement(tenantId, {
+          product,
+          movementType: 'INBOUND',
+          activity: 'STOCK_TRANSFER_ROLLBACK',
+          quantity: transfer.quantity,
+          referenceType: 'Transfer Rollback',
+          referenceId: transfer._id.toString(),
+          referenceNumber: transfer.transferNo,
+          performedBy: operator,
+          remarks: `Transfer Cancelled: INBOUND addition back to ${transfer.sourceLocationName}`
         });
       }
     }
