@@ -99,6 +99,15 @@ export default function App() {
   const [notifications, setNotifications] = useState(demoNotificationsData);
   const [auditLogs, setAuditLogs] = useState(demoAuditLogsData);
 
+  // Purchase Management States
+  const [vendors, setVendors] = useState([]);
+  const [grns, setGrns] = useState([]);
+  const [purchaseInvoices, setPurchaseInvoices] = useState([]);
+  const [purchaseReturns, setPurchaseReturns] = useState([]);
+  const [pendingPurchases, setPendingPurchases] = useState([]);
+  const [vendorOutstanding, setVendorOutstanding] = useState([]);
+  const [purchaseReports, setPurchaseReports] = useState(null);
+
   // Auth & Session States
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -256,6 +265,30 @@ export default function App() {
           if (dataNotifications.success) {
             const arr = dataNotifications.data.map(n => ({...n, id: n._id}));
             setNotifications(arr.length > 0 ? arr : demoNotificationsData);
+          }
+
+          // Fetch purchase management data (non-blocking, best-effort)
+          try {
+            const [resVendors, resGRNs, resInvoicesP, resReturns, resPending, resOutstanding] = await Promise.all([
+              fetch("http://localhost:5000/api/purchase/vendors", { headers: { Authorization: `Bearer ${token}` } }),
+              fetch("http://localhost:5000/api/purchase/grn", { headers: { Authorization: `Bearer ${token}` } }),
+              fetch("http://localhost:5000/api/purchase/invoice", { headers: { Authorization: `Bearer ${token}` } }),
+              fetch("http://localhost:5000/api/purchase/return", { headers: { Authorization: `Bearer ${token}` } }),
+              fetch("http://localhost:5000/api/purchase/pending-tracking", { headers: { Authorization: `Bearer ${token}` } }),
+              fetch("http://localhost:5000/api/purchase/outstanding", { headers: { Authorization: `Bearer ${token}` } }),
+            ]);
+            const [dV, dG, dI, dR, dP, dO] = await Promise.all([
+              resVendors.json(), resGRNs.json(), resInvoicesP.json(),
+              resReturns.json(), resPending.json(), resOutstanding.json()
+            ]);
+            if (dV.success) setVendors(dV.data.map(v => ({...v, id: v._id})));
+            if (dG.success) setGrns(dG.data.map(g => ({...g, id: g._id})));
+            if (dI.success) setPurchaseInvoices(dI.data.map(i => ({...i, id: i._id})));
+            if (dR.success) setPurchaseReturns(dR.data.map(r => ({...r, id: r._id})));
+            if (dP.success) setPendingPurchases(dP.data);
+            if (dO.success) setVendorOutstanding(dO.data.map(o => ({...o, id: o._id})));
+          } catch(purchaseErr) {
+            console.warn("Purchase management data fetch failed:", purchaseErr.message);
           }
         } catch (error) {
           console.error("Failed to fetch data", error);
@@ -929,7 +962,7 @@ export default function App() {
     { id: "stock-management", label: "Stock Management Module", icon: ClipboardCheck },
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
-    { id: "purchase", label: "Procurements & POs", icon: FileText },
+    { id: "purchase", label: "Purchase Management", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
     { id: "staff", label: "Staff Management", icon: User },
@@ -1379,15 +1412,23 @@ export default function App() {
 
           {activeModule === "purchase" && (
             <PurchaseView
-              purchaseOrders={purchaseOrders}
-              suppliers={suppliers}
-              setSuppliers={setSuppliers}
+              vendors={vendors}
+              setVendors={setVendors}
+              grns={grns}
+              setGrns={setGrns}
+              purchaseInvoices={purchaseInvoices}
+              setPurchaseInvoices={setPurchaseInvoices}
+              purchaseReturns={purchaseReturns}
+              setPurchaseReturns={setPurchaseReturns}
+              pendingPurchases={pendingPurchases}
+              setPendingPurchases={setPendingPurchases}
+              vendorOutstanding={vendorOutstanding}
+              setVendorOutstanding={setVendorOutstanding}
+              purchaseReports={purchaseReports}
+              setPurchaseReports={setPurchaseReports}
               products={products}
-              setProducts={setProducts}
-              onAddPurchaseOrder={handleAddPurchaseOrder}
-              onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
-              onDeletePurchaseOrder={handleDeletePurchaseOrder}
-              onSettleSupplierBalance={handleSettleSupplierBalance}
+              suppliers={suppliers}
+              purchaseOrders={purchaseOrders}
               onAddNotification={addToastNotification}
             />
           )}

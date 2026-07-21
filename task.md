@@ -1,5 +1,11 @@
 - [x] Create MongoDB model `batchModel.js`
 - [x] Create backend controller `batchController.js` with filter/CRUD handlers
+- [x] Create database models
+  - [x] `vendorModel.js` (Code, business details, limit, outstanding balance)
+  - [x] `grnModel.js` (GRN number, items list, warehouse partition references)
+  - [x] `purchaseInvoiceModel.js` (Invoices details, discount/freight/taxes)
+  - [x] `purchaseReturnModel.js` (Return parameters, status)
+  - [x] `purchaseAuditLogModel.js` (Audit trails logs schema)
 - [x] Create backend routes `batchRoutes.js` and mount it in `app.js`
 - [x] Hook batch auto-creation inside `purchaseService.js` on purchase receipt
 - [x] Update frontend states, load functions, and calculations inside `InventoryView.jsx`
