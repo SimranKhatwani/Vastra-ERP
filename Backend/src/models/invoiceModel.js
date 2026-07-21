@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const invoiceItemSchema = new mongoose.Schema({
   productId: {
     type: String,
-    // Can be an ObjectId string for catalog products or "custom-garment" for custom items
   },
   name: {
     type: String,
@@ -24,7 +23,7 @@ const invoiceItemSchema = new mongoose.Schema({
     min: 1,
   },
   price: {
-    type: Number, // Selling price at the time of sale
+    type: Number,
     required: true,
   },
   discount: {
@@ -36,7 +35,7 @@ const invoiceItemSchema = new mongoose.Schema({
     default: 0,
   },
   totalPrice: {
-    type: Number, // (price - discount) * quantity
+    type: Number,
     required: true,
   },
   isCustom: {
@@ -101,7 +100,6 @@ const invoiceSchema = new mongoose.Schema(
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      // Optional for walk-ins
     },
     customerName: {
       type: String,
@@ -112,7 +110,6 @@ const invoiceSchema = new mongoose.Schema(
     },
     employeeId: {
       type: String,
-      // For commissions
     },
     employeeName: {
       type: String,
@@ -171,6 +168,19 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    outstandingAmount: {
+      type: Number,
+      default: 0,
+    },
+    dueDate: {
+      type: Date,
+    },
+    reminderHistory: [{
+      sentAt: { type: Date, default: Date.now },
+      mode: { type: String }, // WhatsApp, SMS, Email
+      status: { type: String }, // Sent, Failed
+      count: { type: Number, default: 1 }
+    }],
     status: {
       type: String,
       enum: ['Paid', 'Partial', 'Unpaid'],
@@ -204,7 +214,6 @@ const invoiceSchema = new mongoose.Schema(
   }
 );
 
-// Auto-generate invoice number before validation if not provided
 invoiceSchema.pre('validate', function () {
   if (!this.invoiceNo) {
     this.invoiceNo = `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`;
@@ -214,6 +223,17 @@ invoiceSchema.pre('validate', function () {
     this.status = this.amountPaid > 0 ? 'Partial' : 'Unpaid';
   } else {
     this.status = 'Paid';
+  }
+
+  // Automatically compute outstanding amount
+  this.outstandingAmount = Math.max(0, this.grandTotal - this.amountPaid);
+
+  // Set default dueDate (30 days from invoice date) if not present
+  if (!this.dueDate) {
+    const invDate = this.date || new Date();
+    const due = new Date(invDate);
+    due.setDate(due.getDate() + 30);
+    this.dueDate = due;
   }
 });
 

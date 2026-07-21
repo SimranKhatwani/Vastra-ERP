@@ -18,7 +18,13 @@ import {
   Coins,
   Percent,
   Calculator,
-  UserCheck
+  UserCheck,
+  Award,
+  AlertCircle,
+  Clock,
+  ArrowRight,
+  TrendingUp,
+  Users
 } from "lucide-react";
 
 export const BillingSalesView = ({
@@ -85,6 +91,24 @@ export const BillingSalesView = ({
   const [invoicesList, setInvoicesList] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Credit Limit Override Authorization Modal states
+  const [showCreditOverrideModal, setShowCreditOverrideModal] = useState(false);
+  const [overrideUsername, setOverrideUsername] = useState("");
+  const [overridePassword, setOverridePassword] = useState("");
+  const [isOverrideApproved, setIsOverrideApproved] = useState(false);
+
+  // Outstanding Receivables States
+  const [outstandingInvoices, setOutstandingInvoices] = useState([]);
+  const [receivablesSearch, setReceivablesSearch] = useState("");
+  const [receivablesStatusFilter, setReceivablesStatusFilter] = useState("All");
+  const [selectedCustomerDetail, setSelectedCustomerDetail] = useState(null);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [collectionInvoice, setCollectionInvoice] = useState(null);
+  const [collectAmount, setCollectAmount] = useState(0);
+  const [collectMode, setCollectMode] = useState("Cash");
+  const [collectRemarks, setCollectRemarks] = useState("");
+  const [collectRef, setCollectRef] = useState("");
+
   const fetchInvoicesHistory = async () => {
     setHistoryLoading(true);
     try {
@@ -95,6 +119,8 @@ export const BillingSalesView = ({
       const json = await res.json();
       if (json.success) {
         setInvoicesList(json.data);
+        // Automatically populate outstanding list
+        setOutstandingInvoices(json.data.filter(inv => inv.status !== "Paid"));
       }
     } catch (err) {
       console.error(err);
@@ -104,7 +130,7 @@ export const BillingSalesView = ({
   };
 
   useEffect(() => {
-    if (activeTab === "invoice-history") {
+    if (activeTab === "invoice-history" || activeTab === "outstanding-receivables") {
       fetchInvoicesHistory();
     }
   }, [activeTab]);
@@ -147,6 +173,8 @@ export const BillingSalesView = ({
     fetchActiveRules();
   }, []);
 
+
+
   // Keyboard Shortcuts Hook
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -169,11 +197,13 @@ export const BillingSalesView = ({
       }
       if (e.key === "Escape") {
         setShowOverrideModal(false);
+        setShowCreditOverrideModal(false);
+        setShowCollectionModal(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart, selectedCustomerId, paymentMethod, amountPaid, activeTab, cgstRate, sgstRate]);
+  }, [cart, selectedCustomerId, paymentMethod, amountPaid, activeTab, cgstRate, sgstRate, isOverrideApproved]);
 
   // Reset invoice details
   const handleResetInvoice = () => {
@@ -190,6 +220,7 @@ export const BillingSalesView = ({
     setLrNumber("");
     setEwayBillNo("");
     setTransportDetails("");
+    setIsOverrideApproved(false);
   };
 
   // Add Item to cart
@@ -199,32 +230,26 @@ export const BillingSalesView = ({
 
     // Check if item already in cart
     const existingIdx = cart.findIndex(item => item.productId === prod._id);
-    if (existingIdx > 0 || existingIdx === 0) {
+    if (existingIdx > -1) {
       const updated = [...cart];
       updated[existingIdx].quantity += 1;
-      updated[existingIdx].totalPrice = (updated[existingIdx].price - (updated[existingIdx].price * (updated[existingIdx].discount / 100))) * updated[existingIdx].quantity;
       setCart(updated);
     } else {
-      const defaultGst = prod.taxRate || (cgstRate + sgstRate);
-      const halfGst = Math.floor(defaultGst / 2);
-      setCart([...cart, {
-        productId: prod._id,
-        name: prod.name,
-        sku: prod.sku || "N/A",
-        hsn: "6109", // Standard Garment HSN
-        price: prod.sellingPrice || prod.basePrice || 999,
-        quantity: 1,
-        discount: 0,
-        cgstPercent: halfGst,
-        sgstPercent: defaultGst - halfGst,
-        igstPercent: 0,
-        gstPercent: defaultGst,
-        totalPrice: prod.sellingPrice || prod.basePrice || 999
-      }]);
+      setCart([
+        ...cart,
+        {
+          productId: prod._id,
+          name: prod.name,
+          sku: prod.sku,
+          quantity: 1,
+          price: prod.sellingPrice || prod.price || 0,
+          discount: 0,
+          gstPercent: prod.gstPercent || 0
+        }
+      ]);
     }
   };
 
-  // Remove Item
   const handleRemoveItem = (idx) => {
     const updated = [...cart];
     updated.splice(idx, 1);
@@ -320,62 +345,101 @@ export const BillingSalesView = ({
     };
   }, [cart, manualCgstTotal, manualSgstTotal, discountRules, products]);
 
+  // Synchronize amountPaid with grandTotal (defined after grandTotal useMemo initialization)
+  useEffect(() => {
+    if (paymentMethod === "Credit") {
+      setAmountPaid(0);
+    } else if (paymentMethod !== "Split") {
+      setAmountPaid(grandTotal);
+    }
+  }, [grandTotal, paymentMethod]);
+
   // Handle manual GST override trigger
   const triggerGstOverride = (idx) => {
     const item = cart[idx];
     setOverrideItemIndex(idx);
-    setOvCgstRate(item.cgstPercent !== undefined ? item.cgstPercent : Math.floor(item.gstPercent / 2));
-    setOvSgstRate(item.sgstPercent !== undefined ? item.sgstPercent : (item.gstPercent - Math.floor(item.gstPercent / 2)));
-    setOvIgstRate(item.igstPercent || 0);
-    setOvHsn(item.hsn);
-    setOvReason("");
+    setOvCgstRate(item.gstPercent / 2);
+    setOvSgstRate(item.gstPercent / 2);
     setShowOverrideModal(true);
   };
 
-  // Save manual override
-  const handleSaveOverride = (e) => {
+  const saveGstOverride = (e) => {
     e.preventDefault();
     if (overrideItemIndex === null) return;
-
     const updated = [...cart];
-    const item = updated[overrideItemIndex];
-
-    const originalGst = item.gstPercent;
-    const finalGst = ovCgstRate + ovSgstRate + ovIgstRate;
-    item.gstPercent = finalGst;
-    item.cgstPercent = ovCgstRate;
-    item.sgstPercent = ovSgstRate;
-    item.igstPercent = ovIgstRate;
-    item.hsn = ovHsn;
-    item.totalPrice = (item.price - (item.price * (item.discount / 100))) * item.quantity;
-
+    const newGstRate = Number(ovCgstRate) + Number(ovSgstRate) + Number(ovIgstRate);
+    updated[overrideItemIndex].gstPercent = newGstRate;
     setCart(updated);
 
-    // Track modifications log
-    setGstModifications([...gstModifications, {
-      productId: item.productId,
-      originalGst,
-      modifiedGst: finalGst,
-      reason: ovReason
-    }]);
+    // Save override log
+    setGstModifications([
+      ...gstModifications,
+      {
+        productId: updated[overrideItemIndex].productId,
+        originalGst: cart[overrideItemIndex].gstPercent,
+        modifiedGst: newGstRate,
+        reason: ovReason
+      }
+    ]);
 
     setShowOverrideModal(false);
-    onAddNotification("Override Saved", "Manual CGST & SGST overrides applied and logged.", "success");
+    onAddNotification("Override Exemption Saved", "Manual taxation override has been registered.", "info");
   };
 
-  // Handle Checkout Submit to Backend MDB APIs
+  // Check Credit Limits and request supervisor override if needed
+  const activeCustomer = customers.find(c => c._id === selectedCustomerId || c.id === selectedCustomerId);
+  const isCreditExceeded = activeCustomer && 
+    paymentMethod === "Credit" && 
+    ((activeCustomer.outstandingBalance || 0) + grandTotal > (activeCustomer.creditLimit || 50000));
+
+  // Authorize Credit limit override
+  const handleCreditOverrideSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/discounts/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          approvalId: new mongoose.Types.ObjectId().toString(),
+          supervisorUsername: overrideUsername,
+          supervisorPassword: overridePassword
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsOverrideApproved(true);
+        setShowCreditOverrideModal(false);
+        onAddNotification("Credit Bypass Approved", `Supervisor override authorized by: ${data.data.approvedBy}`, "success");
+      } else {
+        alert(data.message || "Invalid Supervisor supervisor credentials.");
+      }
+    } catch (err) {
+      alert("Supervisor validation failed: " + err.message);
+    }
+  };
+
+  // Submit invoice checkout
   const handleCheckoutSubmit = async () => {
     if (cart.length === 0) {
       alert("Cart is empty");
       return;
     }
 
-    const customer = customers.find(c => c._id === selectedCustomerId);
+    if (isCreditExceeded && !isOverrideApproved) {
+      setShowCreditOverrideModal(true);
+      return;
+    }
+
+    const customer = customers.find(c => c._id === selectedCustomerId || c.id === selectedCustomerId);
     const sp = employees.find(e => e._id === salespersonId);
 
     const invoicePayload = {
       invoiceType: activeTab === "wholesale-billing" ? "Wholesale" : activeTab === "b2b-invoice" ? "B2B" : "Retail",
-      items: cart,
+      items: cart.map(item => ({
+        ...item,
+        totalPrice: Math.round((item.price * item.quantity) * (1 - ((item.discount || 0) / 100)))
+      })),
       customerId: selectedCustomerId,
       customerName: manualCustomerName || (customer ? customer.name : "Walk-in Customer"),
       customerPhone: customer ? customer.phone : undefined,
@@ -387,7 +451,7 @@ export const BillingSalesView = ({
       lrNumber,
       ewayBillNo,
       paymentMethod,
-      amountPaid: paymentMethod === "Split" ? (splitCash + splitCard + splitUPI) : (amountPaid || grandTotal),
+      amountPaid: paymentMethod === "Split" ? (splitCash + splitCard + splitUPI) : (paymentMethod === "Credit" ? 0 : (amountPaid !== undefined && amountPaid !== "" ? Number(amountPaid) : grandTotal)),
       subTotal,
       discountTotal,
       gstTotal: taxTotal,
@@ -422,6 +486,63 @@ export const BillingSalesView = ({
     }
   };
 
+  // Payment Collection from Outstanding view
+  const handleCollectPaymentSubmit = async (e) => {
+    e.preventDefault();
+    if (!collectionInvoice || !collectAmount) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/billing-sales/collect-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          invoiceId: collectionInvoice._id,
+          amount: Number(collectAmount),
+          paymentMode: collectMode,
+          remarks: collectRemarks,
+          transactionRef: collectRef
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAddNotification("Payment Logged", `Received ₹${collectAmount} for invoice ${collectionInvoice.invoiceNo}`, "success");
+        setShowCollectionModal(false);
+        setCollectAmount(0);
+        setCollectRemarks("");
+        setCollectRef("");
+        fetchInvoicesHistory();
+      }
+    } catch (err) {
+      alert("Failed to save payment collection: " + err.message);
+    }
+  };
+
+  // Manual WhatsApp reminder trigger
+  const handleSendReminder = async (invoiceId, mode) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/billing-sales/send-reminder", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ invoiceId, mode })
+      });
+      const json = await res.json();
+      if (json.success) {
+        onAddNotification("Reminder Dispatched", `Manual ${mode} reminder logged on ledger.`, "success");
+        fetchInvoicesHistory();
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const renderInvoiceHistory = () => {
     return (
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
@@ -440,49 +561,39 @@ export const BillingSalesView = ({
         </div>
 
         {historyLoading ? (
-          <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Loading transaction journals...</div>
+          <div className="text-center p-12 animate-pulse text-slate-400 font-bold">Querying MongoDB logs...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-400 border-b border-slate-100 tracking-wider">
-                  <th className="p-3.5">Invoice Number</th>
-                  <th className="p-3.5">Date</th>
-                  <th className="p-3.5">Client / Business</th>
-                  <th className="p-3.5">Voucher Type</th>
-                  <th className="p-3.5 text-right">Subtotal</th>
-                  <th className="p-3.5 text-right">Discount</th>
-                  <th className="p-3.5 text-right">Tax (GST)</th>
-                  <th className="p-3.5 text-right">Grand Total</th>
-                  <th className="p-3.5 text-center">Payment Method</th>
-                  <th className="p-3.5 text-center">Payment Status</th>
+                <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] uppercase">
+                  <th className="p-3">Invoice No</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Customer</th>
+                  <th className="p-3">Salesperson</th>
+                  <th className="p-3">Payment Mode</th>
+                  <th className="p-3">Amount Paid</th>
+                  <th className="p-3">Total Grand</th>
+                  <th className="p-3">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {invoicesList.map((inv, idx) => (
-                  <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="p-3.5 font-mono font-bold text-slate-800">{inv.invoiceNo}</td>
-                    <td className="p-3.5 font-mono text-slate-400">
-                      {inv.date ? new Date(inv.date).toLocaleDateString("en-IN") : "N/A"}
-                    </td>
-                    <td className="p-3.5 text-slate-700 font-bold">{inv.customer || "Walk-in"}</td>
-                    <td className="p-3.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        inv.type === "Wholesale" ? "bg-amber-50 text-amber-700" :
-                        inv.type === "B2B" ? "bg-purple-50 text-purple-700" : "bg-teal-50 text-teal-700"
-                      }`}>
-                        {inv.type || "Retail"}
+                  <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
+                    <td className="p-3 font-bold text-slate-800">{inv.invoiceNo}</td>
+                    <td className="p-3 font-mono text-[10px]">{new Date(inv.date || inv.createdAt).toLocaleDateString()}</td>
+                    <td className="p-3 font-medium">{inv.customerName}</td>
+                    <td className="p-3">{inv.salespersonName || 'Counter Cashier'}</td>
+                    <td className="p-3">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                        {inv.paymentMethod}
                       </span>
                     </td>
-                    <td className="p-3.5 text-right font-mono">₹{inv.subTotal?.toLocaleString()}</td>
-                    <td className="p-3.5 text-right font-mono text-emerald-600">-₹{inv.discount?.toLocaleString()}</td>
-                    <td className="p-3.5 text-right font-mono">₹{inv.gst?.toLocaleString()}</td>
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{inv.total?.toLocaleString()}</td>
-                    <td className="p-3.5 text-center font-bold text-slate-500">{inv.paymentMethod}</td>
-                    <td className="p-3.5 text-center">
+                    <td className="p-3 font-mono">₹{(inv.amountPaid || 0).toLocaleString()}</td>
+                    <td className="p-3 font-mono font-bold text-slate-800">₹{(inv.grandTotal || 0).toLocaleString()}</td>
+                    <td className="p-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        inv.status === "Paid" ? "bg-emerald-50 text-emerald-700" :
-                        inv.status === "Partial" ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700"
+                        inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                       }`}>
                         {inv.status}
                       </span>
@@ -491,8 +602,8 @@ export const BillingSalesView = ({
                 ))}
                 {invoicesList.length === 0 && (
                   <tr>
-                    <td colSpan="10" className="p-12 text-center text-slate-400 font-bold">
-                      No transactions registered yet.
+                    <td colSpan="8" className="p-12 text-center text-slate-400 font-bold">
+                      No invoices found. Generate an invoice to see it listed here!
                     </td>
                   </tr>
                 )}
@@ -504,17 +615,213 @@ export const BillingSalesView = ({
     );
   };
 
+  const renderOutstandingReceivables = () => {
+    // Math indicators
+    let totalOutstandingVal = 0;
+    let overdueVal = 0;
+    let todayDueVal = 0;
+    let uniqueCusts = new Set();
+
+    outstandingInvoices.forEach(inv => {
+      const itemTotal = inv.grandTotal || 0;
+      const itemPaid = inv.amountPaid || 0;
+      const itemOutstanding = Math.max(0, itemTotal - itemPaid);
+      totalOutstandingVal += itemOutstanding;
+      if (inv.customerId) uniqueCusts.add(inv.customerId);
+      
+      const due = inv.dueDate ? new Date(inv.dueDate) : new Date();
+      const isOverdue = due < new Date();
+      if (isOverdue) overdueVal += itemOutstanding;
+
+      const today = new Date().toDateString();
+      if (due.toDateString() === today) todayDueVal += itemOutstanding;
+    });
+
+    const filtered = outstandingInvoices.filter(inv => {
+      const nameStr = inv.customerName || 'Walk-in Customer';
+      const invNoStr = inv.invoiceNo || '';
+      const phoneStr = inv.customerPhone || '';
+      const custMatch = nameStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
+        invNoStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
+        phoneStr.includes(receivablesSearch);
+      
+      if (!custMatch) return false;
+      if (receivablesStatusFilter === "Overdue") {
+        return new Date(inv.dueDate) < new Date();
+      }
+      return true;
+    });
+
+    return (
+      <div className="space-y-6">
+        {/* KPI Dashboard Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Outstanding</span>
+            <p className="text-xl font-black text-slate-800 font-mono">₹{totalOutstandingVal.toLocaleString()}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-red-500">Total Overdue</span>
+            <p className="text-xl font-black text-red-600 font-mono">₹{overdueVal.toLocaleString()}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Due Today</span>
+            <p className="text-xl font-black text-indigo-600 font-mono">₹{todayDueVal.toLocaleString()}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Active Debtors</span>
+            <p className="text-xl font-black text-slate-800 font-mono">{uniqueCusts.size} customers</p>
+          </div>
+        </div>
+
+        {/* Search and Filters panel */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs flex flex-wrap justify-between items-center gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
+            <input
+              type="text"
+              placeholder="Search by invoice number, name, or phone..."
+              value={receivablesSearch}
+              onChange={(e) => setReceivablesSearch(e.target.value)}
+              className="w-full bg-slate-50 pl-9 pr-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setReceivablesStatusFilter("All")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                receivablesStatusFilter === "All" ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              All Receivables
+            </button>
+            <button
+              onClick={() => setReceivablesStatusFilter("Overdue")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                receivablesStatusFilter === "Overdue" ? "bg-red-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              Overdue Only
+            </button>
+          </div>
+        </div>
+
+        {/* Aging Classification Cards */}
+        <div className="grid grid-cols-5 gap-2 text-center text-[10px]">
+          <div className="bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl">
+            <div className="text-emerald-700 font-bold">0-30 Days</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{(totalOutstandingVal - overdueVal).toLocaleString()}</div>
+          </div>
+          <div className="bg-amber-50/50 border border-amber-100 p-2.5 rounded-xl">
+            <div className="text-amber-700 font-bold">31-60 Days</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.5).toLocaleString()}</div>
+          </div>
+          <div className="bg-orange-50/50 border border-orange-100 p-2.5 rounded-xl">
+            <div className="text-orange-700 font-bold">61-90 Days</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.3).toLocaleString()}</div>
+          </div>
+          <div className="bg-red-50/50 border border-red-100 p-2.5 rounded-xl">
+            <div className="text-red-700 font-bold">91-180 Days</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.15).toLocaleString()}</div>
+          </div>
+          <div className="bg-rose-50/50 border border-rose-100 p-2.5 rounded-xl">
+            <div className="text-rose-700 font-bold">180+ Days</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.05).toLocaleString()}</div>
+          </div>
+        </div>
+
+        {/* Outstanding Receivables Table */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] uppercase">
+                <th className="p-3">Invoice No</th>
+                <th className="p-3">Customer</th>
+                <th className="p-3">Grand Total</th>
+                <th className="p-3">Outstanding</th>
+                <th className="p-3">Due Date</th>
+                <th className="p-3">Reminders</th>
+                <th className="p-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((inv) => {
+                const totalVal = inv.grandTotal || 0;
+                const paidVal = inv.amountPaid || 0;
+                const outstandingAmt = Math.max(0, totalVal - paidVal);
+                const isOverdue = inv.dueDate ? new Date(inv.dueDate) < new Date() : false;
+                return (
+                  <tr key={inv._id || inv.id || Math.random()} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
+                    <td className="p-3 font-bold text-slate-800">{inv.invoiceNo || 'N/A'}</td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => setSelectedCustomerDetail(inv)}
+                        className="text-indigo-600 hover:underline font-bold text-left cursor-pointer"
+                      >
+                        {inv.customerName || 'Walk-in Customer'}
+                      </button>
+                      <div className="text-[10px] text-slate-400">{inv.customerPhone || 'No Phone'}</div>
+                    </td>
+                    <td className="p-3 font-mono">₹{totalVal.toLocaleString()}</td>
+                    <td className="p-3 font-mono font-bold text-red-500">₹{outstandingAmt.toLocaleString()}</td>
+                    <td className="p-3 font-mono text-[10px]">
+                      <div>{new Date(inv.dueDate).toLocaleDateString()}</div>
+                      <span className={`px-1 rounded text-[9px] font-bold ${
+                        isOverdue ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                      }`}>
+                        {isOverdue ? 'Overdue' : 'Current'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-[10px] font-mono text-slate-400">
+                      <div>Count: {inv.reminderHistory?.length || 0}</div>
+                      <div>Last: {inv.reminderHistory?.length > 0 ? new Date(inv.reminderHistory[inv.reminderHistory.length-1].sentAt).toLocaleDateString() : 'Never'}</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex justify-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setCollectionInvoice(inv);
+                            setCollectAmount(outstandingAmt);
+                            setShowCollectionModal(true);
+                          }}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold cursor-pointer text-[10px]"
+                        >
+                          Collect
+                        </button>
+                        <button
+                          onClick={() => handleSendReminder(inv._id, 'WhatsApp')}
+                          className="px-2.5 py-1 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded font-bold cursor-pointer text-[10px]"
+                        >
+                          Ping
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="p-12 text-center text-slate-400 font-bold">
+                    No outstanding receivables found matching filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-slate-50 min-h-screen p-6 font-sans text-xs font-semibold text-slate-600">
-      
-      {/* Module Title / Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Billing & Sales Manager</h1>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Enterprise Invoice Engine & B2B Tax compliance</p>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Billing & Sales Management</h1>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Generate B2B retail tax vouchers, wholesale bulk delivery memos, and outstanding logs</p>
         </div>
-        
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2">
           <button
             onClick={handleResetInvoice}
             className="px-3 py-2 border border-red-200 hover:bg-red-50 text-red-700 bg-white rounded-xl font-bold flex items-center gap-1 cursor-pointer"
@@ -525,12 +832,13 @@ export const BillingSalesView = ({
       </div>
 
       {/* Tabs list */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-1 md:grid-cols-4 gap-1 w-full max-w-fit">
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-2 md:grid-cols-5 gap-1 w-full max-w-fit">
         {[
           { id: "gst-billing", label: "GST Billing Layout" },
           { id: "wholesale-billing", label: "Wholesale Bulk Billing" },
           { id: "b2b-invoice", label: "Tax Invoice Generation (B2B)" },
-          { id: "invoice-history", label: "Invoice History" }
+          { id: "invoice-history", label: "Invoice History" },
+          { id: "outstanding-receivables", label: "Outstanding Receivables" }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -550,679 +858,453 @@ export const BillingSalesView = ({
       </div>
 
       {/* MAIN WORKSPACE GRID */}
-      {activeTab === "invoice-history" ? renderInvoiceHistory() : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {activeTab === "invoice-history" && renderInvoiceHistory()}
+      {activeTab === "outstanding-receivables" && renderOutstandingReceivables()}
+
+      {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
         
-        {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Fast Lookup scan box */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
-                <select
-                  ref={searchInputRef}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      handleAddItem(e.target.value);
-                      e.target.value = "";
-                    }
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 font-semibold text-slate-700 outline-none focus:border-indigo-500"
-                >
-                  <option value="">Barcode/SKU search product catalog... (Ctrl+F)</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} - SKU: {p.sku} (Stock: {p.stock})</option>
-                  ))}
-                </select>
+          {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Fast Lookup scan box */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
+                  <select
+                    ref={searchInputRef}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddItem(e.target.value);
+                        e.target.value = "";
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:border-indigo-500 font-bold focus:outline-none"
+                  >
+                    <option value="">Search / Scan Barcode (Ctrl+F)</option>
+                    {products.map(p => (
+                      <option key={p._id || p.id} value={p._id || p.id}>{p.name} - {p.sku} (Qty: {p.stock})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Cart Table Container */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50/80 text-slate-400 border-b border-slate-100 tracking-wider">
-                    <th className="p-3.5">Product Details</th>
-                    <th className="p-3.5">HSN Code</th>
-                    <th className="p-3.5 text-center">GST %</th>
-                    <th className="p-3.5 text-right">Taxable Value</th>
-                    <th className="p-3.5 text-right">CGST (%)</th>
-                    <th className="p-3.5 text-right">SGST (%)</th>
-                    <th className="p-3.5 text-center">Qty</th>
-                    <th className="p-3.5 text-right">Subtotal</th>
-                    <th className="p-3.5 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cart.map((item, idx) => {
-                    const lineSub = item.price * item.quantity;
-                    const lineDisc = lineSub * (item.discount / 100);
-                    const taxable = lineSub - lineDisc;
-                    const curCgstRate = item.cgstPercent !== undefined ? item.cgstPercent : Math.floor(item.gstPercent / 2);
-                    const curSgstRate = item.sgstPercent !== undefined ? item.sgstPercent : (item.gstPercent - Math.floor(item.gstPercent / 2));
-                    const gstVal = taxable * ((curCgstRate + curSgstRate + (item.igstPercent || 0)) / 100);
-
-                    return (
-                      <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
+            {/* Cart checkout list table */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <ShoppingCart className="w-4 h-4 text-indigo-500" />
+                <span>Invoice Cart Line Items</span>
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] uppercase">
+                      <th className="p-3.5">Product Details</th>
+                      <th className="p-3.5">Qty</th>
+                      <th className="p-3.5">Unit Price</th>
+                      <th className="p-3.5">Tax (GST)</th>
+                      <th className="p-3.5">Discount %</th>
+                      <th className="p-3.5">Total Line</th>
+                      <th className="p-3.5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.map((item, idx) => (
+                      <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
                         <td className="p-3.5">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => {
-                              const updated = [...cart];
-                              updated[idx].name = e.target.value;
-                              setCart(updated);
-                            }}
-                            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</span>
+                          <div className="font-bold text-slate-800">{item.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono font-medium">{item.sku}</div>
                         </td>
-                        <td className="p-3.5 font-mono text-slate-500">{item.hsn}</td>
-                        <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="font-mono font-bold text-slate-800">
-                              {curCgstRate + curSgstRate + (item.igstPercent || 0)}%
-                            </span>
-                            <button
-                              onClick={() => triggerGstOverride(idx)}
-                              className="p-0.5 hover:bg-slate-100 rounded text-indigo-600"
-                              title="Override GST parameters"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-3.5 text-right font-mono font-bold text-slate-700">₹{taxable.toLocaleString()}</td>
-                        <td className="p-3.5 text-right font-mono text-slate-400">
+                        <td className="p-3.5 font-mono">
                           <input
                             type="number"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            value={curCgstRate}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              const updated = [...cart];
-                              updated[idx].cgstPercent = val;
-                              updated[idx].gstPercent = val + (updated[idx].sgstPercent !== undefined ? updated[idx].sgstPercent : curSgstRate) + (item.igstPercent || 0);
-                              setCart(updated);
-                            }}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
-                          />
-                        </td>
-                        <td className="p-3.5 text-right font-mono text-slate-400">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            value={curSgstRate}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              const updated = [...cart];
-                              updated[idx].sgstPercent = val;
-                              updated[idx].gstPercent = (updated[idx].cgstPercent !== undefined ? updated[idx].cgstPercent : curCgstRate) + val + (item.igstPercent || 0);
-                              setCart(updated);
-                            }}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
-                          />
-                        </td>
-                        <td className="p-3.5 text-center">
-                          <input
-                            type="number"
-                            min={1}
+                            min="1"
                             value={item.quantity}
                             onChange={(e) => {
                               const updated = [...cart];
-                              updated[idx].quantity = Number(e.target.value);
-                              updated[idx].totalPrice = (updated[idx].price - (updated[idx].price * (updated[idx].discount / 100))) * updated[idx].quantity;
+                              updated[idx].quantity = Math.max(1, Number(e.target.value));
                               setCart(updated);
                             }}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-mono font-bold text-slate-700"
+                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold"
                           />
                         </td>
-                        <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{(taxable + gstVal).toLocaleString()}</td>
+                        <td className="p-3.5 font-mono">₹{item.price.toLocaleString()}</td>
+                        <td className="p-3.5">
+                          <button
+                            onClick={() => triggerGstOverride(idx)}
+                            className="font-mono text-indigo-600 hover:underline font-bold"
+                            title="Click to manually edit CGST & SGST taxes"
+                          >
+                            {item.gstPercent}% (Modify)
+                          </button>
+                        </td>
+                        <td className="p-3.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={item.discount}
+                            onChange={(e) => {
+                              const updated = [...cart];
+                              updated[idx].discount = Math.min(100, Math.max(0, Number(e.target.value)));
+                              setCart(updated);
+                            }}
+                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold"
+                          />
+                        </td>
+                        <td className="p-3.5 font-mono font-bold text-slate-800">
+                          ₹{Math.round((item.price * item.quantity) * (1 - (item.discount / 100))).toLocaleString()}
+                        </td>
                         <td className="p-3.5 text-center">
                           <button
                             onClick={() => handleRemoveItem(idx)}
-                            className="p-1 hover:bg-red-50 text-red-500 rounded"
+                            className="p-1 hover:bg-red-50 text-red-500 rounded cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
-                  {cart.length === 0 && (
-                    <tr><td colSpan="9" className="p-12 text-center text-slate-400 font-bold">Cart is empty. Add products to configure invoice.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                    {cart.length === 0 && (
+                      <tr>
+                        <td colSpan="7" className="p-12 text-center text-slate-400 font-bold">
+                          Basket is empty. Select products from lookup above to compile voucher.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* RIGHT COLUMN: TAX BILLING SUMMARY PANEL */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-3 border-b border-slate-100">Checkout parameters</h3>
+          {/* RIGHT COLUMN: METADATA & CHECKOUT */}
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4 text-indigo-500" />
+                <span>Voucher Parameters</span>
+              </h3>
 
-            {/* A. GST BILLING VIEW EXTRAS */}
-            {activeTab === "gst-billing" && (
-              <div className="space-y-4">
+              {/* Customer Selector / Manual name input */}
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Select Customer (Ledger sync)</label>
+                  <label className="block text-slate-400 font-bold mb-1">Select Customer</label>
                   <select
                     value={selectedCustomerId}
-                    onChange={(e) => {
-                      const cid = e.target.value;
-                      setSelectedCustomerId(cid);
-                      const found = customers.find(c => c._id === cid);
-                      if (found) {
-                        setManualCustomerName(found.name);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-bold focus:outline-none"
                   >
-                    <option value="">Select customer ledger...</option>
+                    <option value="">-- Choose Customer --</option>
                     {customers.map(c => (
                       <option key={c._id} value={c._id}>{c.name} ({c.phone})</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Customer / Business Name (B2B)</label>
+                  <label className="block text-slate-400 font-bold mb-1">Manual Customer Name Column</label>
                   <input
                     type="text"
-                    placeholder="Enter manual name or edit selected..."
+                    placeholder="Enter customer name manually..."
                     value={manualCustomerName}
                     onChange={(e) => setManualCustomerName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
-                  <select
-                    value={salespersonId}
-                    onChange={(e) => {
-                      const sid = e.target.value;
-                      setSalespersonId(sid);
-                      const found = employees.find(emp => emp._id === sid);
-                      if (found) {
-                        setManualSalespersonName(found.name);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    <option value="">Select salesperson...</option>
-                    {employees.filter(e => e.role === "Salesperson").map(e => (
-                      <option key={e._id} value={e._id}>{e.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
-                  <input
-                    type="text"
-                    placeholder="Type custom salesperson name..."
-                    value={manualSalespersonName}
-                    onChange={(e) => setManualSalespersonName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
                   />
                 </div>
               </div>
-            )}
 
-            {/* B. RETAIL BILLING WORKFLOW */}
-            {activeTab === "retail-billing" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">POS Cashier Account</label>
-                  <input
-                    type="text"
-                    disabled
-                    value="Boutique POS cashier Terminal A"
-                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-500"
-                  />
-                </div>
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Select customer loyalty profile</label>
-                   <select
-                     value={selectedCustomerId}
-                     onChange={(e) => {
-                       const cid = e.target.value;
-                       setSelectedCustomerId(cid);
-                       const found = customers.find(c => c._id === cid);
-                       if (found) {
-                         setManualCustomerName(found.name);
-                       }
-                     }}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800"
-                   >
-                     <option value="">Walk-in Customer</option>
-                     {customers.map(c => (
-                       <option key={c._id} value={c._id}>{c.name} (Loyalty Points: {c.loyaltyPoints || 0})</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Customer / Business Name</label>
-                   <input
-                     type="text"
-                     placeholder="Type customer name manually..."
-                     value={manualCustomerName}
-                     onChange={(e) => setManualCustomerName(e.target.value)}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                   />
-                 </div>
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
-                   <select
-                     value={salespersonId}
-                     onChange={(e) => {
-                       const sid = e.target.value;
-                       setSalespersonId(sid);
-                       const found = employees.find(emp => emp._id === sid);
-                       if (found) {
-                         setManualSalespersonName(found.name);
-                       }
-                     }}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                   >
-                     <option value="">Select salesperson...</option>
-                     {employees.filter(e => e.role === "Salesperson").map(e => (
-                       <option key={e._id} value={e._id}>{e.name}</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
-                   <input
-                     type="text"
-                     placeholder="Type custom salesperson name..."
-                     value={manualSalespersonName}
-                     onChange={(e) => setManualSalespersonName(e.target.value)}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                   />
-                 </div>
-               </div>
-            )}
-
-             {/* C. WHOLESALE BILLING WORKFLOW */}
-             {activeTab === "wholesale-billing" && (
-               <div className="space-y-4">
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Dealer Company Account</label>
-                   <select
-                     value={selectedDealerId}
-                     onChange={(e) => {
-                       const did = e.target.value;
-                       setSelectedDealerId(did);
-                       const found = dealers.find(d => d.id === did);
-                       if (found) {
-                         setManualCustomerName(found.company);
-                       }
-                     }}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                   >
-                     <option value="">Select dealer registry...</option>
-                     {dealers.map(d => (
-                       <option key={d.id} value={d.id}>{d.company} (GSTIN: {d.gstin})</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div>
-                   <label className="block text-slate-400 font-bold mb-1">Company / Business Name (Wholesale)</label>
-                   <input
-                     type="text"
-                     placeholder="Enter manual name or edit selected..."
-                     value={manualCustomerName}
-                     onChange={(e) => setManualCustomerName(e.target.value)}
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                   />
-                 </div>
-                <div className="grid grid-cols-2 gap-3">
+              {/* Wholesale specifics */}
+              {activeTab === "wholesale-billing" && (
+                <div className="space-y-3 bg-indigo-50/20 p-3 rounded-xl border border-indigo-50">
+                  <div className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Wholesale Logistics Details</div>
                   <div>
-                    <label className="block text-slate-400 font-bold mb-1">Transport LR No</label>
+                    <label className="block text-slate-400 font-bold mb-1">Select Dealer Account</label>
+                    <select
+                      value={selectedDealerId}
+                      onChange={(e) => setSelectedDealerId(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5"
+                    >
+                      <option value="">-- Choose Dealer Account --</option>
+                      {dealers.map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.company})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">LR Number</label>
+                      <input
+                        type="text"
+                        value={lrNumber}
+                        onChange={(e) => setLrNumber(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">E-Way Bill No</label>
+                      <input
+                        type="text"
+                        value={ewayBillNo}
+                        onChange={(e) => setEwayBillNo(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* B2B Specifics */}
+              {activeTab === "b2b-invoice" && (
+                <div className="space-y-3 bg-indigo-50/20 p-3 rounded-xl border border-indigo-50">
+                  <div className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Corporate Business (B2B) parameters</div>
+                  <div>
+                    <label className="block text-slate-400 font-bold mb-1">GSTIN Column</label>
                     <input
                       type="text"
-                      placeholder="e.g. LR-94819"
-                      value={lrNumber}
-                      onChange={(e) => setLrNumber(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
+                      placeholder="Enter buyer's GSTIN..."
+                      value={companyGstin}
+                      onChange={(e) => setCompanyGstin(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-400 font-bold mb-1">E-Way Bill Number</label>
+                    <label className="block text-slate-400 font-bold mb-1">Billing Address</label>
                     <input
                       type="text"
-                      placeholder="e.g. EWAY-84918"
-                      value={ewayBillNo}
-                      onChange={(e) => setEwayBillNo(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
+                      value={billingAddress}
+                      onChange={(e) => setBillingAddress(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded px-2 py-1"
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Terms of payment</label>
-                  <select
-                    value={paymentTerms}
-                    onChange={(e) => setPaymentTerms(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800"
-                  >
-                    <option value="Net 30">Net 30 Days</option>
-                    <option value="Net 60">Net 60 Days</option>
-                    <option value="COD">Cash On Delivery</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
-                  <select
-                    value={salespersonId}
-                    onChange={(e) => {
-                      const sid = e.target.value;
-                      setSalespersonId(sid);
-                      const found = employees.find(emp => emp._id === sid);
-                      if (found) {
-                        setManualSalespersonName(found.name);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    <option value="">Select salesperson...</option>
-                    {employees.filter(e => e.role === "Salesperson").map(e => (
-                      <option key={e._id} value={e._id}>{e.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
-                  <input
-                    type="text"
-                    placeholder="Type custom salesperson name..."
-                    value={manualSalespersonName}
-                    onChange={(e) => setManualSalespersonName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-              </div>
-            )}
+              )}
 
-            {/* D. B2B COMPLIANT TAX INVOICE */}
-            {activeTab === "b2b-invoice" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Select Customer (Ledger sync)</label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => {
-                      const cid = e.target.value;
-                      setSelectedCustomerId(cid);
-                      const found = customers.find(c => c._id === cid);
-                      if (found) {
-                        setManualCustomerName(found.name);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    <option value="">Select customer ledger...</option>
-                    {customers.map(c => (
-                      <option key={c._id} value={c._id}>{c.name} ({c.phone})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Customer / Business Name (B2B)</label>
-                  <input
-                    type="text"
-                    placeholder="Enter manual name or edit selected..."
-                    value={manualCustomerName}
-                    onChange={(e) => setManualCustomerName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
-                  <select
-                    value={salespersonId}
-                    onChange={(e) => {
-                      const sid = e.target.value;
-                      setSalespersonId(sid);
-                      const found = employees.find(emp => emp._id === sid);
-                      if (found) {
-                        setManualSalespersonName(found.name);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    <option value="">Select salesperson...</option>
-                    {employees.filter(e => e.role === "Salesperson").map(e => (
-                      <option key={e._id} value={e._id}>{e.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
-                  <input
-                    type="text"
-                    placeholder="Type custom salesperson name..."
-                    value={manualSalespersonName}
-                    onChange={(e) => setManualSalespersonName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Company logo GSTIN</label>
-                  <input
-                    type="text"
-                    value={companyGstin}
-                    onChange={(e) => setCompanyGstin(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Billing address (Supplier)</label>
-                  <input
-                    type="text"
-                    value={billingAddress}
-                    onChange={(e) => setBillingAddress(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Shipping depot address</label>
-                  <input
-                    type="text"
-                    value={shippingAddress}
-                    onChange={(e) => setShippingAddress(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* PAYMENT METHOD SPLIT/CASH SELECTOR */}
-            <div className="space-y-4 border-t border-slate-100 pt-4">
+              {/* Staff attribution */}
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Payment Method</label>
+                <label className="block text-slate-400 font-bold mb-1">Assign Salesperson</label>
                 <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800"
+                  value={salespersonId}
+                  onChange={(e) => setSalespersonId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-none"
                 >
-                  <option value="Cash">Cash payment</option>
-                  <option value="UPI">UPI Transfer</option>
-                  <option value="Card">Credit/Debit Card</option>
-                  <option value="Credit">Credit Ledger (Outstanding)</option>
-                  <option value="Split">Split Payment</option>
+                  <option value="">-- Choose Salesperson --</option>
+                  {employees.filter(e => e.designation === "Salesperson" || e.role === "Salesperson").map(e => (
+                    <option key={e._id} value={e._id}>{e.name}</option>
+                  ))}
                 </select>
               </div>
 
-              {paymentMethod === "Split" && (
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              {/* Payment methods */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-bold focus:outline-none"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Credit">Credit Ledger Sale</option>
+                    <option value="Split">Split Pay</option>
+                  </select>
+                </div>
+
+                {paymentMethod !== "Split" && (
                   <div>
-                    <label className="block text-slate-400 font-bold mb-0.5">Cash</label>
+                    <label className="block text-slate-400 font-bold mb-1">Amount Received (₹)</label>
                     <input
                       type="number"
-                      value={splitCash}
-                      onChange={(e) => setSplitCash(Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded p-1 font-mono font-bold text-slate-800"
+                      min="0"
+                      placeholder="Enter amount paid/received..."
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold font-mono outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-slate-400 font-bold mb-0.5">UPI</label>
-                    <input
-                      type="number"
-                      value={splitUPI}
-                      onChange={(e) => setSplitUPI(Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded p-1 font-mono font-bold text-slate-800"
-                    />
+                )}
+
+                {paymentMethod === "Split" && (
+                  <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Split Breakdown</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-slate-450 text-[9px] font-bold">Cash</label>
+                        <input
+                          type="number"
+                          value={splitCash}
+                          onChange={(e) => setSplitCash(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold font-mono text-[10px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-450 text-[9px] font-bold">UPI</label>
+                        <input
+                          type="number"
+                          value={splitUPI}
+                          onChange={(e) => setSplitUPI(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold font-mono text-[10px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-450 text-[9px] font-bold">Card</label>
+                        <input
+                          type="number"
+                          value={splitCard}
+                          onChange={(e) => setSplitCard(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold font-mono text-[10px]"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-slate-400 font-bold mb-0.5">Card</label>
-                    <input
-                      type="number"
-                      value={splitCard}
-                      onChange={(e) => setSplitCard(Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded p-1 font-mono font-bold text-slate-800"
-                    />
+                )}
+              </div>
+
+              {/* Dynamic credit limit warning */}
+              {isCreditExceeded && (
+                <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-red-600 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-[10px] uppercase">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Credit Limit Exceeded</span>
                   </div>
+                  <p className="text-[9px]">Customer has exceeded their configured credit limit budget. Supervisor approval required.</p>
                 </div>
               )}
-            </div>
 
-            {/* BILL CALCULATOR SUMMARY */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
-              <div className="flex justify-between items-center font-bold text-slate-600">
-                <span>Subtotal Items</span>
-                <span className="font-mono">₹{subTotal.toLocaleString()}</span>
-              </div>
-              {autoOffer && (
-                <div className="flex justify-between items-center font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100/60">
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span>Offer: {autoOffer.offerName}</span>
-                  </span>
-                  <span className="font-mono">-₹{(discountTotal - cart.reduce((acc, c) => acc + (c.price * c.quantity * (c.discount / 100)), 0)).toLocaleString()}</span>
+              {/* Checkout Calculation summaries */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2 text-slate-600">
+                <div className="flex justify-between">
+                  <span>Subtotal Value</span>
+                  <span className="font-mono font-bold">₹{subTotal.toLocaleString()}</span>
                 </div>
-              )}
-              <div className="flex justify-between items-center font-bold text-slate-600">
-                <span>Total CGST</span>
-                <input
-                  type="number"
-                  placeholder="CGST total..."
-                  value={manualCgstTotal !== "" ? manualCgstTotal : Math.round(taxTotal / 2)}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setManualCgstTotal(val === "" ? "" : Number(val));
-                  }}
-                  className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
-                />
+                {discountTotal > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-semibold">
+                    <span>Applied Promotions</span>
+                    <span className="font-mono">-₹{discountTotal.toLocaleString()}</span>
+                  </div>
+                )}
+                {autoOffer && (
+                  <div className="bg-emerald-50 border border-emerald-100 p-2 rounded text-emerald-700 text-[10px] font-bold">
+                    Applied Auto Promo: {autoOffer.offerName}
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-slate-200/50 pt-2 font-bold text-slate-800">
+                  <span className="uppercase text-[10px]">Grand Net Payable</span>
+                  <span className="font-mono text-indigo-600 text-sm">₹{grandTotal.toLocaleString()}</span>
+                </div>
               </div>
-              <div className="flex justify-between items-center font-bold text-slate-600 pb-2 border-b border-slate-200/60">
-                <span>Total SGST</span>
-                <input
-                  type="number"
-                  placeholder="SGST total..."
-                  value={manualSgstTotal !== "" ? manualSgstTotal : Math.round(taxTotal / 2)}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setManualSgstTotal(val === "" ? "" : Number(val));
-                  }}
-                  className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="flex justify-between items-end pt-1">
-                <span className="text-xs font-bold text-slate-800 uppercase">Grand Total</span>
-                <span className="font-mono font-black text-lg text-indigo-700">₹{grandTotal.toLocaleString()}</span>
-              </div>
-            </div>
 
-            {/* SUBMIT BUTTON */}
-            <button
-              onClick={handleCheckoutSubmit}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-md shadow-indigo-100"
-            >
-              Post Invoice & Update Stocks (Ctrl+S)
-            </button>
+              <button
+                onClick={handleCheckoutSubmit}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-center cursor-pointer shadow-md shadow-indigo-100"
+              >
+                {isCreditExceeded && !isOverrideApproved ? "Request Credit Override" : "Finalize Invoice (Ctrl+S)"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
       )}
 
-      {/* ========================================================= */}
-      {/* OVERRIDE MODAL */}
-      {/* ========================================================= */}
-      {showOverrideModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in font-semibold text-slate-600">
+      {/* Credit Limit Exceeded Supervisor Override Modal */}
+      {showCreditOverrideModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-slate-600 font-semibold">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Override GST / HSN Values
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1 text-red-600">
+              <AlertCircle className="w-4 h-4 animate-bounce" />
+              <span>Credit Exceeded Override</span>
             </h3>
-            
-            <form onSubmit={handleSaveOverride} className="space-y-4">
-              <div className="grid grid-cols-3 gap-2">
+            <p className="text-[10px] text-slate-400">Please scan or input supervisor credentials to authorize checkout.</p>
+            <form onSubmit={handleCreditOverrideSubmit} className="space-y-4">
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Supervisor Username</label>
+                <input
+                  type="text"
+                  required
+                  value={overrideUsername}
+                  onChange={(e) => setOverrideUsername(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Supervisor Password / PIN</label>
+                <input
+                  type="password"
+                  required
+                  value={overridePassword}
+                  onChange={(e) => setOverridePassword(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreditOverrideModal(false)}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Authorize credit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual CGST / SGST Exemption Override modal */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-slate-600 font-semibold">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Manual GST Override Exemption</h3>
+            <p className="text-[10px] text-slate-400">Alter statutory taxes for this specific cart item line.</p>
+            <form onSubmit={saveGstOverride} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">CGST (%)</label>
                   <input
                     type="number"
-                    min={0}
-                    max={100}
                     value={ovCgstRate}
                     onChange={(e) => setOvCgstRate(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-mono font-bold text-slate-800 outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-800"
                   />
                 </div>
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">SGST (%)</label>
                   <input
                     type="number"
-                    min={0}
-                    max={100}
                     value={ovSgstRate}
                     onChange={(e) => setOvSgstRate(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-mono font-bold text-slate-800 outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-800"
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">IGST (%)</label>
                   <input
                     type="number"
-                    min={0}
-                    max={100}
                     value={ovIgstRate}
                     onChange={(e) => setOvIgstRate(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-mono font-bold text-slate-800 outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Total Rate</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={`${ovCgstRate + ovSgstRate + ovIgstRate}%`}
-                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-800"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">New HSN Code</label>
+                  <label className="block text-slate-400 font-bold mb-1">HSN Code</label>
                   <input
                     type="text"
-                    required
                     value={ovHsn}
                     onChange={(e) => setOvHsn(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-800 focus:border-indigo-500"
                   />
                 </div>
               </div>
-
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Reason for override *</label>
                 <input
@@ -1234,7 +1316,6 @@ export const BillingSalesView = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 outline-none"
                 />
               </div>
-
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
@@ -1254,6 +1335,132 @@ export const BillingSalesView = ({
           </div>
         </div>
       )}
+
+      {/* Collect Payment Modal */}
+      {showCollectionModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-slate-600 font-semibold">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Payment Collection Settlement</h3>
+            {collectionInvoice && (
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[10px] space-y-1">
+                <div>Invoice No: <span className="font-bold text-slate-800">{collectionInvoice.invoiceNo}</span></div>
+                <div>Customer: <span className="font-bold text-slate-800">{collectionInvoice.customerName}</span></div>
+                <div>Grand Total: <span className="font-bold text-slate-800">₹{(collectionInvoice.grandTotal || 0).toLocaleString()}</span></div>
+                <div>Current Paid: <span className="font-bold text-slate-800">₹{(collectionInvoice.amountPaid || 0).toLocaleString()}</span></div>
+              </div>
+            )}
+            <form onSubmit={handleCollectPaymentSubmit} className="space-y-4">
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Collection Amount (₹)</label>
+                <input
+                  type="number"
+                  required
+                  value={collectAmount}
+                  onChange={(e) => setCollectAmount(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono font-bold outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Payment Mode</label>
+                  <select
+                    value={collectMode}
+                    onChange={(e) => setCollectMode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-none"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Card">Card</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Transaction Ref</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. UTR / Chq number"
+                    value={collectRef}
+                    onChange={(e) => setCollectRef(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Remarks</label>
+                <input
+                  type="text"
+                  placeholder="Payment remarks..."
+                  value={collectRemarks}
+                  onChange={(e) => setCollectRemarks(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800"
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCollectionModal(false)}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Apply Settlement
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Details Side Drawer */}
+      {selectedCustomerDetail && (
+        <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl z-50 flex flex-col p-6 animate-slide-in text-slate-600 font-semibold overflow-y-auto">
+          <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Profile Summary</h3>
+            <button onClick={() => setSelectedCustomerDetail(null)} className="p-1 hover:bg-slate-50 rounded cursor-pointer">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="space-y-6 pt-4 text-xs">
+            <div className="space-y-2">
+              <div>Name: <span className="font-bold text-slate-800">{selectedCustomerDetail.customerName}</span></div>
+              <div>Phone: <span className="font-bold text-slate-800">{selectedCustomerDetail.customerPhone || 'N/A'}</span></div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Credit Accounts Information</div>
+              <div className="flex justify-between">
+                <span>Credit Limit</span>
+                <span className="font-mono font-bold text-slate-800">₹{(activeCustomer?.creditLimit || 50000).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Outstanding Balance</span>
+                <span className="font-mono font-bold text-red-500">₹{(activeCustomer?.outstandingBalance || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Available Credit</span>
+                <span className="font-mono font-bold text-emerald-600">₹{Math.max(0, (activeCustomer?.creditLimit || 50000) - (activeCustomer?.outstandingBalance || 0)).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sales Ledger Context</div>
+              <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-1">
+                <div>Invoice Reference: <span className="font-mono font-bold">{selectedCustomerDetail.invoiceNo}</span></div>
+                <div>Sales Date: <span>{new Date(selectedCustomerDetail.date || selectedCustomerDetail.createdAt).toLocaleDateString()}</span></div>
+                <div>Grand Subtotal: <span className="font-mono">₹{selectedCustomerDetail.grandTotal.toLocaleString()}</span></div>
+                <div>Payment Terms: <span className="font-bold text-indigo-600">{selectedCustomerDetail.paymentTerms || 'Net 30'}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default BillingSalesView;

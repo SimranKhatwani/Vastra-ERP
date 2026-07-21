@@ -87,21 +87,25 @@ exports.createSalesInvoice = async (req, res) => {
       customerId: isValidObjectId(customerId) ? customerId : undefined,
       customerName: companyName || customerName || 'Walk-in Customer',
       customerPhone,
-      items: items.map(item => ({
-        productId: item.productId,
-        name: item.name,
-        sku: item.sku,
-        size: item.size,
-        color: item.color,
-        quantity: item.quantity,
-        price: item.price,
-        discount: item.discount || 0,
-        gstPercent: item.gstPercent || 0,
-        totalPrice: item.totalPrice,
-        isCustom: item.isCustom || false,
-        salespersonId: item.salespersonId || salespersonId,
-        salespersonName: item.salespersonName || salespersonName
-      })),
+      items: items.map(item => {
+        const discValue = item.discount || 0;
+        const computedLinePrice = Math.round((item.price * item.quantity) * (1 - (discValue / 100)));
+        return {
+          productId: item.productId,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          color: item.color,
+          quantity: item.quantity,
+          price: item.price,
+          discount: discValue,
+          gstPercent: item.gstPercent || 0,
+          totalPrice: typeof item.totalPrice === 'number' ? item.totalPrice : computedLinePrice,
+          isCustom: item.isCustom || false,
+          salespersonId: item.salespersonId || salespersonId,
+          salespersonName: item.salespersonName || salespersonName
+        };
+      }),
       subTotal,
       discountTotal,
       couponCode,
@@ -331,16 +335,23 @@ exports.getSalesReports = async (req, res) => {
         break;
 
       default:
-        // Default list of sales
+        // Default list of sales with full properties for ledger and outstanding tracking
         reportData = invoices.map(inv => ({
+          _id: inv._id,
           invoiceNo: inv.invoiceNo,
           type: inv.get('invoiceType') || 'Retail',
-          customer: inv.customerName,
+          customerName: inv.customerName,
+          customerPhone: inv.customerPhone,
+          customerId: inv.customerId,
           date: inv.date,
           subTotal: inv.subTotal,
-          discount: inv.discountTotal,
-          gst: inv.gstTotal,
-          total: inv.grandTotal,
+          discountTotal: inv.discountTotal,
+          gstTotal: inv.gstTotal,
+          grandTotal: inv.grandTotal,
+          amountPaid: inv.amountPaid,
+          outstandingAmount: inv.outstandingAmount,
+          dueDate: inv.dueDate,
+          reminderHistory: inv.reminderHistory || [],
           paymentMethod: inv.paymentMethod,
           status: inv.status
         }));
@@ -348,6 +359,86 @@ exports.getSalesReports = async (req, res) => {
     }
 
     res.status(200).json({ success: true, data: reportData });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 3. COLLECT OUTSTANDING PAYMENT
+// ==========================================
+exports.collectOutstandingPayment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const tenantId = req.user.tenantId;
+    const { invoiceId, amount, paymentMode, remarks, transactionRef } = req.body;
+
+    const invoice = await Invoice.findOne({ _id: invoiceId, tenantId }).session(session);
+    if (!invoice) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    const payAmt = Number(amount) || 0;
+    if (payAmt <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+    }
+
+    // Deduct outstanding
+    invoice.amountPaid = (invoice.amountPaid || 0) + payAmt;
+    invoice.outstandingAmount = Math.max(0, invoice.grandTotal - invoice.amountPaid);
+    invoice.status = invoice.outstandingAmount === 0 ? 'Paid' : 'Partial';
+    
+    // Save invoice
+    await invoice.save({ session });
+
+    // Deduct customer outstanding balance
+    if (invoice.customerId) {
+      const customer = await Customer.findOne({ _id: invoice.customerId, tenantId }).session(session);
+      if (customer) {
+        customer.outstandingBalance = Math.max(0, (customer.outstandingBalance || 0) - payAmt);
+        await customer.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({ success: true, message: 'Payment collected and applied successfully', invoice });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 4. SEND MANUAL OUTSTANDING REMINDER
+// ==========================================
+exports.sendPaymentReminder = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { invoiceId, mode } = req.body; // 'WhatsApp', 'SMS', 'Email'
+
+    const invoice = await Invoice.findOne({ _id: invoiceId, tenantId });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    // Add reminder history
+    invoice.reminderHistory.push({
+      sentAt: new Date(),
+      mode: mode || 'WhatsApp',
+      status: 'Sent',
+      count: (invoice.reminderHistory.length || 0) + 1
+    });
+
+    await invoice.save();
+    res.status(200).json({ success: true, message: `${mode || 'WhatsApp'} reminder logged successfully`, invoice });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
