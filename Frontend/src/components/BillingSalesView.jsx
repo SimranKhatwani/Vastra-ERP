@@ -265,7 +265,14 @@ export const BillingSalesView = ({
         disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
       } else if (r.offerType === 'Product') {
         cart.forEach(item => {
-          if (r.applicableProducts.includes(item.productId)) {
+          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+          const match = (r.applicableProducts || []).some(p => 
+            p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
+            p.toLowerCase().trim() === (item.name || '').toLowerCase().trim() ||
+            p.toLowerCase().trim() === (item.sku || '').toLowerCase().trim() ||
+            (matchedProd && matchedProd.productCode && p.toLowerCase().trim() === matchedProd.productCode.toLowerCase().trim())
+          );
+          if (match) {
             const itemSub = item.price * item.quantity;
             disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
           }
@@ -273,17 +280,23 @@ export const BillingSalesView = ({
       } else if (r.offerType === 'Category') {
         cart.forEach(item => {
           const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
-          if (matchedProd && r.applicableCategories.includes(matchedProd.category)) {
-            const itemSub = item.price * item.quantity;
-            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          if (matchedProd && matchedProd.category) {
+            const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
+            if (match) {
+              const itemSub = item.price * item.quantity;
+              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+            }
           }
         });
       } else if (r.offerType === 'Brand') {
         cart.forEach(item => {
           const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
-          if (matchedProd && r.applicableBrands.includes(matchedProd.brand)) {
-            const itemSub = item.price * item.quantity;
-            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          if (matchedProd && matchedProd.brand) {
+            const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
+            if (match) {
+              const itemSub = item.price * item.quantity;
+              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+            }
           }
         });
       }

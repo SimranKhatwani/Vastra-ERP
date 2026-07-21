@@ -96,6 +96,8 @@ export const BillingPOSView = ({
   const salespersonList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("salesperson")), [employees]);
   const workerList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase() === "worker"), [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [selectedLoyaltyRuleId, setSelectedLoyaltyRuleId] = useState("");
+  const [cancelAutoDiscount, setCancelAutoDiscount] = useState(false);
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
@@ -866,7 +868,7 @@ export const BillingPOSView = ({
   };
 
   // Calculations
-  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, autoOffer } = React.useMemo(() => {
+  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, autoOffer, loyaltyOffer } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0;
 
@@ -889,51 +891,74 @@ export const BillingPOSView = ({
     let autoDiscountAmt = 0;
     let appliedOffer = null;
 
-    activeOffers.forEach(r => {
-      let disc = 0;
-      if (r.offerType === 'Automatic' && subTotal >= r.minBillAmount) {
-        disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
-      } else if (r.offerType === 'Product') {
-        cart.forEach(item => {
-          const match = (r.applicableProducts || []).some(p => 
-            p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
-            p.toLowerCase().trim() === (item.name || '').toLowerCase().trim() ||
-            p.toLowerCase().trim() === (item.sku || '').toLowerCase().trim()
-          );
-          if (match) {
-            const itemSub = item.price * item.quantity;
-            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
-          }
-        });
-      } else if (r.offerType === 'Category') {
-        cart.forEach(item => {
-          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
-          if (matchedProd && matchedProd.category) {
-            const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
+    if (!cancelAutoDiscount) {
+      activeOffers.forEach(r => {
+        let disc = 0;
+        if (r.offerType === 'Automatic' && subTotal >= r.minBillAmount) {
+          disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
+        } else if (r.offerType === 'Product') {
+          cart.forEach(item => {
+            const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+            const match = (r.applicableProducts || []).some(p => 
+              p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
+              p.toLowerCase().trim() === (item.name || '').toLowerCase().trim() ||
+              p.toLowerCase().trim() === (item.sku || '').toLowerCase().trim() ||
+              (matchedProd && matchedProd.productCode && p.toLowerCase().trim() === matchedProd.productCode.toLowerCase().trim())
+            );
             if (match) {
               const itemSub = item.price * item.quantity;
               disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
             }
-          }
-        });
-      } else if (r.offerType === 'Brand') {
-        cart.forEach(item => {
-          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
-          if (matchedProd && matchedProd.brand) {
-            const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
-            if (match) {
-              const itemSub = item.price * item.quantity;
-              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          });
+        } else if (r.offerType === 'Category') {
+          cart.forEach(item => {
+            const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+            if (matchedProd && matchedProd.category) {
+              const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
+              if (match) {
+                const itemSub = item.price * item.quantity;
+                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+              }
             }
-          }
-        });
-      }
+          });
+        } else if (r.offerType === 'Brand') {
+          cart.forEach(item => {
+            const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+            if (matchedProd && matchedProd.brand) {
+              const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
+              if (match) {
+                const itemSub = item.price * item.quantity;
+                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+              }
+            }
+          });
+        }
 
-      if (disc > autoDiscountAmt) {
-        autoDiscountAmt = disc;
-        appliedOffer = r;
+        if (disc > autoDiscountAmt) {
+          autoDiscountAmt = disc;
+          appliedOffer = r;
+        }
+      });
+    }
+
+    // Evaluate automatic loyalty points rule discount (highest qualified points rule matches)
+    let loyaltyDiscountAmt = 0;
+    let appliedLoyaltyOffer = null;
+    if (activeCustomer && activeCustomer.id !== "c-walkin" && !cancelAutoDiscount) {
+      const eligibleLoyaltyRules = discountRules.filter(r => 
+        r.offerType === 'LoyaltyRule' && 
+        r.status === 'Active' &&
+        (activeCustomer.loyaltyPoints || 0) >= r.requiredLoyaltyPoints
+      );
+      if (eligibleLoyaltyRules.length > 0) {
+        const bestRule = eligibleLoyaltyRules.reduce((best, current) => 
+          current.requiredLoyaltyPoints > best.requiredLoyaltyPoints ? current : best
+        , eligibleLoyaltyRules[0]);
+
+        loyaltyDiscountAmt = bestRule.discountType === 'Flat' ? bestRule.discountValue : subTotal * (bestRule.discountValue / 100);
+        appliedLoyaltyOffer = bestRule;
       }
-    });
+    }
 
     // Handle flat discount & coupon code
     let couponDiscount = 0;
@@ -945,7 +970,7 @@ export const BillingPOSView = ({
       couponDiscount = Math.floor(subTotal * 0.15);
     }
 
-    const totalDiscount = discountTotal + flatDiscount + couponDiscount + autoDiscountAmt;
+    const totalDiscount = discountTotal + flatDiscount + couponDiscount + autoDiscountAmt + loyaltyDiscountAmt;
     const taxable = Math.max(0, subTotal - totalDiscount);
 
     // Apply default CGST + SGST config dynamically
@@ -959,9 +984,10 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal,
       grandTotal,
-      autoOffer: appliedOffer
+      autoOffer: appliedOffer,
+      loyaltyOffer: appliedLoyaltyOffer
     };
-  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate, discountRules, products]);
+  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate, discountRules, products, cancelAutoDiscount, selectedLoyaltyRuleId]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1018,12 +1044,34 @@ export const BillingPOSView = ({
       );
     }
 
+    // Process Loyalty point deductions
+    if (loyaltyOffer && selectedCustomerId && selectedCustomerId.length === 24) {
+      try {
+        const token = localStorage.getItem("token");
+        const nextPoints = Math.max(0, (activeCustomer.loyaltyPoints || 0) - loyaltyOffer.requiredLoyaltyPoints);
+        await fetch(`http://localhost:5000/api/customers/${selectedCustomerId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ loyaltyPoints: nextPoints })
+        });
+        onAddNotification(
+          "Loyalty Redemed",
+          `Redeemed ${loyaltyOffer.requiredLoyaltyPoints} points for discount.`,
+          "success"
+        );
+      } catch (err) {
+        console.error("Failed to update loyalty balance:", err);
+      }
+    }
+
     // Trigger state callbacks — onAddInvoice now returns the saved invoice object (or null on error)
     const savedInvoice = await onAddInvoice(newInvoice);
     setCompletedInvoice(savedInvoice || newInvoice);
     setCart([]);
     setCouponCode("");
     setFlatDiscount(0);
+    setSelectedLoyaltyRuleId("");
+    setCancelAutoDiscount(false);
     setPaymentMethod("Cash");
     setSplitCash(0);
     setSplitCard(0);
@@ -1767,6 +1815,35 @@ export const BillingPOSView = ({
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
                       <span>Offer: {autoOffer.offerName}</span>
                     </span>
+                    <button
+                      onClick={() => setCancelAutoDiscount(true)}
+                      className="px-1.5 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[9px] cursor-pointer border border-red-200"
+                      title="Cancel Discount"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {cancelAutoDiscount && (
+                  <button
+                    onClick={() => setCancelAutoDiscount(false)}
+                    className="w-full py-1 text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100"
+                  >
+                    Re-apply Automatic Offers
+                  </button>
+                )}
+                {loyaltyOffer && (
+                  <div className="flex justify-between items-center font-bold text-violet-700 bg-violet-50 px-2 py-1.5 rounded-lg border border-violet-100/60">
+                    <span className="flex items-center gap-1 flex-1 min-w-0 truncate">
+                      <span>Redeemed: {loyaltyOffer.offerName}</span>
+                    </span>
+                    <button
+                      onClick={() => setSelectedLoyaltyRuleId("")}
+                      className="px-1.5 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[9px] cursor-pointer border border-red-200 ml-2"
+                      title="Cancel Loyalty Discount"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 )}
                 {discountTotal > 0 && (

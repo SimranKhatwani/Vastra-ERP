@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Percent, Tag, Plus, Check, Trash2, ShieldAlert, Award, FileText, BarChart3, Clock, Play, Copy, Archive, Power, Calendar } from 'lucide-react';
+import { Percent, Tag, Plus, Check, Trash2, ShieldAlert, Award, FileText, BarChart3, Clock, Play, Copy, Archive, Power, Calendar, Edit3 } from 'lucide-react';
 
 const DiscountManagementView = ({ onAddNotification }) => {
   const [activeTab, setActiveTab] = useState('rules');
@@ -37,6 +37,7 @@ const DiscountManagementView = ({ onAddNotification }) => {
   const [requiredLoyaltyPoints, setRequiredLoyaltyPoints] = useState(100);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState(null);
 
   // Fetch rules
   const fetchRules = async () => {
@@ -93,8 +94,14 @@ const DiscountManagementView = ({ onAddNotification }) => {
         status: 'Active'
       };
 
-      const res = await fetch('http://localhost:5000/api/discounts/rules', {
-        method: 'POST',
+      const url = editingRuleId
+        ? `http://localhost:5000/api/discounts/rules/${editingRuleId}`
+        : 'http://localhost:5000/api/discounts/rules';
+
+      const method = editingRuleId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
@@ -104,7 +111,11 @@ const DiscountManagementView = ({ onAddNotification }) => {
       const json = await res.json();
       if (json.success) {
         if (onAddNotification) {
-          onAddNotification('Rule Configured', `Offer "${offerName}" is now active in registry.`, 'success');
+          onAddNotification(
+            editingRuleId ? 'Rule Updated' : 'Rule Configured',
+            `Offer "${offerName}" was successfully saved.`,
+            'success'
+          );
         }
         setShowCreateModal(false);
         resetForm();
@@ -135,6 +146,37 @@ const DiscountManagementView = ({ onAddNotification }) => {
     setGetQuantity(1);
     setGetDiscountPercent(100);
     setRequiredLoyaltyPoints(100);
+    setEditingRuleId(null);
+  };
+
+  const handleEditClick = (rule) => {
+    setEditingRuleId(rule._id);
+    setOfferName(rule.offerName || '');
+    setDescription(rule.description || '');
+    setOfferType(rule.offerType || 'Automatic');
+    setDiscountType(rule.discountType || 'Flat');
+    setDiscountValue(rule.discountValue || 0);
+    setMinBillAmount(rule.minBillAmount || 0);
+    setMaxDiscount(rule.maxDiscount || 0);
+    setPriority(rule.priority || 1);
+    
+    const startFormatted = rule.startDate ? new Date(rule.startDate).toISOString().substring(0, 10) : '';
+    const endFormatted = rule.endDate ? new Date(rule.endDate).toISOString().substring(0, 10) : '';
+    setStartDate(startFormatted);
+    setEndDate(endFormatted);
+
+    setTargetProduct(rule.applicableProducts?.[0] || '');
+    setTargetCategory(rule.applicableCategories?.[0] || '');
+    setTargetBrand(rule.applicableBrands?.[0] || '');
+    
+    setBuyProductId(rule.buyProductId || '');
+    setBuyQuantity(rule.buyQuantity || 1);
+    setGetProductId(rule.getProductId || '');
+    setGetQuantity(rule.getQuantity || 1);
+    setGetDiscountPercent(rule.getDiscountPercent || 100);
+    setRequiredLoyaltyPoints(rule.requiredLoyaltyPoints || 100);
+
+    setShowCreateModal(true);
   };
 
   // Toggle Rule Status (Active / Inactive)
@@ -312,6 +354,13 @@ const DiscountManagementView = ({ onAddNotification }) => {
                         <td className="p-3.5 text-center">
                           <div className="flex justify-center gap-1.5">
                             <button
+                              onClick={() => handleEditClick(rule)}
+                              className="p-1 hover:bg-slate-50 text-indigo-600 rounded"
+                              title="Edit Promotion"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => handleDuplicate(rule._id)}
                               className="p-1 hover:bg-slate-50 text-slate-500 rounded"
                               title="Duplicate Offer"
@@ -396,31 +445,20 @@ const DiscountManagementView = ({ onAddNotification }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Offer Type</label>
-                  <select
-                    value={offerType}
-                    onChange={(e) => setOfferType(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
-                  >
-                    <option value="Automatic">Bill Level Automatic (Subtotal)</option>
-                    <option value="Product">Product Discount</option>
-                    <option value="Category">Category Discount</option>
-                    <option value="Brand">Brand Discount</option>
-                    <option value="BuyXGetY">Buy X Get Y (BOGO)</option>
-                    <option value="LoyaltyRule">Loyalty Point Redemption Rule</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Priority Order</label>
-                  <input
-                    type="number"
-                    value={priority}
-                    onChange={(e) => setPriority(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
-                  />
-                </div>
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Offer Type</label>
+                <select
+                  value={offerType}
+                  onChange={(e) => setOfferType(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
+                >
+                  <option value="Automatic">Bill Level Automatic (Subtotal)</option>
+                  <option value="Product">Product Discount</option>
+                  <option value="Category">Category Discount</option>
+                  <option value="Brand">Brand Discount</option>
+                  <option value="BuyXGetY">Buy X Get Y (BOGO)</option>
+                  <option value="LoyaltyRule">Loyalty Point Redemption Rule</option>
+                </select>
               </div>
 
               {/* Conditional parameters based on type */}
