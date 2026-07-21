@@ -110,7 +110,9 @@ exports.createSalesInvoice = async (req, res) => {
       grandTotal,
       paymentMethod,
       amountPaid,
-      status: amountPaid >= grandTotal ? 'Paid' : amountPaid > 0 ? 'Partial' : 'Unpaid'
+      status: amountPaid >= grandTotal ? 'Paid' : amountPaid > 0 ? 'Partial' : 'Unpaid',
+      invoiceType,
+      isBillingSalesModule: true
     });
 
     // Add extra B2B / Wholesale properties (stored in schema dynamically or nested)
@@ -266,7 +268,7 @@ exports.getSalesReports = async (req, res) => {
     const tenantId = req.user.tenantId;
     const { reportType } = req.query;
 
-    const invoices = await Invoice.find({ tenantId }).sort('-createdAt');
+    const invoices = await Invoice.find({ tenantId, isBillingSalesModule: true }).sort('-createdAt');
 
     let reportData = [];
 

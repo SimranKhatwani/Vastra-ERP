@@ -153,6 +153,16 @@ const invoiceSchema = new mongoose.Schema(
       enum: ['Cash', 'Card', 'UPI', 'Wallet', 'Credit', 'Split'],
       required: true,
     },
+    invoiceType: {
+      type: String,
+      enum: ['Retail', 'Wholesale', 'B2B'],
+      default: 'Retail',
+    },
+    isBillingSalesModule: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     splitPayments: [{
       method: String,
       amount: Number,

@@ -35,6 +35,7 @@ import { PurchaseView } from "./components/PurchaseView";
 import { InventoryView } from "./components/InventoryView";
 import { StockManagementView } from "./components/StockManagementView";
 import { BillingSalesView } from "./components/BillingSalesView";
+import DiscountManagementView from "./components/DiscountManagementView";
 import { CustomersView } from "./components/CustomersView";
 import { EmployeeView } from "./components/EmployeeView";
 import { AccountingView } from "./components/AccountingView";
@@ -924,6 +925,7 @@ export default function App() {
     { id: "inventory", label: "Inventory Management Module", icon: Warehouse },
     { id: "stock-management", label: "Stock Management Module", icon: ClipboardCheck },
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
+    { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
     { id: "purchase", label: "Procurements & POs", icon: FileText },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
@@ -1362,6 +1364,12 @@ export default function App() {
               products={products}
               customers={customers}
               employees={employees}
+              onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "discount-offers" && (
+            <DiscountManagementView
               onAddNotification={addToastNotification}
             />
           )}

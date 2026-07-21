@@ -32,7 +32,11 @@ export const BillingSalesView = ({
   // Cart & Invoice states
   const [cart, setCart] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [manualCustomerName, setManualCustomerName] = useState("");
   const [salespersonId, setSalespersonId] = useState("");
+  const [manualSalespersonName, setManualSalespersonName] = useState("");
+  const [manualCgstTotal, setManualCgstTotal] = useState("");
+  const [manualSgstTotal, setManualSgstTotal] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [amountPaid, setAmountPaid] = useState(0);
 
@@ -76,6 +80,34 @@ export const BillingSalesView = ({
   const [billingAddress, setBillingAddress] = useState("Boutique Plaza, Link Road, Bandra West, Mumbai");
   const [shippingAddress, setShippingAddress] = useState("Thane Logistics Hub, Warehouse A, Thane");
   const [stateCode, setStateCode] = useState("27 (MH)");
+
+  // Invoice History States & Fetcher
+  const [invoicesList, setInvoicesList] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const fetchInvoicesHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/billing-sales/reports", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setInvoicesList(json.data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "invoice-history") {
+      fetchInvoicesHistory();
+    }
+  }, [activeTab]);
 
   // Fetch Default config
   const fetchTaxConfig = async () => {
@@ -130,7 +162,11 @@ export const BillingSalesView = ({
   const handleResetInvoice = () => {
     setCart([]);
     setSelectedCustomerId("");
+    setManualCustomerName("");
     setSalespersonId("");
+    setManualSalespersonName("");
+    setManualCgstTotal("");
+    setManualSgstTotal("");
     setAmountPaid(0);
     setGstModifications([]);
     setSelectedDealerId("");
@@ -153,6 +189,7 @@ export const BillingSalesView = ({
       setCart(updated);
     } else {
       const defaultGst = prod.taxRate || (cgstRate + sgstRate);
+      const halfGst = Math.floor(defaultGst / 2);
       setCart([...cart, {
         productId: prod._id,
         name: prod.name,
@@ -161,6 +198,9 @@ export const BillingSalesView = ({
         price: prod.sellingPrice || prod.basePrice || 999,
         quantity: 1,
         discount: 0,
+        cgstPercent: halfGst,
+        sgstPercent: defaultGst - halfGst,
+        igstPercent: 0,
         gstPercent: defaultGst,
         totalPrice: prod.sellingPrice || prod.basePrice || 999
       }]);
@@ -191,14 +231,17 @@ export const BillingSalesView = ({
       taxTotal += gst;
     });
 
-    const grandTotal = subTotal - discountTotal + taxTotal;
+    const finalCgst = manualCgstTotal !== "" ? manualCgstTotal : Math.round(taxTotal / 2);
+    const finalSgst = manualSgstTotal !== "" ? manualSgstTotal : Math.round(taxTotal / 2);
+
+    const grandTotal = subTotal - discountTotal + finalCgst + finalSgst;
     return {
       subTotal,
       discountTotal,
-      taxTotal,
+      taxTotal: finalCgst + finalSgst,
       grandTotal: Math.round(grandTotal)
     };
-  }, [cart]);
+  }, [cart, manualCgstTotal, manualSgstTotal]);
 
   // Handle manual GST override trigger
   const triggerGstOverride = (idx) => {
@@ -257,9 +300,9 @@ export const BillingSalesView = ({
       invoiceType: activeTab === "wholesale-billing" ? "Wholesale" : activeTab === "b2b-invoice" ? "B2B" : "Retail",
       items: cart,
       customerId: selectedCustomerId,
-      customerName: customer ? customer.name : undefined,
+      customerName: manualCustomerName || (customer ? customer.name : "Walk-in Customer"),
       customerPhone: customer ? customer.phone : undefined,
-      companyName: activeTab === "wholesale-billing" ? dealers.find(d => d.id === selectedDealerId)?.company : undefined,
+      companyName: activeTab === "wholesale-billing" ? (manualCustomerName || dealers.find(d => d.id === selectedDealerId)?.company) : undefined,
       gstin: activeTab === "wholesale-billing" ? dealers.find(d => d.id === selectedDealerId)?.gstin : undefined,
       billingAddress: activeTab === "b2b-invoice" ? billingAddress : undefined,
       shippingAddress: activeTab === "b2b-invoice" ? shippingAddress : undefined,
@@ -276,7 +319,7 @@ export const BillingSalesView = ({
       grandTotal,
       paymentTerms,
       salespersonId,
-      salespersonName: sp ? sp.name : "Sales Counter",
+      salespersonName: manualSalespersonName || (sp ? sp.name : "Sales Counter"),
       gstModifications
     };
 
@@ -302,6 +345,88 @@ export const BillingSalesView = ({
     }
   };
 
+  const renderInvoiceHistory = () => {
+    return (
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Invoice History Ledger</h3>
+            <p className="text-[10px] text-slate-400">All registered sales transactions for this tenant.</p>
+          </div>
+          <button
+            onClick={fetchInvoicesHistory}
+            className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer font-bold"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh Ledger</span>
+          </button>
+        </div>
+
+        {historyLoading ? (
+          <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Loading transaction journals...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50/80 text-slate-400 border-b border-slate-100 tracking-wider">
+                  <th className="p-3.5">Invoice Number</th>
+                  <th className="p-3.5">Date</th>
+                  <th className="p-3.5">Client / Business</th>
+                  <th className="p-3.5">Voucher Type</th>
+                  <th className="p-3.5 text-right">Subtotal</th>
+                  <th className="p-3.5 text-right">Discount</th>
+                  <th className="p-3.5 text-right">Tax (GST)</th>
+                  <th className="p-3.5 text-right">Grand Total</th>
+                  <th className="p-3.5 text-center">Payment Method</th>
+                  <th className="p-3.5 text-center">Payment Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoicesList.map((inv, idx) => (
+                  <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="p-3.5 font-mono font-bold text-slate-800">{inv.invoiceNo}</td>
+                    <td className="p-3.5 font-mono text-slate-400">
+                      {inv.date ? new Date(inv.date).toLocaleDateString("en-IN") : "N/A"}
+                    </td>
+                    <td className="p-3.5 text-slate-700 font-bold">{inv.customer || "Walk-in"}</td>
+                    <td className="p-3.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        inv.type === "Wholesale" ? "bg-amber-50 text-amber-700" :
+                        inv.type === "B2B" ? "bg-purple-50 text-purple-700" : "bg-teal-50 text-teal-700"
+                      }`}>
+                        {inv.type || "Retail"}
+                      </span>
+                    </td>
+                    <td className="p-3.5 text-right font-mono">₹{inv.subTotal?.toLocaleString()}</td>
+                    <td className="p-3.5 text-right font-mono text-emerald-600">-₹{inv.discount?.toLocaleString()}</td>
+                    <td className="p-3.5 text-right font-mono">₹{inv.gst?.toLocaleString()}</td>
+                    <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{inv.total?.toLocaleString()}</td>
+                    <td className="p-3.5 text-center font-bold text-slate-500">{inv.paymentMethod}</td>
+                    <td className="p-3.5 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        inv.status === "Paid" ? "bg-emerald-50 text-emerald-700" :
+                        inv.status === "Partial" ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700"
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {invoicesList.length === 0 && (
+                  <tr>
+                    <td colSpan="10" className="p-12 text-center text-slate-400 font-bold">
+                      No transactions registered yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-slate-50 min-h-screen p-6 font-sans text-xs font-semibold text-slate-600">
       
@@ -323,12 +448,12 @@ export const BillingSalesView = ({
       </div>
 
       {/* Tabs list */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-2 md:grid-cols-4 gap-1 w-full max-w-fit">
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-1 md:grid-cols-4 gap-1 w-full max-w-fit">
         {[
           { id: "gst-billing", label: "GST Billing Layout" },
-          { id: "retail-billing", label: "Retail POS billing" },
           { id: "wholesale-billing", label: "Wholesale Bulk Billing" },
-          { id: "b2b-invoice", label: "Tax Invoice Generation (B2B)" }
+          { id: "b2b-invoice", label: "Tax Invoice Generation (B2B)" },
+          { id: "invoice-history", label: "Invoice History" }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -348,7 +473,8 @@ export const BillingSalesView = ({
       </div>
 
       {/* MAIN WORKSPACE GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {activeTab === "invoice-history" ? renderInvoiceHistory() : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}
         <div className="lg:col-span-2 space-y-6">
@@ -387,8 +513,8 @@ export const BillingSalesView = ({
                     <th className="p-3.5">HSN Code</th>
                     <th className="p-3.5 text-center">GST %</th>
                     <th className="p-3.5 text-right">Taxable Value</th>
-                    <th className="p-3.5 text-right">CGST</th>
-                    <th className="p-3.5 text-right">SGST</th>
+                    <th className="p-3.5 text-right">CGST (%)</th>
+                    <th className="p-3.5 text-right">SGST (%)</th>
                     <th className="p-3.5 text-center">Qty</th>
                     <th className="p-3.5 text-right">Subtotal</th>
                     <th className="p-3.5 text-center">Action</th>
@@ -399,18 +525,31 @@ export const BillingSalesView = ({
                     const lineSub = item.price * item.quantity;
                     const lineDisc = lineSub * (item.discount / 100);
                     const taxable = lineSub - lineDisc;
-                    const gstVal = taxable * (item.gstPercent / 100);
+                    const curCgstRate = item.cgstPercent !== undefined ? item.cgstPercent : Math.floor(item.gstPercent / 2);
+                    const curSgstRate = item.sgstPercent !== undefined ? item.sgstPercent : (item.gstPercent - Math.floor(item.gstPercent / 2));
+                    const gstVal = taxable * ((curCgstRate + curSgstRate + (item.igstPercent || 0)) / 100);
 
                     return (
                       <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="p-3.5">
-                          <span className="font-bold text-slate-800 block">{item.name}</span>
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...cart];
+                              updated[idx].name = e.target.value;
+                              setCart(updated);
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 outline-none focus:border-indigo-500"
+                          />
                           <span className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</span>
                         </td>
                         <td className="p-3.5 font-mono text-slate-500">{item.hsn}</td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <span className="font-mono font-bold text-slate-800">{item.gstPercent}%</span>
+                            <span className="font-mono font-bold text-slate-800">
+                              {curCgstRate + curSgstRate + (item.igstPercent || 0)}%
+                            </span>
                             <button
                               onClick={() => triggerGstOverride(idx)}
                               className="p-0.5 hover:bg-slate-100 rounded text-indigo-600"
@@ -421,8 +560,40 @@ export const BillingSalesView = ({
                           </div>
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-slate-700">₹{taxable.toLocaleString()}</td>
-                        <td className="p-3.5 text-right font-mono text-slate-400">₹{Math.floor(gstVal / 2).toLocaleString()}</td>
-                        <td className="p-3.5 text-right font-mono text-slate-400">₹{Math.floor(gstVal / 2).toLocaleString()}</td>
+                        <td className="p-3.5 text-right font-mono text-slate-400">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.1}
+                            value={curCgstRate}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              const updated = [...cart];
+                              updated[idx].cgstPercent = val;
+                              updated[idx].gstPercent = val + (updated[idx].sgstPercent !== undefined ? updated[idx].sgstPercent : curSgstRate) + (item.igstPercent || 0);
+                              setCart(updated);
+                            }}
+                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
+                          />
+                        </td>
+                        <td className="p-3.5 text-right font-mono text-slate-400">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.1}
+                            value={curSgstRate}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              const updated = [...cart];
+                              updated[idx].sgstPercent = val;
+                              updated[idx].gstPercent = (updated[idx].cgstPercent !== undefined ? updated[idx].cgstPercent : curCgstRate) + val + (item.igstPercent || 0);
+                              setCart(updated);
+                            }}
+                            className="w-12 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
+                          />
+                        </td>
                         <td className="p-3.5 text-center">
                           <input
                             type="number"
@@ -470,7 +641,14 @@ export const BillingSalesView = ({
                   <label className="block text-slate-400 font-bold mb-1">Select Customer (Ledger sync)</label>
                   <select
                     value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    onChange={(e) => {
+                      const cid = e.target.value;
+                      setSelectedCustomerId(cid);
+                      const found = customers.find(c => c._id === cid);
+                      if (found) {
+                        setManualCustomerName(found.name);
+                      }
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                   >
                     <option value="">Select customer ledger...</option>
@@ -480,10 +658,27 @@ export const BillingSalesView = ({
                   </select>
                 </div>
                 <div>
+                  <label className="block text-slate-400 font-bold mb-1">Customer / Business Name (B2B)</label>
+                  <input
+                    type="text"
+                    placeholder="Enter manual name or edit selected..."
+                    value={manualCustomerName}
+                    onChange={(e) => setManualCustomerName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
                   <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
                   <select
                     value={salespersonId}
-                    onChange={(e) => setSalespersonId(e.target.value)}
+                    onChange={(e) => {
+                      const sid = e.target.value;
+                      setSalespersonId(sid);
+                      const found = employees.find(emp => emp._id === sid);
+                      if (found) {
+                        setManualSalespersonName(found.name);
+                      }
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                   >
                     <option value="">Select salesperson...</option>
@@ -491,6 +686,16 @@ export const BillingSalesView = ({
                       <option key={e._id} value={e._id}>{e.name}</option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
+                  <input
+                    type="text"
+                    placeholder="Type custom salesperson name..."
+                    value={manualSalespersonName}
+                    onChange={(e) => setManualSalespersonName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
                 </div>
               </div>
             )}
@@ -507,38 +712,102 @@ export const BillingSalesView = ({
                     className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Select customer loyalty profile</label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800"
-                  >
-                    <option value="">Walk-in Customer</option>
-                    {customers.map(c => (
-                      <option key={c._id} value={c._id}>{c.name} (Loyalty Points: {c.loyaltyPoints || 0})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Select customer loyalty profile</label>
+                   <select
+                     value={selectedCustomerId}
+                     onChange={(e) => {
+                       const cid = e.target.value;
+                       setSelectedCustomerId(cid);
+                       const found = customers.find(c => c._id === cid);
+                       if (found) {
+                         setManualCustomerName(found.name);
+                       }
+                     }}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800"
+                   >
+                     <option value="">Walk-in Customer</option>
+                     {customers.map(c => (
+                       <option key={c._id} value={c._id}>{c.name} (Loyalty Points: {c.loyaltyPoints || 0})</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Customer / Business Name</label>
+                   <input
+                     type="text"
+                     placeholder="Type customer name manually..."
+                     value={manualCustomerName}
+                     onChange={(e) => setManualCustomerName(e.target.value)}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
+                   <select
+                     value={salespersonId}
+                     onChange={(e) => {
+                       const sid = e.target.value;
+                       setSalespersonId(sid);
+                       const found = employees.find(emp => emp._id === sid);
+                       if (found) {
+                         setManualSalespersonName(found.name);
+                       }
+                     }}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                   >
+                     <option value="">Select salesperson...</option>
+                     {employees.filter(e => e.role === "Salesperson").map(e => (
+                       <option key={e._id} value={e._id}>{e.name}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
+                   <input
+                     type="text"
+                     placeholder="Type custom salesperson name..."
+                     value={manualSalespersonName}
+                     onChange={(e) => setManualSalespersonName(e.target.value)}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                   />
+                 </div>
+               </div>
             )}
 
-            {/* C. WHOLESALE BILLING WORKFLOW */}
-            {activeTab === "wholesale-billing" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Dealer Company Account</label>
-                  <select
-                    value={selectedDealerId}
-                    onChange={(e) => setSelectedDealerId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    <option value="">Select dealer registry...</option>
-                    {dealers.map(d => (
-                      <option key={d.id} value={d.id}>{d.company} (GSTIN: {d.gstin})</option>
-                    ))}
-                  </select>
-                </div>
+             {/* C. WHOLESALE BILLING WORKFLOW */}
+             {activeTab === "wholesale-billing" && (
+               <div className="space-y-4">
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Dealer Company Account</label>
+                   <select
+                     value={selectedDealerId}
+                     onChange={(e) => {
+                       const did = e.target.value;
+                       setSelectedDealerId(did);
+                       const found = dealers.find(d => d.id === did);
+                       if (found) {
+                         setManualCustomerName(found.company);
+                       }
+                     }}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                   >
+                     <option value="">Select dealer registry...</option>
+                     {dealers.map(d => (
+                       <option key={d.id} value={d.id}>{d.company} (GSTIN: {d.gstin})</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-slate-400 font-bold mb-1">Company / Business Name (Wholesale)</label>
+                   <input
+                     type="text"
+                     placeholder="Enter manual name or edit selected..."
+                     value={manualCustomerName}
+                     onChange={(e) => setManualCustomerName(e.target.value)}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                   />
+                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-slate-400 font-bold mb-1">Transport LR No</label>
@@ -573,12 +842,102 @@ export const BillingSalesView = ({
                     <option value="COD">Cash On Delivery</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
+                  <select
+                    value={salespersonId}
+                    onChange={(e) => {
+                      const sid = e.target.value;
+                      setSalespersonId(sid);
+                      const found = employees.find(emp => emp._id === sid);
+                      if (found) {
+                        setManualSalespersonName(found.name);
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                  >
+                    <option value="">Select salesperson...</option>
+                    {employees.filter(e => e.role === "Salesperson").map(e => (
+                      <option key={e._id} value={e._id}>{e.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
+                  <input
+                    type="text"
+                    placeholder="Type custom salesperson name..."
+                    value={manualSalespersonName}
+                    onChange={(e) => setManualSalespersonName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
               </div>
             )}
 
             {/* D. B2B COMPLIANT TAX INVOICE */}
             {activeTab === "b2b-invoice" && (
               <div className="space-y-4">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Select Customer (Ledger sync)</label>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => {
+                      const cid = e.target.value;
+                      setSelectedCustomerId(cid);
+                      const found = customers.find(c => c._id === cid);
+                      if (found) {
+                        setManualCustomerName(found.name);
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                  >
+                    <option value="">Select customer ledger...</option>
+                    {customers.map(c => (
+                      <option key={c._id} value={c._id}>{c.name} ({c.phone})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Customer / Business Name (B2B)</label>
+                  <input
+                    type="text"
+                    placeholder="Enter manual name or edit selected..."
+                    value={manualCustomerName}
+                    onChange={(e) => setManualCustomerName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Assigned Salesperson (Commission)</label>
+                  <select
+                    value={salespersonId}
+                    onChange={(e) => {
+                      const sid = e.target.value;
+                      setSalespersonId(sid);
+                      const found = employees.find(emp => emp._id === sid);
+                      if (found) {
+                        setManualSalespersonName(found.name);
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
+                  >
+                    <option value="">Select salesperson...</option>
+                    {employees.filter(e => e.role === "Salesperson").map(e => (
+                      <option key={e._id} value={e._id}>{e.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Or Enter / Edit Salesperson Name</label>
+                  <input
+                    type="text"
+                    placeholder="Type custom salesperson name..."
+                    value={manualSalespersonName}
+                    onChange={(e) => setManualSalespersonName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">Company logo GSTIN</label>
                   <input
@@ -661,17 +1020,35 @@ export const BillingSalesView = ({
 
             {/* BILL CALCULATOR SUMMARY */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
-              <div className="flex justify-between font-bold text-slate-600">
+              <div className="flex justify-between items-center font-bold text-slate-600">
                 <span>Subtotal Items</span>
                 <span className="font-mono">₹{subTotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between font-bold text-slate-600">
+              <div className="flex justify-between items-center font-bold text-slate-600">
                 <span>Total CGST</span>
-                <span className="font-mono">₹{Math.round(taxTotal / 2).toLocaleString()}</span>
+                <input
+                  type="number"
+                  placeholder="CGST total..."
+                  value={manualCgstTotal !== "" ? manualCgstTotal : Math.round(taxTotal / 2)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualCgstTotal(val === "" ? "" : Number(val));
+                  }}
+                  className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
+                />
               </div>
-              <div className="flex justify-between font-bold text-slate-600 pb-2 border-b border-slate-200/60">
+              <div className="flex justify-between items-center font-bold text-slate-600 pb-2 border-b border-slate-200/60">
                 <span>Total SGST</span>
-                <span className="font-mono">₹{Math.round(taxTotal / 2).toLocaleString()}</span>
+                <input
+                  type="number"
+                  placeholder="SGST total..."
+                  value={manualSgstTotal !== "" ? manualSgstTotal : Math.round(taxTotal / 2)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualSgstTotal(val === "" ? "" : Number(val));
+                  }}
+                  className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1 text-right font-mono font-bold text-slate-700 outline-none focus:border-indigo-500"
+                />
               </div>
               <div className="flex justify-between items-end pt-1">
                 <span className="text-xs font-bold text-slate-800 uppercase">Grand Total</span>
@@ -689,6 +1066,7 @@ export const BillingSalesView = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* ========================================================= */}
       {/* OVERRIDE MODAL */}
