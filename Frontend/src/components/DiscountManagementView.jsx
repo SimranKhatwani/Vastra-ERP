@@ -1,32 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { Percent, Tag, Plus, Check, Trash2, ShieldAlert, Award, FileText, BarChart3, Clock, Play } from 'lucide-react';
+import { Percent, Tag, Plus, Check, Trash2, ShieldAlert, Award, FileText, BarChart3, Clock, Play, Copy, Archive, Power, Calendar } from 'lucide-react';
 
 const DiscountManagementView = ({ onAddNotification }) => {
   const [activeTab, setActiveTab] = useState('rules');
   const [rules, setRules] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(false);
 
-  // Form states for creating/editing a rule
+  // Form states for creating a rule
   const [offerName, setOfferName] = useState('');
+  const [description, setDescription] = useState('');
   const [offerType, setOfferType] = useState('Automatic');
-  const [minBillAmount, setMinBillAmount] = useState(0);
   const [discountType, setDiscountType] = useState('Flat');
   const [discountValue, setDiscountValue] = useState(0);
+  const [minBillAmount, setMinBillAmount] = useState(0);
+  const [maxDiscount, setMaxDiscount] = useState(0);
   const [priority, setPriority] = useState(1);
-  const [couponCode, setCouponCode] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  
+  // Specific targets
+  const [targetProduct, setTargetProduct] = useState('');
+  const [targetCategory, setTargetCategory] = useState('');
+  const [targetBrand, setTargetBrand] = useState('');
+  
+  // Quantity discount limits
+  const [minQuantity, setMinQuantity] = useState(1);
+  
+  // Buy X Get Y
+  const [buyProductId, setBuyProductId] = useState('');
+  const [buyQuantity, setBuyQuantity] = useState(1);
+  const [getProductId, setGetProductId] = useState('');
+  const [getQuantity, setGetQuantity] = useState(1);
+  const [getDiscountPercent, setGetDiscountPercent] = useState(100);
+
+  // Loyalty settings
+  const [requiredLoyaltyPoints, setRequiredLoyaltyPoints] = useState(100);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // Approval requests states
-  const [approvals, setApprovals] = useState([]);
-  const [approvalsLoading, setApprovalsLoading] = useState(false);
-
-  // PIN validation for overrides
-  const [selectedApprovalId, setSelectedApprovalId] = useState(null);
-  const [supUsername, setSupUsername] = useState('');
-  const [supPassword, setSupPassword] = useState('');
-  const [showPinModal, setShowPinModal] = useState(false);
-
-  // Fetch all active rules
+  // Fetch rules
   const fetchRules = async () => {
     setRulesLoading(true);
     try {
@@ -45,72 +57,57 @@ const DiscountManagementView = ({ onAddNotification }) => {
     }
   };
 
-  // Fetch pending overrides approvals
-  const fetchApprovals = async () => {
-    setApprovalsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      // For simplicity, we can fetch all overrides logs. We will query approvals directly.
-      const res = await fetch('http://localhost:5000/api/discounts/rules', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      // In a real environment, we'd have a specific endpoint. Let's build a mock logs array if server does not respond
-      const json = await res.json();
-      setApprovals([
-        { _id: '1', originalBillAmount: 6500, requestedDiscount: 1500, requestedBy: 'Cashier Terminal A', status: 'Pending', reason: 'Customer requested combo adjustment' },
-        { _id: '2', originalBillAmount: 12000, requestedDiscount: 2000, requestedBy: 'Cashier Terminal B', status: 'Approved', approvedBy: 'Manager Rahul', reason: 'Festival opening exception' }
-      ]);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setApprovalsLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchRules();
-    fetchApprovals();
   }, []);
 
   const handleCreateRule = async (e) => {
     e.preventDefault();
-    if (!offerName || !discountValue) {
-      alert('Please fill out required fields');
+    if (!offerName || !discountValue || !startDate || !endDate) {
+      alert('Please fill out all required fields, including Start and End dates.');
       return;
     }
 
     try {
       const token = localStorage.getItem('token');
+      const payload = {
+        offerName,
+        description,
+        offerType,
+        discountType,
+        discountValue,
+        minBillAmount,
+        maxDiscount: maxDiscount || undefined,
+        priority,
+        startDate,
+        endDate,
+        applicableProducts: targetProduct ? [targetProduct] : [],
+        applicableCategories: targetCategory ? [targetCategory] : [],
+        applicableBrands: targetBrand ? [targetBrand] : [],
+        buyProductId: offerType === 'BuyXGetY' ? buyProductId : undefined,
+        buyQuantity: offerType === 'BuyXGetY' ? buyQuantity : undefined,
+        getProductId: offerType === 'BuyXGetY' ? getProductId : undefined,
+        getQuantity: offerType === 'BuyXGetY' ? getQuantity : undefined,
+        getDiscountPercent: offerType === 'BuyXGetY' ? getDiscountPercent : undefined,
+        requiredLoyaltyPoints: offerType === 'LoyaltyRule' ? requiredLoyaltyPoints : undefined,
+        status: 'Active'
+      };
+
       const res = await fetch('http://localhost:5000/api/discounts/rules', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          offerName,
-          offerType,
-          minBillAmount,
-          discountType,
-          discountValue,
-          priority,
-          couponCode: offerType === 'Coupon' ? couponCode : undefined
-        })
+        body: JSON.stringify(payload)
       });
       const json = await res.json();
       if (json.success) {
         if (onAddNotification) {
-          onAddNotification('Rule Created', `Offer "${offerName}" is now active.`, 'success');
+          onAddNotification('Rule Configured', `Offer "${offerName}" is now active in registry.`, 'success');
         }
         setShowCreateModal(false);
-        // Reset form
-        setOfferName('');
-        setOfferType('Automatic');
-        setMinBillAmount(0);
-        setDiscountType('Flat');
-        setDiscountValue(0);
-        setPriority(1);
-        setCouponCode('');
+        resetForm();
         fetchRules();
       }
     } catch (err) {
@@ -118,18 +115,65 @@ const DiscountManagementView = ({ onAddNotification }) => {
     }
   };
 
-  const handleDeleteRule = async (id) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return;
+  const resetForm = () => {
+    setOfferName('');
+    setDescription('');
+    setOfferType('Automatic');
+    setDiscountType('Flat');
+    setDiscountValue(0);
+    setMinBillAmount(0);
+    setMaxDiscount(0);
+    setPriority(1);
+    setStartDate('');
+    setEndDate('');
+    setTargetProduct('');
+    setTargetCategory('');
+    setTargetBrand('');
+    setBuyProductId('');
+    setBuyQuantity(1);
+    setGetProductId('');
+    setGetQuantity(1);
+    setGetDiscountPercent(100);
+    setRequiredLoyaltyPoints(100);
+  };
+
+  // Toggle Rule Status (Active / Inactive)
+  const handleToggleStatus = async (id, currentStatus) => {
+    const nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}`, {
-        method: 'DELETE',
+      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/toggle`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (onAddNotification) {
+          onAddNotification('Status Updated', `Offer status changed to ${nextStatus}.`, 'info');
+        }
+        fetchRules();
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Duplicate Rule
+  const handleDuplicate = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/duplicate`, {
+        method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
       if (json.success) {
         if (onAddNotification) {
-          onAddNotification('Rule Deleted', 'Promotion has been deactivated.', 'info');
+          onAddNotification('Duplicated', 'Discount rule duplicated successfully.', 'success');
         }
         fetchRules();
       }
@@ -138,33 +182,21 @@ const DiscountManagementView = ({ onAddNotification }) => {
     }
   };
 
-  const handleApproveOverride = async (e) => {
-    e.preventDefault();
+  // Archive Rule (Soft Delete)
+  const handleArchive = async (id) => {
+    if (!confirm('Are you sure you want to archive this discount rule?')) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/discounts/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          approvalId: selectedApprovalId,
-          supervisorUsername: supUsername,
-          supervisorPassword: supPassword
-        })
+      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/archive`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
       if (json.success) {
         if (onAddNotification) {
-          onAddNotification('Override Approved', 'Discount manual override has been authorized.', 'success');
+          onAddNotification('Archived', 'Promotion archived.', 'info');
         }
-        setShowPinModal(false);
-        setSupUsername('');
-        setSupPassword('');
-        fetchApprovals();
-      } else {
-        alert(json.message);
+        fetchRules();
       }
     } catch (err) {
       alert(err.message);
@@ -177,7 +209,7 @@ const DiscountManagementView = ({ onAddNotification }) => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Discount & Offer Engine</h1>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Configure automatic promotions, buy X get Y combo offers, and authorize override requests</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Configure Product, Category, Brand, combos, buy X get Y promotions, and loyalty redemption rules</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -189,11 +221,9 @@ const DiscountManagementView = ({ onAddNotification }) => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-2 md:grid-cols-4 gap-1 w-full max-w-2xl">
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-2 md:grid-cols-2 gap-1 w-full max-w-md">
         {[
           { id: 'rules', label: 'Discount Rules', icon: Percent },
-          { id: 'coupons', label: 'Coupon Codes', icon: Tag },
-          { id: 'approvals', label: 'Approval History', icon: ShieldAlert },
           { id: 'analytics', label: 'Analytics Report', icon: BarChart3 }
         ].map((tab) => {
           const Icon = tab.icon;
@@ -226,45 +256,84 @@ const DiscountManagementView = ({ onAddNotification }) => {
                 <thead>
                   <tr className="bg-slate-50 text-slate-400 border-b border-slate-100">
                     <th className="p-3.5">Offer Name</th>
-                    <th className="p-3.5">Trigger Condition</th>
-                    <th className="p-3.5">Discount Offer</th>
                     <th className="p-3.5">Type</th>
-                    <th className="p-3.5">Priority</th>
-                    <th className="p-3.5 text-center">Action</th>
+                    <th className="p-3.5">Trigger Target</th>
+                    <th className="p-3.5">Discount Value</th>
+                    <th className="p-3.5">Validity Dates</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((rule, idx) => (
-                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
-                      <td className="p-3.5 font-bold text-slate-800">{rule.offerName}</td>
-                      <td className="p-3.5 font-mono text-slate-500">
-                        {rule.minBillAmount > 0 ? `Subtotal >= ₹${rule.minBillAmount}` : 'No minimum condition'}
-                      </td>
-                      <td className="p-3.5 font-mono font-bold text-indigo-600">
-                        {rule.discountType === 'Flat' ? `₹${rule.discountValue} OFF` : `${rule.discountValue}% OFF`}
-                      </td>
-                      <td className="p-3.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          rule.offerType === 'Automatic' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
-                        }`}>
-                          {rule.offerType}
-                        </span>
-                      </td>
-                      <td className="p-3.5 font-mono">{rule.priority}</td>
-                      <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => handleDeleteRule(rule._id)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rules.map((rule, idx) => {
+                    const isExpired = new Date(rule.endDate) < new Date();
+                    return (
+                      <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-800">{rule.offerName}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">{rule.description || 'No description'}</div>
+                        </td>
+                        <td className="p-3.5">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {rule.offerType}
+                          </span>
+                        </td>
+                        <td className="p-3.5 font-medium text-slate-500">
+                          {rule.offerType === 'Product' && `Product ID: ${rule.applicableProducts[0] || 'N/A'}`}
+                          {rule.offerType === 'Category' && `Category: ${rule.applicableCategories[0] || 'N/A'}`}
+                          {rule.offerType === 'Brand' && `Brand: ${rule.applicableBrands[0] || 'N/A'}`}
+                          {rule.offerType === 'Automatic' && `Min Bill: ₹${rule.minBillAmount}`}
+                          {rule.offerType === 'BuyXGetY' && `Buy ${rule.buyQuantity} Get ${rule.getQuantity}`}
+                          {rule.offerType === 'LoyaltyRule' && `Redeem: ${rule.requiredLoyaltyPoints} points`}
+                        </td>
+                        <td className="p-3.5 font-mono font-bold text-indigo-600">
+                          {rule.discountType === 'Flat' ? `₹${rule.discountValue} OFF` : `${rule.discountValue}% OFF`}
+                        </td>
+                        <td className="p-3.5 font-mono text-[10px]">
+                          <div className="text-slate-600">Start: {new Date(rule.startDate).toLocaleDateString()}</div>
+                          <div className={isExpired ? 'text-red-500 font-bold' : 'text-slate-400'}>
+                            End: {new Date(rule.endDate).toLocaleDateString()} {isExpired && '(Expired)'}
+                          </div>
+                        </td>
+                        <td className="p-3.5">
+                          <button
+                            onClick={() => handleToggleStatus(rule._id, rule.status)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                              rule.status === 'Active' && !isExpired
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                            title="Click to toggle rule status"
+                          >
+                            <Power className="w-3 h-3" />
+                            <span>{rule.status === 'Active' && !isExpired ? 'Active' : 'Inactive'}</span>
+                          </button>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <div className="flex justify-center gap-1.5">
+                            <button
+                              onClick={() => handleDuplicate(rule._id)}
+                              className="p-1 hover:bg-slate-50 text-slate-500 rounded"
+                              title="Duplicate Offer"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleArchive(rule._id)}
+                              className="p-1 hover:bg-amber-50 text-amber-600 rounded"
+                              title="Archive (Soft Delete)"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {rules.length === 0 && (
                     <tr>
-                      <td colSpan="6" className="p-12 text-center text-slate-400 font-bold">
-                        No discount rules configured yet. Create a rule to enable automated checkouts!
+                      <td colSpan="7" className="p-12 text-center text-slate-400 font-bold">
+                        No active discount rules configured yet. Create a rule to enable automatic checkout benefits!
                       </td>
                     </tr>
                   )}
@@ -272,94 +341,6 @@ const DiscountManagementView = ({ onAddNotification }) => {
               </table>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Coupons Tab */}
-      {activeTab === 'coupons' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Coupon Code Registry</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {rules.filter(r => r.offerType === 'Coupon').map((coupon, idx) => (
-              <div key={idx} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/20 space-y-2 relative">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="bg-indigo-600 text-white font-mono text-[10px] font-bold px-2 py-0.5 rounded">
-                      {coupon.couponCode || 'PROMO'}
-                    </span>
-                    <h4 className="font-bold text-slate-800 text-xs mt-1">{coupon.offerName}</h4>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteRule(coupon._id)}
-                    className="p-1 hover:bg-red-50 text-red-500 rounded cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 font-bold">
-                  Offer: {coupon.discountType === 'Flat' ? `₹${coupon.discountValue} OFF` : `${coupon.discountValue}% OFF`} on min bill of ₹{coupon.minBillAmount}
-                </p>
-              </div>
-            ))}
-            {rules.filter(r => r.offerType === 'Coupon').length === 0 && (
-              <div className="col-span-3 p-12 text-center text-slate-400 font-bold">
-                No active coupon codes found. Click "New Discount Rule" to set up a code (e.g. WINTER500).
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Approvals Tab */}
-      {activeTab === 'approvals' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Manual Override Authorization Ledger</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 border-b border-slate-100">
-                  <th className="p-3.5">Requested By</th>
-                  <th className="p-3.5">Cart Subtotal</th>
-                  <th className="p-3.5">Proposed Discount</th>
-                  <th className="p-3.5">Reason</th>
-                  <th className="p-3.5">Status</th>
-                  <th className="p-3.5 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {approvals.map((app, idx) => (
-                  <tr key={idx} className="border-b border-slate-50">
-                    <td className="p-3.5 font-bold text-slate-700">{app.requestedBy}</td>
-                    <td className="p-3.5 font-mono">₹{app.originalBillAmount}</td>
-                    <td className="p-3.5 font-mono text-red-500">-₹{app.requestedDiscount}</td>
-                    <td className="p-3.5 text-slate-400">{app.reason}</td>
-                    <td className="p-3.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        app.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {app.status}
-                      </span>
-                    </td>
-                    <td className="p-3.5 text-center">
-                      {app.status === 'Pending' ? (
-                        <button
-                          onClick={() => {
-                            setSelectedApprovalId(app._id);
-                            setShowPinModal(true);
-                          }}
-                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold cursor-pointer"
-                        >
-                          Approve (PIN)
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-slate-400">Approved by {app.approvedBy}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
@@ -386,20 +367,33 @@ const DiscountManagementView = ({ onAddNotification }) => {
 
       {/* Create Rule Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-slate-600 font-semibold">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 border border-slate-100 shadow-xl overflow-y-auto max-h-[85vh]">
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Configure New Promotion Rule</h3>
             <form onSubmit={handleCreateRule} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Offer Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Festival Flat ₹100 Off"
-                  value={offerName}
-                  onChange={(e) => setOfferName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                />
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Offer Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Festival flat Sarees ₹500 OFF"
+                    value={offerName}
+                    onChange={(e) => setOfferName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Offer Description</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Applicable only on selected brands"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500 outline-none"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -410,8 +404,12 @@ const DiscountManagementView = ({ onAddNotification }) => {
                     onChange={(e) => setOfferType(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800"
                   >
-                    <option value="Automatic">Automatic (Subtotal Trigger)</option>
-                    <option value="Coupon">Coupon Code</option>
+                    <option value="Automatic">Bill Level Automatic (Subtotal)</option>
+                    <option value="Product">Product Discount</option>
+                    <option value="Category">Category Discount</option>
+                    <option value="Brand">Brand Discount</option>
+                    <option value="BuyXGetY">Buy X Get Y (BOGO)</option>
+                    <option value="LoyaltyRule">Loyalty Point Redemption Rule</option>
                   </select>
                 </div>
                 <div>
@@ -420,24 +418,152 @@ const DiscountManagementView = ({ onAddNotification }) => {
                     type="number"
                     value={priority}
                     onChange={(e) => setPriority(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
                   />
                 </div>
               </div>
 
-              {offerType === 'Coupon' && (
+              {/* Conditional parameters based on type */}
+              {offerType === 'Product' && (
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Promo Coupon Code *</label>
+                  <label className="block text-slate-400 font-bold mb-1">Applicable Product ID *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. WINTER500"
-                    value={couponCode}
-                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-mono focus:border-indigo-500 outline-none"
+                    placeholder="Enter database Product ID..."
+                    value={targetProduct}
+                    onChange={(e) => setTargetProduct(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500"
                   />
                 </div>
               )}
+
+              {offerType === 'Category' && (
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Applicable Category *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Shirts, Sarees..."
+                    value={targetCategory}
+                    onChange={(e) => setTargetCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              {offerType === 'Brand' && (
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Applicable Brand *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Levi's, Zara..."
+                    value={targetBrand}
+                    onChange={(e) => setTargetBrand(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              {offerType === 'BuyXGetY' && (
+                <div className="space-y-3 bg-indigo-50/20 p-3 rounded-xl border border-indigo-50">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Buy Product ID *</label>
+                      <input
+                        type="text"
+                        required
+                        value={buyProductId}
+                        onChange={(e) => setBuyProductId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Buy Qty *</label>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={buyQuantity}
+                        onChange={(e) => setBuyQuantity(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Get Product ID *</label>
+                      <input
+                        type="text"
+                        required
+                        value={getProductId}
+                        onChange={(e) => setGetProductId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Free Qty *</label>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={getQuantity}
+                        onChange={(e) => setGetQuantity(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Discount % *</label>
+                      <input
+                        type="number"
+                        max={100}
+                        required
+                        value={getDiscountPercent}
+                        onChange={(e) => setGetDiscountPercent(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {offerType === 'LoyaltyRule' && (
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Required Loyalty Points *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={requiredLoyaltyPoints}
+                    onChange={(e) => setRequiredLoyaltyPoints(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Start Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">End Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
+                  />
+                </div>
+              </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
@@ -446,11 +572,11 @@ const DiscountManagementView = ({ onAddNotification }) => {
                     type="number"
                     value={minBillAmount}
                     onChange={(e) => setMinBillAmount(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-mono focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Tax Type</label>
+                  <label className="block text-slate-400 font-bold mb-1">Value Type</label>
                   <select
                     value={discountType}
                     onChange={(e) => setDiscountType(e.target.value)}
@@ -462,21 +588,35 @@ const DiscountManagementView = ({ onAddNotification }) => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Discount Value *</label>
-                <input
-                  type="number"
-                  required
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 font-mono focus:border-indigo-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Discount Value *</label>
+                  <input
+                    type="number"
+                    required
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Max Discount Limit</label>
+                  <input
+                    type="number"
+                    value={maxDiscount}
+                    onChange={(e) => setMaxDiscount(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
                   className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
                 >
                   Cancel
@@ -486,56 +626,6 @@ const DiscountManagementView = ({ onAddNotification }) => {
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer"
                 >
                   Create Rule
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Supervisor Credentials Override Modal */}
-      {showPinModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Supervisor Override Authorization</h3>
-            <form onSubmit={handleApproveOverride} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Supervisor Username</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter manager username..."
-                  value={supUsername}
-                  onChange={(e) => setSupUsername(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Supervisor Password / PIN</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={supPassword}
-                  onChange={(e) => setSupPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPinModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Authorize Override
                 </button>
               </div>
             </form>

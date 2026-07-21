@@ -12,9 +12,23 @@ const discountRuleSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    description: {
+      type: String,
+    },
     offerType: {
       type: String,
-      enum: ['Automatic', 'Coupon', 'ManualOverride'],
+      enum: [
+        'Automatic',
+        'Coupon',
+        'ManualOverride',
+        'Product',
+        'Category',
+        'Brand',
+        'Quantity',
+        'Combo',
+        'BuyXGetY',
+        'LoyaltyRule'
+      ],
       required: true,
     },
     minBillAmount: {
@@ -45,16 +59,55 @@ const discountRuleSchema = new mongoose.Schema(
     applicableBrands: [{
       type: String,
     }],
+    // Combo specific settings
+    comboProducts: [{
+      productId: String,
+      quantity: Number
+    }],
+    // Buy X Get Y settings
+    buyProductId: {
+      type: String,
+    },
+    buyQuantity: {
+      type: Number,
+      default: 1,
+    },
+    getProductId: {
+      type: String,
+    },
+    getQuantity: {
+      type: Number,
+      default: 1,
+    },
+    getDiscountPercent: {
+      type: Number,
+      default: 100, // 100% means free
+    },
+    // Loyalty settings
+    requiredLoyaltyPoints: {
+      type: Number,
+    },
+    maxRedemption: {
+      type: Number,
+    },
     customerType: {
       type: String,
-      default: 'All', // e.g. 'All', 'Loyalty', 'VIP'
+      default: 'All',
     },
     startDate: {
       type: Date,
+      required: true,
     },
     endDate: {
       type: Date,
+      required: true,
     },
+    applicableStores: [{
+      type: String,
+    }],
+    applicableWarehouses: [{
+      type: String,
+    }],
     priority: {
       type: Number,
       default: 1,
@@ -65,8 +118,11 @@ const discountRuleSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Active', 'Inactive'],
+      enum: ['Active', 'Inactive', 'Archived'],
       default: 'Active',
+    },
+    createdBy: {
+      type: String,
     }
   },
   {

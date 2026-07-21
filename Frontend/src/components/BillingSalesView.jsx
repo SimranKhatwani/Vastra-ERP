@@ -248,24 +248,51 @@ export const BillingSalesView = ({
       taxTotal += gst;
     });
 
-    // Check dynamic rules
-    const eligibleRules = discountRules.filter(r => r.offerType === 'Automatic' && subTotal >= r.minBillAmount);
+    // Check dynamic rules (Status Active + date validity checks)
+    const activeOffers = discountRules.filter(r => {
+      if (r.status !== 'Active') return false;
+      const now = new Date();
+      if (new Date(r.startDate) > now || new Date(r.endDate) < now) return false;
+      return true;
+    });
+
     let autoDiscountAmt = 0;
     let appliedOffer = null;
-    if (eligibleRules.length > 0) {
-      eligibleRules.forEach(r => {
-        let amt = 0;
-        if (r.discountType === 'Flat') {
-          amt = r.discountValue;
-        } else {
-          amt = subTotal * (r.discountValue / 100);
-        }
-        if (amt > autoDiscountAmt) {
-          autoDiscountAmt = amt;
-          appliedOffer = r;
-        }
-      });
-    }
+
+    activeOffers.forEach(r => {
+      let disc = 0;
+      if (r.offerType === 'Automatic' && subTotal >= r.minBillAmount) {
+        disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
+      } else if (r.offerType === 'Product') {
+        cart.forEach(item => {
+          if (r.applicableProducts.includes(item.productId)) {
+            const itemSub = item.price * item.quantity;
+            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          }
+        });
+      } else if (r.offerType === 'Category') {
+        cart.forEach(item => {
+          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+          if (matchedProd && r.applicableCategories.includes(matchedProd.category)) {
+            const itemSub = item.price * item.quantity;
+            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          }
+        });
+      } else if (r.offerType === 'Brand') {
+        cart.forEach(item => {
+          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+          if (matchedProd && r.applicableBrands.includes(matchedProd.brand)) {
+            const itemSub = item.price * item.quantity;
+            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          }
+        });
+      }
+
+      if (disc > autoDiscountAmt) {
+        autoDiscountAmt = disc;
+        appliedOffer = r;
+      }
+    });
 
     const finalCgst = manualCgstTotal !== "" ? manualCgstTotal : Math.round(taxTotal / 2);
     const finalSgst = manualSgstTotal !== "" ? manualSgstTotal : Math.round(taxTotal / 2);
@@ -278,7 +305,7 @@ export const BillingSalesView = ({
       grandTotal: Math.round(grandTotal),
       autoOffer: appliedOffer
     };
-  }, [cart, manualCgstTotal, manualSgstTotal, discountRules]);
+  }, [cart, manualCgstTotal, manualSgstTotal, discountRules, products]);
 
   // Handle manual GST override trigger
   const triggerGstOverride = (idx) => {

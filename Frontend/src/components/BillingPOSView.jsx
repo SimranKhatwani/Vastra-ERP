@@ -62,8 +62,25 @@ export const BillingPOSView = ({
     }
   };
 
+  const [discountRules, setDiscountRules] = useState([]);
+  const fetchActiveRules = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/discounts/rules", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDiscountRules(json.data.filter(r => r.status === "Active"));
+      }
+    } catch (err) {
+      console.error("Failed to load discount rules:", err);
+    }
+  };
+
   React.useEffect(() => {
     fetchTaxConfig();
+    fetchActiveRules();
   }, []);
 
   // Product Configuration Modal state
@@ -849,7 +866,7 @@ export const BillingPOSView = ({
   };
 
   // Calculations
-  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal } = React.useMemo(() => {
+  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, autoOffer } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0;
 
@@ -859,6 +876,63 @@ export const BillingPOSView = ({
 
       subTotal += sub;
       discountTotal += disc;
+    });
+
+    // Evaluate dynamic active discount rules (Status Active + date validity checks)
+    const activeOffers = discountRules.filter(r => {
+      if (r.status !== 'Active') return false;
+      const now = new Date();
+      if (new Date(r.startDate) > now || new Date(r.endDate) < now) return false;
+      return true;
+    });
+
+    let autoDiscountAmt = 0;
+    let appliedOffer = null;
+
+    activeOffers.forEach(r => {
+      let disc = 0;
+      if (r.offerType === 'Automatic' && subTotal >= r.minBillAmount) {
+        disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
+      } else if (r.offerType === 'Product') {
+        cart.forEach(item => {
+          const match = (r.applicableProducts || []).some(p => 
+            p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
+            p.toLowerCase().trim() === (item.name || '').toLowerCase().trim() ||
+            p.toLowerCase().trim() === (item.sku || '').toLowerCase().trim()
+          );
+          if (match) {
+            const itemSub = item.price * item.quantity;
+            disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+          }
+        });
+      } else if (r.offerType === 'Category') {
+        cart.forEach(item => {
+          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+          if (matchedProd && matchedProd.category) {
+            const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
+            if (match) {
+              const itemSub = item.price * item.quantity;
+              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+            }
+          }
+        });
+      } else if (r.offerType === 'Brand') {
+        cart.forEach(item => {
+          const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
+          if (matchedProd && matchedProd.brand) {
+            const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
+            if (match) {
+              const itemSub = item.price * item.quantity;
+              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
+            }
+          }
+        });
+      }
+
+      if (disc > autoDiscountAmt) {
+        autoDiscountAmt = disc;
+        appliedOffer = r;
+      }
     });
 
     // Handle flat discount & coupon code
@@ -871,7 +945,7 @@ export const BillingPOSView = ({
       couponDiscount = Math.floor(subTotal * 0.15);
     }
 
-    const totalDiscount = discountTotal + flatDiscount + couponDiscount;
+    const totalDiscount = discountTotal + flatDiscount + couponDiscount + autoDiscountAmt;
     const taxable = Math.max(0, subTotal - totalDiscount);
 
     // Apply default CGST + SGST config dynamically
@@ -885,8 +959,9 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal,
       grandTotal,
+      autoOffer: appliedOffer
     };
-  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate]);
+  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate, discountRules, products]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1681,20 +1756,28 @@ export const BillingPOSView = ({
               </div>
 
               {/* Tax / Total breakdown */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
-                <div className="flex justify-between text-slate-500 mb-1">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-2">
+                <div className="flex justify-between text-slate-500">
                   <span>Subtotal Items</span>
                   <span className="font-mono font-semibold">₹{subTotal.toLocaleString()}</span>
                 </div>
+                {autoOffer && (
+                  <div className="flex justify-between items-center font-bold text-emerald-600 bg-emerald-50 px-2 py-1.5 rounded-lg border border-emerald-100/60">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      <span>Offer: {autoOffer.offerName}</span>
+                    </span>
+                  </div>
+                )}
                 {discountTotal > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-semibold mb-1">
+                  <div className="flex justify-between text-emerald-600 font-semibold">
                     <span>Coupons & Markdowns</span>
                     <span className="font-mono">
                       -₹{discountTotal.toLocaleString()}
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between text-slate-500 pb-2 border-b border-slate-200/60 mb-2">
+                <div className="flex justify-between text-slate-500 pb-2 border-b border-slate-200/60">
                   <span>CGST ({cgstRate}%) + SGST ({sgstRate}%)</span>
                   <span className="font-mono font-semibold">₹{gstTotal.toLocaleString()}</span>
                 </div>
