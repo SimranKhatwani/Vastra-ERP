@@ -126,8 +126,25 @@ export const BillingSalesView = ({
     }
   };
 
+  const [discountRules, setDiscountRules] = useState([]);
+  const fetchActiveRules = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/discounts/rules", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDiscountRules(json.data.filter(r => r.status === "Active"));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchTaxConfig();
+    fetchActiveRules();
   }, []);
 
   // Keyboard Shortcuts Hook
@@ -215,7 +232,7 @@ export const BillingSalesView = ({
   };
 
   // Calculate Subtotals & Taxes
-  const { subTotal, discountTotal, taxTotal, grandTotal } = React.useMemo(() => {
+  const { subTotal, discountTotal, taxTotal, grandTotal, autoOffer } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0;
     let taxTotal = 0;
@@ -231,17 +248,37 @@ export const BillingSalesView = ({
       taxTotal += gst;
     });
 
+    // Check dynamic rules
+    const eligibleRules = discountRules.filter(r => r.offerType === 'Automatic' && subTotal >= r.minBillAmount);
+    let autoDiscountAmt = 0;
+    let appliedOffer = null;
+    if (eligibleRules.length > 0) {
+      eligibleRules.forEach(r => {
+        let amt = 0;
+        if (r.discountType === 'Flat') {
+          amt = r.discountValue;
+        } else {
+          amt = subTotal * (r.discountValue / 100);
+        }
+        if (amt > autoDiscountAmt) {
+          autoDiscountAmt = amt;
+          appliedOffer = r;
+        }
+      });
+    }
+
     const finalCgst = manualCgstTotal !== "" ? manualCgstTotal : Math.round(taxTotal / 2);
     const finalSgst = manualSgstTotal !== "" ? manualSgstTotal : Math.round(taxTotal / 2);
 
-    const grandTotal = subTotal - discountTotal + finalCgst + finalSgst;
+    const grandTotal = subTotal - discountTotal - autoDiscountAmt + finalCgst + finalSgst;
     return {
       subTotal,
-      discountTotal,
+      discountTotal: discountTotal + autoDiscountAmt,
       taxTotal: finalCgst + finalSgst,
-      grandTotal: Math.round(grandTotal)
+      grandTotal: Math.round(grandTotal),
+      autoOffer: appliedOffer
     };
-  }, [cart, manualCgstTotal, manualSgstTotal]);
+  }, [cart, manualCgstTotal, manualSgstTotal, discountRules]);
 
   // Handle manual GST override trigger
   const triggerGstOverride = (idx) => {
@@ -1024,6 +1061,15 @@ export const BillingSalesView = ({
                 <span>Subtotal Items</span>
                 <span className="font-mono">₹{subTotal.toLocaleString()}</span>
               </div>
+              {autoOffer && (
+                <div className="flex justify-between items-center font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100/60">
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span>Offer: {autoOffer.offerName}</span>
+                  </span>
+                  <span className="font-mono">-₹{(discountTotal - cart.reduce((acc, c) => acc + (c.price * c.quantity * (c.discount / 100)), 0)).toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center font-bold text-slate-600">
                 <span>Total CGST</span>
                 <input
