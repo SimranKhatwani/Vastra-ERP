@@ -29,7 +29,6 @@ const purchaseInvoiceSchema = new mongoose.Schema(
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Vendor',
-      required: true,
     },
     vendorName: {
       type: String,

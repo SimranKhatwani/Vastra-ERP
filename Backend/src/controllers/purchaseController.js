@@ -142,21 +142,39 @@ exports.createPurchaseInvoice = async (req, res) => {
   session.startTransaction();
   try {
     const tenantId = req.user.tenantId;
-    const { vendorId, invoiceNo, invoiceDate, dueDate, referenceNo, items, subTotal, cgst, sgst, igst, discount, freight, otherCharges, grandTotal, paymentTerms, amountPaid, remarks } = req.body;
+    const { vendorId, vendorName, invoiceNo, invoiceDate, dueDate, referenceNo, items, subTotal, cgst, sgst, igst, discount, freight, otherCharges, grandTotal, paymentTerms, amountPaid, remarks } = req.body;
 
-    const vendor = await Vendor.findOne({ _id: vendorId, tenantId }).session(session);
-    if (!vendor) {
+    let finalVendorId = null;
+    let finalVendorName = vendorName || '';
+
+    if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) {
+      const vendor = await Vendor.findOne({ _id: vendorId, tenantId }).session(session);
+      if (vendor) {
+        finalVendorId = vendor._id;
+        finalVendorName = vendor.name;
+
+        // Update registered vendor outstanding balance
+        const outstanding = Math.max(0, grandTotal - (Number(amountPaid) || 0));
+        vendor.currentOutstanding = (vendor.currentOutstanding || 0) + outstanding;
+        if (invoiceDate) {
+          vendor.lastPurchaseDate = invoiceDate;
+        }
+        await vendor.save({ session });
+      }
+    }
+
+    if (!finalVendorName) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ success: false, message: 'Vendor not found' });
+      return res.status(400).json({ success: false, message: 'Vendor name is required' });
     }
 
     const payAmt = Number(amountPaid) || 0;
     const invoice = new PurchaseInvoice({
       tenantId,
       invoiceNo,
-      vendorId,
-      vendorName: vendor.name,
+      vendorId: finalVendorId,
+      vendorName: finalVendorName,
       invoiceDate,
       dueDate,
       referenceNo,
@@ -176,28 +194,23 @@ exports.createPurchaseInvoice = async (req, res) => {
 
     await invoice.save({ session });
 
-    // Update vendor outstanding balance
-    const outstanding = Math.max(0, grandTotal - payAmt);
-    vendor.currentOutstanding = (vendor.currentOutstanding || 0) + outstanding;
-    if (invoiceDate) {
-      vendor.lastPurchaseDate = invoiceDate;
+    // Create VendorOutstanding document if registered vendor exists
+    if (finalVendorId) {
+      const outstanding = Math.max(0, grandTotal - payAmt);
+      await VendorOutstanding.create([{
+        tenantId,
+        vendorId: finalVendorId,
+        purchaseInvoiceId: invoice._id,
+        invoiceNo: invoice.invoiceNo,
+        invoiceDate: invoice.invoiceDate || new Date(),
+        billAmount: invoice.grandTotal,
+        amountPaid: payAmt,
+        outstandingAmount: outstanding,
+        dueDate: invoice.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        paymentStatus: outstanding === 0 ? 'Paid' : (payAmt > 0 ? 'Partial' : 'Unpaid'),
+        remarks: invoice.remarks
+      }], { session });
     }
-    await vendor.save({ session });
-
-    // Create VendorOutstanding document
-    await VendorOutstanding.create([{
-      tenantId,
-      vendorId: vendor._id,
-      purchaseInvoiceId: invoice._id,
-      invoiceNo: invoice.invoiceNo,
-      invoiceDate: invoice.invoiceDate || new Date(),
-      billAmount: invoice.grandTotal,
-      amountPaid: payAmt,
-      outstandingAmount: outstanding,
-      dueDate: invoice.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      paymentStatus: outstanding === 0 ? 'Paid' : (payAmt > 0 ? 'Partial' : 'Unpaid'),
-      remarks: invoice.remarks
-    }], { session });
 
     await logAudit(tenantId, 'Invoice Saved', `Purchase invoice ${invoice.invoiceNo} registered for ₹${grandTotal}.`, req.user.name || 'System');
     await session.commitTransaction();

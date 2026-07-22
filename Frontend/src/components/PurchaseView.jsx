@@ -501,7 +501,8 @@ const PurchaseInvoiceManager = ({ purchaseInvoices, setPurchaseInvoices, vendors
   const [filterStatus, setFilterStatus] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [form, setForm] = useState({ vendorId: "", invoiceNo: "", invoiceDate: new Date().toISOString().split("T")[0], dueDate: "", referenceNo: "", subTotal: 0, cgst: 0, sgst: 0, igst: 0, discount: 0, freight: 0, otherCharges: 0, grandTotal: 0, paymentTerms: "Net 30", amountPaid: 0, remarks: "", items: [] });
+  const [isCustomVendor, setIsCustomVendor] = useState(false);
+  const [form, setForm] = useState({ vendorId: "", vendorName: "", invoiceNo: "", invoiceDate: new Date().toISOString().split("T")[0], dueDate: "", referenceNo: "", subTotal: 0, cgst: 0, sgst: 0, igst: 0, discount: 0, freight: 0, otherCharges: 0, grandTotal: 0, paymentTerms: "Net 30", amountPaid: 0, remarks: "", items: [] });
   const [invItems, setInvItems] = useState([{ productId: "", name: "", sku: "", quantity: 1, price: 0, taxPercent: 12, total: 0 }]);
 
   const filtered = useMemo(() => purchaseInvoices.filter(inv => {
@@ -528,7 +529,8 @@ const PurchaseInvoiceManager = ({ purchaseInvoices, setPurchaseInvoices, vendors
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.vendorId || !form.invoiceNo) { onAddNotification("Validation", "Vendor and Invoice No are required.", "warning"); return; }
+    const hasVendor = form.vendorId || (form.vendorName && form.vendorName.trim());
+    if (!hasVendor || !form.invoiceNo) { onAddNotification("Validation", "Vendor Name and Invoice No are required.", "warning"); return; }
     setIsLoading(true);
     const sub = invItems.reduce((s, it) => s + (it.price || 0) * (it.quantity || 0), 0);
     const grand = sub + (form.freight || 0) + (form.otherCharges || 0) + (form.cgst || 0) + (form.sgst || 0) + (form.igst || 0) - (form.discount || 0);
@@ -607,10 +609,57 @@ const PurchaseInvoiceManager = ({ purchaseInvoices, setPurchaseInvoices, vendors
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
               <InputRow label="Vendor" required>
-                <select required className={inputClass} value={form.vendorId} onChange={e => setForm(p => ({...p, vendorId: e.target.value}))}>
-                  <option value="">Select Vendor...</option>
-                  {vendors.filter(v => v.isActive).map(v => <option key={v._id} value={v._id}>{v.name}</option>)}
-                </select>
+                {!isCustomVendor ? (
+                  <select
+                    required={!isCustomVendor}
+                    className={inputClass}
+                    value={form.vendorId}
+                    onChange={(e) => {
+                      if (e.target.value === "__MANUAL__") {
+                        setIsCustomVendor(true);
+                        setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
+                      } else {
+                        const selected = vendors.find((v) => v._id === e.target.value);
+                        setForm((p) => ({
+                          ...p,
+                          vendorId: e.target.value,
+                          vendorName: selected ? selected.name : "",
+                        }));
+                      }
+                    }}
+                  >
+                    <option value="">Select Vendor...</option>
+                    {vendors.filter((v) => v.isActive).map((v) => (
+                      <option key={v._id} value={v._id}>
+                        {v.name}
+                      </option>
+                    ))}
+                    <option value="__MANUAL__">✏️ Enter Custom Vendor Name...</option>
+                  </select>
+                ) : (
+                  <div className="flex gap-1 w-full">
+                    <input
+                      required
+                      className={inputClass}
+                      placeholder="Enter vendor name manually..."
+                      value={form.vendorName}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, vendorId: "", vendorName: e.target.value }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomVendor(false);
+                        setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
+                      }}
+                      className="px-2 py-1 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 whitespace-nowrap cursor-pointer"
+                      title="Switch back to vendor list"
+                    >
+                      List
+                    </button>
+                  </div>
+                )}
               </InputRow>
               <InputRow label="Invoice No" required><input required className={inputClass} value={form.invoiceNo} onChange={e => setForm(p => ({...p, invoiceNo: e.target.value}))} /></InputRow>
               <InputRow label="Reference No"><input className={inputClass} value={form.referenceNo} onChange={e => setForm(p => ({...p, referenceNo: e.target.value}))} /></InputRow>
