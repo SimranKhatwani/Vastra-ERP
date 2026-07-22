@@ -1,0 +1,1467 @@
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  CreditCard,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownRight,
+  BookOpen,
+  Receipt as ReceiptIcon,
+  PieChart,
+  Calendar,
+  Search,
+  Filter,
+  Download,
+  Printer,
+  Plus,
+  Trash2,
+  Edit,
+  Eye,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  FileText,
+  Building,
+  User,
+  RefreshCw,
+  X,
+  Share2,
+  MessageSquare,
+  Mail,
+  Lock,
+} from "lucide-react";
+
+const API = "http://localhost:5000/api/financial";
+const getToken = () => localStorage.getItem("token");
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
+const fmtDate = (d) =>
+  d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+const Badge = ({ label, color = "slate" }) => {
+  const map = {
+    green: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    purple: "bg-purple-50 text-purple-700 border-purple-200",
+    slate: "bg-slate-100 text-slate-600 border-slate-200",
+    indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${map[color] || map.slate}`}>
+      {label}
+    </span>
+  );
+};
+
+const KPICard = ({ icon: Icon, label, value, sub, color = "indigo", trend }) => (
+  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-start gap-3 hover:shadow-md transition-all">
+    <div className={`p-3 rounded-xl bg-${color}-50 shrink-0`}>
+      <Icon className={`w-5 h-5 text-${color}-600`} />
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">{label}</p>
+      <p className="text-lg font-black text-slate-800 mt-0.5 truncate">{value}</p>
+      {sub && <p className="text-[11px] text-slate-500 mt-0.5 truncate">{sub}</p>}
+    </div>
+    {trend !== undefined && (
+      <div className={`flex items-center gap-0.5 text-xs font-bold ${trend >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+        {trend >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+        {Math.abs(trend)}%
+      </div>
+    )}
+  </div>
+);
+
+const Modal = ({ title, onClose, children, wide = false }) => (
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+    <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 w-full ${wide ? "max-w-4xl" : "max-w-lg"} max-h-[90vh] flex flex-col`}>
+      <div className="flex items-center justify-between p-4 border-b border-slate-100">
+        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">{title}</h3>
+        <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="overflow-y-auto flex-1 p-5 text-xs">{children}</div>
+    </div>
+  </div>
+);
+
+const InputRow = ({ label, children, required }) => (
+  <div className="flex flex-col gap-1">
+    <label className="text-[10px] uppercase font-bold text-slate-500">
+      {label}
+      {required && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const inputClass = "w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none transition-all bg-white";
+
+export const FinancialView = ({ mode = "financial", onAddNotification, currentUser = {} }) => {
+  // Tabs for Module 1: Financial Management
+  const financialTabs = useMemo(() => [
+    { id: "dashboard", label: "Financial Summary Dashboard", icon: BarChart3 },
+    { id: "customer-ledger", label: "Customer Ledger", icon: User },
+    { id: "vendor-ledger", label: "Vendor Ledger", icon: Building },
+    { id: "profit-loss", label: "Profit & Loss Reports", icon: PieChart },
+    { id: "incomes", label: "Income Management", icon: ArrowUpRight },
+  ], []);
+
+  // Tabs for Module 2: Accounts & Treasury Management
+  const accountsTabs = useMemo(() => [
+    { id: "cash-book", label: "Cash Book", icon: Wallet },
+    { id: "bank-book", label: "Bank Book", icon: CreditCard },
+    { id: "expenses", label: "Expense Management", icon: ArrowDownRight },
+    { id: "payments", label: "Payment Tracking", icon: DollarSign },
+    { id: "receipts", label: "Receipt Management", icon: ReceiptIcon },
+  ], []);
+
+  const currentTabs = mode === "accounts" ? accountsTabs : financialTabs;
+
+  const [activeTab, setActiveTab] = useState(() => (mode === "accounts" ? "cash-book" : "dashboard"));
+
+  useEffect(() => {
+    if (!currentTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(currentTabs[0].id);
+    }
+  }, [mode, currentTabs]);
+
+  // Global State for all tabs
+  const [summary, setSummary] = useState(null);
+  const [customerLedgers, setCustomerLedgers] = useState([]);
+  const [vendorLedgers, setVendorLedgers] = useState([]);
+  const [cashBook, setCashBook] = useState({ summary: {}, data: [] });
+  const [bankBook, setBankBook] = useState({ summary: {}, data: [] });
+  const [expenses, setExpenses] = useState([]);
+  const [incomes, setIncomes] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [profitLoss, setProfitLoss] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Modals & Form States
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showIncomeModal, setShowIncomeModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showCashBankModal, setShowCashBankModal] = useState(false);
+  const [viewingReceipt, setViewingReceipt] = useState(null);
+
+  // Forms
+  const [expenseForm, setExpenseForm] = useState({
+    category: "Miscellaneous",
+    amount: "",
+    gst: 0,
+    date: new Date().toISOString().split("T")[0],
+    description: "",
+    paymentMethod: "Cash",
+    vendorName: "",
+    referenceNo: "",
+    bankAccountName: "",
+    remarks: "",
+  });
+
+  const [incomeForm, setIncomeForm] = useState({
+    source: "Other Income",
+    amount: "",
+    date: new Date().toISOString().split("T")[0],
+    paymentMode: "Cash",
+    customerName: "",
+    description: "",
+  });
+
+  const [paymentForm, setPaymentForm] = useState({
+    beneficiaryType: "Vendor",
+    beneficiaryName: "",
+    category: "Vendor Payment",
+    amount: "",
+    paymentMode: "Cash",
+    referenceNo: "",
+    bankAccountName: "",
+    status: "Completed",
+    remarks: "",
+  });
+
+  const [receiptForm, setReceiptForm] = useState({
+    customerName: "",
+    invoiceRef: "",
+    amount: "",
+    date: new Date().toISOString().split("T")[0],
+    paymentMode: "Cash",
+    bankAccountName: "",
+    referenceNo: "",
+    remarks: "",
+  });
+
+  const [cashBankForm, setCashBankForm] = useState({
+    type: "Cash",
+    direction: "In",
+    source: "Opening Balance",
+    bankAccountName: "HDFC Main Store Account",
+    amount: "",
+    remarks: "",
+  });
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
+
+  // ---------------------------------------------------------------------------
+  // Data Loaders
+  // ---------------------------------------------------------------------------
+  const loadDashboard = async () => {
+    try {
+      const res = await fetch(`${API}/dashboard`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setSummary(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadCustomerLedgers = async () => {
+    try {
+      const res = await fetch(`${API}/customer-ledger`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setCustomerLedgers(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadVendorLedgers = async () => {
+    try {
+      const res = await fetch(`${API}/vendor-ledger`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setVendorLedgers(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadCashBook = async () => {
+    try {
+      const res = await fetch(`${API}/cash-book`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setCashBook(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadBankBook = async () => {
+    try {
+      const res = await fetch(`${API}/bank-book`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setBankBook(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadExpenses = async () => {
+    try {
+      const res = await fetch(`${API}/expenses`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setExpenses(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadIncomes = async () => {
+    try {
+      const res = await fetch(`${API}/incomes`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setIncomes(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadPayments = async () => {
+    try {
+      const res = await fetch(`${API}/payments`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setPayments(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadReceipts = async () => {
+    try {
+      const res = await fetch(`${API}/receipts`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setReceipts(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadProfitLoss = async () => {
+    try {
+      const query = dateFilter.start && dateFilter.end ? `?startDate=${dateFilter.start}&endDate=${dateFilter.end}` : "";
+      const res = await fetch(`${API}/profit-loss${query}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setProfitLoss(data.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const refreshAll = async () => {
+    setLoading(true);
+    await Promise.all([
+      loadDashboard(),
+      loadCustomerLedgers(),
+      loadVendorLedgers(),
+      loadCashBook(),
+      loadBankBook(),
+      loadExpenses(),
+      loadIncomes(),
+      loadPayments(),
+      loadReceipts(),
+      loadProfitLoss(),
+    ]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    refreshAll();
+  }, []);
+
+  // Submit Handlers
+  const handleExpenseSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API}/expenses`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(expenseForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification?.("Expense Added", `Expense of ₹${fmt(expenseForm.amount)} recorded.`, "success");
+        setShowExpenseModal(false);
+        refreshAll();
+      } else {
+        onAddNotification?.("Error", data.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification?.("Error", err.message, "danger");
+    }
+  };
+
+  const handleIncomeSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API}/incomes`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(incomeForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification?.("Income Logged", `Income of ₹${fmt(incomeForm.amount)} added.`, "success");
+        setShowIncomeModal(false);
+        refreshAll();
+      } else {
+        onAddNotification?.("Error", data.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification?.("Error", err.message, "danger");
+    }
+  };
+
+  const handlePaymentSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API}/payments`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(paymentForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification?.("Payment Disbursed", `Payment of ₹${fmt(paymentForm.amount)} logged.`, "success");
+        setShowPaymentModal(false);
+        refreshAll();
+      } else {
+        onAddNotification?.("Error", data.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification?.("Error", err.message, "danger");
+    }
+  };
+
+  const handleReceiptSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API}/receipts`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(receiptForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification?.("Receipt Issued", `Receipt ${data.data.receiptNo} created for ₹${fmt(receiptForm.amount)}.`, "success");
+        setShowReceiptModal(false);
+        refreshAll();
+      } else {
+        onAddNotification?.("Error", data.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification?.("Error", err.message, "danger");
+    }
+  };
+
+  const handleCashBankSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API}/cash-bank-adjustment`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(cashBankForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onAddNotification?.("Adjustment Saved", `${cashBankForm.type} adjustment of ₹${fmt(cashBankForm.amount)} recorded.`, "success");
+        setShowCashBankModal(false);
+        refreshAll();
+      } else {
+        onAddNotification?.("Error", data.message, "danger");
+      }
+    } catch (err) {
+      onAddNotification?.("Error", err.message, "danger");
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in pb-12" id="financial-management-root">
+      {/* Top Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-800">
+            {mode === "accounts" ? "Accounts & Treasury Management" : "Financial Management"}
+          </h2>
+          <p className="text-xs text-slate-400">
+            {mode === "accounts"
+              ? "Focuses on daily money movement, cash & bank bookkeeping, expenses, payments & receipts."
+              : "Focuses on the financial health of the business, ledgers, income, and profit & loss intelligence."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={refreshAll}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+          <button
+            onClick={() => setShowCashBankModal(true)}
+            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3.5 py-2 rounded-xl hover:bg-indigo-100 transition-colors cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Cash/Bank Adjustment
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl overflow-x-auto">
+        {currentTabs.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                activeTab === t.id
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1. FINANCIAL SUMMARY DASHBOARD */}
+      {/* ========================================================================= */}
+      {activeTab === "dashboard" && (
+        <div className="space-y-4">
+          {/* KPI Cards Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KPICard icon={DollarSign} label="Today's Sales" value={`₹${fmt(summary?.kpis?.todaySales)}`} color="indigo" />
+            <KPICard icon={CreditCard} label="Today's Purchase" value={`₹${fmt(summary?.kpis?.todayPurchase)}`} color="blue" />
+            <KPICard icon={ArrowUpRight} label="Total Income (Month)" value={`₹${fmt(summary?.kpis?.totalIncome)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Expenses" value={`₹${fmt(summary?.kpis?.totalExpenses)}`} color="red" />
+            <KPICard icon={TrendingUp} label="Net Profit (Month)" value={`₹${fmt(summary?.kpis?.netProfit)}`} color="emerald" />
+            <KPICard icon={Wallet} label="Cash Balance" value={`₹${fmt(summary?.kpis?.cashBalance)}`} color="amber" />
+            <KPICard icon={CreditCard} label="Bank Balance" value={`₹${fmt(summary?.kpis?.bankBalance)}`} color="indigo" />
+            <KPICard icon={AlertTriangle} label="Receivables" value={`₹${fmt(summary?.kpis?.outstandingReceivables)}`} color="red" />
+          </div>
+
+          {/* Quick Actions & Recent Activities */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quick Actions</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setShowExpenseModal(true)}
+                  className="flex flex-col items-center justify-center p-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-colors font-bold text-xs gap-1"
+                >
+                  <ArrowDownRight className="w-5 h-5" /> Add Expense
+                </button>
+                <button
+                  onClick={() => setShowIncomeModal(true)}
+                  className="flex flex-col items-center justify-center p-3 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors font-bold text-xs gap-1"
+                >
+                  <ArrowUpRight className="w-5 h-5" /> Add Income
+                </button>
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  className="flex flex-col items-center justify-center p-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-bold text-xs gap-1"
+                >
+                  <DollarSign className="w-5 h-5" /> Record Payment
+                </button>
+                <button
+                  onClick={() => setShowReceiptModal(true)}
+                  className="flex flex-col items-center justify-center p-3 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors font-bold text-xs gap-1"
+                >
+                  <ReceiptIcon className="w-5 h-5" /> Issue Receipt
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 lg:col-span-2 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Recent Sales & Receipts</h4>
+              <div className="space-y-2">
+                {(summary?.recent?.sales || []).slice(0, 4).map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 text-xs">
+                    <div>
+                      <p className="font-bold text-slate-800">{s.invoiceNo} — {s.customerName}</p>
+                      <p className="text-[10px] text-slate-400">{fmtDate(s.date)} · {s.paymentMethod}</p>
+                    </div>
+                    <p className="font-mono font-bold text-emerald-600">₹{fmt(s.grandTotal)}</p>
+                  </div>
+                ))}
+                {!summary?.recent?.sales?.length && (
+                  <p className="text-xs text-slate-400 text-center py-4">No recent sales records.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. CUSTOMER LEDGER */}
+      {/* ========================================================================= */}
+      {activeTab === "customer-ledger" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by customer name/phone..."
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-indigo-400 outline-none"
+              />
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl hover:bg-slate-200"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Statement
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {customerLedgers
+              .filter(
+                (l) =>
+                  !searchQuery ||
+                  l.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  l.customer?.phone?.includes(searchQuery)
+              )
+              .map((leg, idx) => (
+                <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+                  <div className="bg-slate-800 text-white p-3.5 flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm">{leg.customer?.name}</h4>
+                      <p className="text-[10px] text-slate-400">Phone: {leg.customer?.phone || "—"} | Email: {leg.customer?.email || "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold">Outstanding</p>
+                      <p className="font-mono font-black text-amber-400 text-sm">₹{fmt(leg.closingBalance)}</p>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                        <th className="p-3">Date</th>
+                        <th className="p-3">Type</th>
+                        <th className="p-3">Ref No</th>
+                        <th className="p-3 text-right font-mono">Debit (₹)</th>
+                        <th className="p-3 text-right font-mono">Credit (₹)</th>
+                        <th className="p-3 text-right font-mono">Running Balance (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                      {leg.entries.map((entry, eIdx) => (
+                        <tr key={eIdx} className="hover:bg-slate-50/50">
+                          <td className="p-3 text-slate-500">{fmtDate(entry.date)}</td>
+                          <td className="p-3">
+                            <Badge label={entry.type} color={entry.type === "Invoice" ? "indigo" : "green"} />
+                          </td>
+                          <td className="p-3 font-mono font-bold">{entry.refNo}</td>
+                          <td className="p-3 text-right font-mono text-slate-800">{entry.debit ? `₹${fmt(entry.debit)}` : "—"}</td>
+                          <td className="p-3 text-right font-mono text-emerald-600">{entry.credit ? `₹${fmt(entry.credit)}` : "—"}</td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(entry.runningBalance)}</td>
+                        </tr>
+                      ))}
+                      {!leg.entries?.length && (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400">No financial transactions logged for this customer.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            {!customerLedgers.length && (
+              <div className="bg-white rounded-2xl p-12 text-center text-slate-400 text-xs border border-slate-100">
+                No customer ledger accounts found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. VENDOR LEDGER */}
+      {/* ========================================================================= */}
+      {activeTab === "vendor-ledger" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by vendor name/GSTIN..."
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-indigo-400 outline-none"
+              />
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl hover:bg-slate-200"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Statement
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {vendorLedgers
+              .filter(
+                (l) =>
+                  !searchQuery ||
+                  l.vendor?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  l.vendor?.phone?.includes(searchQuery)
+              )
+              .map((leg, idx) => (
+                <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+                  <div className="bg-slate-800 text-white p-3.5 flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm">{leg.vendor?.name}</h4>
+                      <p className="text-[10px] text-slate-400">Phone: {leg.vendor?.phone || "—"} | GSTIN: {leg.vendor?.gstin || "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold">Current Payable</p>
+                      <p className="font-mono font-black text-red-400 text-sm">₹{fmt(leg.closingBalance)}</p>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                        <th className="p-3">Date</th>
+                        <th className="p-3">Type</th>
+                        <th className="p-3">Ref No</th>
+                        <th className="p-3 text-right font-mono">Credit (Bill Amt)</th>
+                        <th className="p-3 text-right font-mono">Debit (Paid)</th>
+                        <th className="p-3 text-right font-mono">Running Balance (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                      {leg.entries.map((entry, eIdx) => (
+                        <tr key={eIdx} className="hover:bg-slate-50/50">
+                          <td className="p-3 text-slate-500">{fmtDate(entry.date)}</td>
+                          <td className="p-3">
+                            <Badge label={entry.type} color={entry.type.includes("Invoice") ? "red" : "green"} />
+                          </td>
+                          <td className="p-3 font-mono font-bold">{entry.refNo}</td>
+                          <td className="p-3 text-right font-mono text-red-600">{entry.credit ? `₹${fmt(entry.credit)}` : "—"}</td>
+                          <td className="p-3 text-right font-mono text-emerald-600">{entry.debit ? `₹${fmt(entry.debit)}` : "—"}</td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(entry.runningBalance)}</td>
+                        </tr>
+                      ))}
+                      {!leg.entries?.length && (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400">No purchase or payment history logged.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            {!vendorLedgers.length && (
+              <div className="bg-white rounded-2xl p-12 text-center text-slate-400 text-xs border border-slate-100">
+                No vendor ledger accounts found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. CASH BOOK */}
+      {/* ========================================================================= */}
+      {activeTab === "cash-book" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <KPICard icon={ArrowUpRight} label="Total Cash In" value={`₹${fmt(cashBook?.summary?.totalCashIn)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Cash Out" value={`₹${fmt(cashBook?.summary?.totalCashOut)}`} color="red" />
+            <KPICard icon={Wallet} label="Net Cash Balance" value={`₹${fmt(cashBook?.summary?.closingBalance)}`} color="amber" />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h4 className="font-bold text-slate-700 uppercase tracking-wider">Cash Book Log</h4>
+              <button onClick={() => setShowCashBankModal(true)} className="text-xs font-bold text-indigo-600 hover:underline">
+                + Add Cash Entry
+              </button>
+            </div>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Ref No</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3">Description</th>
+                  <th className="p-3 text-right font-mono">Cash In (₹)</th>
+                  <th className="p-3 text-right font-mono">Cash Out (₹)</th>
+                  <th className="p-3 text-right font-mono">Closing Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {(cashBook?.data || []).map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                    <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
+                    <td className="p-3"><Badge label={row.category} color="indigo" /></td>
+                    <td className="p-3 text-slate-600">{row.description}</td>
+                    <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Cash In" ? `₹${fmt(row.amount)}` : "—"}</td>
+                    <td className="p-3 text-right font-mono text-red-600">{row.type === "Cash Out" ? `₹${fmt(row.amount)}` : "—"}</td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
+                  </tr>
+                ))}
+                {!cashBook?.data?.length && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">No cash transactions logged.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. BANK BOOK */}
+      {/* ========================================================================= */}
+      {activeTab === "bank-book" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <KPICard icon={ArrowUpRight} label="Total Deposits" value={`₹${fmt(bankBook?.summary?.totalDeposits)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Withdrawals" value={`₹${fmt(bankBook?.summary?.totalWithdrawals)}`} color="red" />
+            <KPICard icon={CreditCard} label="Bank Balance" value={`₹${fmt(bankBook?.summary?.closingBalance)}`} color="blue" />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h4 className="font-bold text-slate-700 uppercase tracking-wider">Bank Book Log</h4>
+              <button onClick={() => setShowCashBankModal(true)} className="text-xs font-bold text-indigo-600 hover:underline">
+                + Add Bank Entry
+              </button>
+            </div>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Ref No</th>
+                  <th className="p-3">Bank Account</th>
+                  <th className="p-3">Mode</th>
+                  <th className="p-3">Party / Remarks</th>
+                  <th className="p-3 text-right font-mono">Deposit (₹)</th>
+                  <th className="p-3 text-right font-mono">Withdrawal (₹)</th>
+                  <th className="p-3 text-right font-mono">Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {(bankBook?.data || []).map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                    <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
+                    <td className="p-3 text-slate-600 font-semibold">{row.bankAccountName}</td>
+                    <td className="p-3"><Badge label={row.mode} color="blue" /></td>
+                    <td className="p-3 text-slate-600">{row.party} — {row.remarks}</td>
+                    <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Deposit" ? `₹${fmt(row.amount)}` : "—"}</td>
+                    <td className="p-3 text-right font-mono text-red-600">{row.type === "Withdrawal" ? `₹${fmt(row.amount)}` : "—"}</td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
+                  </tr>
+                ))}
+                {!bankBook?.data?.length && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-400">No bank transactions logged.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. EXPENSE MANAGEMENT */}
+      {/* ========================================================================= */}
+      {activeTab === "expenses" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase text-slate-700">Business Expenses Log</h4>
+            <button
+              onClick={() => setShowExpenseModal(true)}
+              className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-red-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Expense
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Expense No</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3">Vendor / Payee</th>
+                  <th className="p-3">Payment Mode</th>
+                  <th className="p-3 text-right font-mono">GST (₹)</th>
+                  <th className="p-3 text-right font-mono">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {expenses.map((exp, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-mono font-bold text-red-600">{exp.expenseNo || "—"}</td>
+                    <td className="p-3 text-slate-500">{fmtDate(exp.date)}</td>
+                    <td className="p-3"><Badge label={exp.category} color="indigo" /></td>
+                    <td className="p-3 font-bold text-slate-800">{exp.vendorName || "General"}</td>
+                    <td className="p-3">{exp.paymentMethod}</td>
+                    <td className="p-3 text-right font-mono">₹{fmt(exp.gst)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-red-600">₹{fmt(exp.amount)}</td>
+                  </tr>
+                ))}
+                {!expenses.length && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">No expenses recorded yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. INCOME MANAGEMENT */}
+      {/* ========================================================================= */}
+      {activeTab === "incomes" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase text-slate-700">Income Log</h4>
+            <button
+              onClick={() => setShowIncomeModal(true)}
+              className="flex items-center gap-1.5 bg-green-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-green-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Log Income
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Income No</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Source</th>
+                  <th className="p-3">Customer</th>
+                  <th className="p-3">Payment Mode</th>
+                  <th className="p-3 text-right font-mono">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {incomes.map((inc, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-mono font-bold text-emerald-600">{inc.incomeNo}</td>
+                    <td className="p-3 text-slate-500">{fmtDate(inc.date)}</td>
+                    <td className="p-3"><Badge label={inc.source} color="green" /></td>
+                    <td className="p-3 font-bold text-slate-800">{inc.customerName || "Walk-in"}</td>
+                    <td className="p-3">{inc.paymentMode}</td>
+                    <td className="p-3 text-right font-mono font-bold text-emerald-600">₹{fmt(inc.amount)}</td>
+                  </tr>
+                ))}
+                {!incomes.length && (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400">No income records available.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. PAYMENT TRACKING */}
+      {/* ========================================================================= */}
+      {activeTab === "payments" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase text-slate-700">Outgoing Payments Disbursed</h4>
+            <button
+              onClick={() => setShowPaymentModal(true)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Record Payment
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Payment No</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Beneficiary</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3">Payment Mode</th>
+                  <th className="p-3 text-center">Status</th>
+                  <th className="p-3 text-right font-mono">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {payments.map((p, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-mono font-bold text-blue-600">{p.paymentNo}</td>
+                    <td className="p-3 text-slate-500">{fmtDate(p.date)}</td>
+                    <td className="p-3 font-bold text-slate-800">{p.beneficiaryName}</td>
+                    <td className="p-3"><Badge label={p.category} color="indigo" /></td>
+                    <td className="p-3">{p.paymentMode}</td>
+                    <td className="p-3 text-center"><Badge label={p.status} color="green" /></td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(p.amount)}</td>
+                  </tr>
+                ))}
+                {!payments.length && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">No outgoing payments recorded.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. RECEIPT MANAGEMENT */}
+      {/* ========================================================================= */}
+      {activeTab === "receipts" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase text-slate-700">Customer Receipts Issued</h4>
+            <button
+              onClick={() => setShowReceiptModal(true)}
+              className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Issue Receipt
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                  <th className="p-3">Receipt No</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Customer</th>
+                  <th className="p-3">Invoice Ref</th>
+                  <th className="p-3">Payment Mode</th>
+                  <th className="p-3 text-right font-mono">Amount (₹)</th>
+                  <th className="p-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                {receipts.map((rec, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-mono font-bold text-indigo-600">{rec.receiptNo}</td>
+                    <td className="p-3 text-slate-500">{fmtDate(rec.date)}</td>
+                    <td className="p-3 font-bold text-slate-800">{rec.customerName}</td>
+                    <td className="p-3 font-mono">{rec.invoiceRef || "—"}</td>
+                    <td className="p-3"><Badge label={rec.paymentMode} color="blue" /></td>
+                    <td className="p-3 text-right font-mono font-bold text-emerald-600">₹{fmt(rec.amount)}</td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => setViewingReceipt(rec)}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="View Receipt"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!receipts.length && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">No receipts issued yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 10. PROFIT & LOSS REPORTS */}
+      {/* ========================================================================= */}
+      {activeTab === "profit-loss" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase text-slate-700">Financial Performance (Profit & Loss Statement)</h4>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl hover:bg-slate-200"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Statement
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3 lg:col-span-2 text-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="font-bold text-slate-500 uppercase">Gross Sales Revenue</span>
+                <span className="font-mono font-bold text-slate-800 text-sm">₹{fmt(profitLoss?.summary?.totalSalesRevenue)}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="font-bold text-slate-500 uppercase">Other Operating Incomes</span>
+                <span className="font-mono font-bold text-emerald-600 text-sm">+ ₹{fmt(profitLoss?.summary?.manualIncomeTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 bg-emerald-50/50 p-2 rounded-xl">
+                <span className="font-black text-emerald-800 uppercase">Total Income</span>
+                <span className="font-mono font-black text-emerald-700 text-base">₹{fmt(profitLoss?.summary?.totalRevenue)}</span>
+              </div>
+
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 pt-2">
+                <span className="font-bold text-slate-500 uppercase">Less: Cost of Purchases</span>
+                <span className="font-mono font-bold text-red-600 text-sm">- ₹{fmt(profitLoss?.summary?.costOfPurchases)}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 bg-indigo-50/50 p-2 rounded-xl">
+                <span className="font-black text-indigo-800 uppercase">Gross Profit</span>
+                <span className="font-mono font-black text-indigo-700 text-base">₹{fmt(profitLoss?.summary?.grossProfit)}</span>
+              </div>
+
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 pt-2">
+                <span className="font-bold text-slate-500 uppercase">Less: Operating & Administrative Expenses</span>
+                <span className="font-mono font-bold text-red-600 text-sm">- ₹{fmt(profitLoss?.summary?.totalBusinessExpenses)}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 text-white font-black text-sm">
+                <span>NET PROFIT / LOSS</span>
+                <span className="font-mono text-emerald-400 text-lg">₹{fmt(profitLoss?.summary?.netProfit)}</span>
+              </div>
+            </div>
+
+            {/* Expense breakdown chart */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3 text-xs">
+              <h4 className="font-bold text-slate-700 uppercase">Expense Category Breakdown</h4>
+              <div className="space-y-2">
+                {Object.entries(profitLoss?.expenseBreakdown || {}).map(([cat, amt]) => (
+                  <div key={cat} className="flex items-center justify-between bg-slate-50 p-2 rounded-xl">
+                    <span className="font-semibold text-slate-600">{cat}</span>
+                    <span className="font-mono font-bold text-slate-800">₹{fmt(amt)}</span>
+                  </div>
+                ))}
+                {!Object.keys(profitLoss?.expenseBreakdown || {}).length && (
+                  <p className="text-slate-400 text-center py-6">No expenses categorized.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODALS */}
+      {/* ========================================================================= */}
+      {/* Expense Modal */}
+      {showExpenseModal && (
+        <Modal title="Record New Business Expense" onClose={() => setShowExpenseModal(false)}>
+          <form onSubmit={handleExpenseSubmit} className="space-y-3">
+            <InputRow label="Category" required>
+              <select
+                className={inputClass}
+                value={expenseForm.category}
+                onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
+              >
+                {["Rent", "Utilities", "Salary", "Maintenance", "Logistics", "Tax", "Marketing", "Electricity", "Internet", "Courier", "Packaging", "Repairs", "Fuel", "Miscellaneous"].map(
+                  (c) => (
+                    <option key={c} value={c}>{c}</option>
+                  )
+                )}
+              </select>
+            </InputRow>
+            <InputRow label="Amount (₹)" required>
+              <input
+                type="number"
+                required
+                min="0.01"
+                step="0.01"
+                className={inputClass}
+                value={expenseForm.amount}
+                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Payment Mode">
+              <select
+                className={inputClass}
+                value={expenseForm.paymentMethod}
+                onChange={(e) => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value })}
+              >
+                {["Cash", "Card", "UPI", "Bank Transfer", "Cheque"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </InputRow>
+            <InputRow label="Vendor / Payee Name">
+              <input
+                className={inputClass}
+                value={expenseForm.vendorName}
+                onChange={(e) => setExpenseForm({ ...expenseForm, vendorName: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Description">
+              <input
+                className={inputClass}
+                value={expenseForm.description}
+                onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+              />
+            </InputRow>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowExpenseModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700">
+                Save Expense
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Income Modal */}
+      {showIncomeModal && (
+        <Modal title="Log Manual Business Income" onClose={() => setShowIncomeModal(false)}>
+          <form onSubmit={handleIncomeSubmit} className="space-y-3">
+            <InputRow label="Income Source" required>
+              <select
+                className={inputClass}
+                value={incomeForm.source}
+                onChange={(e) => setIncomeForm({ ...incomeForm, source: e.target.value })}
+              >
+                {["Stitching Charges", "Alteration Charges", "Delivery Charges", "Service Charges", "Commission Income", "Other Income"].map(
+                  (s) => (
+                    <option key={s} value={s}>{s}</option>
+                  )
+                )}
+              </select>
+            </InputRow>
+            <InputRow label="Amount (₹)" required>
+              <input
+                type="number"
+                required
+                min="0.01"
+                className={inputClass}
+                value={incomeForm.amount}
+                onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Customer Name">
+              <input
+                className={inputClass}
+                value={incomeForm.customerName}
+                onChange={(e) => setIncomeForm({ ...incomeForm, customerName: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Payment Mode">
+              <select
+                className={inputClass}
+                value={incomeForm.paymentMode}
+                onChange={(e) => setIncomeForm({ ...incomeForm, paymentMode: e.target.value })}
+              >
+                {["Cash", "Card", "UPI", "Bank Transfer", "Wallet"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </InputRow>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowIncomeModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700">
+                Log Income
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <Modal title="Record Outgoing Payment" onClose={() => setShowPaymentModal(false)}>
+          <form onSubmit={handlePaymentSubmit} className="space-y-3">
+            <InputRow label="Beneficiary Name" required>
+              <input
+                required
+                className={inputClass}
+                value={paymentForm.beneficiaryName}
+                onChange={(e) => setPaymentForm({ ...paymentForm, beneficiaryName: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Category" required>
+              <select
+                className={inputClass}
+                value={paymentForm.category}
+                onChange={(e) => setPaymentForm({ ...paymentForm, category: e.target.value })}
+              >
+                {["Vendor Payment", "Salary", "Expense Payment", "Refund", "Other"].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </InputRow>
+            <InputRow label="Amount (₹)" required>
+              <input
+                type="number"
+                required
+                min="0.01"
+                className={inputClass}
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Payment Mode">
+              <select
+                className={inputClass}
+                value={paymentForm.paymentMode}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
+              >
+                {["Cash", "Bank Transfer", "UPI", "Cheque", "NEFT", "RTGS"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </InputRow>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700">
+                Record Payment
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Receipt Modal */}
+      {showReceiptModal && (
+        <Modal title="Issue Customer Receipt" onClose={() => setShowReceiptModal(false)}>
+          <form onSubmit={handleReceiptSubmit} className="space-y-3">
+            <InputRow label="Customer Name" required>
+              <input
+                required
+                className={inputClass}
+                value={receiptForm.customerName}
+                onChange={(e) => setReceiptForm({ ...receiptForm, customerName: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Invoice Reference No">
+              <input
+                className={inputClass}
+                placeholder="e.g. INV-1004"
+                value={receiptForm.invoiceRef}
+                onChange={(e) => setReceiptForm({ ...receiptForm, invoiceRef: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Amount (₹)" required>
+              <input
+                type="number"
+                required
+                min="0.01"
+                className={inputClass}
+                value={receiptForm.amount}
+                onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Payment Mode">
+              <select
+                className={inputClass}
+                value={receiptForm.paymentMode}
+                onChange={(e) => setReceiptForm({ ...receiptForm, paymentMode: e.target.value })}
+              >
+                {["Cash", "Card", "UPI", "Bank Transfer", "Cheque"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </InputRow>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReceiptModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">
+                Issue Receipt
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Cash / Bank Adjustment Modal */}
+      {showCashBankModal && (
+        <Modal title="Record Cash / Bank Adjustment Entry" onClose={() => setShowCashBankModal(false)}>
+          <form onSubmit={handleCashBankSubmit} className="space-y-3">
+            <InputRow label="Account Type" required>
+              <select
+                className={inputClass}
+                value={cashBankForm.type}
+                onChange={(e) => setCashBankForm({ ...cashBankForm, type: e.target.value })}
+              >
+                <option value="Cash">Cash</option>
+                <option value="Bank">Bank</option>
+              </select>
+            </InputRow>
+            <InputRow label="Direction" required>
+              <select
+                className={inputClass}
+                value={cashBankForm.direction}
+                onChange={(e) => setCashBankForm({ ...cashBankForm, direction: e.target.value })}
+              >
+                <option value="In">In (Deposit / Opening)</option>
+                <option value="Out">Out (Withdrawal / Transfer)</option>
+              </select>
+            </InputRow>
+            <InputRow label="Source / Reason" required>
+              <input
+                required
+                className={inputClass}
+                placeholder="e.g. Opening Balance, Petty Cash Replenishment"
+                value={cashBankForm.source}
+                onChange={(e) => setCashBankForm({ ...cashBankForm, source: e.target.value })}
+              />
+            </InputRow>
+            <InputRow label="Amount (₹)" required>
+              <input
+                type="number"
+                required
+                min="0.01"
+                className={inputClass}
+                value={cashBankForm.amount}
+                onChange={(e) => setCashBankForm({ ...cashBankForm, amount: e.target.value })}
+              />
+            </InputRow>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCashBankModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900">
+                Save Adjustment
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* View Receipt Printable Preview Modal */}
+      {viewingReceipt && (
+        <Modal title={`Receipt View — ${viewingReceipt.receiptNo}`} onClose={() => setViewingReceipt(null)}>
+          <div className="space-y-4 text-xs">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <div className="flex justify-between font-bold border-b border-slate-200 pb-2">
+                <span>Vastra ERP Receipt</span>
+                <span className="font-mono text-indigo-600">{viewingReceipt.receiptNo}</span>
+              </div>
+              <p><strong>Customer:</strong> {viewingReceipt.customerName}</p>
+              <p><strong>Invoice Ref:</strong> {viewingReceipt.invoiceRef || "N/A"}</p>
+              <p><strong>Date:</strong> {fmtDate(viewingReceipt.date)}</p>
+              <p><strong>Mode:</strong> {viewingReceipt.paymentMode}</p>
+              <p className="text-sm font-black text-emerald-600 border-t border-slate-200 pt-2">
+                Amount Received: ₹{fmt(viewingReceipt.amount)}
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => window.print()} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl flex items-center gap-1.5">
+                <Printer className="w-3.5 h-3.5" /> Print Receipt
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};

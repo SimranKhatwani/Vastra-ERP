@@ -23,6 +23,8 @@ import {
   TableProperties,
   ShieldAlert,
   ClipboardCheck,
+  BarChart3,
+  Wallet,
 } from "lucide-react";
 
 // Import sub components
@@ -39,6 +41,7 @@ import DiscountManagementView from "./components/DiscountManagementView";
 import { CustomersView } from "./components/CustomersView";
 import { EmployeeView } from "./components/EmployeeView";
 import { AccountingView } from "./components/AccountingView";
+import { FinancialView } from "./components/FinancialView";
 import { ReportsView } from "./components/ReportsView";
 import { SaaSPanelView } from "./components/SaaSPanelView";
 import { DeveloperPortalView } from "./components/DeveloperPortalView";
@@ -336,6 +339,8 @@ export default function App() {
           "developer",
           "integrations",
           "settings",
+          "financial-management",
+          "accounts-treasury",
           "attendance-dashboard",
           "manager-review",
           "attendance-settings",
@@ -353,6 +358,8 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "financial-management",
+          "accounts-treasury",
           "customers",
           "employees",
           "staff",
@@ -378,6 +385,8 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "financial-management",
+          "accounts-treasury",
           "customers",
           "employees",
           "reports",
@@ -394,6 +403,8 @@ export default function App() {
           "articulation",
           "products",
           "purchase",
+          "financial-management",
+          "accounts-treasury",
           "customers",
           "accounting",
           "attendance-dashboard",
@@ -410,7 +421,7 @@ export default function App() {
       case "tailor":
         return ["articulation", "attendance-dashboard"];
       default:
-        return ["billing"];
+        return ["billing", "financial-management", "accounts-treasury"];
     }
   };
 
@@ -963,6 +974,8 @@ export default function App() {
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
     { id: "purchase", label: "Purchase Management", icon: FileText },
+    { id: "financial-management", label: "Financial Management", icon: BarChart3 },
+    { id: "accounts-treasury", label: "Accounts & Treasury", icon: Wallet },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
     { id: "staff", label: "Staff Management", icon: User },
@@ -1430,6 +1443,22 @@ export default function App() {
               suppliers={suppliers}
               purchaseOrders={purchaseOrders}
               onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "financial-management" && (
+            <FinancialView
+              mode="financial"
+              onAddNotification={addToastNotification}
+              currentUser={currentUser}
+            />
+          )}
+
+          {activeModule === "accounts-treasury" && (
+            <FinancialView
+              mode="accounts"
+              onAddNotification={addToastNotification}
+              currentUser={currentUser}
             />
           )}
 

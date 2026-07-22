@@ -36,6 +36,7 @@ const stockManagementRoutes = require('./routes/stockManagementRoutes');
 const billingSalesRoutes = require('./routes/billingSalesRoutes');
 const discountRoutes = require('./routes/discountRoutes');
 const purchaseRoutes = require('./routes/purchaseRoutes');
+const financialRoutes = require('./routes/financialRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -68,6 +69,7 @@ app.use('/api/stock-management', stockManagementRoutes);
 app.use('/api/billing-sales', billingSalesRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/purchase', purchaseRoutes);
+app.use('/api/financial', financialRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {
