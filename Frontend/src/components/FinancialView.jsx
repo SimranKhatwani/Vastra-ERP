@@ -216,6 +216,32 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
 
+  // Income Management Search & Filters
+  const [incomeSearch, setIncomeSearch] = useState("");
+  const [incomeCategoryFilter, setIncomeCategoryFilter] = useState("All");
+  const [incomeModeFilter, setIncomeModeFilter] = useState("All");
+
+  const filteredIncomes = useMemo(() => {
+    return incomes.filter((inc) => {
+      const q = incomeSearch.toLowerCase().trim();
+      if (q) {
+        const matchCustomer = (inc.customerName || "").toLowerCase().includes(q);
+        const matchNo = (inc.incomeNo || "").toLowerCase().includes(q);
+        const matchRef = (inc.referenceNo || "").toLowerCase().includes(q);
+        const matchSource = (inc.source || "").toLowerCase().includes(q);
+        const matchMode = (inc.paymentMode || "").toLowerCase().includes(q);
+        if (!matchCustomer && !matchNo && !matchRef && !matchSource && !matchMode) return false;
+      }
+      if (incomeCategoryFilter !== "All" && inc.source !== incomeCategoryFilter) {
+        return false;
+      }
+      if (incomeModeFilter !== "All" && inc.paymentMode !== incomeModeFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [incomes, incomeSearch, incomeCategoryFilter, incomeModeFilter]);
+
   // ---------------------------------------------------------------------------
   // Data Loaders
   // ---------------------------------------------------------------------------
@@ -984,14 +1010,76 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {/* ========================================================================= */}
       {activeTab === "incomes" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
-            <h4 className="font-bold text-xs uppercase text-slate-700">Income Log</h4>
-            <button
-              onClick={() => setShowIncomeModal(true)}
-              className="flex items-center gap-1.5 bg-green-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-green-700 transition-colors shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" /> Log Income
-            </button>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-xs uppercase text-slate-700">Income Log</h4>
+              <span className="bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-100">
+                Total: ₹{fmt(filteredIncomes.reduce((sum, i) => sum + (i.amount || 0), 0))}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              {/* Search Bar */}
+              <div className="relative flex-1 md:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search customer, ref no, mode..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none"
+                  value={incomeSearch}
+                  onChange={(e) => setIncomeSearch(e.target.value)}
+                />
+                {incomeSearch && (
+                  <button onClick={() => setIncomeSearch("")} className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Source / Category Filter */}
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  className="bg-transparent border-none outline-none text-slate-700 font-medium text-xs cursor-pointer"
+                  value={incomeCategoryFilter}
+                  onChange={(e) => setIncomeCategoryFilter(e.target.value)}
+                >
+                  <option value="All">All Categories</option>
+                  <option value="Retail Sales">Retail Sales</option>
+                  <option value="Wholesale Sales">Wholesale Sales</option>
+                  <option value="Customer Receipt">Customer Receipt</option>
+                  <option value="Advance Receipt">Advance Receipt</option>
+                  <option value="Stitching Charges">Stitching Charges</option>
+                  <option value="Alteration Charges">Alteration Charges</option>
+                  <option value="Delivery Charges">Delivery Charges</option>
+                  <option value="Service Charges">Service Charges</option>
+                  <option value="Commission Income">Commission Income</option>
+                  <option value="Other Income">Other Income</option>
+                </select>
+              </div>
+
+              {/* Payment Mode Filter */}
+              <select
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                value={incomeModeFilter}
+                onChange={(e) => setIncomeModeFilter(e.target.value)}
+              >
+                <option value="All">All Payment Modes</option>
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="UPI">UPI</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Wallet">Wallet</option>
+                <option value="Cheque">Cheque</option>
+              </select>
+
+              <button
+                onClick={() => setShowIncomeModal(true)}
+                className="flex items-center gap-1.5 bg-green-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-green-700 transition-colors shadow-sm ml-auto md:ml-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Log Income
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
@@ -1000,26 +1088,30 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
                   <th className="p-3">Income No</th>
                   <th className="p-3">Date</th>
-                  <th className="p-3">Source</th>
-                  <th className="p-3">Customer</th>
+                  <th className="p-3">Source / Category</th>
+                  <th className="p-3">Customer / Party</th>
+                  <th className="p-3">Ref No</th>
                   <th className="p-3">Payment Mode</th>
                   <th className="p-3 text-right font-mono">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {incomes.map((inc, i) => (
+                {filteredIncomes.map((inc, i) => (
                   <tr key={i} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-emerald-600">{inc.incomeNo}</td>
                     <td className="p-3 text-slate-500">{fmtDate(inc.date)}</td>
                     <td className="p-3"><Badge label={inc.source} color="green" /></td>
                     <td className="p-3 font-bold text-slate-800">{inc.customerName || "Walk-in"}</td>
+                    <td className="p-3 font-mono text-slate-500">{inc.referenceNo || "—"}</td>
                     <td className="p-3">{inc.paymentMode}</td>
                     <td className="p-3 text-right font-mono font-bold text-emerald-600">₹{fmt(inc.amount)}</td>
                   </tr>
                 ))}
-                {!incomes.length && (
+                {!filteredIncomes.length && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">No income records available.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      {incomes.length ? "No income records matching search/filters." : "No income records available."}
+                    </td>
                   </tr>
                 )}
               </tbody>

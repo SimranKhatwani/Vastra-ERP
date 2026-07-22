@@ -846,24 +846,40 @@ exports.getIncomes = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const manualIncomes = await Income.find({ tenantId }).sort('-date');
+    const invoices = await Invoice.find({ tenantId, amountPaid: { $gt: 0 } }).sort('-date');
+    const receipts = await Receipt.find({ tenantId }).sort('-date');
 
-    // Aggregate sales incomes from Invoice collection as well
-    const invoices = await Invoice.find({ tenantId, status: 'Paid' }).sort('-date');
+    // Aggregate sales incomes from Invoice collection
     const autoIncomes = invoices.map((inv) => ({
       _id: inv._id,
       incomeNo: `INC-${inv.invoiceNo}`,
       source: inv.invoiceType === 'Wholesale' ? 'Wholesale Sales' : 'Retail Sales',
-      amount: inv.grandTotal,
+      amount: inv.amountPaid || inv.grandTotal,
       date: inv.date || inv.createdAt,
-      paymentMode: inv.paymentMethod,
-      customerName: inv.customerName,
+      paymentMode: inv.paymentMethod || 'Cash',
+      customerName: inv.customerName || 'Walk-in Customer',
       referenceNo: inv.invoiceNo,
       isAuto: true,
     }));
 
-    const combined = [...manualIncomes.map((i) => i.toObject()), ...autoIncomes].sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
-    );
+    // Aggregate customer receipts
+    const receiptIncomes = receipts.map((rec) => ({
+      _id: rec._id,
+      incomeNo: rec.receiptNo,
+      source: rec.isAdvance ? 'Advance Receipt' : 'Customer Receipt',
+      amount: rec.amount,
+      date: rec.date || rec.createdAt,
+      paymentMode: rec.paymentMode || 'Cash',
+      customerName: rec.customerName || 'Customer',
+      referenceNo: rec.invoiceRef || rec.referenceNo || 'N/A',
+      isAuto: true,
+    }));
+
+    const combined = [
+      ...manualIncomes.map((i) => i.toObject()),
+      ...autoIncomes,
+      ...receiptIncomes,
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.status(200).json({ success: true, data: combined });
   } catch (error) {
