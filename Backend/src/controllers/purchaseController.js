@@ -332,19 +332,30 @@ exports.createPurchaseReturn = async (req, res) => {
   session.startTransaction();
   try {
     const tenantId = req.user.tenantId;
-    const { vendorId, invoiceRef, productId, productName, sku, quantity, reason, actionRequired } = req.body;
+    const { vendorId, vendorName, invoiceRef, productId, productName, sku, quantity, reason, actionRequired } = req.body;
 
-    const vendor = await Vendor.findOne({ _id: vendorId, tenantId }).session(session);
-    if (!vendor) {
+    let finalVendorId = null;
+    let finalVendorName = vendorName || '';
+    let vendor = null;
+
+    if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) {
+      vendor = await Vendor.findOne({ _id: vendorId, tenantId }).session(session);
+      if (vendor) {
+        finalVendorId = vendor._id;
+        finalVendorName = vendor.name;
+      }
+    }
+
+    if (!finalVendorName) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ success: false, message: 'Vendor not found' });
+      return res.status(400).json({ success: false, message: 'Vendor name is required' });
     }
 
     const prReturn = new PurchaseReturn({
       tenantId,
-      vendorId,
-      vendorName: vendor.name,
+      vendorId: finalVendorId,
+      vendorName: finalVendorName,
       invoiceRef,
       productId,
       productName,
@@ -360,7 +371,7 @@ exports.createPurchaseReturn = async (req, res) => {
     // Reduce inventory counts
     const product = await Product.findOne({ _id: productId, tenantId }).session(session);
     if (product) {
-      // Fix: Decrement purchasedQuantity so recalculation behaves correctly
+      // Decrement purchasedQuantity so recalculation behaves correctly
       product.purchasedQuantity = Math.max(0, (product.purchasedQuantity || 0) - Number(quantity));
       calculateStockStatus(product);
       await product.save({ session });
@@ -382,12 +393,12 @@ exports.createPurchaseReturn = async (req, res) => {
         referenceId: prReturn._id,
         referenceNumber: prReturn.returnNo,
         performedBy: req.user.name || 'System Auto',
-        remarks: `Returned items to vendor: ${vendor.name}. Reason: ${reason}`
+        remarks: `Returned items to vendor: ${finalVendorName}. Reason: ${reason}`
       });
     }
 
-    // Reduce vendor outstanding if refund requested
-    if (actionRequired === 'Refund') {
+    // Reduce vendor outstanding if refund requested and vendor exists
+    if (actionRequired === 'Refund' && vendor) {
       const refundAmt = Math.round((product?.purchasePrice || product?.price || 0) * Number(quantity));
       vendor.currentOutstanding = Math.max(0, (vendor.currentOutstanding || 0) - refundAmt);
       await vendor.save({ session });
@@ -396,7 +407,7 @@ exports.createPurchaseReturn = async (req, res) => {
       let remainingRefund = refundAmt;
       const outstandings = await VendorOutstanding.find({ 
         tenantId, 
-        vendorId, 
+        vendorId: vendor._id, 
         paymentStatus: { $ne: 'Paid' } 
       }).sort('invoiceDate').session(session);
 
@@ -417,7 +428,7 @@ exports.createPurchaseReturn = async (req, res) => {
       }
     }
 
-    await logAudit(tenantId, 'Return Dispatched', `Purchase Return ${prReturn.returnNo} approved for vendor: ${vendor.name}`, req.user.name || 'System');
+    await logAudit(tenantId, 'Return Dispatched', `Purchase Return ${prReturn.returnNo} approved for vendor: ${finalVendorName}`, req.user.name || 'System');
     await session.commitTransaction();
     session.endSession();
 

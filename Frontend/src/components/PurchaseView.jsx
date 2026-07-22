@@ -739,7 +739,9 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [form, setForm] = useState({ vendorId: "", invoiceRef: "", productId: "", productName: "", sku: "", quantity: 1, reason: "", actionRequired: "Refund", remarks: "" });
+  const [isCustomVendor, setIsCustomVendor] = useState(false);
+  const [isCustomInvRef, setIsCustomInvRef] = useState(false);
+  const [form, setForm] = useState({ vendorId: "", vendorName: "", invoiceRef: "", productId: "", productName: "", sku: "", quantity: 1, reason: "", actionRequired: "Refund", remarks: "" });
 
   const filtered = useMemo(() => purchaseReturns.filter(r => {
     const q = search.toLowerCase();
@@ -748,7 +750,8 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.vendorId || !form.productId || form.quantity < 1) { onAddNotification("Validation", "Vendor, product and quantity are required.", "warning"); return; }
+    const hasVendor = form.vendorId || (form.vendorName && form.vendorName.trim());
+    if (!hasVendor || !form.productId || form.quantity < 1) { onAddNotification("Validation", "Vendor, product and quantity are required.", "warning"); return; }
     setIsLoading(true);
     try {
       const r = await fetch(`${API}/return`, { method: "POST", headers: authHeaders(), body: JSON.stringify(form) });
@@ -757,7 +760,7 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
         setPurchaseReturns(prev => [{ ...d.data, id: d.data._id }, ...prev]);
         onAddNotification("Return Created", `Purchase Return ${d.data.returnNo} dispatched. Inventory updated.`, "success");
         setShowModal(false);
-        setForm({ vendorId: "", invoiceRef: "", productId: "", productName: "", sku: "", quantity: 1, reason: "", actionRequired: "Refund", remarks: "" });
+        setForm({ vendorId: "", vendorName: "", invoiceRef: "", productId: "", productName: "", sku: "", quantity: 1, reason: "", actionRequired: "Refund", remarks: "" });
       } else { onAddNotification("Error", d.message, "danger"); }
     } catch (err) { onAddNotification("Error", err.message, "danger"); }
     setIsLoading(false);
@@ -813,16 +816,105 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
         <Modal title="Create Purchase Return" onClose={() => setShowModal(false)}>
           <form onSubmit={handleSubmit} className="space-y-3">
             <InputRow label="Vendor" required>
-              <select required className={inputClass} value={form.vendorId} onChange={e => setForm(p => ({...p, vendorId: e.target.value}))}>
-                <option value="">Select Vendor...</option>
-                {vendors.filter(v => v.isActive).map(v => <option key={v._id} value={v._id}>{v.name}</option>)}
-              </select>
+              {!isCustomVendor ? (
+                <select
+                  required={!isCustomVendor}
+                  className={inputClass}
+                  value={form.vendorId}
+                  onChange={(e) => {
+                    if (e.target.value === "__MANUAL__") {
+                      setIsCustomVendor(true);
+                      setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
+                    } else {
+                      const selected = vendors.find((v) => v._id === e.target.value);
+                      setForm((p) => ({
+                        ...p,
+                        vendorId: e.target.value,
+                        vendorName: selected ? selected.name : "",
+                      }));
+                    }
+                  }}
+                >
+                  <option value="">Select Vendor...</option>
+                  {vendors.filter((v) => v.isActive).map((v) => (
+                    <option key={v._id} value={v._id}>
+                      {v.name}
+                    </option>
+                  ))}
+                  <option value="__MANUAL__">✏️ Enter Custom Vendor Name...</option>
+                </select>
+              ) : (
+                <div className="flex gap-1 w-full">
+                  <input
+                    required
+                    className={inputClass}
+                    placeholder="Enter vendor name manually..."
+                    value={form.vendorName}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, vendorId: "", vendorName: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomVendor(false);
+                      setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
+                    }}
+                    className="px-2 py-1 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 whitespace-nowrap cursor-pointer"
+                    title="Switch back to vendor list"
+                  >
+                    List
+                  </button>
+                </div>
+              )}
             </InputRow>
             <InputRow label="Invoice Reference">
-              <select className={inputClass} value={form.invoiceRef} onChange={e => setForm(p => ({...p, invoiceRef: e.target.value}))}>
-                <option value="">Select Invoice (optional)...</option>
-                {purchaseInvoices.filter(inv => inv.vendorId === form.vendorId).map(inv => <option key={inv._id} value={inv.invoiceNo}>{inv.invoiceNo} — ₹{fmt(inv.grandTotal)}</option>)}
-              </select>
+              {!isCustomInvRef ? (
+                <select
+                  className={inputClass}
+                  value={form.invoiceRef}
+                  onChange={(e) => {
+                    if (e.target.value === "__MANUAL__") {
+                      setIsCustomInvRef(true);
+                      setForm((p) => ({ ...p, invoiceRef: "" }));
+                    } else {
+                      setForm((p) => ({ ...p, invoiceRef: e.target.value }));
+                    }
+                  }}
+                >
+                  <option value="">Select Invoice (optional)...</option>
+                  {purchaseInvoices
+                    .filter((inv) => !form.vendorId || inv.vendorId === form.vendorId)
+                    .map((inv) => (
+                      <option key={inv._id} value={inv.invoiceNo}>
+                        {inv.invoiceNo} — ₹{fmt(inv.grandTotal)} ({inv.vendorName})
+                      </option>
+                    ))}
+                  <option value="__MANUAL__">✏️ Enter Custom Invoice Ref...</option>
+                </select>
+              ) : (
+                <div className="flex gap-1 w-full">
+                  <input
+                    className={inputClass}
+                    placeholder="Enter custom invoice ref (e.g. INV-9901)..."
+                    value={form.invoiceRef}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, invoiceRef: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomInvRef(false);
+                      setForm((p) => ({ ...p, invoiceRef: "" }));
+                    }}
+                    className="px-2 py-1 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 whitespace-nowrap cursor-pointer"
+                    title="Switch back to invoice list"
+                  >
+                    List
+                  </button>
+                </div>
+              )}
             </InputRow>
             <InputRow label="Product" required>
               <select required className={inputClass} value={form.productId} onChange={e => {
