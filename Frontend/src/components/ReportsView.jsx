@@ -1,534 +1,602 @@
-import React, { useState } from "react";
-import { FileSpreadsheet, FileDown, Filter } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
-  AreaChart, Area,
-  BarChart, Bar,
-  PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from 'recharts';
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingBag,
+  Package,
+  Users,
+  Users2,
+  Building2,
+  Calendar,
+  Download,
+  Printer,
+  Filter,
+  Search,
+  RefreshCw,
+  Layers,
+  PieChart as PieIcon,
+  ArrowUpRight,
+  ArrowDownRight,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  ShieldCheck,
+  FileSpreadsheet,
+  ChevronRight,
+  X,
+  CreditCard,
+  Wallet,
+} from "lucide-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
-export const ReportsView = ({
-  invoices,
-  purchaseOrders,
-  products,
-  employees = [],
-  customers = [],
-  setActiveModule,
-  onAddNotification,
-}) => {
-  const [reportType, setReportType] = useState("sales");
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    return new Date().toISOString().split("T")[0];
-  });
+const API = "http://localhost:5000/api";
 
-  // --- SALES DATA AGGREGATION ---
-  const selectedInvoices = invoices.filter(
-    (inv) => inv.date >= startDate && inv.date <= endDate,
-  );
-  
-  const totalSales = selectedInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0);
-  const totalGST = selectedInvoices.reduce((sum, inv) => sum + inv.gstTotal, 0);
+const getAuthHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+});
 
-  // 1. Timeline Data (Revenue by Date)
-  const salesByDate = {};
-  selectedInvoices.forEach(inv => {
-    if (!salesByDate[inv.date]) salesByDate[inv.date] = 0;
-    salesByDate[inv.date] += inv.grandTotal;
-  });
-  const timelineData = Object.keys(salesByDate).map(date => ({
-    date,
-    Revenue: salesByDate[date]
-  })).sort((a, b) => new Date(a.date) - new Date(b.date));
+export const ReportsView = ({ onAddNotification }) => {
+  const [activeSection, setActiveSection] = useState("dashboard"); // 'dashboard', 'sales', 'inventory', 'people', 'financial'
+  const [selectedReport, setSelectedReport] = useState(null); // Selected report inside section
+  const [loading, setLoading] = useState(false);
 
-  // 2. Payment Methods Data
-  const paymentMethods = {};
-  selectedInvoices.forEach(inv => {
-    const pm = inv.paymentMethod || 'Unknown';
-    if (!paymentMethods[pm]) paymentMethods[pm] = 0;
-    paymentMethods[pm] += inv.grandTotal;
-  });
-  const paymentData = Object.keys(paymentMethods).map(name => ({
-    name,
-    value: paymentMethods[name]
-  }));
-  const PIE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+  // Filter States
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  // 3. GST & Base Value Data
-  const gstByDate = {};
-  selectedInvoices.forEach(inv => {
-    if (!gstByDate[inv.date]) {
-       gstByDate[inv.date] = { date: inv.date, BaseValue: 0, GSTCollected: 0 };
+  // Data States
+  const [dashboardData, setDashboardData] = useState(null);
+  const [reportData, setReportData] = useState(null);
+
+  // Fetch Business Performance Dashboard Data
+  const loadDashboard = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/analytics/dashboard`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setDashboardData(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-    gstByDate[inv.date].BaseValue += inv.subTotal;
-    gstByDate[inv.date].GSTCollected += inv.gstTotal;
-  });
-  const gstData = Object.values(gstByDate).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-
-  // --- PROCUREMENT DATA AGGREGATION ---
-  const selectedPOs = purchaseOrders.filter(
-    (po) => po.date >= startDate && po.date <= endDate,
-  );
-  const totalPOSpent = selectedPOs.reduce((sum, po) => sum + po.grandTotal, 0);
-
-
-  // --- STOCK DATA AGGREGATION ---
-  const totalItemsCount = products.reduce((sum, p) => sum + p.stock, 0);
-  const cogsInventory = products.reduce(
-    (sum, p) => sum + p.purchasePrice * p.stock,
-    0,
-  );
-  const lowStockItems = products.filter(p => p.stock <= 10);
-
-  // --- EXPORT SIMULATIONS ---
-  const handleExportPDFSim = () => {
-    onAddNotification(
-      "PDF Printer Hub",
-      "Preparing vector print engine layouts...",
-      "info",
-    );
-    setTimeout(() => {
-      onAddNotification(
-        "PDF Download Complete",
-        `Successfully downloaded vastra_erp_${reportType}_audit_${endDate}.pdf`,
-        "success",
-      );
-    }, 1500);
   };
 
-  const handleExportExcelSim = () => {
-    onAddNotification(
-      "Excel Ledger Exporter",
-      "Formulating cell metadata & totals formulas...",
-      "info",
-    );
-    setTimeout(() => {
-      onAddNotification(
-        "Excel Exported",
-        `Downloaded vastra_erp_${reportType}_ledger_${endDate}.xlsx`,
-        "success",
-      );
-    }, 1500);
+  // Fetch Section Specific Reports
+  const loadSectionReport = async (section, reportType) => {
+    setLoading(true);
+    try {
+      let endpoint = `${API}/analytics/${section}?reportType=${reportType || ""}`;
+      if (dateRange.start && dateRange.end) {
+        endpoint += `&startDate=${dateRange.start}&endDate=${dateRange.end}`;
+      }
+      const res = await fetch(endpoint, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setReportData(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Custom Tooltip formatter for currency
-  const formatCurrency = (value) => `₹${value.toLocaleString()}`;
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== "dashboard") {
+      const defaultRep = getDefaultReportForSection(activeSection);
+      const repToLoad = selectedReport || defaultRep;
+      if (!selectedReport) setSelectedReport(defaultRep);
+      loadSectionReport(activeSection, repToLoad);
+    }
+  }, [activeSection, selectedReport, dateRange]);
+
+  const fmt = (num) => Number(num || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
+
+  // Colors
+  const COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
+
+  // Export CSV Handler
+  const handleExportCSV = (filename, headers, rows) => {
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((r) => r.map((c) => `"${c || ""}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${filename}_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const kpis = dashboardData?.kpis || {};
+  const charts = dashboardData?.charts || {};
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12" id="reports-engine-root">
-      {/* Global Project Overview Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div 
-          onClick={() => setActiveModule("products")}
-          className="bg-indigo-600 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-        >
-          <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Total Project Products</span>
-          <p className="text-3xl font-bold font-mono">{products?.length || 0}</p>
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen font-sans">
+      {/* Header Bar */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
+              <BarChart3 className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                Reports & Business Analytics
+              </h1>
+              <p className="text-xs font-medium text-slate-400">
+                Enterprise Business Intelligence (BI) & Live Aggregated MongoDB Reporting
+              </p>
+            </div>
+          </div>
         </div>
-        <div 
-          onClick={() => setActiveModule("employees")}
-          className="bg-emerald-600 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-        >
-          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-200">Total Registered Staff</span>
-          <p className="text-3xl font-bold font-mono">{employees?.length || 0}</p>
-        </div>
-        <div 
-          onClick={() => setActiveModule("customers")}
-          className="bg-slate-800 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-        >
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Retail Customers</span>
-          <p className="text-3xl font-bold font-mono">{customers?.length || 0}</p>
-        </div>
-        <div 
-          onClick={() => setReportType("stock")}
-          className="bg-rose-500 text-white p-5 rounded-2xl shadow-sm space-y-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-        >
-          <span className="text-[10px] font-bold uppercase tracking-widest text-rose-200">Low Stock Alerts</span>
-          <p className="text-3xl font-bold font-mono">{lowStockItems.length}</p>
-        </div>
+
+        {/* Back to Dashboard Button (Shown when inside a section) */}
+        {activeSection !== "dashboard" && (
+          <button
+            onClick={() => {
+              setActiveSection("dashboard");
+              setSelectedReport(null);
+            }}
+            className="flex items-center gap-2 bg-slate-900 text-white text-xs font-extrabold px-4 py-2.5 rounded-2xl hover:bg-slate-800 transition-all shadow-sm"
+          >
+            ← Back to Business Performance Dashboard
+          </button>
+        )}
       </div>
 
-      {/* Selection Panel card */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-          <Filter className="w-4 h-4 text-indigo-600" />
-          <span>Bi-directional Filter Hub</span>
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-semibold">
-          <div>
-            <span className="text-slate-400 block mb-1.5">Scope / Sheet</span>
-            <select
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-700"
-            >
-              <option value="sales">Sales & Billing Ledger</option>
-              <option value="procurement">Procurements (PO) ledger</option>
-              <option value="stock">Inventory Valuation Sheet</option>
-            </select>
-          </div>
-
-          <div>
-            <span className="text-slate-400 block mb-1.5">Start Date</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
-            />
-          </div>
-
-          <div>
-            <span className="text-slate-400 block mb-1.5">End Date</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
-            />
-          </div>
-
-          <div className="flex items-end gap-2">
-            <button
-              onClick={handleExportPDFSim}
-              className="w-full p-2.5 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-            >
-              <FileDown className="w-4 h-4 text-red-500" />
-              <span>PDF</span>
-            </button>
-            <button
-              onClick={handleExportExcelSim}
-              className="w-full p-2.5 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-              <span>Excel</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Stats & CHARTS specific to active report */}
-      {reportType === "sales" && (
+      {/* ========================================================================= */}
+      {/* 1. BUSINESS PERFORMANCE DASHBOARD (DEFAULT LANDING VIEW) */}
+      {/* ========================================================================= */}
+      {activeSection === "dashboard" && (
         <div className="space-y-6">
-          
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Cumulative Yield (Net)</span>
-              <span className="text-2xl font-mono font-bold text-indigo-600">₹{totalSales.toLocaleString()}</span>
+          {/* Section Summary Cards Banner */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[
+              {
+                id: "sales",
+                title: "Sales Analytics",
+                desc: "Sales, Purchases, Customers, Vendors & GST Audit",
+                count: "5 Active Reports",
+                icon: DollarSign,
+                color: "bg-emerald-500",
+              },
+              {
+                id: "inventory",
+                title: "Inventory Analytics",
+                desc: "Stock Aging, Fast/Slow Moving & Warehouse Breakdown",
+                count: "4 Active Reports",
+                icon: Package,
+                color: "bg-blue-500",
+              },
+              {
+                id: "people",
+                title: "People Analytics",
+                desc: "Salesperson Performance, Worker Attendance & Payroll",
+                count: "2 Active Reports",
+                icon: Users,
+                color: "bg-purple-500",
+              },
+              {
+                id: "financial",
+                title: "Financial Analytics",
+                desc: "Real-time Profit & Loss Statement, Cash/Bank Flow",
+                count: "Executive Statement",
+                icon: PieIcon,
+                color: "bg-amber-500",
+              },
+            ].map((card) => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.id}
+                  onClick={() => {
+                    setActiveSection(card.id);
+                    setSelectedReport(null);
+                  }}
+                  className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className={`p-3 text-white rounded-2xl ${card.color} shadow-sm group-hover:scale-105 transition-transform`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                      {card.count}
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <h3 className="font-extrabold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors flex items-center justify-between">
+                      {card.title} <ChevronRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">{card.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Enterprise KPI Cards Grid (19 KPIs) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                Enterprise Key Performance Indicators (KPIs)
+              </h2>
+              <button
+                onClick={loadDashboard}
+                className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:underline"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh Live Data
+              </button>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">GST Tax Collected</span>
-              <span className="text-2xl font-mono font-bold text-emerald-600">₹{totalGST.toLocaleString()}</span>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col justify-center">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Processed Invoices</span>
-              <span className="text-2xl font-mono font-bold text-slate-700">{selectedInvoices.length} Bills</span>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} />
+              <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} />
+              <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} />
+              <KPISmall label="Monthly Sales" value={`₹${fmt(kpis.monthlySales)}`} color="emerald" icon={DollarSign} />
+              <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} />
+              <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} />
+              
+              <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} />
+              <KPISmall label="Gross Profit" value={`₹${fmt(kpis.grossProfit)}`} color="indigo" icon={TrendingUp} />
+              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} />
+              <KPISmall label="Outstanding Receivables" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} />
+              <KPISmall label="Outstanding Payables" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} />
+              <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} />
+
+              <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} />
+              <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} />
+              <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} />
+              <KPISmall label="Attendance %" value={`${kpis.attendancePercentage || 0}%`} color="emerald" icon={Clock} />
+              <KPISmall label="Low Stock Items" value={kpis.lowStockProducts || 0} color="red" icon={AlertTriangle} />
+              <KPISmall label="Fast Moving" value={kpis.fastMovingProducts || 0} color="emerald" icon={TrendingUp} />
             </div>
           </div>
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Sales History Timeline */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">Revenue History</h4>
-              <div className="h-64">
+          {/* Enterprise BI Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Monthly Sales & Revenue Trend */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-sm uppercase">Revenue & Financial Performance Trend</h3>
+                  <p className="text-xs text-slate-400">Monthly Sales vs Purchases vs Expenses vs Net Profit</p>
+                </div>
+              </div>
+              <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={timelineData}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
+                  <AreaChart data={charts.monthlySalesTrend || []}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="date" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize: 10}} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
-                    <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-                    <Area type="monotone" dataKey="Revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748b" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+                    <Tooltip formatter={(val) => `₹${fmt(val)}`} />
+                    <Legend />
+                    <Area type="monotone" dataKey="sales" name="Sales Revenue" stroke="#10b981" fill="#10b981" fillOpacity={0.15} />
+                    <Area type="monotone" dataKey="purchases" name="Purchases" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="profit" name="Net Profit" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Payment Methods */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">Payment Methods Breakdown</h4>
-              <div className="h-64">
+            {/* Category Sales Distribution */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm uppercase">Category Sales Distribution</h3>
+                <p className="text-xs text-slate-400">Revenue split across garment categories</p>
+              </div>
+              <div className="h-72 w-full flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={paymentData}
+                      data={charts.categorySales || []}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
-                      outerRadius={80}
+                      outerRadius={90}
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {paymentData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      {(charts.categorySales || []).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-                    <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} />
+                    <Tooltip formatter={(val) => `₹${fmt(val)}`} />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             </div>
+          </div>
 
-            {/* GST vs Base Tax Analysis */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">GST Tax & Base Value Analysis</h4>
-              <div className="h-72">
+          {/* Payment Mode Distribution & Top Products */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
+              <h3 className="font-extrabold text-slate-800 text-sm uppercase">Payment Mode Distribution</h3>
+              <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={gstData} margin={{ top: 10, right: 0, left: 20, bottom: 0 }}>
+                  <BarChart data={charts.paymentModes || []}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="date" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize: 10}} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
-                    <Tooltip formatter={(value) => formatCurrency(value)} cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-                    <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} />
-                    <Bar dataKey="BaseValue" stackId="a" fill="#64748b" radius={[0, 0, 4, 4]} />
-                    <Bar dataKey="GSTCollected" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(val) => `₹${fmt(val)}`} />
+                    <Bar dataKey="value" name="Amount (₹)" fill="#6366f1" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-          </div>
-
-          {/* Raw Ledger Data Table */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-              Detailed Invoice Ledger
-            </h4>
-            <div className="overflow-x-auto text-xs">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                    <th className="p-3">Invoice No</th>
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Client</th>
-                    <th className="p-3">Pay Route</th>
-                    <th className="p-3 text-right">Items Value</th>
-                    <th className="p-3 text-right">Discount</th>
-                    <th className="p-3 text-right">GST Taxes</th>
-                    <th className="p-3 text-right">Total Billing</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                  {selectedInvoices.slice(0, 15).map((inv, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3 font-mono font-bold text-indigo-600">
-                        {inv.invoiceNo}
-                      </td>
-                      <td className="p-3">{inv.date}</td>
-                      <td className="p-3 font-semibold text-slate-800">
-                        {inv.customerName}
-                      </td>
-                      <td className="p-3 font-mono text-[10px] uppercase">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                          {inv.paymentMethod || 'Unknown'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right font-mono">
-                        ₹{inv.subTotal.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right font-mono text-emerald-600">
-                        -₹{inv.discountTotal.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-400">
-                        ₹{inv.gstTotal.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-800">
-                        ₹{inv.grandTotal.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                  {selectedInvoices.length === 0 && (
-                     <tr>
-                       <td colSpan="8" className="p-6 text-center text-slate-400">No invoices found for this date range.</td>
-                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {reportType === "procurement" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-            <div>
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                Procurement Orders Summary
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                Total procurement PO loops: {selectedPOs.length} rows
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                Cumulative PO Cost Outflow
-              </span>
-              <span className="text-lg font-mono font-bold text-red-500">
-                ₹{totalPOSpent.toLocaleString()}
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto text-xs">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                  <th className="p-3">PO No</th>
-                  <th className="p-3">Date Raised</th>
-                  <th className="p-3">Supplier Account</th>
-                  <th className="p-3 text-right">Items Base</th>
-                  <th className="p-3 text-right font-mono">GST avg</th>
-                  <th className="p-3 text-right">Procured Cost</th>
-                  <th className="p-3 text-center">Receipt Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                {selectedPOs.slice(0, 10).map((po, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-indigo-600">
-                      {po.poNo}
-                    </td>
-                    <td className="p-3">{po.date}</td>
-                    <td className="p-3 font-semibold text-slate-800">
-                      {po.supplierName}
-                    </td>
-                    <td className="p-3 text-right font-mono">
-                      ₹{po.subTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-slate-400">
-                      ₹{po.gstTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-800">
-                      ₹{po.grandTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600">
-                        {po.status}
-                      </span>
-                    </td>
-                  </tr>
+            {/* Recent Activities Audit Feed */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+              <h3 className="font-extrabold text-slate-800 text-sm uppercase">Live System Transaction Feed</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {(dashboardData?.recentActivities || []).map((act, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl text-xs">
+                    <div>
+                      <p className="font-bold text-slate-800">{act.invoiceNo || "Invoice Record"}</p>
+                      <p className="text-[10px] text-slate-400">{act.customerName || "Walk-in Customer"} | {fmtDate(act.createdAt)}</p>
+                    </div>
+                    <span className="font-mono font-bold text-emerald-600">₹{fmt(act.grandTotal)}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+                {!(dashboardData?.recentActivities || []).length && (
+                  <p className="text-slate-400 text-center py-8 text-xs">No recent transactions recorded.</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {reportType === "stock" && (
+      {/* ========================================================================= */}
+      {/* SECTIONS 2, 3, 4, 5: DIRECT DATA & ANALYTICS VIEWER */}
+      {/* ========================================================================= */}
+      {activeSection !== "dashboard" && (
         <div className="space-y-6">
-          {lowStockItems.length > 0 && (
-            <div className="bg-rose-50 rounded-2xl border border-rose-100 shadow-sm p-5 space-y-4">
-              <div className="flex justify-between items-center border-b border-rose-200 pb-3">
-                <div>
-                  <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wide">
-                    Critical Low Stock Alerts (≤ 10 Items)
-                  </h4>
-                  <p className="text-[11px] text-rose-500">
-                    These items require immediate re-ordering.
-                  </p>
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-5">
+            {/* Report Actions & Filters Bar */}
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">
+                  {activeSection.toUpperCase()} ANALYTICS & LIVE AUDIT REPORT
+                </h3>
+                <p className="text-xs text-slate-400">Live dynamic reporting & metrics powered by MongoDB Aggregations</p>
+              </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                  {/* Search Bar */}
+                  <div className="relative flex-1 lg:w-60">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search record..."
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Date Pickers */}
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="date"
+                      className="bg-transparent outline-none text-slate-700 font-bold"
+                      value={dateRange.start}
+                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                    />
+                    <span className="text-slate-400">to</span>
+                    <input
+                      type="date"
+                      className="bg-transparent outline-none text-slate-700 font-bold"
+                      value={dateRange.end}
+                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                    />
+                  </div>
+
+                  {/* Export Buttons */}
+                  <button
+                    onClick={() => {
+                      const rows = (reportData?.data || []).map((r) => Object.values(r));
+                      const headers = reportData?.data?.length ? Object.keys(reportData.data[0]) : ["No Data"];
+                      handleExportCSV(selectedReport, headers, rows);
+                    }}
+                    className="flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-2 rounded-xl hover:bg-emerald-100 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Excel
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1 bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-slate-900 transition-colors"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Print PDF
+                  </button>
                 </div>
               </div>
-              <div className="overflow-x-auto text-xs">
+
+              {/* Summary KPIs */}
+              {reportData?.summary && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {Object.entries(reportData.summary).map(([k, v]) => (
+                    <div key={k} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{k.replace(/([A-Z])/g, " $1")}</p>
+                      <p className="text-sm font-black font-mono text-slate-800 mt-1">
+                        {typeof v === "number" ? (k.toLowerCase().includes("count") || k.toLowerCase().includes("total") && !k.toLowerCase().includes("sales") && !k.toLowerCase().includes("purchases") && !k.toLowerCase().includes("gst") && !k.toLowerCase().includes("receivables") && !k.toLowerCase().includes("payables") ? v : `₹${fmt(v)}`) : v}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Data Table */}
+              <div className="overflow-x-auto text-xs border border-slate-100 rounded-2xl">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-rose-400 font-bold uppercase border-b border-rose-200 tracking-wider">
-                      <th className="p-3">Garment Style Description</th>
-                      <th className="p-3">SKU style</th>
-                      <th className="p-3 text-center font-mono">Stock Left</th>
+                    <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                      {(reportData?.data?.length ? Object.keys(reportData.data[0]) : ["Status"]).slice(0, 8).map((h) => (
+                        <th key={h} className="p-3">
+                          {h.replace(/([A-Z])/g, " $1")}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-rose-100 text-rose-700 font-medium">
-                    {lowStockItems.slice(0, 10).map((p, idx) => (
-                      <tr key={idx} className="hover:bg-rose-100/50">
-                        <td className="p-3 font-bold">{p.name}</td>
-                        <td className="p-3 font-mono">{p.sku}</td>
-                        <td className="p-3 text-center font-bold font-mono text-rose-600 bg-rose-100/50 rounded">
-                          {p.stock}
+                  <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                    {(reportData?.data || [])
+                      .filter((row) => {
+                        if (!searchQuery) return true;
+                        return JSON.stringify(row).toLowerCase().includes(searchQuery.toLowerCase());
+                      })
+                      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                      .map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50">
+                          {Object.values(row).slice(0, 8).map((val, colIdx) => (
+                            <td key={colIdx} className="p-3">
+                              {typeof val === "object" ? JSON.stringify(val) : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    {!(reportData?.data || []).length && (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                          No report records available for the selected filters.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div>
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Live Warehouse Asset Valuation
-                </h4>
-                <p className="text-[11px] text-slate-400">
-                  Calculated inventory on floor:{" "}
-                  {totalItemsCount.toLocaleString()} items
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                  Active Book Cost Assets
-                </span>
-                <span className="text-lg font-mono font-bold text-indigo-600">
-                  ₹{cogsInventory.toLocaleString()}
-                </span>
-              </div>
+              {/* Pagination */}
+              {Boolean(reportData?.data?.length) && (
+                <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
+                  <span>
+                    Showing {Math.min((currentPage - 1) * itemsPerPage + 1, reportData.data.length)} to{" "}
+                    {Math.min(currentPage * itemsPerPage, reportData.data.length)} of {reportData.data.length} records
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1 bg-slate-100 rounded-lg text-slate-700 disabled:opacity-50 font-bold"
+                    >
+                      Prev
+                    </button>
+                    <span className="font-bold px-2">{currentPage}</span>
+                    <button
+                      disabled={currentPage * itemsPerPage >= reportData.data.length}
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                      className="px-3 py-1 bg-slate-100 rounded-lg text-slate-700 disabled:opacity-50 font-bold"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            <div className="overflow-x-auto text-xs">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                    <th className="p-3">Garment Style Description</th>
-                    <th className="p-3">SKU style</th>
-                    <th className="p-3 text-center font-mono">Stock Floor</th>
-                    <th className="p-3 text-right">Unit Buy Cost</th>
-                    <th className="p-3 text-right">Unit MRP</th>
-                    <th className="p-3 text-right">Asset Cost Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                  {products.slice(0, 15).map((p, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3 font-semibold text-slate-800">
-                        {p.name}
-                      </td>
-                      <td className="p-3 font-mono">{p.sku}</td>
-                      <td className="p-3 text-center font-bold font-mono text-slate-900">
-                        {p.stock}
-                      </td>
-                      <td className="p-3 text-right font-mono">
-                        ₹{p.purchasePrice}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-400">
-                        ₹{p.mrp}
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-indigo-600">
-                        ₹{(p.purchasePrice * p.stock).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
 };
+
+// Helper to get Report Cards per Section
+function getSectionReportCards(section) {
+  switch (section) {
+    case "sales":
+      return [
+        { id: "sales_summary", label: "Sales Reports", desc: "Detailed sales revenue by invoice, payment mode & customer" },
+        { id: "purchase", label: "Purchase Reports", desc: "Vendor purchase invoices, tax & GRN breakdown" },
+        { id: "customer", label: "Customer Reports", desc: "Customer lifetime spend & outstanding receivables" },
+        { id: "vendor", label: "Vendor Reports", desc: "Vendor payout summary & current payables" },
+        { id: "gst", label: "GST Audit Reports", desc: "Output GST vs Input GST Tax Liability statement" },
+      ];
+    case "inventory":
+      return [
+        { id: "inventory_summary", label: "Stock Valuation", desc: "Current stock quantities & inventory valuation" },
+        { id: "stock_aging", label: "Stock Aging", desc: "Products aged >60 and >90 days in warehouse" },
+        { id: "fast_moving", label: "Fast Moving", desc: "High velocity products ranked by sales turnover" },
+        { id: "slow_moving", label: "Slow Moving", desc: "Low velocity products with minimal movement" },
+      ];
+    case "people":
+      return [
+        { id: "performance", label: "Employee Reports", desc: "Salesperson revenue generated & target completion" },
+        { id: "attendance", label: "Attendance Reports", desc: "Attendance %, late entries & leave log" },
+      ];
+    case "financial":
+      return [
+        { id: "financial_summary", label: "Financial Statement", desc: "Profit & Loss, Cash Flow & Bank Ledger Summary" },
+      ];
+    default:
+      return [];
+  }
+}
+
+function getDefaultReportForSection(section) {
+  switch (section) {
+    case "sales":
+      return "sales_summary";
+    case "inventory":
+      return "inventory_summary";
+    case "people":
+      return "performance";
+    case "financial":
+      return "financial_summary";
+    default:
+      return "";
+  }
+}
+
+// Helper KPI Small Card Component
+function KPISmall({ label, value, color, icon: Icon }) {
+  const colorMap = {
+    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    blue: "bg-blue-50 text-blue-600 border-blue-100",
+    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
+    purple: "bg-purple-50 text-purple-600 border-purple-100",
+    amber: "bg-amber-50 text-amber-600 border-amber-100",
+    red: "bg-red-50 text-red-600 border-red-100",
+  };
+
+  return (
+    <div className={`p-3.5 rounded-2xl border ${colorMap[color] || colorMap.indigo} shadow-sm flex flex-col justify-between`}>
+      <div className="flex items-center justify-between text-[10px] font-bold uppercase opacity-80">
+        <span>{label}</span>
+        <Icon className="w-3.5 h-3.5" />
+      </div>
+      <p className="text-sm font-black font-mono mt-1.5 text-slate-900">{value}</p>
+    </div>
+  );
+}

@@ -980,7 +980,7 @@ export default function App() {
     { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
     { id: "staff", label: "Staff Management", icon: User },
     { id: "accounting", label: "General Ledger Profit", icon: Receipt },
-    { id: "reports", label: "Advanced Report Hub", icon: TrendingUp },
+    { id: "reports", label: "Reports & Business Analytics", icon: TrendingUp },
     { id: "saas", label: "SaaS Multi-Tenants", icon: Building2 },
     { id: "developer", label: "Developer Gate APIs", icon: Terminal },
     { id: "integrations", label: "Channel connectors", icon: Globe },
