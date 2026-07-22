@@ -221,6 +221,76 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const [incomeCategoryFilter, setIncomeCategoryFilter] = useState("All");
   const [incomeModeFilter, setIncomeModeFilter] = useState("All");
 
+  // Profit & Loss State & Filters
+  const [plPreset, setPlPreset] = useState("month");
+  const [plCustomDates, setPlCustomDates] = useState({ start: "", end: "" });
+  const [plSearchQuery, setPlSearchQuery] = useState("");
+
+  // Cash Book Filters
+  const [cashSearch, setCashSearch] = useState("");
+  const [cashTypeFilter, setCashTypeFilter] = useState("All");
+  const [cashCategoryFilter, setCashCategoryFilter] = useState("All");
+
+  const filteredCashBookData = useMemo(() => {
+    return (cashBook?.data || []).filter((row) => {
+      const q = cashSearch.toLowerCase().trim();
+      if (q) {
+        const matchDesc = (row.description || "").toLowerCase().includes(q);
+        const matchRef = (row.refNo || "").toLowerCase().includes(q);
+        const matchCat = (row.category || "").toLowerCase().includes(q);
+        if (!matchDesc && !matchRef && !matchCat) return false;
+      }
+      if (cashTypeFilter !== "All" && row.type !== cashTypeFilter) return false;
+      if (cashCategoryFilter !== "All" && row.category !== cashCategoryFilter) return false;
+      return true;
+    });
+  }, [cashBook, cashSearch, cashTypeFilter, cashCategoryFilter]);
+
+  // Bank Book Filters
+  const [bankSearch, setBankSearch] = useState("");
+  const [bankTypeFilter, setBankTypeFilter] = useState("All");
+  const [bankModeFilter, setBankModeFilter] = useState("All");
+
+  const filteredBankBookData = useMemo(() => {
+    return (bankBook?.data || []).filter((row) => {
+      const q = bankSearch.toLowerCase().trim();
+      if (q) {
+        const matchParty = (row.party || "").toLowerCase().includes(q);
+        const matchAccount = (row.bankAccountName || "").toLowerCase().includes(q);
+        const matchRef = (row.refNo || "").toLowerCase().includes(q);
+        const matchRemarks = (row.remarks || "").toLowerCase().includes(q);
+        const matchMode = (row.mode || "").toLowerCase().includes(q);
+        if (!matchParty && !matchAccount && !matchRef && !matchRemarks && !matchMode) return false;
+      }
+      if (bankTypeFilter !== "All" && row.type !== bankTypeFilter) return false;
+      if (bankModeFilter !== "All" && row.mode !== bankModeFilter) return false;
+      return true;
+    });
+  }, [bankBook, bankSearch, bankTypeFilter, bankModeFilter]);
+
+  // Payment Tracking Filters
+  const [paySearch, setPaySearch] = useState("");
+  const [payCategoryFilter, setPayCategoryFilter] = useState("All");
+  const [payBeneficiaryTypeFilter, setPayBeneficiaryTypeFilter] = useState("All");
+  const [payModeFilter, setPayModeFilter] = useState("All");
+
+  const filteredPayments = useMemo(() => {
+    return payments.filter((p) => {
+      const q = paySearch.toLowerCase().trim();
+      if (q) {
+        const matchName = (p.beneficiaryName || "").toLowerCase().includes(q);
+        const matchNo = (p.paymentNo || "").toLowerCase().includes(q);
+        const matchRef = (p.referenceNo || "").toLowerCase().includes(q);
+        const matchRemarks = (p.remarks || "").toLowerCase().includes(q);
+        if (!matchName && !matchNo && !matchRef && !matchRemarks) return false;
+      }
+      if (payCategoryFilter !== "All" && p.category !== payCategoryFilter) return false;
+      if (payBeneficiaryTypeFilter !== "All" && p.beneficiaryType !== payBeneficiaryTypeFilter) return false;
+      if (payModeFilter !== "All" && p.paymentMode !== payModeFilter) return false;
+      return true;
+    });
+  }, [payments, paySearch, payCategoryFilter, payBeneficiaryTypeFilter, payModeFilter]);
+
   const filteredIncomes = useMemo(() => {
     return incomes.filter((inc) => {
       const q = incomeSearch.toLowerCase().trim();
@@ -337,13 +407,67 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadProfitLoss = async () => {
     try {
-      const query = dateFilter.start && dateFilter.end ? `?startDate=${dateFilter.start}&endDate=${dateFilter.end}` : "";
+      let query = `?preset=${plPreset}`;
+      if (plPreset === "custom" && plCustomDates.start && plCustomDates.end) {
+        query = `?startDate=${plCustomDates.start}&endDate=${plCustomDates.end}`;
+      }
       const res = await fetch(`${API}/profit-loss${query}`, { headers: authHeaders() });
       const data = await res.json();
-      if (data.success) setProfitLoss(data.data);
+      if (data.success) setProfitLoss(data);
     } catch (e) {
       console.error(e);
     }
+  };
+
+  useEffect(() => {
+    if (activeTab === "profit-loss") {
+      loadProfitLoss();
+    }
+  }, [activeTab, plPreset, plCustomDates]);
+
+  const handleExportPLCSV = () => {
+    if (!profitLoss?.kpis) return;
+    const k = profitLoss.kpis;
+    const rows = [
+      ["Vastra ERP - Executive Profit & Loss Report"],
+      ["Generated At", new Date().toLocaleString()],
+      ["Preset Filter", plPreset.toUpperCase()],
+      [""],
+      ["KPI METRIC", "VALUE (INR)"],
+      ["Total Sales", k.totalSales],
+      ["Cost of Goods Sold (COGS)", k.cogs],
+      ["Gross Profit", k.grossProfit],
+      ["Other Income", k.otherIncome],
+      ["Total Expenses", k.totalExpenses],
+      ["Net Profit / Loss", k.netProfit],
+      ["Profit Margin (%)", k.profitMargin + "%"],
+      ["Overall Status", k.status],
+      ["Today's Profit", k.todayProfit],
+      ["Monthly Profit", k.monthlyProfit],
+      ["Yearly Profit", k.yearlyProfit],
+      [""],
+      ["Date", "Invoice No", "Customer", "Sales Amount", "COGS Cost", "Gross Profit", "Expense Allocation", "Net Profit", "Status"],
+      ...(profitLoss.reportTable || []).map((r) => [
+        new Date(r.date).toLocaleDateString(),
+        r.invoiceNo,
+        r.customerName,
+        r.salesAmount,
+        r.costAmount,
+        r.grossProfit,
+        r.expenseAllocation,
+        r.netProfit,
+        r.status,
+      ]),
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `VastraERP_ProfitLoss_${plPreset}_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const refreshAll = async () => {
@@ -858,12 +982,68 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
               <h4 className="font-bold text-slate-700 uppercase tracking-wider">Cash Book Log</h4>
-              <button onClick={() => setShowCashBankModal(true)} className="text-xs font-bold text-indigo-600 hover:underline">
-                + Add Cash Entry
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                {/* Search Bar */}
+                <div className="relative flex-1 md:w-56">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search particular, ref no..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                    value={cashSearch}
+                    onChange={(e) => setCashSearch(e.target.value)}
+                  />
+                  {cashSearch && (
+                    <button onClick={() => setCashSearch("")} className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Type Filter */}
+                <select
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                  value={cashTypeFilter}
+                  onChange={(e) => setCashTypeFilter(e.target.value)}
+                >
+                  <option value="All">All Types</option>
+                  <option value="Cash In">Cash In (+)</option>
+                  <option value="Cash Out">Cash Out (-)</option>
+                </select>
+
+                {/* Category Filter */}
+                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    className="bg-transparent border-none outline-none text-slate-700 font-medium text-xs cursor-pointer"
+                    value={cashCategoryFilter}
+                    onChange={(e) => setCashCategoryFilter(e.target.value)}
+                  >
+                    <option value="All">All Categories</option>
+                    <option value="Opening Balance">Opening Balance</option>
+                    <option value="POS Sales">POS Sales</option>
+                    <option value="Customer Receipt">Customer Receipt</option>
+                    <option value="Manual Income">Manual Income</option>
+                    <option value="Expense Payout">Expense Payout</option>
+                    <option value="Vendor Payment">Vendor Payment</option>
+                    <option value="Salary">Salary</option>
+                    <option value="Petty Cash">Petty Cash</option>
+                    <option value="Adjustment">Adjustment</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setShowCashBankModal(true)}
+                  className="flex items-center gap-1 bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-amber-700 transition-colors shadow-sm ml-auto md:ml-0"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Cash Entry
+                </button>
+              </div>
             </div>
+
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
@@ -877,7 +1057,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {(cashBook?.data || []).map((row, i) => (
+                {filteredCashBookData.map((row, i) => (
                   <tr key={i} className="hover:bg-slate-50/50">
                     <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
                     <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
@@ -888,9 +1068,11 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                     <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
                   </tr>
                 ))}
-                {!cashBook?.data?.length && (
+                {!filteredCashBookData.length && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">No cash transactions logged.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      {cashBook?.data?.length ? "No cash entries matching search/filter." : "No cash transactions logged."}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -911,12 +1093,65 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
               <h4 className="font-bold text-slate-700 uppercase tracking-wider">Bank Book Log</h4>
-              <button onClick={() => setShowCashBankModal(true)} className="text-xs font-bold text-indigo-600 hover:underline">
-                + Add Bank Entry
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                {/* Search Bar */}
+                <div className="relative flex-1 md:w-56">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search party, account, ref..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    value={bankSearch}
+                    onChange={(e) => setBankSearch(e.target.value)}
+                  />
+                  {bankSearch && (
+                    <button onClick={() => setBankSearch("")} className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Type Filter */}
+                <select
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                  value={bankTypeFilter}
+                  onChange={(e) => setBankTypeFilter(e.target.value)}
+                >
+                  <option value="All">All Types</option>
+                  <option value="Deposit">Deposit (+)</option>
+                  <option value="Withdrawal">Withdrawal (-)</option>
+                </select>
+
+                {/* Payment Mode Filter */}
+                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    className="bg-transparent border-none outline-none text-slate-700 font-medium text-xs cursor-pointer"
+                    value={bankModeFilter}
+                    onChange={(e) => setBankModeFilter(e.target.value)}
+                  >
+                    <option value="All">All Payment Modes</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="NEFT">NEFT</option>
+                    <option value="RTGS">RTGS</option>
+                    <option value="Card">Card</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setShowCashBankModal(true)}
+                  className="flex items-center gap-1 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-blue-700 transition-colors shadow-sm ml-auto md:ml-0"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Bank Entry
+                </button>
+              </div>
             </div>
+
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
@@ -931,7 +1166,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {(bankBook?.data || []).map((row, i) => (
+                {filteredBankBookData.map((row, i) => (
                   <tr key={i} className="hover:bg-slate-50/50">
                     <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
                     <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
@@ -943,9 +1178,11 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                     <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
                   </tr>
                 ))}
-                {!bankBook?.data?.length && (
+                {!filteredBankBookData.length && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">No bank transactions logged.</td>
+                    <td colSpan={8} className="p-8 text-center text-slate-400">
+                      {bankBook?.data?.length ? "No bank entries matching search/filter." : "No bank transactions logged."}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -1125,14 +1362,79 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {/* ========================================================================= */}
       {activeTab === "payments" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col md:flex-row items-center justify-between gap-3">
             <h4 className="font-bold text-xs uppercase text-slate-700">Outgoing Payments Disbursed</h4>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" /> Record Payment
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              {/* Search Bar */}
+              <div className="relative flex-1 md:w-56">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search beneficiary, payment no..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  value={paySearch}
+                  onChange={(e) => setPaySearch(e.target.value)}
+                />
+                {paySearch && (
+                  <button onClick={() => setPaySearch("")} className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Beneficiary Type Filter */}
+              <select
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                value={payBeneficiaryTypeFilter}
+                onChange={(e) => setPayBeneficiaryTypeFilter(e.target.value)}
+              >
+                <option value="All">All Types</option>
+                <option value="Vendor">Vendor</option>
+                <option value="Employee">Employee</option>
+                <option value="Other">Other</option>
+              </select>
+
+              {/* Category Filter */}
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  className="bg-transparent border-none outline-none text-slate-700 font-medium text-xs cursor-pointer"
+                  value={payCategoryFilter}
+                  onChange={(e) => setPayCategoryFilter(e.target.value)}
+                >
+                  <option value="All">All Categories</option>
+                  <option value="Vendor Payment">Vendor Payment</option>
+                  <option value="Salary">Salary</option>
+                  <option value="Expense Payment">Expense Payment</option>
+                  <option value="Refund">Refund</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Mode Filter */}
+              <select
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                value={payModeFilter}
+                onChange={(e) => setPayModeFilter(e.target.value)}
+              >
+                <option value="All">All Modes</option>
+                <option value="Cash">Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="UPI">UPI</option>
+                <option value="Cheque">Cheque</option>
+                <option value="NEFT">NEFT</option>
+                <option value="RTGS">RTGS</option>
+                <option value="Card">Card</option>
+              </select>
+
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm ml-auto md:ml-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Record Payment
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
@@ -1149,7 +1451,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {payments.map((p, i) => (
+                {filteredPayments.map((p, i) => (
                   <tr key={i} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-blue-600">{p.paymentNo}</td>
                     <td className="p-3 text-slate-500">{fmtDate(p.date)}</td>
@@ -1160,9 +1462,11 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                     <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(p.amount)}</td>
                   </tr>
                 ))}
-                {!payments.length && (
+                {!filteredPayments.length && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">No outgoing payments recorded.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      {payments.length ? "No payment records matching search/filters." : "No outgoing payments recorded."}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -1231,69 +1535,356 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       )}
 
       {/* ========================================================================= */}
-      {/* 10. PROFIT & LOSS REPORTS */}
+      {/* 10. PROFIT & LOSS REPORTS (AUTOMATED & LIVE) */}
       {/* ========================================================================= */}
       {activeTab === "profit-loss" && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between">
-            <h4 className="font-bold text-xs uppercase text-slate-700">Financial Performance (Profit & Loss Statement)</h4>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl hover:bg-slate-200"
-            >
-              <Printer className="w-3.5 h-3.5" /> Print Statement
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3 lg:col-span-2 text-xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-500 uppercase">Gross Sales Revenue</span>
-                <span className="font-mono font-bold text-slate-800 text-sm">₹{fmt(profitLoss?.summary?.totalSalesRevenue)}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-500 uppercase">Other Operating Incomes</span>
-                <span className="font-mono font-bold text-emerald-600 text-sm">+ ₹{fmt(profitLoss?.summary?.manualIncomeTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2 bg-emerald-50/50 p-2 rounded-xl">
-                <span className="font-black text-emerald-800 uppercase">Total Income</span>
-                <span className="font-mono font-black text-emerald-700 text-base">₹{fmt(profitLoss?.summary?.totalRevenue)}</span>
-              </div>
-
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2 pt-2">
-                <span className="font-bold text-slate-500 uppercase">Less: Cost of Purchases</span>
-                <span className="font-mono font-bold text-red-600 text-sm">- ₹{fmt(profitLoss?.summary?.costOfPurchases)}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2 bg-indigo-50/50 p-2 rounded-xl">
-                <span className="font-black text-indigo-800 uppercase">Gross Profit</span>
-                <span className="font-mono font-black text-indigo-700 text-base">₹{fmt(profitLoss?.summary?.grossProfit)}</span>
-              </div>
-
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2 pt-2">
-                <span className="font-bold text-slate-500 uppercase">Less: Operating & Administrative Expenses</span>
-                <span className="font-mono font-bold text-red-600 text-sm">- ₹{fmt(profitLoss?.summary?.totalBusinessExpenses)}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 text-white font-black text-sm">
-                <span>NET PROFIT / LOSS</span>
-                <span className="font-mono text-emerald-400 text-lg">₹{fmt(profitLoss?.summary?.netProfit)}</span>
+        <div className="space-y-5">
+          {/* Header & Filter Controls Bar */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col lg:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-sm uppercase text-slate-800 tracking-wider">
+                    Executive Profit & Loss Statement
+                  </h4>
+                  {profitLoss?.kpis?.status === "LOSS" ? (
+                    <span className="bg-red-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                      <TrendingDown className="w-3 h-3" /> LOSS
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" /> PROFIT
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                  Automated real-time financial aggregation across Sales, COGS, Expenses & Incomes
+                </p>
               </div>
             </div>
 
-            {/* Expense breakdown chart */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3 text-xs">
-              <h4 className="font-bold text-slate-700 uppercase">Expense Category Breakdown</h4>
-              <div className="space-y-2">
-                {Object.entries(profitLoss?.expenseBreakdown || {}).map(([cat, amt]) => (
-                  <div key={cat} className="flex items-center justify-between bg-slate-50 p-2 rounded-xl">
-                    <span className="font-semibold text-slate-600">{cat}</span>
-                    <span className="font-mono font-bold text-slate-800">₹{fmt(amt)}</span>
-                  </div>
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              {/* Preset Selector */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-0.5 text-xs font-bold text-slate-600 overflow-x-auto">
+                {[
+                  { key: "today", label: "Today" },
+                  { key: "yesterday", label: "Yesterday" },
+                  { key: "week", label: "This Week" },
+                  { key: "month", label: "This Month" },
+                  { key: "quarter", label: "This Quarter" },
+                  { key: "year", label: "This Year" },
+                  { key: "custom", label: "Custom" },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPlPreset(p.key)}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      plPreset === p.key ? "bg-white text-slate-900 shadow-sm font-black" : "hover:text-slate-900"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
                 ))}
-                {!Object.keys(profitLoss?.expenseBreakdown || {}).length && (
-                  <p className="text-slate-400 text-center py-6">No expenses categorized.</p>
-                )}
               </div>
+
+              {/* Custom Date Pickers */}
+              {plPreset === "custom" && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs">
+                  <input
+                    type="date"
+                    className="bg-transparent outline-none text-slate-700 font-bold"
+                    value={plCustomDates.start}
+                    onChange={(e) => setPlCustomDates({ ...plCustomDates, start: e.target.value })}
+                  />
+                  <span className="text-slate-400 font-bold">to</span>
+                  <input
+                    type="date"
+                    className="bg-transparent outline-none text-slate-700 font-bold"
+                    value={plCustomDates.end}
+                    onChange={(e) => setPlCustomDates({ ...plCustomDates, end: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {/* Export Buttons */}
+              <button
+                onClick={handleExportPLCSV}
+                className="flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-2 rounded-xl hover:bg-emerald-100 transition-colors"
+                title="Export Excel / CSV"
+              >
+                <Download className="w-3.5 h-3.5" /> Excel
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1 bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-slate-900 transition-colors shadow-sm"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print PDF
+              </button>
+            </div>
+          </div>
+
+          {/* 10 KPI Cards Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <KPICard icon={DollarSign} label="Total Sales Revenue" value={`₹${fmt(profitLoss?.kpis?.totalSales)}`} color="emerald" />
+            <KPICard icon={TrendingDown} label="COGS (Purchase Cost)" value={`₹${fmt(profitLoss?.kpis?.cogs)}`} color="purple" />
+            <KPICard icon={TrendingUp} label="Gross Profit" value={`₹${fmt(profitLoss?.kpis?.grossProfit)}`} color="blue" />
+            <KPICard icon={ArrowUpRight} label="Total Other Income" value={`₹${fmt(profitLoss?.kpis?.otherIncome)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Operating Expenses" value={`₹${fmt(profitLoss?.kpis?.totalExpenses)}`} color="red" />
+            
+            <div className={`p-4 rounded-2xl border ${profitLoss?.kpis?.status === "LOSS" ? "bg-red-500 text-white border-red-600" : "bg-slate-900 text-white border-slate-800"} shadow-md flex flex-col justify-between`}>
+              <div className="flex items-center justify-between text-[11px] font-bold opacity-80 uppercase">
+                <span>Net Profit / Loss</span>
+                <span className="font-black px-2 py-0.5 rounded-full bg-white/20 text-white">{profitLoss?.kpis?.status || "PROFIT"}</span>
+              </div>
+              <p className="text-xl font-black font-mono mt-2">₹{fmt(profitLoss?.kpis?.netProfit)}</p>
+            </div>
+
+            <KPICard icon={PieChart} label="Profit Margin (%)" value={`${profitLoss?.kpis?.profitMargin || "0.00"}%`} color="indigo" />
+            <KPICard icon={Calendar} label="Today's Profit" value={`₹${fmt(profitLoss?.kpis?.todayProfit)}`} color="blue" />
+            <KPICard icon={Calendar} label="Monthly Profit" value={`₹${fmt(profitLoss?.kpis?.monthlyProfit)}`} color="indigo" />
+            <KPICard icon={Calendar} label="Yearly Profit" value={`₹${fmt(profitLoss?.kpis?.yearlyProfit)}`} color="purple" />
+          </div>
+
+          {/* Statement & Breakdown Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Financial Statement Summary */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3.5 lg:col-span-2 text-xs">
+              <h4 className="font-extrabold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
+                Income & Expense Statement Summary
+              </h4>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5">
+                  <span className="font-semibold text-slate-600">Gross Sales Revenue</span>
+                  <span className="font-mono font-bold text-slate-800">₹{fmt(profitLoss?.kpis?.totalSales)}</span>
+                </div>
+
+                {Boolean(profitLoss?.kpis?.salesReturnsAmount) && (
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 text-red-600">
+                    <span className="font-medium">Less: Sales Returns & Allowances</span>
+                    <span className="font-mono font-bold">- ₹{fmt(profitLoss?.kpis?.salesReturnsAmount)}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 text-slate-600">
+                  <span className="font-semibold">Less: Cost of Goods Sold (COGS)</span>
+                  <span className="font-mono font-bold text-red-600">- ₹{fmt(profitLoss?.kpis?.cogs)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100">
+                  <span className="font-black text-indigo-900 uppercase">Gross Profit</span>
+                  <span className="font-mono font-black text-indigo-700 text-sm">₹{fmt(profitLoss?.kpis?.grossProfit)}</span>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 pt-1 text-emerald-700">
+                  <span className="font-semibold">Add: Other Operating Income</span>
+                  <span className="font-mono font-bold">+ ₹{fmt(profitLoss?.kpis?.otherIncome)}</span>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 text-red-600">
+                  <span className="font-semibold">Less: Total Operating & Payroll Expenses</span>
+                  <span className="font-mono font-bold">- ₹{fmt(profitLoss?.kpis?.totalExpenses)}</span>
+                </div>
+
+                <div className={`flex items-center justify-between p-3.5 rounded-xl font-black text-sm text-white ${profitLoss?.kpis?.status === "LOSS" ? "bg-red-600" : "bg-slate-900"}`}>
+                  <span className="uppercase tracking-wider">NET {profitLoss?.kpis?.status || "PROFIT"}</span>
+                  <span className="font-mono text-base text-emerald-400">₹{fmt(profitLoss?.kpis?.netProfit)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Expense & Income Breakdown Analytics */}
+            <div className="space-y-4">
+              {/* Expense Breakdown */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3 text-xs">
+                <h4 className="font-bold text-slate-700 uppercase">Expense Category Breakdown</h4>
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {(profitLoss?.charts?.expenseBreakdown || []).map((exp, i) => {
+                    const pct = profitLoss?.kpis?.totalExpenses ? ((exp.value / profitLoss.kpis.totalExpenses) * 100).toFixed(1) : 0;
+                    return (
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-slate-700">{exp.name}</span>
+                          <span className="font-mono font-bold text-slate-900">₹{fmt(exp.value)} ({pct}%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!(profitLoss?.charts?.expenseBreakdown || []).length && (
+                    <p className="text-slate-400 text-center py-6">No expenses logged.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Income Breakdown */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3 text-xs">
+                <h4 className="font-bold text-slate-700 uppercase">Income Source Breakdown</h4>
+                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                  {(profitLoss?.charts?.incomeBreakdown || []).map((inc, i) => {
+                    const pct = profitLoss?.kpis?.otherIncome ? ((inc.value / profitLoss.kpis.otherIncome) * 100).toFixed(1) : 0;
+                    return (
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-slate-700">{inc.name}</span>
+                          <span className="font-mono font-bold text-slate-900">₹{fmt(inc.value)} ({pct}%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!(profitLoss?.charts?.incomeBreakdown || []).length && (
+                    <p className="text-slate-400 text-center py-4">No other incomes logged.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Product Profitability Rankings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Top Profitable Products */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
+              <h4 className="font-extrabold text-slate-800 uppercase tracking-wider text-xs flex items-center gap-1.5 text-emerald-600">
+                <TrendingUp className="w-4 h-4" /> Top Profitable Products
+              </h4>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px]">
+                    <th className="p-2">Product Name</th>
+                    <th className="p-2 text-center">Qty Sold</th>
+                    <th className="p-2 text-right">Revenue</th>
+                    <th className="p-2 text-right">Net Profit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                  {(profitLoss?.charts?.topProducts || []).map((p, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="p-2 font-bold text-slate-800">{p.name}</td>
+                      <td className="p-2 text-center font-mono">{p.qty}</td>
+                      <td className="p-2 text-right font-mono">₹{fmt(p.sales)}</td>
+                      <td className="p-2 text-right font-mono font-bold text-emerald-600">₹{fmt(p.profit)}</td>
+                    </tr>
+                  ))}
+                  {!(profitLoss?.charts?.topProducts || []).length && (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-slate-400">No product sales recorded.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Least Profitable Products */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
+              <h4 className="font-extrabold text-slate-800 uppercase tracking-wider text-xs flex items-center gap-1.5 text-red-600">
+                <TrendingDown className="w-4 h-4" /> Least Profitable Products
+              </h4>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px]">
+                    <th className="p-2">Product Name</th>
+                    <th className="p-2 text-center">Qty Sold</th>
+                    <th className="p-2 text-right">Cost (₹)</th>
+                    <th className="p-2 text-right">Profit Margin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                  {(profitLoss?.charts?.leastProducts || []).map((p, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="p-2 font-bold text-slate-800">{p.name}</td>
+                      <td className="p-2 text-center font-mono">{p.qty}</td>
+                      <td className="p-2 text-right font-mono text-red-600">₹{fmt(p.cost)}</td>
+                      <td className={`p-2 text-right font-mono font-bold ${p.profit < 0 ? "text-red-600" : "text-slate-800"}`}>
+                        ₹{fmt(p.profit)}
+                      </td>
+                    </tr>
+                  ))}
+                  {!(profitLoss?.charts?.leastProducts || []).length && (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-slate-400">No product data available.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Itemized Report Table */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs space-y-3 p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-2 border-b border-slate-100">
+              <h4 className="font-extrabold text-slate-800 uppercase tracking-wider">
+                Transaction Breakdown & Net Profit Audit Log
+              </h4>
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search invoice or customer..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-slate-400/20"
+                  value={plSearchQuery}
+                  onChange={(e) => setPlSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Invoice No</th>
+                    <th className="p-3">Customer</th>
+                    <th className="p-3 text-right font-mono">Sales Amount (₹)</th>
+                    <th className="p-3 text-right font-mono">Cost (COGS ₹)</th>
+                    <th className="p-3 text-right font-mono">Gross Profit (₹)</th>
+                    <th className="p-3 text-right font-mono">Expense Alloc. (₹)</th>
+                    <th className="p-3 text-right font-mono">Net Profit (₹)</th>
+                    <th className="p-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                  {(profitLoss?.reportTable || [])
+                    .filter((r) => {
+                      if (!plSearchQuery) return true;
+                      const q = plSearchQuery.toLowerCase();
+                      return (
+                        (r.invoiceNo || "").toLowerCase().includes(q) ||
+                        (r.customerName || "").toLowerCase().includes(q)
+                      );
+                    })
+                    .map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                        <td className="p-3 font-mono font-bold text-slate-800">{row.invoiceNo}</td>
+                        <td className="p-3 font-bold text-slate-800">{row.customerName}</td>
+                        <td className="p-3 text-right font-mono font-bold text-emerald-600">₹{fmt(row.salesAmount)}</td>
+                        <td className="p-3 text-right font-mono text-red-600">₹{fmt(row.costAmount)}</td>
+                        <td className="p-3 text-right font-mono font-bold text-indigo-600">₹{fmt(row.grossProfit)}</td>
+                        <td className="p-3 text-right font-mono text-slate-500">₹{fmt(row.expenseAllocation)}</td>
+                        <td className={`p-3 text-right font-mono font-black ${row.netProfit < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                          ₹{fmt(row.netProfit)}
+                        </td>
+                        <td className="p-3 text-center">
+                          {row.status === "LOSS" ? (
+                            <span className="bg-red-100 text-red-700 font-black text-[10px] px-2 py-0.5 rounded-md">LOSS</span>
+                          ) : (
+                            <span className="bg-emerald-100 text-emerald-700 font-black text-[10px] px-2 py-0.5 rounded-md">PROFIT</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  {!(profitLoss?.reportTable || []).length && (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-400">No transaction records available.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
