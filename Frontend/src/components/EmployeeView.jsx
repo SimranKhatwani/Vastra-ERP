@@ -19,6 +19,8 @@ export const EmployeeView = ({
 }) => {
   const [activeTab, setActiveTab] = useState("payroll");
   const [tempEdits, setTempEdits] = useState({});
+  // Track paid status per employee {empId: true/false}
+  const [paidStatus, setPaidStatus] = useState({});
   const [selectedEmpId, setSelectedEmpId] = useState("e-3");
   const [bonusAmount, setBonusAmount] = useState(1000);
 
@@ -427,6 +429,24 @@ export const EmployeeView = ({
       }
     } catch (err) {
       onAddNotification("Error", "Network error occurred", "error");
+    }
+  };
+
+  const handleTogglePaid = async (empId, empName) => {
+    const newPaid = !paidStatus[empId];
+    setPaidStatus((prev) => ({ ...prev, [empId]: newPaid }));
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`http://localhost:5000/api/employees/${empId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaryCycle: newPaid ? "Paid" : "Pending" }),
+      });
+    } catch { /* best-effort, state already toggled */ }
+    if (newPaid) {
+      onAddNotification("Payroll", `Salary marked as Paid for ${empName}.`, "success");
+    } else {
+      onAddNotification("Payroll", `Salary for ${empName} marked as Pending.`, "warning");
     }
   };
 
@@ -1021,7 +1041,7 @@ export const EmployeeView = ({
                     Total Compensation
                   </th>
                   <th className="p-3.5 text-center">Disbursed Date</th>
-                  <th className="p-3.5 text-center">Actions</th>
+                  <th className="p-3.5 text-center">Paid</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
@@ -1080,15 +1100,32 @@ export const EmployeeView = ({
                           className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none text-xs text-slate-700"
                         />
                       </td>
+                      {/* ── Paid Checkbox ── */}
                       <td className="p-3.5 text-center">
-                        {(tempEdits[emp.id]?.salary !== undefined || tempEdits[emp.id]?.disbursedDate !== undefined) && (
-                          <button
-                            onClick={() => handleSaveInlineEdits(emp.id)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                        <button
+                          onClick={() => handleTogglePaid(emp.id, emp.name)}
+                          title={paidStatus[emp.id] ? "Mark as Pending" : "Mark as Paid"}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                            paidStatus[emp.id]
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-600"
+                          }`}
+                        >
+                          <span
+                            className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
+                              paidStatus[emp.id]
+                                ? "bg-emerald-500 border-emerald-500"
+                                : "border-slate-300 bg-white"
+                            }`}
                           >
-                            Save
-                          </button>
-                        )}
+                            {paidStatus[emp.id] && (
+                              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[2] stroke-linecap-round stroke-linejoin-round">
+                                <polyline points="1 4 3.5 6.5 9 1" />
+                              </svg>
+                            )}
+                          </span>
+                          {paidStatus[emp.id] ? "Paid" : "Unpaid"}
+                        </button>
                       </td>
                     </tr>
                   );
