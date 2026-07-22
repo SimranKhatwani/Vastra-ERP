@@ -72,12 +72,21 @@ exports.getDashboardSummary = async (req, res) => {
       .filter((inv) => inv.paymentStatus !== 'Paid')
       .reduce((sum, inv) => sum + (inv.outstandingAmount || 0), 0);
 
-    // 3. Expenses
+    // 3. Expenses & Payroll
     const expenses = await Expense.find({ tenantId });
-    const totalExpensesVal = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-    const monthlyExpensesVal = expenses
+    const paidEmployees = await Employee.find({ tenantId, salaryCycle: 'Paid' });
+
+    let totalExpensesVal = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+    let monthlyExpensesVal = expenses
       .filter((exp) => new Date(exp.date || exp.createdAt) >= startOfMonth)
       .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+    paidEmployees.forEach((emp) => {
+      totalExpensesVal += (emp.salary || 0);
+      if (new Date(emp.updatedAt || emp.createdAt) >= startOfMonth) {
+        monthlyExpensesVal += (emp.salary || 0);
+      }
+    });
 
     // 4. Incomes (Manual Incomes + Sales)
     const manualIncomes = await Income.find({ tenantId });
@@ -88,7 +97,7 @@ exports.getDashboardSummary = async (req, res) => {
     const netProfitVal = totalIncomeVal - (monthlyPurchase + monthlyExpensesVal);
     const monthlyProfitVal = monthlySales - (monthlyPurchase + monthlyExpensesVal);
 
-    // 6. Cash & Bank Balances (aggregated from payments, receipts, sales, expenses, cash bank entries)
+    // 6. Cash & Bank Balances (aggregated from payments, receipts, sales, expenses, cash bank entries, payroll)
     const cashBankEntries = await CashBankEntry.find({ tenantId });
     const receipts = await Receipt.find({ tenantId });
     const payments = await FinancialPayment.find({ tenantId });
@@ -135,7 +144,7 @@ exports.getDashboardSummary = async (req, res) => {
       else bankBalance -= exp.amount;
     });
 
-    // Payments
+    // Financial Payments
     payments.forEach((pay) => {
       if (pay.paymentMode === 'Cash') cashBalance -= pay.amount;
       else bankBalance -= pay.amount;
@@ -147,6 +156,19 @@ exports.getDashboardSummary = async (req, res) => {
       else bankBalance -= vpay.amount;
     });
 
+    // Paid Employee Salaries
+    const fpEmpIds = new Set(
+      payments
+        .filter((fp) => fp.category === 'Salary' && fp.beneficiaryId)
+        .map((fp) => fp.beneficiaryId.toString())
+    );
+
+    paidEmployees.forEach((emp) => {
+      if (!fpEmpIds.has(emp._id.toString())) {
+        bankBalance -= (emp.salary || 0);
+      }
+    });
+
     // Customer & Vendor Outstanding totals from master collections
     const customers = await Customer.find({ tenantId });
     const customerOutstandingTotal = customers.reduce((sum, c) => sum + (c.outstandingBalance || 0), 0) || totalReceivables;
@@ -154,12 +176,52 @@ exports.getDashboardSummary = async (req, res) => {
     const vendors = await Vendor.find({ tenantId });
     const vendorOutstandingTotal = vendors.reduce((sum, v) => sum + (v.currentOutstanding || 0), 0) || totalPayables;
 
+    // Unified Outgoing Payments Feed for Dashboard
+    const normVendorPayments = vendorPayments.map((vp) => ({
+      _id: vp._id,
+      paymentNo: vp.paymentNo,
+      beneficiaryName: 'Vendor Payout',
+      category: 'Vendor Payment',
+      amount: vp.amount,
+      paymentMode: vp.paymentMode,
+      date: vp.paymentDate || vp.createdAt,
+    }));
+
+    const normExpenses = expenses.map((exp) => ({
+      _id: exp._id,
+      paymentNo: exp.expenseNo || `EXP-${exp._id}`,
+      beneficiaryName: exp.vendorName || exp.category,
+      category: 'Expense Payment',
+      amount: exp.amount,
+      paymentMode: exp.paymentMethod || 'Cash',
+      date: exp.date || exp.createdAt,
+    }));
+
+    const normSalaries = paidEmployees
+      .filter((emp) => !fpEmpIds.has(emp._id.toString()))
+      .map((emp) => ({
+        _id: emp._id,
+        paymentNo: `FPAY-SAL-${emp._id.toString().substring(18)}`,
+        beneficiaryName: emp.name,
+        category: 'Salary',
+        amount: emp.salary || 0,
+        paymentMode: 'Bank Transfer',
+        date: emp.updatedAt || emp.createdAt,
+      }));
+
+    const allPaymentsUnified = [
+      ...payments.map((fp) => fp.toObject()),
+      ...normVendorPayments,
+      ...normExpenses,
+      ...normSalaries,
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
     // Charts & Recent Activity feeds
     const recentSales = invoices.slice(-5).reverse();
     const recentPurchases = purchaseInvoices.slice(-5).reverse();
     const recentExpenses = expenses.slice(-5).reverse();
     const recentReceipts = receipts.slice(-5).reverse();
-    const recentPayments = payments.slice(-5).reverse();
+    const recentPayments = allPaymentsUnified.slice(0, 5);
 
     res.status(200).json({
       success: true,
