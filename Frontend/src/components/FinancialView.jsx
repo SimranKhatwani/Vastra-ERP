@@ -344,16 +344,34 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   // Submit Handlers
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
+    const amt = Number(expenseForm.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      onAddNotification?.("Validation", "Please enter a valid expense amount (> 0).", "warning");
+      return;
+    }
     try {
+      const payload = { ...expenseForm, amount: amt, gst: Number(expenseForm.gst || 0) };
       const res = await fetch(`${API}/expenses`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify(expenseForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        onAddNotification?.("Expense Added", `Expense of ₹${fmt(expenseForm.amount)} recorded.`, "success");
+        onAddNotification?.("Expense Added", `Expense of ₹${fmt(amt)} recorded.`, "success");
         setShowExpenseModal(false);
+        setExpenseForm({
+          category: "Miscellaneous",
+          amount: "",
+          gst: 0,
+          date: new Date().toISOString().split("T")[0],
+          description: "",
+          paymentMethod: "Cash",
+          vendorName: "",
+          referenceNo: "",
+          bankAccountName: "",
+          remarks: "",
+        });
         refreshAll();
       } else {
         onAddNotification?.("Error", data.message, "danger");
@@ -365,16 +383,30 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const handleIncomeSubmit = async (e) => {
     e.preventDefault();
+    const amt = Number(incomeForm.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      onAddNotification?.("Validation", "Please enter a valid income amount (> 0).", "warning");
+      return;
+    }
     try {
+      const payload = { ...incomeForm, amount: amt };
       const res = await fetch(`${API}/incomes`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify(incomeForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        onAddNotification?.("Income Logged", `Income of ₹${fmt(incomeForm.amount)} added.`, "success");
+        onAddNotification?.("Income Logged", `Income of ₹${fmt(amt)} added.`, "success");
         setShowIncomeModal(false);
+        setIncomeForm({
+          source: "Other Income",
+          amount: "",
+          date: new Date().toISOString().split("T")[0],
+          paymentMode: "Cash",
+          customerName: "",
+          description: "",
+        });
         refreshAll();
       } else {
         onAddNotification?.("Error", data.message, "danger");
@@ -386,16 +418,33 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
+    const amt = Number(paymentForm.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      onAddNotification?.("Validation", "Please enter a valid amount (> 0).", "warning");
+      return;
+    }
     try {
+      const payload = { ...paymentForm, amount: amt };
       const res = await fetch(`${API}/payments`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify(paymentForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        onAddNotification?.("Payment Disbursed", `Payment of ₹${fmt(paymentForm.amount)} logged.`, "success");
+        onAddNotification?.("Payment Disbursed", `Payment of ₹${fmt(amt)} logged.`, "success");
         setShowPaymentModal(false);
+        setPaymentForm({
+          beneficiaryType: "Vendor",
+          beneficiaryName: "",
+          category: "Vendor Payment",
+          amount: "",
+          paymentMode: "Cash",
+          referenceNo: "",
+          bankAccountName: "",
+          status: "Completed",
+          remarks: "",
+        });
         refreshAll();
       } else {
         onAddNotification?.("Error", data.message, "danger");
@@ -407,16 +456,32 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const handleReceiptSubmit = async (e) => {
     e.preventDefault();
+    const amt = Number(receiptForm.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      onAddNotification?.("Validation", "Please enter a valid receipt amount (> 0).", "warning");
+      return;
+    }
     try {
+      const payload = { ...receiptForm, amount: amt };
       const res = await fetch(`${API}/receipts`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify(receiptForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        onAddNotification?.("Receipt Issued", `Receipt ${data.data.receiptNo} created for ₹${fmt(receiptForm.amount)}.`, "success");
+        onAddNotification?.("Receipt Issued", `Receipt ${data.data.receiptNo} created for ₹${fmt(amt)}.`, "success");
         setShowReceiptModal(false);
+        setReceiptForm({
+          customerName: "",
+          invoiceRef: "",
+          amount: "",
+          date: new Date().toISOString().split("T")[0],
+          paymentMode: "Cash",
+          bankAccountName: "",
+          referenceNo: "",
+          remarks: "",
+        });
         refreshAll();
       } else {
         onAddNotification?.("Error", data.message, "danger");
@@ -428,16 +493,30 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const handleCashBankSubmit = async (e) => {
     e.preventDefault();
+    const amt = Number(cashBankForm.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      onAddNotification?.("Validation", "Please enter a valid adjustment amount (> 0).", "warning");
+      return;
+    }
     try {
+      const payload = { ...cashBankForm, amount: amt };
       const res = await fetch(`${API}/cash-bank-adjustment`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify(cashBankForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        onAddNotification?.("Adjustment Saved", `${cashBankForm.type} adjustment of ₹${fmt(cashBankForm.amount)} recorded.`, "success");
+        onAddNotification?.("Adjustment Saved", `${cashBankForm.type} adjustment of ₹${fmt(amt)} recorded.`, "success");
         setShowCashBankModal(false);
+        setCashBankForm({
+          type: "Cash",
+          direction: "In",
+          source: "Opening Balance",
+          bankAccountName: "HDFC Main Store Account",
+          amount: "",
+          remarks: "",
+        });
         refreshAll();
       } else {
         onAddNotification?.("Error", data.message, "danger");
@@ -1153,7 +1232,8 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 type="number"
                 required
                 min="0.01"
-                step="0.01"
+                step="any"
+                placeholder="Enter amount (e.g. 1500)"
                 className={inputClass}
                 value={expenseForm.amount}
                 onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
@@ -1222,6 +1302,8 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 type="number"
                 required
                 min="0.01"
+                step="any"
+                placeholder="Enter amount (e.g. 2500)"
                 className={inputClass}
                 value={incomeForm.amount}
                 onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })}
@@ -1265,10 +1347,22 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {showPaymentModal && (
         <Modal title="Record Outgoing Payment" onClose={() => setShowPaymentModal(false)}>
           <form onSubmit={handlePaymentSubmit} className="space-y-3">
+            <InputRow label="Beneficiary Type" required>
+              <select
+                className={inputClass}
+                value={paymentForm.beneficiaryType}
+                onChange={(e) => setPaymentForm({ ...paymentForm, beneficiaryType: e.target.value })}
+              >
+                <option value="Vendor">Vendor</option>
+                <option value="Employee">Employee</option>
+                <option value="Other">Other</option>
+              </select>
+            </InputRow>
             <InputRow label="Beneficiary Name" required>
               <input
                 required
                 className={inputClass}
+                placeholder="Enter payee / vendor / employee name..."
                 value={paymentForm.beneficiaryName}
                 onChange={(e) => setPaymentForm({ ...paymentForm, beneficiaryName: e.target.value })}
               />
@@ -1277,7 +1371,11 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
               <select
                 className={inputClass}
                 value={paymentForm.category}
-                onChange={(e) => setPaymentForm({ ...paymentForm, category: e.target.value })}
+                onChange={(e) => {
+                  const cat = e.target.value;
+                  const bType = cat === "Salary" ? "Employee" : cat === "Vendor Payment" ? "Vendor" : "Other";
+                  setPaymentForm({ ...paymentForm, category: cat, beneficiaryType: bType });
+                }}
               >
                 {["Vendor Payment", "Salary", "Expense Payment", "Refund", "Other"].map((c) => (
                   <option key={c} value={c}>{c}</option>
@@ -1289,6 +1387,8 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 type="number"
                 required
                 min="0.01"
+                step="any"
+                placeholder="Enter amount (e.g. 5000)"
                 className={inputClass}
                 value={paymentForm.amount}
                 onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
@@ -1346,6 +1446,8 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 type="number"
                 required
                 min="0.01"
+                step="any"
+                placeholder="Enter amount (e.g. 1000)"
                 className={inputClass}
                 value={receiptForm.amount}
                 onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })}
@@ -1416,6 +1518,8 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 type="number"
                 required
                 min="0.01"
+                step="any"
+                placeholder="Enter amount (e.g. 5000)"
                 className={inputClass}
                 value={cashBankForm.amount}
                 onChange={(e) => setCashBankForm({ ...cashBankForm, amount: e.target.value })}

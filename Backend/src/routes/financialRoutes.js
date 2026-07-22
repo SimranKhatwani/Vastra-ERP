@@ -24,6 +24,8 @@ const { protect, authorize } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
+const allowedRoles = ['BusinessAdmin', 'Admin', 'SuperAdmin', 'Manager', 'Accounts Manager', 'Cashier'];
+
 // 1. Dashboard
 router.get('/dashboard', protect, getDashboardSummary);
 
@@ -42,35 +44,35 @@ router.get('/bank-book', protect, getBankBook);
 // 6. Expense Management
 router.route('/expenses')
   .get(protect, getExpenses)
-  .post(protect, authorize('Admin', 'Accounts Manager'), createExpense);
+  .post(protect, authorize(...allowedRoles), createExpense);
 
 router.route('/expenses/:id')
-  .put(protect, authorize('Admin', 'Accounts Manager'), updateExpense)
-  .delete(protect, authorize('Admin', 'Accounts Manager'), deleteExpense);
+  .put(protect, authorize(...allowedRoles), updateExpense)
+  .delete(protect, authorize(...allowedRoles), deleteExpense);
 
 // 7. Income Management
 router.route('/incomes')
   .get(protect, getIncomes)
-  .post(protect, authorize('Admin', 'Accounts Manager'), createIncome);
+  .post(protect, authorize(...allowedRoles), createIncome);
 
-router.delete('/incomes/:id', protect, authorize('Admin', 'Accounts Manager'), deleteIncome);
+router.delete('/incomes/:id', protect, authorize(...allowedRoles), deleteIncome);
 
 // 8. Payment Tracking
 router.route('/payments')
   .get(protect, getPayments)
-  .post(protect, authorize('Admin', 'Accounts Manager', 'Cashier'), createPayment);
+  .post(protect, authorize(...allowedRoles), createPayment);
 
-router.put('/payments/:id/status', protect, authorize('Admin', 'Accounts Manager'), updatePaymentStatus);
+router.put('/payments/:id/status', protect, authorize(...allowedRoles), updatePaymentStatus);
 
 // 9. Receipt Management
 router.route('/receipts')
   .get(protect, getReceipts)
-  .post(protect, authorize('Admin', 'Accounts Manager', 'Cashier'), createReceipt);
+  .post(protect, authorize(...allowedRoles), createReceipt);
 
 // 10. Profit & Loss Reports
 router.get('/profit-loss', protect, getProfitLoss);
 
 // Manual Cash/Bank Adjustments
-router.post('/cash-bank-adjustment', protect, authorize('Admin', 'Accounts Manager'), createCashBankAdjustment);
+router.post('/cash-bank-adjustment', protect, authorize(...allowedRoles), createCashBankAdjustment);
 
 module.exports = router;

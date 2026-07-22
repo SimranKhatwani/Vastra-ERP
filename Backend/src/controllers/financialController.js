@@ -11,6 +11,7 @@ const VendorOutstanding = require('../models/vendorOutstandingModel');
 const VendorPayment = require('../models/vendorPaymentModel');
 const Customer = require('../models/customerModel');
 const Vendor = require('../models/vendorModel');
+const Employee = require('../models/employeeModel');
 
 // Helper to log audit actions
 const logFinancialAudit = async (tenantId, action, referenceNo, amount, performedBy, details, referenceId = null) => {
@@ -700,8 +701,14 @@ exports.getExpenses = async (req, res) => {
 exports.createExpense = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
+    const amountVal = Number(req.body.amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid expense amount (> 0) is required' });
+    }
     const expense = await Expense.create({
       ...req.body,
+      amount: amountVal,
+      gst: Number(req.body.gst) || 0,
       tenantId,
       recordedBy: req.user.name || 'Admin',
     });
@@ -805,8 +812,13 @@ exports.getIncomes = async (req, res) => {
 exports.createIncome = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
+    const amountVal = Number(req.body.amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid income amount (> 0) is required' });
+    }
     const income = await Income.create({
       ...req.body,
+      amount: amountVal,
       tenantId,
       recordedBy: req.user.name || 'Admin',
     });
@@ -847,6 +859,8 @@ exports.getPayments = async (req, res) => {
     const tenantId = req.user.tenantId;
     const financialPayments = await FinancialPayment.find({ tenantId }).sort('-date');
     const vendorPayments = await VendorPayment.find({ tenantId }).sort('-paymentDate');
+    const expenses = await Expense.find({ tenantId }).sort('-date');
+    const paidEmployees = await Employee.find({ tenantId, salaryCycle: 'Paid' }).sort('-updatedAt');
 
     // Normalize vendor payments
     const normVendorPayments = vendorPayments.map((vp) => ({
@@ -863,9 +877,49 @@ exports.getPayments = async (req, res) => {
       remarks: vp.remarks || 'Settlement',
     }));
 
+    // Normalize expense payouts
+    const normExpenses = expenses.map((exp) => ({
+      _id: exp._id,
+      paymentNo: exp.expenseNo || `EXP-${exp._id}`,
+      beneficiaryType: 'Other',
+      beneficiaryName: exp.vendorName || exp.category,
+      category: 'Expense Payment',
+      amount: exp.amount,
+      paymentMode: exp.paymentMethod || 'Cash',
+      referenceNo: exp.referenceNo || '',
+      date: exp.date || exp.createdAt,
+      status: 'Completed',
+      remarks: exp.description || `Expense: ${exp.category}`,
+    }));
+
+    // Normalize paid employee salaries (only if not already created in FinancialPayment)
+    const fpEmpIds = new Set(
+      financialPayments
+        .filter((fp) => fp.category === 'Salary' && fp.beneficiaryId)
+        .map((fp) => fp.beneficiaryId.toString())
+    );
+
+    const normSalaries = paidEmployees
+      .filter((emp) => !fpEmpIds.has(emp._id.toString()))
+      .map((emp) => ({
+        _id: emp._id,
+        paymentNo: `FPAY-SAL-${emp._id.toString().substring(18)}`,
+        beneficiaryType: 'Employee',
+        beneficiaryName: emp.name,
+        category: 'Salary',
+        amount: emp.salary || 0,
+        paymentMode: 'Bank Transfer',
+        referenceNo: emp.disbursedDate || '',
+        date: emp.updatedAt || emp.createdAt,
+        status: 'Completed',
+        remarks: `HR Payroll Salary Disbursed (${emp.role})`,
+      }));
+
     const combined = [
       ...financialPayments.map((fp) => fp.toObject()),
       ...normVendorPayments,
+      ...normExpenses,
+      ...normSalaries,
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.status(200).json({ success: true, data: combined });
@@ -877,8 +931,16 @@ exports.getPayments = async (req, res) => {
 exports.createPayment = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
+    const amountVal = Number(req.body.amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid payment amount (> 0) is required' });
+    }
+    const bType = req.body.beneficiaryType || (req.body.category === 'Salary' ? 'Employee' : req.body.category === 'Vendor Payment' ? 'Vendor' : 'Other');
+
     const payment = await FinancialPayment.create({
       ...req.body,
+      amount: amountVal,
+      beneficiaryType: bType,
       tenantId,
       recordedBy: req.user.name || 'Admin',
     });

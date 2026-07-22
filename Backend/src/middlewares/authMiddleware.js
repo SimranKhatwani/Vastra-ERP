@@ -28,10 +28,12 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-// Grant access to specific roles
+// Grant access to specific roles (case-insensitive check)
 exports.authorize = (...roles) => {
+  const allowedRoles = roles.map((r) => r.toLowerCase());
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    const userRole = (req.user && req.user.role ? req.user.role : '').toLowerCase();
+    if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({ 
         success: false, 
         message: `User role ${req.user.role} is not authorized to access this route`

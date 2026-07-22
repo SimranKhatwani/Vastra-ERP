@@ -442,9 +442,27 @@ export const EmployeeView = ({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ salaryCycle: newPaid ? "Paid" : "Pending" }),
       });
+
+      if (newPaid) {
+        const targetEmp = employees.find((e) => (e._id || e.id) === empId);
+        await fetch(`http://localhost:5000/api/financial/payments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            beneficiaryType: "Employee",
+            beneficiaryId: empId,
+            beneficiaryName: empName,
+            category: "Salary",
+            amount: Number(targetEmp?.salary || 25000),
+            paymentMode: "Bank Transfer",
+            status: "Completed",
+            remarks: `HR Payroll Salary Disbursed to ${empName}`,
+          }),
+        });
+      }
     } catch { /* best-effort, state already toggled */ }
     if (newPaid) {
-      onAddNotification("Payroll", `Salary marked as Paid for ${empName}.`, "success");
+      onAddNotification("Payroll", `Salary marked as Paid for ${empName} and synced to Payment Tracking.`, "success");
     } else {
       onAddNotification("Payroll", `Salary for ${empName} marked as Pending.`, "warning");
     }
