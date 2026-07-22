@@ -12,6 +12,9 @@ const VendorPayment = require('../models/vendorPaymentModel');
 const Customer = require('../models/customerModel');
 const Vendor = require('../models/vendorModel');
 const Employee = require('../models/employeeModel');
+const Product = require('../models/productModel');
+const PurchaseReturn = require('../models/purchaseReturnModel');
+const SalesReturn = require('../models/salesReturnModel');
 
 // Helper to log audit actions
 const logFinancialAudit = async (tenantId, action, referenceNo, amount, performedBy, details, referenceId = null) => {
@@ -1130,62 +1133,303 @@ exports.createReceipt = async (req, res) => {
 };
 
 // ==============================================================================
-// 10. PROFIT & LOSS REPORTS
+// 10. PROFIT & LOSS REPORTS (LIVE AUTOMATED AGGREGATION)
 // ==============================================================================
 exports.getProfitLoss = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const { startDate, endDate } = req.query;
+    const { preset, startDate, endDate } = req.query;
 
-    let dateFilter = { tenantId };
-    if (startDate && endDate) {
-      const s = new Date(startDate);
-      const e = new Date(endDate);
-      e.setHours(23, 59, 59, 999);
-      dateFilter.createdAt = { $gte: s, $lte: e };
+    let startFilter = null;
+    let endFilter = new Date();
+
+    if (preset === 'today') {
+      startFilter = new Date();
+      startFilter.setHours(0, 0, 0, 0);
+    } else if (preset === 'yesterday') {
+      startFilter = new Date();
+      startFilter.setDate(startFilter.getDate() - 1);
+      startFilter.setHours(0, 0, 0, 0);
+      endFilter = new Date();
+      endFilter.setDate(endFilter.getDate() - 1);
+      endFilter.setHours(23, 59, 59, 999);
+    } else if (preset === 'week') {
+      startFilter = new Date();
+      const day = startFilter.getDay();
+      const diff = startFilter.getDate() - day + (day === 0 ? -6 : 1);
+      startFilter.setDate(diff);
+      startFilter.setHours(0, 0, 0, 0);
+    } else if (preset === 'month') {
+      startFilter = new Date();
+      startFilter.setDate(1);
+      startFilter.setHours(0, 0, 0, 0);
+    } else if (preset === 'quarter') {
+      startFilter = new Date();
+      const currentMonth = startFilter.getMonth();
+      const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+      startFilter.setMonth(quarterStartMonth, 1);
+      startFilter.setHours(0, 0, 0, 0);
+    } else if (preset === 'year') {
+      startFilter = new Date();
+      startFilter.setMonth(0, 1);
+      startFilter.setHours(0, 0, 0, 0);
+    } else if (startDate && endDate) {
+      startFilter = new Date(startDate);
+      endFilter = new Date(endDate);
+      endFilter.setHours(23, 59, 59, 999);
     }
 
-    const invoices = await Invoice.find(dateFilter);
-    const purchaseInvoices = await PurchaseInvoice.find(dateFilter);
-    const expenses = await Expense.find(dateFilter);
-    const manualIncomes = await Income.find(dateFilter);
-
-    // Revenue
-    const totalSalesRevenue = invoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
-    const manualIncomeTotal = manualIncomes.reduce((sum, inc) => sum + (inc.amount || 0), 0);
-    const totalRevenue = totalSalesRevenue + manualIncomeTotal;
-
-    // Cost of Goods Purchased
-    const costOfPurchases = purchaseInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
-
-    // Direct & Operating Expenses
-    const categoryExpenses = {};
-    expenses.forEach((exp) => {
-      categoryExpenses[exp.category] = (categoryExpenses[exp.category] || 0) + exp.amount;
+    // Product Cost Lookup Map
+    const products = await Product.find({ tenantId }).lean();
+    const productCostMap = {};
+    products.forEach((p) => {
+      const cost = p.purchasePrice || p.costPrice || p.basePrice || (p.sellingPrice ? p.sellingPrice * 0.7 : 0);
+      productCostMap[p._id.toString()] = cost;
+      if (p.productCode) productCostMap[p.productCode] = cost;
+      if (p.sku) productCostMap[p.sku] = cost;
+      if (p.name) productCostMap[p.name.toLowerCase().trim()] = cost;
     });
 
-    const totalBusinessExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    // Date Filter Object
+    const dateQuery = { tenantId };
+    if (startFilter) {
+      dateQuery.createdAt = { $gte: startFilter, $lte: endFilter };
+    }
 
-    // Calculations
-    const grossProfit = totalRevenue - costOfPurchases;
-    const netProfit = grossProfit - totalBusinessExpenses;
+    // 1. Fetch Collections
+    const invoices = await Invoice.find(dateQuery).lean();
+    const salesReturns = await SalesReturn.find(dateQuery).lean();
+    const purchaseReturns = await PurchaseReturn.find(dateQuery).lean();
+    const expenses = await Expense.find(dateQuery).lean();
+    const incomes = await Income.find(dateQuery).lean();
+    const paidEmployees = await Employee.find({ tenantId, salaryCycle: 'Paid' }).lean();
+
+    // Calculate Today, Monthly, Yearly Profit benchmarks for KPI comparison
+    const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+    const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0, 0, 0, 0);
+    const startYear = new Date(); startYear.setMonth(0, 1); startYear.setHours(0, 0, 0, 0);
+
+    const allInvoices = await Invoice.find({ tenantId }).lean();
+    const allExpenses = await Expense.find({ tenantId }).lean();
+    const allIncomes = await Income.find({ tenantId }).lean();
+
+    const calcNetProfitForRange = (sDate) => {
+      const filteredInv = allInvoices.filter(i => new Date(i.date || i.createdAt) >= sDate);
+      let sRev = filteredInv.reduce((s, i) => s + (i.grandTotal || 0), 0);
+      let sCogs = 0;
+      filteredInv.forEach(inv => {
+        (inv.items || []).forEach(item => {
+          const pCost = item.productId ? (productCostMap[item.productId] || productCostMap[item.name?.toLowerCase().trim()] || 0) : 0;
+          sCogs += pCost * (item.quantity || 1);
+        });
+      });
+      const fInc = allIncomes.filter(inc => new Date(inc.date || inc.createdAt) >= sDate).reduce((s, i) => s + i.amount, 0);
+      const fExp = allExpenses.filter(exp => new Date(exp.date || exp.createdAt) >= sDate).reduce((s, e) => s + e.amount, 0);
+      return (sRev - sCogs) + fInc - fExp;
+    };
+
+    const todayProfit = calcNetProfitForRange(startToday);
+    const monthlyProfit = calcNetProfitForRange(startMonth);
+    const yearlyProfit = calcNetProfitForRange(startYear);
+
+    // 2. Compute Total Sales & Item COGS
+    let totalSalesGross = 0;
+    let totalCOGSGross = 0;
+    const reportRows = [];
+    const productProfitStats = {};
+    const categoryProfitStats = {};
+
+    invoices.forEach((inv) => {
+      const invSales = inv.grandTotal || inv.subTotal || 0;
+      totalSalesGross += invSales;
+
+      let invCOGS = 0;
+      (inv.items || []).forEach((item) => {
+        const qty = item.quantity || 1;
+        const pCost = item.productId
+          ? (productCostMap[item.productId] || productCostMap[item.name?.toLowerCase()?.trim()] || 0)
+          : (productCostMap[item.name?.toLowerCase()?.trim()] || (item.price ? item.price * 0.7 : 0));
+        
+        const itemCOGS = pCost * qty;
+        invCOGS += itemCOGS;
+
+        // Product stats
+        const pName = item.name || 'General Item';
+        if (!productProfitStats[pName]) {
+          productProfitStats[pName] = { name: pName, sales: 0, cost: 0, profit: 0, qty: 0 };
+        }
+        productProfitStats[pName].sales += (item.totalPrice || (item.price * qty));
+        productProfitStats[pName].cost += itemCOGS;
+        productProfitStats[pName].profit += ((item.totalPrice || (item.price * qty)) - itemCOGS);
+        productProfitStats[pName].qty += qty;
+
+        // Category stats
+        const catName = item.category || 'General';
+        if (!categoryProfitStats[catName]) {
+          categoryProfitStats[catName] = { name: catName, sales: 0, cost: 0, profit: 0 };
+        }
+        categoryProfitStats[catName].sales += (item.totalPrice || (item.price * qty));
+        categoryProfitStats[catName].cost += itemCOGS;
+        categoryProfitStats[catName].profit += ((item.totalPrice || (item.price * qty)) - itemCOGS);
+      });
+
+      totalCOGSGross += invCOGS;
+
+      const invGrossProfit = invSales - invCOGS;
+      reportRows.push({
+        date: inv.date || inv.createdAt,
+        invoiceNo: inv.invoiceNo,
+        customerName: inv.customerName || 'Walk-in Customer',
+        salesAmount: invSales,
+        costAmount: invCOGS,
+        grossProfit: invGrossProfit,
+        expenseAllocation: 0, // Computed after total expenses
+        netProfit: invGrossProfit,
+        status: invGrossProfit >= 0 ? 'PROFIT' : 'LOSS',
+        type: 'Sale',
+      });
+    });
+
+    // 3. Sales Returns adjustment
+    let totalSalesReturnsAmount = 0;
+    let returnedCOGSAmount = 0;
+
+    salesReturns.forEach((sr) => {
+      const retAmt = sr.totalReturnAmount || 0;
+      totalSalesReturnsAmount += retAmt;
+
+      let retCost = 0;
+      (sr.items || []).forEach((item) => {
+        const qty = item.quantity || 1;
+        const pCost = item.costPrice || (item.productId ? (productCostMap[item.productId] || 0) : 0);
+        retCost += pCost * qty;
+      });
+
+      returnedCOGSAmount += retCost;
+    });
+
+    // 4. Purchase Returns adjustment
+    let totalPurchaseReturnsAmount = 0;
+    purchaseReturns.forEach((pr) => {
+      const qty = pr.quantity || 1;
+      const pCost = pr.productId ? (productCostMap[pr.productId.toString()] || 0) : 0;
+      totalPurchaseReturnsAmount += (pCost * qty);
+    });
+
+    // Net Sales & Net COGS
+    const totalSales = Math.max(0, totalSalesGross - totalSalesReturnsAmount);
+    const totalCOGS = Math.max(0, totalCOGSGross - returnedCOGSAmount - totalPurchaseReturnsAmount);
+    const grossProfit = totalSales - totalCOGS;
+
+    // 5. Other Income Calculation
+    const incomeBreakdown = {};
+    let totalOtherIncome = 0;
+
+    incomes.forEach((inc) => {
+      totalOtherIncome += inc.amount;
+      const src = inc.source || 'Other Income';
+      incomeBreakdown[src] = (incomeBreakdown[src] || 0) + inc.amount;
+    });
+
+    // 6. Total Expenses & Breakdown
+    const expenseBreakdown = {};
+    let totalExpensesVal = 0;
+
+    expenses.forEach((exp) => {
+      totalExpensesVal += exp.amount;
+      const cat = exp.category || 'Miscellaneous';
+      expenseBreakdown[cat] = (expenseBreakdown[cat] || 0) + exp.amount;
+    });
+
+    // Payroll Salaries
+    paidEmployees.forEach((emp) => {
+      const sal = emp.salary || 0;
+      if (sal > 0) {
+        totalExpensesVal += sal;
+        expenseBreakdown['Salary'] = (expenseBreakdown['Salary'] || 0) + sal;
+      }
+    });
+
+    // 7. Net Profit & Margin
+    const netProfit = grossProfit + totalOtherIncome - totalExpensesVal;
+    const profitMargin = totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(2) : '0.00';
+    const overallStatus = netProfit < 0 ? 'LOSS' : 'PROFIT';
+
+    // Update pro-rated expense allocation in report table rows
+    reportRows.forEach((row) => {
+      const proRatedExp = totalSalesGross > 0 ? (row.salesAmount / totalSalesGross) * totalExpensesVal : 0;
+      row.expenseAllocation = Number(proRatedExp.toFixed(2));
+      row.netProfit = Number((row.grossProfit - proRatedExp).toFixed(2));
+      row.status = row.netProfit >= 0 ? 'PROFIT' : 'LOSS';
+    });
+
+    // Product Profitability rankings
+    const productStatsArr = Object.values(productProfitStats);
+    const topProfitableProducts = [...productStatsArr].sort((a, b) => b.profit - a.profit).slice(0, 5);
+    const leastProfitableProducts = [...productStatsArr].sort((a, b) => a.profit - b.profit).slice(0, 5);
+    const topCategoriesByProfit = Object.values(categoryProfitStats).sort((a, b) => b.profit - a.profit);
+
+    // Monthly Trend Chart (Last 6 Months)
+    const monthlyTrendMap = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const label = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+      monthlyTrendMap[label] = { month: label, sales: 0, cogs: 0, expenses: 0, profit: 0 };
+    }
+
+    allInvoices.forEach((inv) => {
+      const invDate = new Date(inv.date || inv.createdAt);
+      const label = invDate.toLocaleString('default', { month: 'short', year: '2-digit' });
+      if (monthlyTrendMap[label]) {
+        monthlyTrendMap[label].sales += (inv.grandTotal || 0);
+        let c = 0;
+        (inv.items || []).forEach((item) => {
+          c += (productCostMap[item.productId] || (item.price ? item.price * 0.7 : 0)) * (item.quantity || 1);
+        });
+        monthlyTrendMap[label].cogs += c;
+      }
+    });
+
+    allExpenses.forEach((exp) => {
+      const expDate = new Date(exp.date || exp.createdAt);
+      const label = expDate.toLocaleString('default', { month: 'short', year: '2-digit' });
+      if (monthlyTrendMap[label]) {
+        monthlyTrendMap[label].expenses += exp.amount;
+      }
+    });
+
+    Object.keys(monthlyTrendMap).forEach((m) => {
+      const t = monthlyTrendMap[m];
+      t.profit = (t.sales - t.cogs) - t.expenses;
+    });
 
     res.status(200).json({
       success: true,
-      data: {
-        summary: {
-          totalRevenue,
-          totalSalesRevenue,
-          manualIncomeTotal,
-          costOfPurchases,
-          grossProfit,
-          totalBusinessExpenses,
-          netProfit,
-        },
-        expenseBreakdown: categoryExpenses,
-        invoiceCount: invoices.length,
-        purchaseCount: purchaseInvoices.length,
+      kpis: {
+        totalSales,
+        cogs: totalCOGS,
+        grossProfit,
+        otherIncome: totalOtherIncome,
+        totalExpenses: totalExpensesVal,
+        netProfit,
+        profitMargin,
+        status: overallStatus,
+        todayProfit,
+        monthlyProfit,
+        yearlyProfit,
+        salesReturnsAmount: totalSalesReturnsAmount,
+        purchaseReturnsAmount: totalPurchaseReturnsAmount,
       },
+      charts: {
+        monthlyTrend: Object.values(monthlyTrendMap),
+        expenseBreakdown: Object.keys(expenseBreakdown).map((k) => ({ name: k, value: expenseBreakdown[k] })),
+        incomeBreakdown: Object.keys(incomeBreakdown).map((k) => ({ name: k, value: incomeBreakdown[k] })),
+        topProducts: topProfitableProducts,
+        leastProducts: leastProfitableProducts,
+        topCategories: topCategoriesByProfit,
+      },
+      reportTable: reportRows.slice(0, 100),
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
