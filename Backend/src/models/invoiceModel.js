@@ -78,6 +78,13 @@ const invoiceItemSchema = new mongoose.Schema({
     type: String,
     enum: ['Pending', 'Paid', 'Cancelled'],
     default: 'Pending',
+  },
+  hasAlteration: {
+    type: Boolean,
+    default: false,
+  },
+  alterationRecord: {
+    type: mongoose.Schema.Types.Mixed,
   }
 });
 

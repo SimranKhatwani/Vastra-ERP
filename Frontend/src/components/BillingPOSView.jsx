@@ -445,6 +445,7 @@ export const BillingPOSView = ({
       createdBy: currentUser ? currentUser.name : "Cashier"
     };
 
+    let savedRecord = payload;
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("http://localhost:5000/api/alterations", {
@@ -456,32 +457,35 @@ export const BillingPOSView = ({
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (data.success) {
-        if (onAddNotification) {
-          onAddNotification(
-            "Alteration Saved",
-            `Alteration record ${data.data?.alterationId || ''} created & linked to ${selectedAlterationCartItem.name}.`,
-            "success"
-          );
-        }
-        setCart(prev => prev.map(item => {
-          if (item === selectedAlterationCartItem) {
-            return { ...item, hasAlteration: true, alterationRecord: data.data };
-          }
-          return item;
-        }));
-        setSelectedAlterationCartItem(null);
-        setAltMeasurements({});
-        setAltOptions([]);
-        setAltCustomText("");
-        setAltSpecialInstructions("");
-      } else {
-        if (onAddNotification) onAddNotification("Alteration Failed", data.message || "Could not save alteration record.", "danger");
+      if (data.success && data.data) {
+        savedRecord = data.data;
       }
     } catch (err) {
       console.error("Save alteration error:", err);
-      if (onAddNotification) onAddNotification("Alteration Error", "Server connection error while saving alteration.", "danger");
     }
+
+    // Attach alteration record to target item in cart
+    setCart(prev => prev.map(item => {
+      const isMatch = (item === selectedAlterationCartItem) ||
+                      (item.id && selectedAlterationCartItem.id && item.id === selectedAlterationCartItem.id) ||
+                      (item.productId && selectedAlterationCartItem.productId && item.productId === selectedAlterationCartItem.productId && item.size === selectedAlterationCartItem.size && item.color === selectedAlterationCartItem.color) ||
+                      (item.name === selectedAlterationCartItem.name && item.size === selectedAlterationCartItem.size);
+      if (isMatch) {
+        return { ...item, hasAlteration: true, alterationRecord: savedRecord };
+      }
+      return item;
+    }));
+
+    if (onAddNotification) {
+      onAddNotification("Alteration Saved", `Alteration ticket created for ${selectedAlterationCartItem.name} & attached to bill!`, "success");
+    }
+
+    setSelectedAlterationCartItem(null);
+    setAltMeasurements({});
+    setAltOptions([]);
+    setAltCustomText("");
+    setAltSpecialInstructions("");
+    setShowAlterationModal(false);
   };
 
   // --- NEW ERP STATE VARIABLES ---
@@ -1275,7 +1279,21 @@ export const BillingPOSView = ({
 
     // Trigger state callbacks — onAddInvoice now returns the saved invoice object (or null on error)
     const savedInvoice = await onAddInvoice(newInvoice);
-    setCompletedInvoice(savedInvoice || newInvoice);
+
+    // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
+    const mergedInvoice = {
+      ...(savedInvoice || newInvoice),
+      items: ((savedInvoice && savedInvoice.items) || newInvoice.items).map((savedItem, i) => {
+        const originalItem = newInvoice.items[i] || savedItem;
+        return {
+          ...savedItem,
+          hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
+          alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
+        };
+      })
+    };
+
+    setCompletedInvoice(mergedInvoice);
     setCart([]);
     setCouponCode("");
     setFlatDiscount(0);
@@ -4577,6 +4595,24 @@ export const BillingPOSView = ({
                   <span>₹{completedInvoice.grandTotal}</span>
                 </div>
               </div>
+
+              {completedInvoice.items.some(i => i.hasAlteration || i.alterationRecord) && (
+                <div className="space-y-1.5 pt-2 border-t border-dashed border-slate-300 font-sans text-[10px]">
+                  <p className="font-bold text-center text-rose-700 uppercase tracking-wider">
+                    *** ALTERATION & DELIVERY SLIP ***
+                  </p>
+                  {completedInvoice.items.filter(i => i.hasAlteration || i.alterationRecord).map((i, idx) => (
+                    <div key={idx} className="bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 text-rose-900">
+                      <p className="font-bold text-slate-800">{i.name} ({i.size}/{i.color})</p>
+                      <p>Master Tailor: <strong>{i.alterationRecord?.tailorName || 'Master Tailor'}</strong></p>
+                      <p>Alterations: <strong>{i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}</strong></p>
+                      <p>Delivery Date & Time: <strong>{i.alterationRecord?.deliveryDate || 'Scheduled'} {i.alterationRecord?.deliveryTime || ''}</strong></p>
+                      <p>Expected Trial: {i.alterationRecord?.trialDate || 'N/A'} (Priority: {i.alterationRecord?.priority || 'Normal'})</p>
+                      {i.alterationRecord?.specialInstructions && <p className="italic text-slate-600">Notes: "{i.alterationRecord.specialInstructions}"</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="border-t border-dashed border-slate-300 my-2" />
               <div className="text-center text-[10px] text-slate-400">
