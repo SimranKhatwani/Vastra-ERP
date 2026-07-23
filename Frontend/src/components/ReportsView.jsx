@@ -168,11 +168,42 @@ export const ReportsView = ({ onAddNotification }) => {
               setActiveSection("dashboard");
               setSelectedReport(null);
             }}
-            className="flex items-center gap-2 bg-slate-900 text-white text-xs font-extrabold px-4 py-2.5 rounded-2xl hover:bg-slate-800 transition-all shadow-sm"
+            className="flex items-center gap-2 bg-slate-900 text-white text-xs font-extrabold px-4 py-2.5 rounded-2xl hover:bg-slate-800 transition-all shadow-sm cursor-pointer"
           >
-            ← Back to Business Performance Dashboard
+            ← Back to Performance Dashboard
           </button>
         )}
+      </div>
+
+      {/* Top Module Section Tabs */}
+      <div className="flex gap-1.5 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs overflow-x-auto">
+        {[
+          { id: "dashboard", label: "Business Performance Dashboard", icon: BarChart3 },
+          { id: "sales", label: "Sales & Purchase Analytics", icon: DollarSign },
+          { id: "inventory", label: "Inventory Analytics", icon: Package },
+          { id: "people", label: "People & HR Analytics", icon: Users },
+          { id: "financial", label: "Financial Analytics & Expenses", icon: PieIcon },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSection === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveSection(tab.id);
+                setSelectedReport(null);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ========================================================================= */}
@@ -261,26 +292,26 @@ export const ReportsView = ({ onAddNotification }) => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} />
-              <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} />
-              <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} />
-              <KPISmall label="Monthly Sales" value={`₹${fmt(kpis.monthlySales)}`} color="emerald" icon={DollarSign} />
-              <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} />
-              <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} />
+              <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
+              <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+              <KPISmall label="Monthly Sales" value={`₹${fmt(kpis.monthlySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
+              <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
               
-              <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} />
-              <KPISmall label="Gross Profit" value={`₹${fmt(kpis.grossProfit)}`} color="indigo" icon={TrendingUp} />
-              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} />
-              <KPISmall label="Outstanding Receivables" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} />
-              <KPISmall label="Outstanding Payables" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} />
-              <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} />
+              <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("expenses"); loadSectionReport("financial", "expenses"); }} />
+              <KPISmall label="Gross Profit" value={`₹${fmt(kpis.grossProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+              <KPISmall label="Outstanding Receivables" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
+              <KPISmall label="Outstanding Payables" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
+              <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
 
-              <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} />
-              <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} />
-              <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} />
-              <KPISmall label="Attendance %" value={`${kpis.attendancePercentage || 0}%`} color="emerald" icon={Clock} />
-              <KPISmall label="Low Stock Items" value={kpis.lowStockProducts || 0} color="red" icon={AlertTriangle} />
-              <KPISmall label="Fast Moving" value={kpis.fastMovingProducts || 0} color="emerald" icon={TrendingUp} />
+              <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
+              <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
+              <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} onClick={() => { setActiveSection("people"); setSelectedReport("performance"); loadSectionReport("people", "performance"); }} />
+              <KPISmall label="Attendance %" value={`${kpis.attendancePercentage || 0}%`} color="emerald" icon={Clock} onClick={() => { setActiveSection("people"); setSelectedReport("attendance"); loadSectionReport("people", "attendance"); }} />
+              <KPISmall label="Low Stock Items" value={kpis.lowStockProducts || 0} color="red" icon={AlertTriangle} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
+              <KPISmall label="Fast Moving" value={kpis.fastMovingProducts || 0} color="emerald" icon={TrendingUp} onClick={() => { setActiveSection("inventory"); setSelectedReport("fast_moving"); loadSectionReport("inventory", "fast_moving"); }} />
             </div>
           </div>
 
@@ -385,12 +416,35 @@ export const ReportsView = ({ onAddNotification }) => {
       {/* ========================================================================= */}
       {activeSection !== "dashboard" && (
         <div className="space-y-6">
+          {/* Sub-Report Type Selector Tabs */}
+          <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-xs flex flex-wrap items-center gap-2">
+            {getSectionReportCards(activeSection).map((card) => {
+              const isSelected = selectedReport === card.id;
+              return (
+                <button
+                  key={card.id}
+                  onClick={() => {
+                    setSelectedReport(card.id);
+                    loadSectionReport(activeSection, card.id);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                    isSelected
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {card.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-5">
             {/* Report Actions & Filters Bar */}
             <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">
-                  {activeSection.toUpperCase()} ANALYTICS & LIVE AUDIT REPORT
+                  {(selectedReport || activeSection).replace('_', ' ').toUpperCase()} REPORT & LIVE AUDIT
                 </h3>
                 <p className="text-xs text-slate-400">Live dynamic reporting & metrics powered by MongoDB Aggregations</p>
               </div>
@@ -558,6 +612,7 @@ function getSectionReportCards(section) {
     case "financial":
       return [
         { id: "financial_summary", label: "Financial Statement", desc: "Profit & Loss, Cash Flow & Bank Ledger Summary" },
+        { id: "expenses", label: "Expense Management", desc: "Categorized expenses, payouts & vendor expense log" },
       ];
     default:
       return [];
@@ -580,18 +635,21 @@ function getDefaultReportForSection(section) {
 }
 
 // Helper KPI Small Card Component
-function KPISmall({ label, value, color, icon: Icon }) {
+function KPISmall({ label, value, color, icon: Icon, onClick }) {
   const colorMap = {
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
-    blue: "bg-blue-50 text-blue-600 border-blue-100",
-    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
-    purple: "bg-purple-50 text-purple-600 border-purple-100",
-    amber: "bg-amber-50 text-amber-600 border-amber-100",
-    red: "bg-red-50 text-red-600 border-red-100",
+    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100 hover:border-emerald-300",
+    blue: "bg-blue-50 text-blue-600 border-blue-100 hover:border-blue-300",
+    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 hover:border-indigo-300",
+    purple: "bg-purple-50 text-purple-600 border-purple-100 hover:border-purple-300",
+    amber: "bg-amber-50 text-amber-600 border-amber-100 hover:border-amber-300",
+    red: "bg-red-50 text-red-600 border-red-100 hover:border-red-300",
   };
 
   return (
-    <div className={`p-3.5 rounded-2xl border ${colorMap[color] || colorMap.indigo} shadow-sm flex flex-col justify-between`}>
+    <div
+      onClick={onClick}
+      className={`p-3.5 rounded-2xl border ${colorMap[color] || colorMap.indigo} shadow-sm flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]`}
+    >
       <div className="flex items-center justify-between text-[10px] font-bold uppercase opacity-80">
         <span>{label}</span>
         <Icon className="w-3.5 h-3.5" />

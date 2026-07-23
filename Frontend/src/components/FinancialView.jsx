@@ -734,15 +734,12 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {activeTab === "dashboard" && (
         <div className="space-y-4">
           {/* KPI Cards Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KPICard icon={DollarSign} label="Today's Sales" value={`₹${fmt(summary?.kpis?.todaySales)}`} color="indigo" />
-            <KPICard icon={CreditCard} label="Today's Purchase" value={`₹${fmt(summary?.kpis?.todayPurchase)}`} color="blue" />
-            <KPICard icon={ArrowUpRight} label="Total Income (Month)" value={`₹${fmt(summary?.kpis?.totalIncome)}`} color="green" />
-            <KPICard icon={ArrowDownRight} label="Total Expenses" value={`₹${fmt(summary?.kpis?.totalExpenses)}`} color="red" />
-            <KPICard icon={TrendingUp} label="Net Profit (Month)" value={`₹${fmt(summary?.kpis?.netProfit)}`} color="emerald" />
-            <KPICard icon={Wallet} label="Cash Balance" value={`₹${fmt(summary?.kpis?.cashBalance)}`} color="amber" />
-            <KPICard icon={CreditCard} label="Bank Balance" value={`₹${fmt(summary?.kpis?.bankBalance)}`} color="indigo" />
-            <KPICard icon={AlertTriangle} label="Receivables" value={`₹${fmt(summary?.kpis?.outstandingReceivables)}`} color="red" />
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <KPICard icon={DollarSign} label="Today Net Sales" value={`₹${fmt(summary?.kpis?.todaySales)}`} sub={summary?.kpis?.todaySalesReturns ? `Gross: ₹${fmt(summary?.kpis?.grossTodaySales)}` : undefined} color="indigo" />
+            <KPICard icon={RefreshCw} label="Sales Returns" value={`₹${fmt(summary?.kpis?.totalSalesReturns || summary?.kpis?.monthlySalesReturns || 0)}`} sub="Refund Deductions" color="red" />
+            <KPICard icon={ArrowUpRight} label="Total Income (Net)" value={`₹${fmt(summary?.kpis?.totalIncome)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Expenses" value={`₹${fmt(summary?.kpis?.totalExpenses)}`} color="amber" />
+            <KPICard icon={TrendingUp} label="Net Profit (Month)" value={`₹${fmt(summary?.kpis?.netProfit)}`} sub="Gross Profit - COGS - Exp" color="emerald" />
           </div>
 
           {/* Quick Actions & Recent Activities */}

@@ -47,30 +47,51 @@ exports.getBIDashboard = async (req, res) => {
 
     // Invoices & Sales
     const invoices = await Invoice.find({ tenantId }).lean();
+    let grossSales = 0;
+    let totalSalesReturns = 0;
     let todaySales = 0;
+    let todaySalesReturns = 0;
     let monthlySales = 0;
+    let monthlySalesReturns = 0;
     let totalReceivables = 0;
-    let totalSalesRevenue = 0;
     const categorySales = {};
     const paymentModes = {};
 
     invoices.forEach((inv) => {
       const invDate = new Date(inv.date || inv.createdAt);
       const total = inv.grandTotal || 0;
-      totalSalesRevenue += total;
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
 
-      if (invDate >= startOfToday) todaySales += total;
-      if (invDate >= startOfMonth) monthlySales += total;
+      grossSales += total;
+      totalSalesReturns += retAmt;
+
+      if (invDate >= startOfToday) {
+        todaySales += total;
+        todaySalesReturns += retAmt;
+      }
+      if (invDate >= startOfMonth) {
+        monthlySales += total;
+        monthlySalesReturns += retAmt;
+      }
       if (inv.status !== 'Paid') totalReceivables += (inv.outstandingAmount || 0);
 
       const pm = inv.paymentMethod || 'Cash';
-      paymentModes[pm] = (paymentModes[pm] || 0) + total;
+      const netInvTotal = Math.max(0, total - retAmt);
+      paymentModes[pm] = (paymentModes[pm] || 0) + netInvTotal;
 
       (inv.items || []).forEach((item) => {
+        if (item.isReturned) return; // Exclude returned items from sales stats
         const cat = item.category || 'General';
         categorySales[cat] = (categorySales[cat] || 0) + (item.totalPrice || (item.price * (item.quantity || 1)));
       });
     });
+
+    const netSalesRevenue = Math.max(0, grossSales - totalSalesReturns);
+    const netTodaySales = Math.max(0, todaySales - todaySalesReturns);
+    const netMonthlySales = Math.max(0, monthlySales - monthlySalesReturns);
 
     // Purchase Invoices
     const purchases = await PurchaseInvoice.find({ tenantId }).lean();
@@ -105,15 +126,16 @@ exports.getBIDashboard = async (req, res) => {
     });
 
     let totalOtherIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-    let totalRevenue = monthlySales + totalOtherIncome;
+    let totalRevenue = netMonthlySales + totalOtherIncome;
 
-    // COGS & Gross/Net Profit
+    // COGS & Gross/Net Profit (excluding returned items from COGS)
     let totalCOGS = 0;
     let todayCOGS = 0;
 
     invoices.forEach((inv) => {
       const invDate = new Date(inv.date || inv.createdAt);
       (inv.items || []).forEach((item) => {
+        if (item.isReturned) return; // Returned items return to stock, not consumed in COGS
         const qty = item.quantity || 1;
         const pCost = item.productId
           ? (productCostMap[item.productId] || productCostMap[item.name?.toLowerCase()?.trim()] || 0)
@@ -125,9 +147,9 @@ exports.getBIDashboard = async (req, res) => {
       });
     });
 
-    const grossProfit = totalSalesRevenue - totalCOGS;
+    const grossProfit = netSalesRevenue - totalCOGS;
     const netProfit = grossProfit + totalOtherIncome - totalExpenses;
-    const todayProfit = todaySales - todayCOGS;
+    const todayProfit = netTodaySales - todayCOGS;
 
     // Active Counts
     const activeCustomersCount = await Customer.countDocuments({ tenantId });
@@ -464,11 +486,12 @@ exports.getPeopleAnalytics = async (req, res) => {
 };
 
 // ==============================================================================
-// 5. FINANCIAL ANALYTICS (STATEMENT, CASH FLOW, LEDGERS, CASH/BANK)
+// 5. FINANCIAL ANALYTICS (STATEMENT, CASH FLOW, LEDGERS, EXPENSES, CASH/BANK)
 // ==============================================================================
 exports.getFinancialAnalytics = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
+    const { reportType } = req.query;
 
     const invoices = await Invoice.find({ tenantId }).lean();
     const purchases = await PurchaseInvoice.find({ tenantId }).lean();
@@ -487,23 +510,60 @@ exports.getFinancialAnalytics = async (req, res) => {
     const totalPayments = payments.reduce((s, p) => s + (p.amount || 0), 0);
     const totalVendorPayments = vendorPayments.reduce((s, v) => s + (v.amount || 0), 0);
 
-    const grossProfit = totalSales - totalPurchases;
+    let totalSalesReturns = 0;
+    invoices.forEach((inv) => {
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      totalSalesReturns += retAmt;
+    });
+
+    const netSales = Math.max(0, totalSales - totalSalesReturns);
+    const grossProfit = netSales - totalPurchases;
     const netProfit = grossProfit + totalIncomes - totalExpenses;
+
+    if (reportType === 'expenses') {
+      const formattedExpenses = expenses.map(e => ({
+        expenseNo: e.expenseNo || `EXP-${(e._id || '').toString().slice(-6)}`,
+        category: e.category || 'Miscellaneous',
+        payee: e.vendorName || e.payee || 'Store Expense',
+        amount: e.amount || 0,
+        gstAmount: e.gst || 0,
+        paymentMethod: e.paymentMethod || 'Cash',
+        date: e.date ? new Date(e.date).toLocaleDateString('en-IN') : '—',
+        remarks: e.description || e.remarks || 'General expense'
+      }));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          totalExpenses,
+          expenseCount: expenses.length,
+          avgExpense: expenses.length ? Math.round(totalExpenses / expenses.length) : 0
+        },
+        data: formattedExpenses
+      });
+    }
+
+    const financialLedger = [
+      ...invoices.map(i => ({ refNo: i.invoiceNo, category: 'Sales Revenue', type: 'Income', amount: i.grandTotal || 0, date: i.date ? new Date(i.date).toLocaleDateString('en-IN') : '—', party: i.customerName || 'Walk-in' })),
+      ...expenses.map(e => ({ refNo: e.expenseNo || 'EXP', category: e.category || 'Expense', type: 'Expense', amount: e.amount || 0, date: e.date ? new Date(e.date).toLocaleDateString('en-IN') : '—', party: e.vendorName || 'Store' })),
+      ...purchases.map(p => ({ refNo: p.invoiceNo || 'PUR', category: 'Inventory Purchase', type: 'Purchase', amount: p.grandTotal || 0, date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : '—', party: p.vendorName || 'Supplier' }))
+    ];
 
     res.status(200).json({
       success: true,
       summary: {
-        totalSales,
+        netSales,
+        totalSalesReturns,
         totalPurchases,
         totalExpenses,
         totalIncomes,
-        totalReceipts,
-        totalPayments,
-        totalVendorPayments,
         grossProfit,
         netProfit,
-        cashBankCount: cashBankEntries.length,
       },
+      data: financialLedger,
       expenses,
       incomes,
       receipts,

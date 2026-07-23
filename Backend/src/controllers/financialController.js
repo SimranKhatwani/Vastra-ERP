@@ -47,15 +47,36 @@ exports.getDashboardSummary = async (req, res) => {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    // 1. Invoices (Sales, Receipts, Receivables)
+    // 1. Invoices (Sales, Receipts, Receivables, Sales Returns)
     const invoices = await Invoice.find({ tenantId });
-    const todaySales = invoices
-      .filter((inv) => new Date(inv.date || inv.createdAt) >= startOfToday)
-      .reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    
+    let grossTodaySales = 0;
+    let todaySalesReturns = 0;
+    let grossMonthlySales = 0;
+    let monthlySalesReturns = 0;
+    let totalSalesReturns = 0;
 
-    const monthlySales = invoices
-      .filter((inv) => new Date(inv.date || inv.createdAt) >= startOfMonth)
-      .reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    invoices.forEach((inv) => {
+      const invDate = new Date(inv.date || inv.createdAt);
+      const total = inv.grandTotal || 0;
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      totalSalesReturns += retAmt;
+
+      if (invDate >= startOfToday) {
+        grossTodaySales += total;
+        todaySalesReturns += retAmt;
+      }
+      if (invDate >= startOfMonth) {
+        grossMonthlySales += total;
+        monthlySalesReturns += retAmt;
+      }
+    });
+
+    const todaySales = Math.max(0, grossTodaySales - todaySalesReturns);
+    const monthlySales = Math.max(0, grossMonthlySales - monthlySalesReturns);
 
     const totalReceivables = invoices
       .filter((inv) => inv.status !== 'Paid')
@@ -91,7 +112,7 @@ exports.getDashboardSummary = async (req, res) => {
       }
     });
 
-    // 4. Incomes (Manual Incomes + Sales)
+    // 4. Incomes (Manual Incomes + Net Sales)
     const manualIncomes = await Income.find({ tenantId });
     const manualIncomeTotal = manualIncomes.reduce((sum, inc) => sum + (inc.amount || 0), 0);
     const totalIncomeVal = monthlySales + manualIncomeTotal;
@@ -230,6 +251,8 @@ exports.getDashboardSummary = async (req, res) => {
       success: true,
       kpis: {
         todaySales,
+        grossTodaySales,
+        todaySalesReturns,
         todayPurchase,
         totalIncome: totalIncomeVal,
         totalExpenses: totalExpensesVal,
@@ -241,6 +264,9 @@ exports.getDashboardSummary = async (req, res) => {
         customerOutstanding: customerOutstandingTotal,
         vendorOutstanding: vendorOutstandingTotal,
         monthlyRevenue: monthlySales,
+        grossMonthlySales,
+        monthlySalesReturns,
+        totalSalesReturns,
         monthlyExpenses: monthlyExpensesVal,
         monthlyProfit: monthlyProfitVal,
       },
