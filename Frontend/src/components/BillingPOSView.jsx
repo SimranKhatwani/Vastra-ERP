@@ -26,6 +26,7 @@ import {
   Scissors,
   Ruler,
   ChevronsLeft,
+  RotateCcw,
 } from "lucide-react";
 
 export const BillingPOSView = ({
@@ -213,6 +214,63 @@ export const BillingPOSView = ({
   const [returnedItemIds, setReturnedItemIds] = useState([]);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState(null);
+
+  // Returns & Exchange Subsystem States
+  const [returnSearchQuery, setReturnSearchQuery] = useState("");
+  const [returnActionType, setReturnActionType] = useState("return"); // 'return' | 'exchange'
+  const [returnReason, setReturnReason] = useState("Defective / Damaged");
+  const [returnCustomReason, setReturnCustomReason] = useState("");
+  const [returnApprovedCheckbox, setReturnApprovedCheckbox] = useState(false);
+
+  const [exchangeReason, setExchangeReason] = useState("Size / Fit Swap");
+  const [exchangeOldItemIdx, setExchangeOldItemIdx] = useState(0);
+  const [exchangeNewSearchQuery, setExchangeNewSearchQuery] = useState("");
+  const [exchangeSelectedNewProduct, setExchangeSelectedNewProduct] = useState(null);
+  const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
+  const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
+
+  // Local Reactive Invoices State
+  const [invoiceList, setInvoiceList] = useState(invoices);
+
+  useEffect(() => {
+    if (invoices && invoices.length > 0) {
+      setInvoiceList(invoices);
+    }
+  }, [invoices]);
+
+  // Helper to unroll multi-quantity invoice items into distinct individual unit lines
+  const unrollInvoiceItems = (items = []) => {
+    const result = [];
+    (items || []).forEach((item, origIdx) => {
+      const qty = Number(item.quantity) || 1;
+      const unitPrice = item.price || (item.totalPrice ? Math.round(item.totalPrice / qty) : 0);
+      const baseId = item.productId || item.id || `item-${origIdx}`;
+
+      if (qty <= 1) {
+        result.push({
+          ...item,
+          unitId: item.unitId || `${baseId}-u1`,
+          quantity: 1,
+          price: unitPrice,
+          totalPrice: unitPrice
+        });
+      } else {
+        for (let i = 1; i <= qty; i++) {
+          result.push({
+            ...item,
+            unitId: `${baseId}-u${i}`,
+            unitIndex: i,
+            totalQty: qty,
+            quantity: 1,
+            price: unitPrice,
+            totalPrice: unitPrice,
+            name: `${item.name} (Piece #${i} of ${qty})`
+          });
+        }
+      }
+    });
+    return result;
+  };
 
   // New billing features states
   const [quotations, setQuotations] = useState([
@@ -510,9 +568,10 @@ export const BillingPOSView = ({
   
   // Filtered invoices for Invoice History mode
   const filteredHistoryInvoices = useMemo(() => {
+    const list = invoiceList || invoices || [];
     const q = (historySearch || "").toLowerCase().trim();
-    if (!q) return invoices;
-    return invoices.filter((inv) => {
+    if (!q) return list;
+    return list.filter((inv) => {
       const matchNo = (inv.invoiceNo || "").toLowerCase().includes(q);
       const matchCust = (inv.customerName || "").toLowerCase().includes(q);
       const matchPhone = (inv.customerPhone || "").toLowerCase().includes(q);
@@ -524,7 +583,7 @@ export const BillingPOSView = ({
       );
       return matchNo || matchCust || matchPhone || matchPay || matchItems;
     });
-  }, [invoices, historySearch]);
+  }, [invoiceList, invoices, historySearch]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1571,15 +1630,17 @@ export const BillingPOSView = ({
             </tr>
           </thead>
           <tbody>
-            ${invoice.items
+            ${unrollInvoiceItems(invoice.items)
               .map(
                 (item) => `
               <tr>
                 <td>${item.name} (${item.size}/${item.color})</td>
                 <td class="text-right">${item.quantity}</td>
                 <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
-                <td class="text-right">&#8377;${(Number(item.totalPrice) || 0).toLocaleString('en-IN')}</td>
+                <td class="text-right">&#8377;${(Number(item.totalPrice || item.price) || 0).toLocaleString('en-IN')}</td>
               </tr>
+              ${item.isReturned ? `<tr><td colSpan="4" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
+              ${item.isExchanged ? `<tr><td colSpan="4" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
               ${item.hasAlteration || item.alterationRecord ? `
                 <tr>
                   <td colSpan="4" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
@@ -2589,66 +2650,114 @@ export const BillingPOSView = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
-                {filteredHistoryInvoices.slice(0, 100).map((inv, idx) => (
-                  <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-indigo-600">
-                      <span className="cursor-pointer hover:underline" onClick={() => handleDownloadReceiptHTML(inv)}>
-                        {inv.invoiceNo}
-                      </span>
-                    </td>
-                    <td className="p-3">{inv.date ? new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
-                    <td className="p-3 font-medium text-slate-800">
-                      {inv.customerName}
-                    </td>
-                    <td className="p-3 font-mono">
-                      {(inv.items || []).reduce(
-                        (sum, i) => sum + i.quantity,
-                        0,
-                      )}{" "}
-                      pcs
-                    </td>
-                    <td className="p-3 font-bold font-mono">
-                      ₹{inv.grandTotal.toLocaleString()}
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${inv.paymentMethod === "Cash" ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-600"}`}
-                      >
-                        {inv.paymentMethod}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      {inv.whatsappStatus === 'Sent' && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-600 flex items-center gap-1 w-fit">
-                          <CheckCircle className="w-3 h-3" /> Sent
-                        </span>
-                      )}
-                      {inv.whatsappStatus === 'Failed' && (
-                        <button
-                          onClick={() => onRetryWhatsApp && onRetryWhatsApp(inv._id || inv.id)}
-                          className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1 cursor-pointer w-fit"
-                          title={inv.failureReason || 'WhatsApp dispatch failed'}
+                {filteredHistoryInvoices.slice(0, 100).map((inv, idx) => {
+                  const isReturned = inv.hasReturn || (inv.items && inv.items.some(i => i.isReturned));
+                  const isExchanged = inv.hasExchange || inv.exchangeSlip || (inv.items && inv.items.some(i => i.isExchanged));
+                  return (
+                    <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
+                      <td className="p-3 font-mono font-bold text-indigo-600">
+                        <div className="flex items-center gap-1.5">
+                          <span className="cursor-pointer hover:underline" onClick={() => handleDownloadReceiptHTML(inv)}>
+                            {inv.invoiceNo}
+                          </span>
+                          {isReturned && (
+                            <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              ↩ RETURNED
+                            </span>
+                          )}
+                          {isExchanged && (
+                            <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              🔁 EXCHANGED
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">{inv.date ? new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
+                      <td className="p-3 font-medium text-slate-800">
+                        {inv.customerName}
+                      </td>
+                      <td className="p-3 font-mono">
+                        {(inv.items || []).reduce(
+                          (sum, i) => sum + i.quantity,
+                          0,
+                        )}{" "}
+                        pcs
+                      </td>
+                      <td className="p-3 font-bold font-mono">
+                        ₹{inv.grandTotal.toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${inv.paymentMethod === "Cash" ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-600"}`}
                         >
-                          <XCircle className="w-3 h-3" /> Retry
-                        </button>
-                      )}
-                      {!inv.whatsappStatus && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-400 w-fit">
-                          —
+                          {inv.paymentMethod}
                         </span>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <button
-                        onClick={() => handleDownloadReceiptHTML(inv)}
-                        className="text-indigo-500 hover:text-indigo-700 flex items-center gap-1 font-semibold cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>HTML</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="p-3">
+                        {inv.whatsappStatus === 'Sent' && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-600 flex items-center gap-1 w-fit">
+                            <CheckCircle className="w-3 h-3" /> Sent
+                          </span>
+                        )}
+                        {inv.whatsappStatus === 'Failed' && (
+                          <button
+                            onClick={() => onRetryWhatsApp && onRetryWhatsApp(inv._id || inv.id)}
+                            className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1 cursor-pointer w-fit"
+                            title={inv.failureReason || 'WhatsApp dispatch failed'}
+                          >
+                            <XCircle className="w-3 h-3" /> Retry
+                          </button>
+                        )}
+                        {!inv.whatsappStatus && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-400 w-fit">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleDownloadReceiptHTML(inv)}
+                            className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold text-xs cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Receipt</span>
+                          </button>
+                          {isExchanged && (
+                            <button
+                              onClick={() => {
+                                if (inv.exchangeSlip) {
+                                  setCompletedExchangeSlip(inv.exchangeSlip);
+                                  setShowExchangeSlipModal(true);
+                                } else {
+                                  const exItem = inv.items?.find(i => i.isExchanged);
+                                  const docket = {
+                                    docketNo: `EXCH-${(inv._id || inv.id || '001').slice(-6)}`,
+                                    originalInvoiceNo: inv.invoiceNo,
+                                    customerName: inv.customerName,
+                                    customerPhone: inv.customerPhone,
+                                    reason: exItem?.exchangeReason || "Product Exchange",
+                                    oldItem: { name: exItem?.name || "Original Garment", size: exItem?.size || "M", color: exItem?.color || "Std", price: exItem?.totalPrice || 1000 },
+                                    newItem: { name: exItem?.exchangedFor || "Exchanged Garment", sku: "EXCH", size: "M", color: "Std", price: exItem?.totalPrice || 1000 },
+                                    priceDiff: 0,
+                                    cashierName: currentUser ? currentUser.name : "Store Cashier",
+                                    createdAt: inv.date || new Date().toISOString()
+                                  };
+                                  setCompletedExchangeSlip(docket);
+                                  setShowExchangeSlipModal(true);
+                                }
+                              }}
+                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold flex items-center gap-1 cursor-pointer border border-indigo-200"
+                            >
+                              <RefreshCw className="w-3 h-3 text-indigo-600" />
+                              <span>Exchange Slip</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredHistoryInvoices.length === 0 && (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-medium">
@@ -2664,135 +2773,592 @@ export const BillingPOSView = ({
 
       {/* Mode: Returns & Exchanges Setup */}
       {activePOSMode === "returns" && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-          {/* Lookup Panel */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 md:col-span-5 space-y-4">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Lookup Previous Invoice
-            </h4>
-            <div className="space-y-3">
+        <div className="space-y-6 animate-fade-in font-sans">
+          
+          {/* ─── TOP SEARCH BAR FOR INVOICE OR CUSTOMER ─── */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
               <div>
-                <span className="text-[10px] text-slate-400 block mb-1 font-mono">
-                  Invoice Number
-                </span>
-                <select
-                  onChange={(e) => {
-                    const match = invoices.find(
-                      (inv) => inv.invoiceNo === e.target.value,
-                    );
-                    setSelectedInvoiceForReturn(match || null);
-                    setReturnedItemIds([]);
-                  }}
-                  className="w-full text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
-                >
-                  <option value="">Select Invoice...</option>
-                  {invoices.slice(0, 20).map((inv) => (
-                    <option key={inv.id} value={inv.invoiceNo}>
-                      {inv.invoiceNo} - {inv.customerName}
-                    </option>
-                  ))}
-                </select>
+                <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-indigo-600" />
+                  <span>Lookup Invoice for Return or Exchange</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Search by Invoice Number, Customer Name, or Phone Number to load past transaction.
+                </p>
               </div>
-
               {selectedInvoiceForReturn && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2.5 text-xs">
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-slate-400">Date Issued:</span>
-                    <span className="font-mono">
-                      {selectedInvoiceForReturn.date}
-                    </span>
-                  </div>
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-slate-400">Grand Total:</span>
-                    <span className="font-mono text-indigo-600">
-                      ₹{selectedInvoiceForReturn.grandTotal.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-slate-400">Payment Route:</span>
-                    <span>{selectedInvoiceForReturn.paymentMethod}</span>
-                  </div>
-                </div>
+                <button
+                  onClick={() => {
+                    setSelectedInvoiceForReturn(null);
+                    setReturnedItemIds([]);
+                    setExchangeSelectedNewProduct(null);
+                    setReturnSearchQuery("");
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer"
+                >
+                  Clear Selected Invoice
+                </button>
               )}
             </div>
-          </div>
 
-          {/* Items Selector for refund */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 md:col-span-7 space-y-4">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">
-              Select Items to Return / Swap
-            </h4>
-            {!selectedInvoiceForReturn ? (
-              <div className="py-12 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
-                Please search/select an invoice on the left to review return
-                eligibility.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="divide-y divide-slate-100 space-y-2.5">
-                  {selectedInvoiceForReturn.items.map((item, idx) => {
-                    const isChecked = returnedItemIds.includes(item.productId);
-                    return (
-                      <div
-                        key={idx}
-                        className="py-2 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              setReturnedItemIds((prev) =>
-                                isChecked
-                                  ? prev.filter((id) => id !== item.productId)
-                                  : [...prev, item.productId],
-                              );
-                            }}
-                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded"
-                          />
-
-                          <div>
-                            <p className="text-xs font-semibold text-slate-800">
-                              {item.name}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-mono">
-                              Size: {item.size} | Color: {item.color} | Qty:{" "}
-                              {item.quantity}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-xs font-bold font-mono text-slate-800">
-                          ₹{item.totalPrice.toLocaleString()}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex justify-between border-t border-slate-100 pt-3 text-xs">
-                  <span className="font-semibold text-slate-500">
-                    Refund Credit Estimated:
-                  </span>
-                  <span className="font-mono font-bold text-red-600 text-sm">
-                    ₹
-                    {selectedInvoiceForReturn.items
-                      .filter((item) =>
-                        returnedItemIds.includes(item.productId),
-                      )
-                      .reduce((sum, item) => sum + item.totalPrice, 0)
-                      .toLocaleString()}
-                  </span>
-                </div>
-
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="Search invoice # (e.g. INV-98347457), customer name, or phone number..."
+                value={returnSearchQuery}
+                onChange={(e) => setReturnSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-2xs"
+              />
+              {returnSearchQuery && (
                 <button
-                  onClick={handleSubmitReturn}
-                  className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 tracking-wide cursor-pointer"
+                  onClick={() => setReturnSearchQuery("")}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
-                  Approve Return & Credit Customer Wallet
+                  <X className="w-4 h-4" />
                 </button>
+              )}
+            </div>
+
+            {/* Instant Real-Time Search Results Dropdown List */}
+            {returnSearchQuery && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 text-xs">
+                {invoices
+                  .filter((inv) =>
+                    (inv.invoiceNo || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                    (inv.customerName || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                    (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim())
+                  )
+                  .map((inv) => (
+                    <div
+                      key={inv._id || inv.id || inv.invoiceNo}
+                      onClick={() => {
+                        const unrolledInv = {
+                          ...inv,
+                          items: unrollInvoiceItems(inv.items)
+                        };
+                        setSelectedInvoiceForReturn(unrolledInv);
+                        setReturnSearchQuery("");
+                        setReturnedItemIds([]);
+                        setExchangeSelectedNewProduct(null);
+                        setExchangeOldItemIdx(0);
+                      }}
+                      className="p-3.5 hover:bg-indigo-50/70 cursor-pointer flex justify-between items-center transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-indigo-600">{inv.invoiceNo}</span>
+                          <span className="font-extrabold text-slate-800">• {inv.customerName}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          Phone: {inv.customerPhone || "Walk-in"} | Date: {inv.date ? new Date(inv.date).toLocaleDateString("en-IN") : "-"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-slate-800 text-xs">₹{inv.grandTotal.toLocaleString()}</span>
+                        <p className="text-[10px] text-slate-400">{(inv.items || []).length} item(s)</p>
+                      </div>
+                    </div>
+                  ))}
+                {invoices.filter((inv) =>
+                  (inv.invoiceNo || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                  (inv.customerName || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                  (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim())
+                ).length === 0 && (
+                  <div className="p-4 text-center text-slate-400 font-medium">
+                    No matching invoices found for "{returnSearchQuery}".
+                  </div>
+                )}
               </div>
             )}
           </div>
+
+          {!selectedInvoiceForReturn ? (
+            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center text-slate-400 space-y-2">
+              <RotateCcw className="w-10 h-10 mx-auto text-slate-300 animate-pulse" />
+              <p className="font-bold text-slate-600 text-sm">No Invoice Selected</p>
+              <p className="text-xs">
+                Use the search bar above or select a past invoice to evaluate return or exchange eligibility.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              
+              {/* LEFT COLUMN: SELECTED INVOICE DETAILS & MODE SWITCHER */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-5 space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Selected Invoice Details
+                  </h4>
+                  <span className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                    {selectedInvoiceForReturn.invoiceNo}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs font-medium">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Customer Name:</span>
+                    <span className="font-bold text-slate-800">{selectedInvoiceForReturn.customerName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Customer Phone:</span>
+                    <span className="font-mono text-slate-700">{selectedInvoiceForReturn.customerPhone || 'Walk-in'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Date Issued:</span>
+                    <span className="font-mono text-slate-700">
+                      {selectedInvoiceForReturn.date ? new Date(selectedInvoiceForReturn.date).toLocaleString('en-IN') : '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Grand Total:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      ₹{selectedInvoiceForReturn.grandTotal.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Payment Route:</span>
+                    <span className="font-bold text-emerald-600">{selectedInvoiceForReturn.paymentMethod}</span>
+                  </div>
+                </div>
+
+                {/* MODE SELECTION BUTTONS: RETURN vs EXCHANGE */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Choose Workflow Action:
+                  </label>
+                  <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setReturnActionType('return')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'return' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>RETURN ITEMS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReturnActionType('exchange')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'exchange' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>EXCHANGE ITEMS</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: ACTION PANELS */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-7 space-y-5">
+                
+                {/* ─── RETURN PANEL WORKFLOW ─── */}
+                {returnActionType === 'return' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                      <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Process Item Return & Credit Refund</span>
+                      </h4>
+                    </div>
+
+                    {/* Reason for Return */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Reason for Return:
+                      </label>
+                      <select
+                        value={returnReason}
+                        onChange={(e) => setReturnReason(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
+                      >
+                        <option value="Defective / Damaged">Defective / Damaged Garment</option>
+                        <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
+                        <option value="Customer Changed Mind">Customer Changed Mind</option>
+                        <option value="Quality Dissatisfaction">Quality Dissatisfaction</option>
+                        <option value="Other">Other (Specify Custom Text)</option>
+                      </select>
+                      {returnReason === "Other" && (
+                        <input
+                          type="text"
+                          value={returnCustomReason}
+                          onChange={(e) => setReturnCustomReason(e.target.value)}
+                          placeholder="Enter specific return reason details..."
+                          className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium"
+                        />
+                      )}
+                    </div>
+
+                    {/* Select Items to Return */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Select Items to Return:
+                      </label>
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
+                        {selectedInvoiceForReturn.items.map((item, idx) => {
+                          const isChecked = returnedItemIds.includes(item.productId || item.id);
+                          return (
+                            <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const targetId = item.productId || item.id;
+                                    setReturnedItemIds((prev) =>
+                                      isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+                                    );
+                                  }}
+                                  className="w-4 h-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+                                />
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                    <span>{item.name}</span>
+                                    {item.isReturned && (
+                                      <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                        RETURNED
+                                      </span>
+                                    )}
+                                    {item.isExchanged && (
+                                      <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                        EXCHANGED
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-mono">
+                                    Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity}
+                                  </p>
+                                  {(item.hasAlteration || item.alterationRecord) && (
+                                    <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
+                                      <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                      <span>
+                                        <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-xs font-bold font-mono text-slate-800">
+                                ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Refund Estimate */}
+                    <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
+                      <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
+                      <span className="font-mono font-black text-rose-600 text-base">
+                        ₹{selectedInvoiceForReturn.items
+                          .filter((item) => returnedItemIds.includes(item.productId || item.id))
+                          .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0)
+                          .toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* Mandatory Approval Checkbox */}
+                    <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={returnApprovedCheckbox}
+                        onChange={(e) => setReturnApprovedCheckbox(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-amber-300 focus:ring-rose-500 cursor-pointer shrink-0"
+                      />
+                      <span>I approve this return request & confirm physical garment condition has been verified.</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
+                      onClick={() => {
+                        const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
+                        const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
+                        const refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+
+                        const updatedItems = selectedInvoiceForReturn.items.map(item => {
+                          if (returnedItemIds.includes(item.productId || item.id)) {
+                            return {
+                              ...item,
+                              isReturned: true,
+                              returnReason: finalReason,
+                              returnedAt: new Date().toISOString()
+                            };
+                          }
+                          return item;
+                        });
+
+                        const updatedInvoice = {
+                          ...selectedInvoiceForReturn,
+                          hasReturn: true,
+                          returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                          items: updatedItems
+                        };
+
+                        // Update local invoices list so Invoice History reflects returned status immediately
+                        setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                        if (invoices) {
+                          const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                          if (idx !== -1) invoices[idx] = updatedInvoice;
+                        }
+
+                        if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
+                          onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
+                        }
+
+                        if (onAddNotification) {
+                          onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Returned tag updated on bill.`, "success");
+                        }
+
+                        // Auto-clear data and reset selection
+                        setSelectedInvoiceForReturn(null);
+                        setReturnedItemIds([]);
+                        setReturnApprovedCheckbox(false);
+                        setReturnSearchQuery("");
+                        setReturnReason("Defective / Damaged");
+                        setReturnCustomReason("");
+                      }}
+                      className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${returnApprovedCheckbox && returnedItemIds.length > 0 ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                    >
+                      Approve Return & Credit Customer Wallet
+                    </button>
+                  </div>
+                )}
+
+                {/* ─── EXCHANGE PANEL WORKFLOW ─── */}
+                {returnActionType === 'exchange' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                      <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <RefreshCw className="w-4 h-4" />
+                        <span>Process Product Exchange & Issue Docket</span>
+                      </h4>
+                    </div>
+
+                    {/* Reason for Exchange */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Reason for Exchange:
+                      </label>
+                      <select
+                        value={exchangeReason}
+                        onChange={(e) => setExchangeReason(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value="Size / Fit Swap">Size / Fit Swap</option>
+                        <option value="Color Swap">Color / Hue Swap</option>
+                        <option value="Defective Replacement">Defective Item Replacement</option>
+                        <option value="Product Upgrade">Product Upgrade / Variant Change</option>
+                        <option value="Customer Preference">Customer Preference Change</option>
+                      </select>
+                    </div>
+
+                    {/* Step A: Select Item from Original Invoice to Exchange */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        1. Select Item from Invoice to Return / Swap Out:
+                      </label>
+                      <select
+                        value={exchangeOldItemIdx}
+                        onChange={(e) => setExchangeOldItemIdx(Number(e.target.value))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        {selectedInvoiceForReturn.items.map((item, idx) => (
+                          <option key={idx} value={idx}>
+                            {item.name} ({item.size || 'M'}/{item.color || 'Std'}) — ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Step B: Search/Enter Product ID or Barcode for New Product */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        2. Search or Enter Product ID / Barcode for New Exchanged Item:
+                      </label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+                        <input
+                          type="text"
+                          value={exchangeNewSearchQuery}
+                          onChange={(e) => {
+                            setExchangeNewSearchQuery(e.target.value);
+                            const q = e.target.value.trim().toLowerCase();
+                            const match = products.find(p => 
+                              (p._id && p._id.toLowerCase() === q) ||
+                              (p.id && p.id.toLowerCase() === q) ||
+                              (p.barcode && p.barcode.toLowerCase() === q) ||
+                              (p.productCode && p.productCode.toLowerCase() === q) ||
+                              (p.name && p.name.toLowerCase() === q)
+                            );
+                            if (match) setExchangeSelectedNewProduct(match);
+                          }}
+                          placeholder="Enter product ID, barcode (e.g. BAR-001) or product name..."
+                          className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      {/* Matching Product Dropdown */}
+                      {exchangeNewSearchQuery && (
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs font-sans">
+                          {products
+                            .filter(p => 
+                              (p.name || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) ||
+                              (p.productCode || p.barcode || p.sku || p.id || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase())
+                            )
+                            .map(p => (
+                              <div
+                                key={p._id || p.id}
+                                onClick={() => {
+                                  setExchangeSelectedNewProduct(p);
+                                  setExchangeNewSearchQuery(`${p.name} (${p.size || 'M'}/${p.color || 'Std'})`);
+                                }}
+                                className="p-2.5 hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors"
+                              >
+                                <div>
+                                  <p className="font-bold text-slate-800">{p.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">
+                                    ID/Barcode: {p.productCode || p.barcode || p.id} | Size: {p.size || 'M'} | Stock: {p.stock || p.stockQuantity || 10}
+                                  </p>
+                                </div>
+                                <span className="font-mono font-bold text-indigo-600">
+                                  ₹{(p.sellingPrice || p.price || 0).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Selected New Product Card */}
+                    {exchangeSelectedNewProduct && (
+                      <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex justify-between items-center text-xs">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Item:</p>
+                          <p className="font-extrabold text-slate-900">{exchangeSelectedNewProduct.name}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            SKU/ID: {exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.id} | Size: {exchangeSelectedNewProduct.size || 'M'} / {exchangeSelectedNewProduct.color || 'Std'}
+                          </p>
+                        </div>
+                        <span className="font-mono font-black text-indigo-700 text-sm">
+                          ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Price Difference Summary */}
+                    {(() => {
+                      const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
+                      const oldPrice = oldItem ? (oldItem.totalPrice || oldItem.price * oldItem.quantity) : 0;
+                      const newPrice = exchangeSelectedNewProduct ? (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0) : 0;
+                      const priceDiff = newPrice - oldPrice;
+                      return (
+                        <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Original Item Value:</span>
+                            <span>- ₹{oldPrice.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">New Item Value:</span>
+                            <span>+ ₹{newPrice.toLocaleString()}</span>
+                          </div>
+                          <div className="border-t border-slate-700 pt-2 flex justify-between font-bold text-sm">
+                            <span className="font-sans">Net Adjustment:</span>
+                            <span className={priceDiff > 0 ? 'text-amber-400' : priceDiff < 0 ? 'text-emerald-400' : 'text-white'}>
+                              {priceDiff > 0 ? `+ ₹${priceDiff.toLocaleString()} (Payable)` : priceDiff < 0 ? `- ₹${Math.abs(priceDiff).toLocaleString()} (Refund)` : '₹0 (Even Swap)'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <button
+                      type="button"
+                      disabled={!exchangeSelectedNewProduct}
+                      onClick={() => {
+                        const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
+                        if (!oldItem || !exchangeSelectedNewProduct) return;
+
+                        const oldPrice = oldItem.totalPrice || (oldItem.price * oldItem.quantity);
+                        const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                        const priceDiff = newPrice - oldPrice;
+
+                        const docket = {
+                          docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+                          originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
+                          customerName: selectedInvoiceForReturn.customerName,
+                          customerPhone: selectedInvoiceForReturn.customerPhone,
+                          reason: exchangeReason,
+                          oldItem: {
+                            name: oldItem.name,
+                            size: oldItem.size || 'Std',
+                            color: oldItem.color || 'Std',
+                            price: oldPrice
+                          },
+                          newItem: {
+                            name: exchangeSelectedNewProduct.name,
+                            sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
+                            size: exchangeSelectedNewProduct.size || 'M',
+                            color: exchangeSelectedNewProduct.color || 'Standard',
+                            price: newPrice
+                          },
+                          priceDiff,
+                          cashierName: currentUser ? currentUser.name : "Store Cashier",
+                          createdAt: new Date().toISOString()
+                        };
+
+                        const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                          if (idx === exchangeOldItemIdx) {
+                            return {
+                              ...item,
+                              isExchanged: true,
+                              exchangedFor: exchangeSelectedNewProduct.name,
+                              exchangeReason
+                            };
+                          }
+                          return item;
+                        });
+
+                        const updatedInvoice = {
+                          ...selectedInvoiceForReturn,
+                          hasExchange: true,
+                          exchangeSlip: docket,
+                          items: updatedItems
+                        };
+
+                        // Update local invoices list so Invoice History reflects exchanged status immediately
+                        setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                        if (invoices) {
+                          const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                          if (idx !== -1) invoices[idx] = updatedInvoice;
+                        }
+
+                        setCompletedExchangeSlip(docket);
+                        setShowExchangeSlipModal(true);
+
+                        if (onAddNotification) {
+                          onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully.`, "success");
+                        }
+
+                        // Auto-clear search & selection data after completing exchange
+                        setSelectedInvoiceForReturn(null);
+                        setExchangeSelectedNewProduct(null);
+                        setExchangeNewSearchQuery("");
+                        setReturnSearchQuery("");
+                      }}
+                      className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${exchangeSelectedNewProduct ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                    >
+                      Generate Exchange Slip & Invoice
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -4549,13 +5115,15 @@ export const BillingPOSView = ({
               <div className="border-t border-dashed border-slate-300 my-2" />
 
               <div className="space-y-1 text-[11px]">
-                {completedInvoice.items.map((item, idx) => (
+                {unrollInvoiceItems(completedInvoice.items).map((item, idx) => (
                   <div key={idx} className="space-y-1">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between font-bold">
                       <span>
-                        {item.quantity}x {item.name.substring(0, 24)}...
+                        {item.quantity}x {item.name.substring(0, 28)}...
+                        {item.isReturned && <strong className="text-rose-600 text-[9px] ml-1">[RETURNED]</strong>}
+                        {item.isExchanged && <strong className="text-indigo-600 text-[9px] ml-1">[EXCHANGED]</strong>}
                       </span>
-                      <span>₹{(Number(item.totalPrice) || 0).toLocaleString()}</span>
+                      <span>₹{(Number(item.totalPrice || item.price) || 0).toLocaleString()}</span>
                     </div>
                     {(item.hasAlteration || item.alterationRecord) && (
                       <div className="text-[9.5px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 font-sans my-1">
@@ -5216,7 +5784,160 @@ export const BillingPOSView = ({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
 
+      {/* MODAL: COMPLETED EXCHANGE SLIP DOCKET */}
+      {showExchangeSlipModal && completedExchangeSlip && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[120] font-sans animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 text-indigo-600">
+                <RefreshCw className="w-5 h-5" />
+                <span className="text-sm font-bold uppercase tracking-wide">
+                  Exchange Docket Issued
+                </span>
+              </div>
+              <button
+                onClick={() => setShowExchangeSlipModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Docket Ticket View */}
+            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-96 overflow-y-auto">
+              <div className="text-center font-bold text-slate-900 text-sm">
+                ZIVA FASHION BOUTIQUE
+                <p className="text-[10px] text-indigo-600 uppercase font-black tracking-widest mt-0.5">
+                  OFFICIAL EXCHANGE SLIP DOCKET
+                </p>
+                <span className="inline-block bg-slate-900 text-white text-[10px] px-2 py-0.5 rounded font-mono mt-1 font-bold">
+                  {completedExchangeSlip.docketNo}
+                </span>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="space-y-1 text-[11px]">
+                <p>Date: <strong>{new Date(completedExchangeSlip.createdAt).toLocaleString('en-IN')}</strong></p>
+                <p>Original Inv: <strong className="text-indigo-600">{completedExchangeSlip.originalInvoiceNo}</strong></p>
+                <p>Customer: <strong>{completedExchangeSlip.customerName}</strong> ({completedExchangeSlip.customerPhone || 'Walk-in'})</p>
+                <p>Cashier: {completedExchangeSlip.cashierName}</p>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {/* Returned Item */}
+              <div className="bg-rose-50 p-2.5 rounded-lg border border-rose-200 space-y-1">
+                <p className="text-[10px] font-bold text-rose-700 uppercase">RETURNED GARMENT (SWAPPED OUT):</p>
+                <div className="flex justify-between font-bold text-slate-800">
+                  <span>{completedExchangeSlip.oldItem.name} ({completedExchangeSlip.oldItem.size}/{completedExchangeSlip.oldItem.color})</span>
+                  <span className="text-rose-600">- ₹{completedExchangeSlip.oldItem.price.toLocaleString()}</span>
+                </div>
+                <p className="text-[9.5px] text-slate-500 italic">Reason: {completedExchangeSlip.reason}</p>
+              </div>
+
+              {/* Exchanged Item */}
+              <div className="bg-indigo-50 p-2.5 rounded-lg border border-indigo-200 space-y-1">
+                <p className="text-[10px] font-bold text-indigo-700 uppercase">NEW ISSUED GARMENT (EXCHANGED):</p>
+                <div className="flex justify-between font-bold text-slate-800">
+                  <span>{completedExchangeSlip.newItem.name} ({completedExchangeSlip.newItem.size}/{completedExchangeSlip.newItem.color})</span>
+                  <span className="text-indigo-600">+ ₹{completedExchangeSlip.newItem.price.toLocaleString()}</span>
+                </div>
+                <p className="text-[9.5px] text-slate-500 font-mono">SKU/ID: {completedExchangeSlip.newItem.sku}</p>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span>NET ADJUSTMENT:</span>
+                <span className={completedExchangeSlip.priceDiff > 0 ? 'text-amber-600' : completedExchangeSlip.priceDiff < 0 ? 'text-emerald-600' : 'text-slate-900'}>
+                  {completedExchangeSlip.priceDiff > 0 
+                    ? `+ ₹${completedExchangeSlip.priceDiff.toLocaleString()} (Payable)` 
+                    : completedExchangeSlip.priceDiff < 0 
+                    ? `- ₹${Math.abs(completedExchangeSlip.priceDiff).toLocaleString()} (Refund)` 
+                    : '₹0 (Even Swap)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-2 font-sans text-xs">
+              <button
+                onClick={() => setShowExchangeSlipModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Close Docket
+              </button>
+              <button
+                onClick={() => {
+                  const docket = completedExchangeSlip;
+                  const htmlContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                      <meta charset="UTF-8">
+                      <title>Exchange Slip ${docket.docketNo}</title>
+                      <style>
+                        body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 400px; margin: 0 auto; line-height: 1.4; }
+                        .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                        .section { border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-bottom: 8px; font-size: 12px; }
+                        .bold { font-weight: bold; }
+                        .flex { display: flex; justify-content: space-between; }
+                        .badge { background: #000; color: #fff; padding: 3px 8px; font-weight: bold; font-size: 11px; display: inline-block; margin-top: 5px; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="header">
+                        <h2 style="margin:0;">ZIVA FASHION BOUTIQUE</h2>
+                        <p style="margin:2px 0; font-size:11px;">OFFICIAL EXCHANGE DOCKET</p>
+                        <div class="badge">${docket.docketNo}</div>
+                      </div>
+                      <div class="section">
+                        <div class="flex"><span>Date:</span><span>${new Date(docket.createdAt).toLocaleString('en-IN')}</span></div>
+                        <div class="flex"><span>Invoice #:</span><span class="bold">${docket.originalInvoiceNo}</span></div>
+                        <div class="flex"><span>Customer:</span><span class="bold">${docket.customerName}</span></div>
+                        <div class="flex"><span>Phone:</span><span>${docket.customerPhone || 'N/A'}</span></div>
+                        <div class="flex"><span>Cashier:</span><span>${docket.cashierName}</span></div>
+                      </div>
+                      <div class="section">
+                        <p class="bold" style="margin:0 0 4px 0; color:#d97706;">RETURNED ITEM (SWAPPED OUT):</p>
+                        <div class="flex"><span>${docket.oldItem.name} (${docket.oldItem.size}/${docket.oldItem.color})</span><span>- &#8377;${docket.oldItem.price.toLocaleString()}</span></div>
+                        <p style="margin:2px 0; font-size:10px; color:#666;">Reason: ${docket.reason}</p>
+                      </div>
+                      <div class="section">
+                        <p class="bold" style="margin:0 0 4px 0; color:#2563eb;">NEW ISSUED ITEM (EXCHANGED):</p>
+                        <div class="flex"><span>${docket.newItem.name} (${docket.newItem.size}/${docket.newItem.color})</span><span>+ &#8377;${docket.newItem.price.toLocaleString()}</span></div>
+                      </div>
+                      <div class="section" style="border:none;">
+                        <div class="flex bold" style="font-size:13px;">
+                          <span>NET ADJUSTMENT:</span>
+                          <span>${docket.priceDiff >= 0 ? '+ &#8377;' + docket.priceDiff.toLocaleString() + ' (Payable)' : '- &#8377;' + Math.abs(docket.priceDiff).toLocaleString() + ' (Refund)'}</span>
+                        </div>
+                      </div>
+                      <div class="header" style="border-top:2px dashed #000; border-bottom:none; margin-top:15px; padding-top:10px;">
+                        <p style="font-size:10px; margin:0;">Thank you for shopping with Ziva Boutique!</p>
+                      </div>
+                    </body>
+                    </html>
+                  `;
+                  const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${docket.docketNo}.html`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Exchange Slip</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
