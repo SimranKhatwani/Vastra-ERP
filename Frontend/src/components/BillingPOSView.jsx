@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Barcode,
@@ -23,6 +23,9 @@ import {
   Clock,
   XCircle,
   RefreshCw,
+  Scissors,
+  Ruler,
+  ChevronsLeft,
 } from "lucide-react";
 
 export const BillingPOSView = ({
@@ -93,8 +96,51 @@ export const BillingPOSView = ({
   const [configError, setConfigError] = useState("");
 
   // Filtered employees for assignment
-  const salespersonList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase().includes("salesperson")), [employees]);
-  const workerList = React.useMemo(() => (employees || []).filter(e => e.isActive !== false && (e.designation || e.role || "").toLowerCase() === "worker"), [employees]);
+  const salespersonList = React.useMemo(() => {
+    const filtered = (employees || []).filter(e => {
+      if (e.isActive === false) return false;
+      const des = (e.designation || "").toLowerCase();
+      const r = (e.role || "").toLowerCase();
+      const name = (e.name || "").toLowerCase();
+
+      // Exclude cashiers & tailors (e.g. Aman, Mahesh if cashier/tailor)
+      if (des.includes("cashier") || r.includes("cashier") || name === "aman" || name === "mahesh") return false;
+      if (des.includes("tailor") || r.includes("tailor")) return false;
+
+      return des.includes("sales") || r.includes("sales") || des.includes("executive") || r.includes("executive") || des.includes("manager") || r.includes("manager") || des.includes("admin") || r.includes("admin");
+    });
+
+    if (filtered.length > 0) return filtered;
+    return (employees || []).filter(e => {
+      const r = (e.role || "").toLowerCase();
+      const des = (e.designation || "").toLowerCase();
+      const n = (e.name || "").toLowerCase();
+      return e.isActive !== false && !r.includes("cashier") && !des.includes("cashier") && !r.includes("tailor") && !des.includes("tailor") && n !== "aman" && n !== "mahesh";
+    });
+  }, [employees]);
+
+  const workerList = React.useMemo(() => {
+    const filtered = (employees || []).filter(e => {
+      if (e.isActive === false) return false;
+      const des = (e.designation || "").toLowerCase();
+      const r = (e.role || "").toLowerCase();
+      const name = (e.name || "").toLowerCase();
+
+      // Exclude cashiers & salespersons (e.g. Aman, Mahesh if cashier)
+      if (des.includes("cashier") || r.includes("cashier") || name === "mahesh") return false;
+      if (des.includes("sales") || r.includes("sales")) return false;
+
+      return des.includes("worker") || r.includes("worker") || des.includes("tailor") || r.includes("tailor") || des.includes("stitching") || r.includes("stitching");
+    });
+
+    if (filtered.length > 0) return filtered;
+    return (employees || []).filter(e => {
+      const r = (e.role || "").toLowerCase();
+      const des = (e.designation || "").toLowerCase();
+      const n = (e.name || "").toLowerCase();
+      return e.isActive !== false && !r.includes("cashier") && !des.includes("cashier") && n !== "mahesh";
+    });
+  }, [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedLoyaltyRuleId, setSelectedLoyaltyRuleId] = useState("");
   const [cancelAutoDiscount, setCancelAutoDiscount] = useState(false);
@@ -150,6 +196,7 @@ export const BillingPOSView = ({
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [flatDiscount, setFlatDiscount] = useState(0);
 
@@ -282,6 +329,161 @@ export const BillingPOSView = ({
   // Selected Category filter
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
 
+  // --- ALTERATION MODULE STATES ---
+  const [showAlterationModal, setShowAlterationModal] = useState(false);
+  const [selectedAlterationCartItem, setSelectedAlterationCartItem] = useState(null);
+  const [altMeasurements, setAltMeasurements] = useState({});
+  const [altOptions, setAltOptions] = useState([]);
+  const [altCustomText, setAltCustomText] = useState("");
+  const [altDeliveryDate, setAltDeliveryDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d.toISOString().split("T")[0];
+  });
+  const [altDeliveryTime, setAltDeliveryTime] = useState("05:00 PM");
+  const [altTrialDate, setAltTrialDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().split("T")[0];
+  });
+  const [altPriority, setAltPriority] = useState("Normal");
+  const [altSelectedTailor, setAltSelectedTailor] = useState(null);
+  const [altSpecialInstructions, setAltSpecialInstructions] = useState("");
+
+  const tailorEmployeesList = React.useMemo(() => {
+    const list = (employees || []).filter(
+      (e) => e.isActive !== false && (
+        (e.designation || "").toLowerCase().includes("tailor") ||
+        (e.role || "").toLowerCase().includes("tailor") ||
+        (e.designation || "").toLowerCase().includes("darzi") ||
+        (e.role || "").toLowerCase().includes("darzi") ||
+        (e.designation || "").toLowerCase().includes("karigar") ||
+        (e.role || "").toLowerCase().includes("karigar") ||
+        (e.designation || "").toLowerCase().includes("master") ||
+        (e.role || "").toLowerCase().includes("master")
+      )
+    );
+    return list.length > 0 ? list : (employees || []).slice(0, 5);
+  }, [employees]);
+
+  const getMeasurementFieldsForGarment = (productName = "", category = "") => {
+    const text = `${productName} ${category}`.toLowerCase();
+    if (text.includes("shirt") || text.includes("kurta") || text.includes("top")) {
+      return [
+        "Sleeve Length", "Shoulder", "Chest", "Waist", "Collar", "Shirt Length", "Cuff", "Arm Hole", "Front Length", "Back Length"
+      ];
+    }
+    if (text.includes("trouser") || text.includes("pant") || text.includes("denim") || text.includes("jeans") || text.includes("bottom")) {
+      return [
+        "Waist", "Hip", "Thigh", "Bottom", "Length", "Rise", "Knee"
+      ];
+    }
+    if (text.includes("suit") || text.includes("blazer") || text.includes("jacket") || text.includes("coat")) {
+      return [
+        "Chest", "Waist", "Shoulder", "Sleeve", "Length", "Neck", "Arm Hole"
+      ];
+    }
+    return [
+      "Bust / Chest", "Waist", "Hips", "Length", "Shoulder", "Sleeves", "Armhole"
+    ];
+  };
+
+  const quickAlterationOptionsList = [
+    "Sleeve Shorten",
+    "Sleeve Lengthen",
+    "Waist Tight",
+    "Waist Loose",
+    "Length Short",
+    "Length Increase",
+    "Shoulder Adjustment",
+    "Neck Adjustment",
+    "Collar Change",
+    "Bottom Narrow",
+    "Bottom Wide",
+    "Zip Replace",
+    "Button Replace",
+    "Stitch Repair",
+    "Custom Alteration"
+  ];
+
+  const handleSaveAlteration = async () => {
+    if (!selectedAlterationCartItem) {
+      if (onAddNotification) onAddNotification("Validation Warning", "Please select a garment from the bill.", "warning");
+      return;
+    }
+
+    const previewInvNo = `INV-${Date.now().toString().slice(-6)}`;
+    const targetTailor = altSelectedTailor || tailorEmployeesList[0] || { id: "t-default", name: "Master Tailor Ramesh" };
+
+    const payload = {
+      invoiceId: previewInvNo,
+      invoiceNumber: previewInvNo,
+      customerId: activeCustomer.id || activeCustomer._id || "c-walkin",
+      customerName: activeCustomer.name,
+      customerPhone: activeCustomer.phone,
+      productId: selectedAlterationCartItem.productId || selectedAlterationCartItem.id || "p-gen",
+      productName: selectedAlterationCartItem.name,
+      sku: selectedAlterationCartItem.sku || "SKU-001",
+      barcode: selectedAlterationCartItem.barcode || "BAR-001",
+      size: selectedAlterationCartItem.size || "M",
+      color: selectedAlterationCartItem.color || "Standard",
+      salespersonId: selectedAlterationCartItem.salespersonId || "sp-1",
+      salespersonName: selectedAlterationCartItem.salespersonName || "Store Salesperson",
+      workerId: selectedAlterationCartItem.workerId || "w-1",
+      workerName: selectedAlterationCartItem.workerName || "In-House",
+      tailorId: targetTailor.id || targetTailor._id || "t-1",
+      tailorName: targetTailor.name,
+      measurements: altMeasurements,
+      alterationDetails: altOptions,
+      customAlterationText: altOptions.includes("Custom Alteration") ? altCustomText : "",
+      specialInstructions: altSpecialInstructions,
+      deliveryDate: altDeliveryDate,
+      deliveryTime: altDeliveryTime,
+      trialDate: altTrialDate,
+      priority: altPriority,
+      status: "Pending",
+      createdBy: currentUser ? currentUser.name : "Cashier"
+    };
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/alterations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onAddNotification) {
+          onAddNotification(
+            "Alteration Saved",
+            `Alteration record ${data.data?.alterationId || ''} created & linked to ${selectedAlterationCartItem.name}.`,
+            "success"
+          );
+        }
+        setCart(prev => prev.map(item => {
+          if (item === selectedAlterationCartItem) {
+            return { ...item, hasAlteration: true, alterationRecord: data.data };
+          }
+          return item;
+        }));
+        setSelectedAlterationCartItem(null);
+        setAltMeasurements({});
+        setAltOptions([]);
+        setAltCustomText("");
+        setAltSpecialInstructions("");
+      } else {
+        if (onAddNotification) onAddNotification("Alteration Failed", data.message || "Could not save alteration record.", "danger");
+      }
+    } catch (err) {
+      console.error("Save alteration error:", err);
+      if (onAddNotification) onAddNotification("Alteration Error", "Server connection error while saving alteration.", "danger");
+    }
+  };
+
   // --- NEW ERP STATE VARIABLES ---
   const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
   const [focusedProductIndex, setFocusedProductIndex] = useState(-1);
@@ -302,6 +504,24 @@ export const BillingPOSView = ({
   // Debounced search term
   const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
   
+  // Filtered invoices for Invoice History mode
+  const filteredHistoryInvoices = useMemo(() => {
+    const q = (historySearch || "").toLowerCase().trim();
+    if (!q) return invoices;
+    return invoices.filter((inv) => {
+      const matchNo = (inv.invoiceNo || "").toLowerCase().includes(q);
+      const matchCust = (inv.customerName || "").toLowerCase().includes(q);
+      const matchPhone = (inv.customerPhone || "").toLowerCase().includes(q);
+      const matchPay = (inv.paymentMethod || "").toLowerCase().includes(q);
+      const matchItems = (inv.items || []).some(
+        (item) =>
+          (item.name || "").toLowerCase().includes(q) ||
+          (item.productCode || "").toLowerCase().includes(q)
+      );
+      return matchNo || matchCust || matchPhone || matchPay || matchItems;
+    });
+  }, [invoices, historySearch]);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedProductSearch(productSearch);
@@ -464,9 +684,8 @@ export const BillingPOSView = ({
       variants: prod.variants || [prod]
     });
     setQtyModalValue(qty);
-    setConfigSalesperson(null);
-    setConfigWorker(null);
-
+    setConfigSalesperson(salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
+    setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
   };
 
   // Handle articulated items forwarded from Customizer
@@ -643,12 +862,7 @@ export const BillingPOSView = ({
           key={p.id || p._id}
           className={`transition-colors cursor-pointer border-b border-slate-100 ${isSelected ? "bg-indigo-50" : "hover:bg-slate-50"}`}
           onClick={() => {
-            setQtyModalProduct({
-              ...p,
-              ...(p.variants ? p.variants[0] : {}),
-              variants: p.variants
-            });
-            setQtyModalValue(1);
+            handleAddProductToCart(p);
           }}
         >
           <td className="p-2.5 text-[11px] text-slate-500 font-mono">
@@ -676,12 +890,7 @@ export const BillingPOSView = ({
               className="inline-flex px-3 py-1.5 rounded-lg bg-indigo-600 text-white items-center justify-center font-bold text-[10px] hover:bg-indigo-700 transition-colors uppercase tracking-wider"
               onClick={(e) => {
                 e.stopPropagation();
-                setQtyModalProduct({
-                  ...p,
-                  ...(p.variants ? p.variants[0] : {}),
-                  variants: p.variants
-                });
-                setQtyModalValue(1);
+                handleAddProductToCart(p);
               }}
             >
               + Add
@@ -708,8 +917,8 @@ export const BillingPOSView = ({
       variants: prod.variants || [prod]
     });
     setQtyModalValue(1);
-    setConfigSalesperson(null);
-    setConfigWorker(null);
+    setConfigSalesperson(salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
+    setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
   };
 
   // Action: Finalize product addition from configuration modal
@@ -1308,6 +1517,8 @@ export const BillingPOSView = ({
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <title>Receipt ${invoice.invoiceNo}</title>
         <style>
           body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
@@ -1348,9 +1559,17 @@ export const BillingPOSView = ({
               <tr>
                 <td>${item.name} (${item.size}/${item.color})</td>
                 <td class="text-right">${item.quantity}</td>
-                <td class="text-right">₹${item.price}</td>
-                <td class="text-right">₹${item.totalPrice}</td>
+                <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
+                <td class="text-right">&#8377;${(Number(item.totalPrice) || 0).toLocaleString('en-IN')}</td>
               </tr>
+              ${item.hasAlteration || item.alterationRecord ? `
+                <tr>
+                  <td colSpan="4" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
+                    <b>✂ ALTERATION:</b> ${item.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'} | <b>Tailor:</b> ${item.alterationRecord?.tailorName || 'Master Tailor'}<br/>
+                    <b>Delivery:</b> ${item.alterationRecord?.deliveryDate || 'Scheduled'} ${item.alterationRecord?.deliveryTime || ''} [Trial: ${item.alterationRecord?.trialDate || 'N/A'}, Priority: ${item.alterationRecord?.priority || 'Normal'}]
+                  </td>
+                </tr>
+              ` : ''}
             `,
               )
               .join("")}
@@ -1360,27 +1579,43 @@ export const BillingPOSView = ({
         <table>
           <tr>
             <td>Subtotal:</td>
-            <td class="text-right">₹${invoice.subTotal}</td>
+            <td class="text-right">&#8377;${(Number(invoice.subTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
           ${
             invoice.discountTotal > 0
               ? `
             <tr>
               <td>Discount:</td>
-              <td class="text-right">-₹${invoice.discountTotal}</td>
+              <td class="text-right">-&#8377;${(Number(invoice.discountTotal) || 0).toLocaleString('en-IN')}</td>
             </tr>
           `
               : ""
           }
           <tr>
             <td>GST CGST+SGST:</td>
-            <td class="text-right">₹${invoice.gstTotal}</td>
+            <td class="text-right">&#8377;${(Number(invoice.gstTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
           <tr class="totals">
             <td>Grand Total:</td>
-            <td class="text-right">₹${invoice.grandTotal}</td>
+            <td class="text-right">&#8377;${(Number(invoice.grandTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
         </table>
+        ${invoice.items.some(i => i.hasAlteration || i.alterationRecord) ? `
+          <div class="divider"></div>
+          <div style="font-size:11px; font-weight:bold; text-align:center; color:#be123c; margin-bottom:4px;">
+            *** ALTERATION & DELIVERY SLIP ***
+          </div>
+          ${invoice.items.filter(i => i.hasAlteration || i.alterationRecord).map(i => `
+            <div style="font-size:10px; line-height:1.4; background:#fff1f2; padding:6px; margin-bottom:4px; border:1px solid #fecdd3; border-radius:4px;">
+              <b>Item:</b> ${i.name} (${i.size}/${i.color})<br/>
+              <b>Tailor:</b> ${i.alterationRecord?.tailorName || 'Master Tailor'}<br/>
+              <b>Alterations:</b> ${i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}<br/>
+              <b>Delivery Date & Time:</b> ${i.alterationRecord?.deliveryDate || 'Scheduled'} ${i.alterationRecord?.deliveryTime || ''}<br/>
+              <b>Trial Date:</b> ${i.alterationRecord?.trialDate || 'N/A'} (Priority: ${i.alterationRecord?.priority || 'Normal'})<br/>
+              ${i.alterationRecord?.specialInstructions ? `<b>Notes:</b> ${i.alterationRecord.specialInstructions}<br/>` : ''}
+            </div>
+          `).join('')}
+        ` : ''}
         <div class="divider"></div>
         <div class="details text-center">
           <b>Payment Mode:</b> ${invoice.paymentMethod}<br>
@@ -1392,14 +1627,13 @@ export const BillingPOSView = ({
       </html>
     `;
 
-    const blob = new Blob([htmlContent], { type: "text/html" });
+    const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
-    // URL.revokeObjectURL(url); // Don't revoke immediately or the new tab will fail to load the blob in some browsers
     onAddNotification(
       "File Downloader",
       `HTML Invoice ${invoice.invoiceNo} successfully generated & downloaded.`,
-      "success",
+      "success"
     );
   };
 
@@ -1696,7 +1930,7 @@ export const BillingPOSView = ({
                             {item.name}
                           </p>
                           <p className="text-[10px] text-slate-500 font-mono">
-                            PRD-{(item._id || item.id || "").toString().substring(Math.max(0, (item._id || item.id || "").toString().length - 6)).toUpperCase()} | {item.sku} | Size: {item.size} | Color: {item.color}{" "}
+                            PRD-{(item.productId || item._id || item.id || "").toString().substring(Math.max(0, (item.productId || item._id || item.id || "").toString().length - 6)).toUpperCase()} | {item.sku} | Size: {item.size} | Color: {item.color}{" "}
                             {item.isCustom && (
                               <span className="bg-violet-100 text-violet-700 px-1 py-0.2 rounded font-sans font-bold uppercase text-[8px] ml-1">
                                 Customized
@@ -1927,15 +2161,35 @@ export const BillingPOSView = ({
               )}
 
 
-              {/* Generate Invoice */}
-              <div className="flex gap-2 items-center">
+              {/* Alteration & Generate Invoice Actions */}
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cart.length === 0) {
+                      if (onAddNotification) onAddNotification("Alteration Notice", "Please add items to cart before creating an alteration.", "warning");
+                      return;
+                    }
+                    setSelectedAlterationCartItem(null);
+                    setShowAlterationModal(true);
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-black tracking-wider uppercase bg-gradient-to-r from-rose-600 to-pink-600 text-white hover:from-rose-700 hover:to-pink-700 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Scissors className="w-4 h-4" />
+                  <span>ALTERATION</span>
+                  {cart.filter(i => i.hasAlteration).length > 0 && (
+                    <span className="bg-white text-rose-600 rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ml-1">
+                      {cart.filter(i => i.hasAlteration).length}
+                    </span>
+                  )}
+                </button>
 
                 <button
                   id="btn-generate-bill"
                   ref={payBtnRef}
                   onClick={handleCheckoutSubmit}
                   disabled={cart.length === 0}
-                  className={`flex-1 py-3 rounded-xl text-[11px] font-extrabold tracking-widest uppercase transition-all shadow-md cursor-pointer ${cart.length === 0 ? "bg-slate-100 text-slate-400 shadow-none cursor-not-allowed" : "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:brightness-105"}`}
+                  className={`w-full py-3 rounded-xl text-[11px] font-extrabold tracking-widest uppercase transition-all shadow-md cursor-pointer ${cart.length === 0 ? "bg-slate-100 text-slate-400 shadow-none cursor-not-allowed" : "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:brightness-105"}`}
                 >
                   Generate Invoice (F9)
                 </button>
@@ -2009,12 +2263,7 @@ export const BillingPOSView = ({
                             key={p.id || p._id} 
                             className={`border-b border-slate-100 cursor-pointer transition-colors ${focusedProductIndex === idx ? 'bg-indigo-100' : 'hover:bg-slate-50'}`}
                             onClick={() => {
-                              setQtyModalProduct({
-                                ...p,
-                                ...(p.variants ? p.variants[0] : {}),
-                                variants: p.variants
-                              });
-                              setQtyModalValue(1);
+                              handleAddProductToCart(p);
                               setIsProductDropdownOpen(false);
                             }}
                           >
@@ -2281,15 +2530,29 @@ export const BillingPOSView = ({
                 Historical Billing Logs
               </h3>
               <p className="text-xs text-slate-400">
-                Total processed transactions: {invoices.length} invoices
+                Total processed transactions: {filteredHistoryInvoices.length} invoices
+                {historySearch && ` (filtered from ${invoices.length})`}
               </p>
             </div>
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search Invoice # / customer..."
-                className="bg-slate-50 px-3 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
-              />
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search Invoice # / customer / phone..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="bg-slate-50 pl-9 pr-8 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-64 border border-slate-200/80"
+                />
+                {historySearch && (
+                  <button
+                    onClick={() => setHistorySearch("")}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2308,7 +2571,7 @@ export const BillingPOSView = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
-                {invoices.slice(0, 50).map((inv, idx) => (
+                {filteredHistoryInvoices.slice(0, 100).map((inv, idx) => (
                   <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-indigo-600">
                       <span className="cursor-pointer hover:underline" onClick={() => handleDownloadReceiptHTML(inv)}>
@@ -2368,6 +2631,13 @@ export const BillingPOSView = ({
                     </td>
                   </tr>
                 ))}
+                {filteredHistoryInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-medium">
+                      No invoices found matching "{historySearch}".
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -4262,11 +4532,25 @@ export const BillingPOSView = ({
 
               <div className="space-y-1 text-[11px]">
                 {completedInvoice.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between">
-                    <span>
-                      {item.quantity}x {item.name.substring(0, 24)}...
-                    </span>
-                    <span>₹{(Number(item.totalPrice) || 0).toLocaleString()}</span>
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>
+                        {item.quantity}x {item.name.substring(0, 24)}...
+                      </span>
+                      <span>₹{(Number(item.totalPrice) || 0).toLocaleString()}</span>
+                    </div>
+                    {(item.hasAlteration || item.alterationRecord) && (
+                      <div className="text-[9.5px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 font-sans my-1">
+                        <p className="font-bold flex items-center gap-1">
+                          <Scissors className="w-3 h-3 text-rose-600" />
+                          <span>ALTERATION LOGGED</span>
+                        </p>
+                        <p>Types: {item.alterationRecord?.alterationDetails?.join(", ") || "Custom Fitting"}</p>
+                        <p>Master Tailor: <strong>{item.alterationRecord?.tailorName || "Assigned"}</strong></p>
+                        <p>Delivery: <strong>{item.alterationRecord?.deliveryDate || "Scheduled"} {item.alterationRecord?.deliveryTime || ""}</strong> (Trial: {item.alterationRecord?.trialDate || "N/A"})</p>
+                        {item.alterationRecord?.specialInstructions && <p className="italic">Notes: "{item.alterationRecord.specialInstructions}"</p>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -4390,24 +4674,18 @@ export const BillingPOSView = ({
         const uniqueColors = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
 
         const handleAdd = () => {
-          if (!configSalesperson) {
-            onAddNotification("Validation Error", "Please select a Salesperson.", "danger");
-            return;
-          }
-          if (!configWorker) {
-            onAddNotification("Validation Error", "Please select a Worker.", "danger");
-            return;
-          }
+          const sp = configSalesperson || salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+          const wk = configWorker || workerList[0] || { id: "w-default", name: "In-House Tailor" };
 
           finalizeAddToCart(
             qtyModalProduct,
             qtyModalValue,
-            qtyModalProduct.size || (uniqueSizes.length > 0 ? uniqueSizes[0] : ""),
-            qtyModalProduct.color || (uniqueColors.length > 0 ? uniqueColors[0] : ""),
-            configSalesperson.id || configSalesperson._id,
-            configSalesperson.name,
-            configWorker.id || configWorker._id,
-            configWorker.name
+            qtyModalProduct.size || (uniqueSizes.length > 0 ? uniqueSizes[0] : "M"),
+            qtyModalProduct.color || (uniqueColors.length > 0 ? uniqueColors[0] : "Standard"),
+            sp.id || sp._id || "sp-default",
+            sp.name || "Store Salesperson",
+            wk.id || wk._id || "w-default",
+            wk.name || "In-House Tailor"
           );
           
           onAddNotification("POS Billing", `Added ${qtyModalValue}x ${qtyModalProduct.name} to cart.`, "success");
@@ -4566,6 +4844,346 @@ export const BillingPOSView = ({
           </div>
         );
       })()}
+
+      {/* MODAL: ALTERATION WINDOW */}
+      {showAlterationModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-3 sm:p-5 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl border border-rose-500/30">
+                  <Scissors className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-wide uppercase font-mono">
+                      ALTERATION WINDOW
+                    </h3>
+                    <span className="bg-rose-500/20 text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30 uppercase">
+                      Live POS Tailoring Module
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Bespoke fit adjustments, tailor job dispatch & customer measurement records.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowAlterationModal(false);
+                  setSelectedAlterationCartItem(null);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 erp-hide-scrollbar">
+              
+              {/* STEP 1: SELECT PRODUCT FROM BILL */}
+              {!selectedAlterationCartItem ? (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                        STEP 1: Select Garment from Bill
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Choose a product from your current active basket to record alterations.
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200 shadow-xs">
+                      {cart.length} Products in Bill
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {cart.map((item, idx) => {
+                      const isAltered = item.hasAlteration;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setSelectedAlterationCartItem(item);
+                            setAltMeasurements(item.alterationRecord?.measurements || {});
+                            setAltOptions(item.alterationRecord?.alterationDetails || []);
+                          }}
+                          className={`group relative bg-white rounded-2xl border p-4 transition-all cursor-pointer flex flex-col justify-between space-y-3 hover:shadow-lg ${isAltered ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 hover:border-rose-400'}`}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase block mb-1 w-fit">
+                                SKU: {item.sku || 'SKU-001'}
+                              </span>
+                              <h5 className="text-sm font-extrabold text-slate-800 group-hover:text-rose-600 transition-colors">
+                                {item.name}
+                              </h5>
+                              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                                Size: <span className="font-bold text-slate-700">{item.size}</span> | Color: <span className="font-bold text-slate-700">{item.color}</span> | Qty: <span className="font-bold text-slate-700">{item.quantity}</span>
+                              </p>
+                            </div>
+                            <span className="text-sm font-black font-mono text-indigo-600">
+                              ₹{(Number(item.totalPrice) || 0).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <div className="text-[11px] font-semibold text-slate-500">
+                              {item.salespersonName && <span>Sales: <span className="text-slate-800">{item.salespersonName}</span></span>}
+                            </div>
+
+                            {isAltered ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full uppercase">
+                                <CheckCircle className="w-3 h-3" /> Alteration Logged
+                              </span>
+                            ) : (
+                              <button className="text-xs font-bold text-white bg-slate-900 group-hover:bg-rose-600 px-3 py-1.5 rounded-xl transition-all shadow-sm flex items-center gap-1">
+                                <span>Configure Alteration</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* STEP 2: ALTERATION ENTRY FORM */
+                <div className="space-y-6">
+                  
+                  {/* Selected Garment Header Summary */}
+                  <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                      <button
+                        onClick={() => setSelectedAlterationCartItem(null)}
+                        className="text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ChevronsLeft className="w-4 h-4" />
+                        <span>Back to Product Selection</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg border border-indigo-500/30">
+                          Target Invoice: INV-2026-LIVE
+                        </span>
+                        <span className="text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                          {activeCustomer.name} ({activeCustomer.phone})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Product Name</span>
+                        <span className="font-extrabold text-white">{selectedAlterationCartItem.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">SKU / Barcode</span>
+                        <span className="font-mono font-bold text-slate-300">{selectedAlterationCartItem.sku || 'SKU-001'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Size & Color</span>
+                        <span className="font-bold text-amber-300">{selectedAlterationCartItem.size} / {selectedAlterationCartItem.color}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Assigned Sales / Worker</span>
+                        <span className="font-bold text-slate-300">{selectedAlterationCartItem.salespersonName || 'Store Staff'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 1. MEASUREMENT ENTRY GRID */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Ruler className="w-4 h-4 text-indigo-600" />
+                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                          Measurement Entry (Inches)
+                        </h4>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">Non-mandatory — fill required specs only</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
+                      {getMeasurementFieldsForGarment(selectedAlterationCartItem.name, selectedAlterationCartItem.category).map((field) => (
+                        <div key={field} className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600 uppercase block truncate" title={field}>
+                            {field}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 40"
+                            value={altMeasurements[field] || ""}
+                            onChange={(e) => setAltMeasurements({ ...altMeasurements, [field]: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-mono text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. QUICK ALTERATION OPTIONS */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                      <Scissors className="w-4 h-4 text-rose-600" />
+                      <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                        Quick Alteration Type Options
+                      </h4>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {quickAlterationOptionsList.map((opt) => {
+                        const isSelected = altOptions.includes(opt);
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setAltOptions(altOptions.filter(o => o !== opt));
+                              } else {
+                                setAltOptions([...altOptions, opt]);
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${isSelected ? 'bg-rose-600 text-white border-rose-600 shadow-md' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                          >
+                            {isSelected ? '✓ ' : '+ '}{opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {altOptions.includes("Custom Alteration") && (
+                      <div className="pt-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Custom Alteration Note</label>
+                        <input
+                          type="text"
+                          placeholder="Describe specific custom alteration..."
+                          value={altCustomText}
+                          onChange={(e) => setAltCustomText(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. DELIVERY & PRIORITY DETAILS */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Delivery Date & Time</label>
+                      <div className="space-y-2">
+                        <input
+                          type="date"
+                          value={altDeliveryDate}
+                          onChange={(e) => setAltDeliveryDate(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={altDeliveryTime}
+                          onChange={(e) => setAltDeliveryTime(e.target.value)}
+                          placeholder="05:00 PM"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-mono font-semibold text-slate-800 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Expected Trial Date</label>
+                      <input
+                        type="date"
+                        value={altTrialDate}
+                        onChange={(e) => setAltTrialDate(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Job Priority</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {["Normal", "Urgent", "Express"].map((prio) => (
+                          <button
+                            key={prio}
+                            type="button"
+                            onClick={() => setAltPriority(prio)}
+                            className={`py-2 rounded-xl text-xs font-extrabold uppercase transition-all cursor-pointer ${altPriority === prio ? (prio === 'Express' ? 'bg-red-600 text-white' : prio === 'Urgent' ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white') : 'bg-white text-slate-600 border border-slate-200'}`}
+                          >
+                            {prio}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. TAILOR ASSIGNMENT */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Select Master Tailor / Worker</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {tailorEmployeesList.map((t) => {
+                        const isSelected = (altSelectedTailor?.id || altSelectedTailor?._id) === (t.id || t._id);
+                        return (
+                          <div
+                            key={t.id || t._id}
+                            onClick={() => setAltSelectedTailor(t)}
+                            className={`p-3 rounded-2xl border text-center transition-all cursor-pointer ${isSelected ? 'bg-indigo-50 border-indigo-600 shadow-md' : 'bg-white border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <p className={`text-xs font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>{t.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t.designation || t.role || 'Master Tailor'}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 5. SPECIAL INSTRUCTIONS */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Special Tailoring Instructions / Notes</label>
+                    <textarea
+                      rows={3}
+                      placeholder="e.g. Customer wants sleeve exactly 1 inch short. Ensure heavy double stitch on seam."
+                      value={altSpecialInstructions}
+                      onChange={(e) => setAltSpecialInstructions(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500 resize-none"
+                    />
+                  </div>
+
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="bg-slate-100 border-t border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
+              <button
+                onClick={() => {
+                  setShowAlterationModal(false);
+                  setSelectedAlterationCartItem(null);
+                }}
+                className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Close (Esc)
+              </button>
+
+              {selectedAlterationCartItem && (
+                <button
+                  onClick={handleSaveAlteration}
+                  className="px-6 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <Scissors className="w-4 h-4" />
+                  <span>Save Alteration Record</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

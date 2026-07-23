@@ -38,6 +38,7 @@ const discountRoutes = require('./routes/discountRoutes');
 const purchaseRoutes = require('./routes/purchaseRoutes');
 const financialRoutes = require('./routes/financialRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const alterationRoutes = require('./routes/alterationRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -72,6 +73,7 @@ app.use('/api/discounts', discountRoutes);
 app.use('/api/purchase', purchaseRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/alterations', alterationRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

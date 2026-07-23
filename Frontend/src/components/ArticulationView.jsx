@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Briefcase,
   Layers2,
-  Workflow
+  Workflow,
+  X,
 } from "lucide-react";
 
 export const ArticulationView = ({
@@ -108,6 +109,131 @@ export const ArticulationView = ({
   const [branch, setBranch] = useState("Bandra Boutique");
   const [orderStatus, setOrderStatus] = useState("Draft");
   const [isFabricReserved, setIsFabricReserved] = useState(false);
+
+  // ─── LIVE ALTERATIONS MODULE STATE & BACKEND FETCH ───
+  const [activeStudioTab, setActiveStudioTab] = useState("studio"); // 'studio' | 'alterations'
+  const [alterationRecords, setAlterationRecords] = useState([]);
+  const [alterationsFilterStatus, setAlterationsFilterStatus] = useState("All");
+  const [selectedJobTicket, setSelectedJobTicket] = useState(null);
+
+  const handlePrintJobTicketHTML = (ticket) => {
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Job Ticket ${ticket.alterationId}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 400px; margin: 0 auto; }
+          .text-center { text-align: center; }
+          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; font-size: 11px; }
+          th { text-align: left; }
+          .text-right { text-align: right; }
+          .badge { font-weight: bold; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center header">VASTRA ERP — ALTERATION TICKET</div>
+        <div class="text-center details">Boutique Tailoring & Garment Fitting Slip</div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Ticket ID:</b> ${ticket.alterationId}<br>
+          <b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>
+          <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
+          <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone})
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Garment Item:</b> ${ticket.productName}<br>
+          <b>SKU / Barcode:</b> ${ticket.sku || '-'} / ${ticket.barcode || '-'}<br>
+          <b>Size & Color:</b> ${ticket.size} / ${ticket.color}<br>
+          <b>Master Tailor:</b> ${ticket.tailorName || 'Unassigned'}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>MEASUREMENTS (INCHES):</b><br>
+          ${Object.entries(ticket.measurements || {}).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>ALTERATION TYPES:</b><br>
+          ${(ticket.alterationDetails || ['Custom Fit']).map(d => `✓ ${d}`).join('<br>')}
+          ${ticket.customAlterationText ? `<br><b>Custom Note:</b> ${ticket.customAlterationText}` : ''}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>DELIVERY SCHEDULE:</b><br>
+          <b>Delivery Date:</b> ${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}<br>
+          <b>Trial Date:</b> ${ticket.trialDate || 'N/A'}<br>
+          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span><br>
+          <b>Current Status:</b> <span class="badge">${ticket.status || 'Pending'}</span>
+        </div>
+        ${ticket.specialInstructions ? `
+          <div class="divider"></div>
+          <div class="details">
+            <b>SPECIAL INSTRUCTIONS:</b><br>
+            "${ticket.specialInstructions}"
+          </div>
+        ` : ''}
+        <div class="divider"></div>
+        <div class="details text-center">
+          Powered by Vastra ERP Tailoring Module
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+  };
+
+  const fetchAlterations = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/alterations", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data.success) {
+        const sorted = (data.data || []).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setAlterationRecords(sorted);
+      }
+    } catch (err) {
+      console.error("Failed to fetch alterations:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAlterations();
+    const interval = setInterval(fetchAlterations, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUpdateAlterationStatus = async (altId, newStatus) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/alterations/${altId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onAddNotification) {
+          onAddNotification("Status Updated", `Alteration ticket status set to "${newStatus}".`, "success");
+        }
+        fetchAlterations();
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  };
 
   // ─── CENTER PANEL STATE ───
   // Section 3: Garments
@@ -721,26 +847,442 @@ export const ArticulationView = ({
       
       {/* ─── HOTKEYS BAR / TOP STATUS ─── */}
       <div className="bg-slate-900 text-slate-300 px-4 py-2 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-[10px] font-mono shrink-0">
-        <div className="flex items-center gap-2">
-          <Workflow className="w-4 h-4 text-indigo-400" />
-          <span className="font-bold text-white uppercase tracking-wider text-[11px]">Bespoke CAD Engine v2.8</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 pr-3 border-r border-slate-800">
+            <Workflow className="w-4 h-4 text-indigo-400" />
+            <span className="font-bold text-white uppercase tracking-wider text-[11px]">Bespoke CAD Engine v2.8</span>
+          </div>
+
+          {/* Mode Switcher */}
+          <div className="flex items-center gap-1 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700 font-sans">
+            <button
+              onClick={() => setActiveStudioTab("studio")}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all cursor-pointer ${activeStudioTab === "studio" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-white"}`}
+            >
+              Custom Tailoring Studio
+            </button>
+            <button
+              onClick={() => {
+                setActiveStudioTab("alterations");
+                fetchAlterations();
+              }}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${activeStudioTab === "alterations" ? "bg-rose-600 text-white shadow-xs" : "text-slate-400 hover:text-white"}`}
+            >
+              <Scissors className="w-3 h-3" />
+              <span>Tailoring & Alteration Module</span>
+              {alterationRecords.length > 0 && (
+                <span className="bg-white text-rose-700 px-1.5 py-0.2 rounded-full font-mono text-[9px] font-extrabold">
+                  {alterationRecords.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-4 items-center">
           <span><kbd className="bg-slate-800 text-white px-1 rounded">Ctrl+F</kbd> Find Customer</span>
           <span><kbd className="bg-slate-800 text-white px-1 rounded">Ctrl+M</kbd> Grid Input</span>
-          <span><kbd className="bg-slate-800 text-white px-1 rounded">Ctrl+B</kbd> Fabric</span>
-          <span><kbd className="bg-slate-800 text-white px-1 rounded">Ctrl+T</kbd> Tailor</span>
           <span><kbd className="bg-slate-800 text-white px-1 rounded">Ctrl+S</kbd> Save Draft</span>
-          <span><kbd className="bg-slate-800 text-white px-1 rounded">F8</kbd> Reserve Stock</span>
           <span><kbd className="bg-slate-800 text-white px-1 rounded">F9</kbd> POS checkout</span>
-          <span><kbd className="bg-slate-800 text-white px-1 rounded">F4</kbd> Workflow Summary</span>
         </div>
       </div>
 
-      {/* ─── MAIN WORKSPACE GRID ─── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-        
-        {/* ─── LEFT PANEL (35%): CUSTOMER & ORDER ─── */}
+      {/* ─── PROMINENT RECENT POS ALTERATION REQUEST BANNER ─── */}
+      {alterationRecords.length > 0 && (() => {
+        const latest = alterationRecords[0];
+        return (
+          <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-indigo-950 px-5 py-3.5 border-b border-rose-800/80 shadow-md text-white font-sans shrink-0 animate-fade-in">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                </span>
+                <Scissors className="w-5 h-5 text-rose-400 animate-pulse" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-rose-300">
+                      ⚡ RECENT ALTERATION REQUEST FROM POS BILLING
+                    </h3>
+                    <span className="bg-rose-500 text-white text-[9px] font-mono font-extrabold px-2 py-0.5 rounded-full">
+                      NEW
+                    </span>
+                  </div>
+                  <p className="text-xs font-medium text-slate-200 mt-0.5">
+                    Customer: <strong className="text-white font-bold">{latest.customerName}</strong> ({latest.customerPhone}) &bull; Invoice: <strong className="text-indigo-300 font-mono">{latest.invoiceNumber || latest.invoiceId}</strong> &bull; Ticket: <strong className="text-rose-400 font-mono">{latest.alterationId}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 self-end md:self-auto">
+                <div className="text-right hidden lg:block">
+                  <p className="text-[10px] text-slate-300 font-bold uppercase">Garment Item</p>
+                  <p className="text-xs font-extrabold text-white">{latest.productName} ({latest.size}/{latest.color})</p>
+                </div>
+                <div className="text-right hidden lg:block">
+                  <p className="text-[10px] text-slate-300 font-bold uppercase">Delivery Schedule</p>
+                  <p className="text-xs font-mono font-extrabold text-emerald-400">{latest.deliveryDate || 'Scheduled'} {latest.deliveryTime || ''}</p>
+                </div>
+                <select
+                  value={latest.status || 'Pending'}
+                  onChange={(e) => handleUpdateAlterationStatus(latest._id, e.target.value)}
+                  className="text-xs font-bold bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white outline-none cursor-pointer focus:ring-1 focus:ring-rose-500"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Assigned">Assigned</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Ready for Trial">Ready for Trial</option>
+                  <option value="Ready for Delivery">Ready for Delivery</option>
+                  <option value="Delivered">Delivered</option>
+                </select>
+                <button
+                  onClick={() => setSelectedJobTicket(latest)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold uppercase transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Job Ticket Receipt</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {activeStudioTab === "alterations" ? (
+        /* ─── LIVE ALTERATIONS LEDGER MODULE ─── */
+        <div className="flex-1 p-6 bg-slate-50 overflow-y-auto space-y-5 animate-fade-in">
+          
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div>
+              <div className="flex items-center gap-2">
+                <Scissors className="w-5 h-5 text-rose-600" />
+                <h2 className="text-base font-black uppercase text-slate-800 tracking-wider">
+                  Tailoring & Alteration Master Ledger
+                </h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Real-time MongoDB records linked to Billing POS invoices, customer measurements & master tailors.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchAlterations}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>Refresh Live Stream</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex gap-2 overflow-x-auto pb-1 font-sans shrink-0">
+            {["All", "Pending", "Assigned", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered"].map((st) => {
+              const count = st === "All" ? alterationRecords.length : alterationRecords.filter(a => a.status === st).length;
+              return (
+                <button
+                  key={st}
+                  onClick={() => setAlterationsFilterStatus(st)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${alterationsFilterStatus === st ? "bg-slate-900 text-white border-slate-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"}`}
+                >
+                  {st} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Alterations Data Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
+                    <th className="p-3.5">Ticket #</th>
+                    <th className="p-3.5">Invoice No</th>
+                    <th className="p-3.5">Customer</th>
+                    <th className="p-3.5">Product / Garment</th>
+                    <th className="p-3.5">Master Tailor</th>
+                    <th className="p-3.5">Measurements & Details</th>
+                    <th className="p-3.5">Delivery & Priority</th>
+                    <th className="p-3.5">Status Workflow</th>
+                    <th className="p-3.5">Job Ticket Receipt</th>
+                    <th className="p-3.5">Created Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
+                  {alterationRecords
+                    .filter(a => alterationsFilterStatus === "All" || a.status === alterationsFilterStatus)
+                    .map((alt) => {
+                      const mKeys = Object.keys(alt.measurements || {});
+                      return (
+                        <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3.5 font-mono font-bold text-rose-600">
+                            {alt.alterationId || `ALT-${alt._id.slice(-6)}`}
+                          </td>
+                          <td className="p-3.5 font-mono font-bold text-indigo-600">
+                            {alt.invoiceNumber || alt.invoiceId}
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-extrabold text-slate-800">{alt.customerName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">{alt.customerPhone}</p>
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-bold text-slate-800">{alt.productName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              SKU: {alt.sku} | Size: {alt.size} / {alt.color}
+                            </p>
+                          </td>
+                          <td className="p-3.5 font-bold text-slate-700">
+                            {alt.tailorName || 'Unassigned'}
+                          </td>
+                          <td className="p-3.5 max-w-xs">
+                            <div className="space-y-1">
+                              {alt.alterationDetails && alt.alterationDetails.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {alt.alterationDetails.map((d, i) => (
+                                    <span key={i} className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {mKeys.length > 0 && (
+                                <p className="text-[10px] font-mono text-slate-500 truncate">
+                                  {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
+                                  {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
+                                </p>
+                              )}
+                              {alt.specialInstructions && (
+                                <p className="text-[10px] text-slate-400 italic truncate" title={alt.specialInstructions}>
+                                  "{alt.specialInstructions}"
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-mono font-bold">{alt.deliveryDate || 'N/A'}</p>
+                            <span className={`inline-block text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${alt.priority === 'Express' ? 'bg-red-100 text-red-700' : alt.priority === 'Urgent' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {alt.priority || 'Normal'}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            <select
+                              value={alt.status || 'Pending'}
+                              onChange={(e) => handleUpdateAlterationStatus(alt._id, e.target.value)}
+                              className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500"
+                            >
+                              <option value="Pending">Pending</option>
+                              <option value="Assigned">Assigned</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Ready for Trial">Ready for Trial</option>
+                              <option value="Ready for Delivery">Ready for Delivery</option>
+                              <option value="Delivered">Delivered</option>
+                              <option value="Flagged for Review">Flagged for Review</option>
+                              <option value="Cancelled">Cancelled</option>
+                            </select>
+                          </td>
+                          <td className="p-3.5">
+                            <button
+                              onClick={() => setSelectedJobTicket(alt)}
+                              className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span>Receipt</span>
+                            </button>
+                          </td>
+                          <td className="p-3.5 text-[10px] font-mono text-slate-400">
+                            {alt.createdAt ? new Date(alt.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                  {alterationRecords.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-400 text-xs font-medium">
+                        No alteration records logged yet. Click "ALTERATION" in POS Billing to add job tickets.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {/* MODAL: JOB TICKET RECEIPT & ALTERATION SLIP */}
+          {selectedJobTicket && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in overflow-y-auto">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto text-slate-800">
+                
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Scissors className="w-5 h-5 text-rose-600" />
+                    <h3 className="text-sm font-black uppercase tracking-wide">
+                      Alteration Job Ticket Receipt
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedJobTicket(null)}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Printable Ticket Receipt Body */}
+                <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-[70vh] overflow-y-auto erp-hide-scrollbar">
+                  <div className="text-center font-black text-slate-900 text-base">
+                    VASTRA ERP — ALTERATION TICKET
+                  </div>
+                  <div className="text-center text-[10px] text-slate-500">
+                    Bespoke Tailoring & Garment Fitting Slip
+                  </div>
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+
+                  <div className="flex justify-between">
+                    <span>Ticket #: <strong className="text-rose-600">{selectedJobTicket.alterationId}</strong></span>
+                    <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
+                  </div>
+                  <div>
+                    <span>Target Invoice: <strong>{selectedJobTicket.invoiceNumber || selectedJobTicket.invoiceId}</strong></span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span>Customer: <strong>{selectedJobTicket.customerName}</strong></span>
+                    <span>Mobile: {selectedJobTicket.customerPhone}</span>
+                  </div>
+
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+
+                  <div className="space-y-1">
+                    <p className="font-bold text-slate-900 uppercase">Garment Specs:</p>
+                    <p>{selectedJobTicket.productName}</p>
+                    <p className="text-[10px] text-slate-500">SKU: {selectedJobTicket.sku} | Size: {selectedJobTicket.size} | Color: {selectedJobTicket.color}</p>
+                    <p className="text-[10px]">Master Tailor: <strong>{selectedJobTicket.tailorName || 'Unassigned'}</strong></p>
+                    <p className="text-[10px]">Staff: {selectedJobTicket.salespersonName || 'Store Cashier'}</p>
+                  </div>
+
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+
+                  {/* Measurements */}
+                  <div>
+                    <p className="font-bold text-slate-900 uppercase mb-1">Measurements (Inches):</p>
+                    {Object.keys(selectedJobTicket.measurements || {}).length > 0 ? (
+                      <div className="grid grid-cols-2 gap-1 text-[10px] bg-white p-2 rounded border border-slate-200">
+                        {Object.entries(selectedJobTicket.measurements).map(([k, v]) => (
+                          <div key={k} className="flex justify-between">
+                            <span className="text-slate-500">{k}:</span>
+                            <span className="font-bold">{v}"</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 italic">No specific inches entered</p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+
+                  {/* Alterations */}
+                  <div>
+                    <p className="font-bold text-slate-900 uppercase mb-1">Alteration Types:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {(selectedJobTicket.alterationDetails || ['Custom Fit']).map((d, i) => (
+                        <span key={i} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          ✓ {d}
+                        </span>
+                      ))}
+                    </div>
+                    {selectedJobTicket.customAlterationText && (
+                      <p className="text-[10px] text-slate-600 mt-1">Note: {selectedJobTicket.customAlterationText}</p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+
+                  {/* Delivery Details */}
+                  <div className="space-y-1 bg-rose-50 p-2.5 rounded border border-rose-200 text-rose-900">
+                    <div className="flex justify-between font-bold">
+                      <span>Delivery Date:</span>
+                      <span>{selectedJobTicket.deliveryDate || 'Scheduled'} {selectedJobTicket.deliveryTime || ''}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Expected Trial:</span>
+                      <span>{selectedJobTicket.trialDate || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Job Priority:</span>
+                      <span className="uppercase font-extrabold">{selectedJobTicket.priority || 'Normal'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Workflow Status:</span>
+                      <span className="uppercase font-extrabold">{selectedJobTicket.status || 'Pending'}</span>
+                    </div>
+                  </div>
+
+                  {selectedJobTicket.specialInstructions && (
+                    <div>
+                      <p className="font-bold text-slate-900 uppercase">Special Instructions:</p>
+                      <p className="text-[10px] italic text-slate-600">"{selectedJobTicket.specialInstructions}"</p>
+                    </div>
+                  )}
+
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+                  <div className="text-center text-[9px] text-slate-400">
+                    Powered by Vastra ERP Tailoring Module
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedJobTicket(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Close (Esc)
+                  </button>
+                  <button
+                    onClick={() => handlePrintJobTicketHTML(selectedJobTicket)}
+                    className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Print Job Ticket</span>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+      ) : (
+        /* ─── ORIGINAL STUDIO WORKSPACE ─── */
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Live POS Alteration Trigger Alert Banner */}
+          {alterationRecords.filter(a => a.status === 'Pending' || a.status === 'Assigned').length > 0 && (
+            <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-indigo-950 border-b border-rose-800/80 px-4 py-2.5 flex items-center justify-between shrink-0 text-white font-sans text-xs shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                </span>
+                <Scissors className="w-4 h-4 text-rose-400 animate-pulse" />
+                <span className="font-extrabold tracking-wide">
+                  {alterationRecords.filter(a => a.status === 'Pending' || a.status === 'Assigned').length} POS Alteration Ticket(s) Triggered from Billing!
+                </span>
+                <span className="text-[10px] text-slate-300 hidden md:inline">
+                  (Latest: {alterationRecords[0]?.customerName} - {alterationRecords[0]?.productName})
+                </span>
+              </div>
+              <button
+                onClick={() => setActiveStudioTab("alterations")}
+                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg font-extrabold text-[10px] uppercase transition-all shadow-xs cursor-pointer flex items-center gap-1"
+              >
+                <span>View Alterations Ledger</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+            
+            {/* ─── LEFT PANEL (35%): CUSTOMER & ORDER ─── */}
         <div className="lg:col-span-4 border-r border-slate-200 bg-white flex flex-col overflow-y-auto p-4 space-y-4">
           
           {/* SECTION 1: CUSTOMER QUICK SELECT */}
@@ -1316,6 +1858,8 @@ export const ArticulationView = ({
         </div>
 
       </div>
+      </div>
+      )}
 
       {/* ─── SECTION 13: BOTTOM ACTION BAR (STICKY FOOTER) ─── */}
       <div className="bg-slate-900 border-t border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
@@ -1513,7 +2057,6 @@ export const ArticulationView = ({
           </div>
         </div>
       )}
-
     </div>
   );
 };
