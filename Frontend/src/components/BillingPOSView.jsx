@@ -168,11 +168,7 @@ export const BillingPOSView = ({
     }
   }, []);
 
-  useEffect(() => {
-    if (customers && customers.length > 0 && (!selectedCustomerId || !customers.find(c => c.id === selectedCustomerId))) {
-      setSelectedCustomerId(customers[0].id);
-    }
-  }, [customers, selectedCustomerId]);
+  // Customer selection is optional — defaults to Walk-in Customer if unselected
   const [staffList, setStaffList] = useState([]);
 
   // Fetch staff (salespersons)
@@ -229,8 +225,101 @@ export const BillingPOSView = ({
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
 
-  // Local Reactive Invoices State
+  // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
+  const [historyViewIndex, setHistoryViewIndex] = useState(-1); // -1 = Active New Bill
+
+  const handleStartNewBill = () => {
+    setHistoryViewIndex(-1);
+    setCart([]);
+    setSelectedCustomerId("");
+    setCustomerSearch("");
+    setCouponCode("");
+    setFlatDiscount(0);
+    setCancelAutoDiscount(false);
+    setSelectedLoyaltyRuleId("");
+    setPaymentMethod("Cash");
+    if (onAddNotification) onAddNotification("New Bill", "Fresh POS billing session started.", "info");
+  };
+
+  const handleLoadPreviousBill = () => {
+    const list = invoiceList || invoices || [];
+    if (!list.length) {
+      if (onAddNotification) onAddNotification("Invoice History", "No previous invoices recorded.", "warning");
+      return;
+    }
+    let targetIdx = historyViewIndex;
+    if (targetIdx === -1) {
+      targetIdx = list.length - 1;
+    } else {
+      targetIdx = Math.max(0, targetIdx - 1);
+    }
+    
+    setHistoryViewIndex(targetIdx);
+    const targetInv = list[targetIdx];
+    if (targetInv) {
+      setCart(targetInv.items || []);
+      setSelectedCustomerId(targetInv.customerId || targetInv.customer?.id || "");
+      setCustomerSearch(targetInv.customerName || "");
+      setPaymentMethod(targetInv.paymentMethod || "Cash");
+      if (onAddNotification) onAddNotification("Previous Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo} (${targetIdx + 1}/${list.length})`, "success");
+    }
+  };
+
+  const handleLoadNextBill = () => {
+    const list = invoiceList || invoices || [];
+    if (!list.length || historyViewIndex === -1) {
+      if (onAddNotification) onAddNotification("Invoice History", "Already on active new bill.", "info");
+      return;
+    }
+    if (historyViewIndex >= list.length - 1) {
+      handleStartNewBill();
+      return;
+    }
+    const targetIdx = historyViewIndex + 1;
+    setHistoryViewIndex(targetIdx);
+    const targetInv = list[targetIdx];
+    if (targetInv) {
+      setCart(targetInv.items || []);
+      setSelectedCustomerId(targetInv.customerId || targetInv.customer?.id || "");
+      setCustomerSearch(targetInv.customerName || "");
+      setPaymentMethod(targetInv.paymentMethod || "Cash");
+      if (onAddNotification) onAddNotification("Next Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo} (${targetIdx + 1}/${list.length})`, "success");
+    }
+  };
+
+  const handleModifyBill = async () => {
+    if (historyViewIndex >= 0) {
+      const list = invoiceList || invoices || [];
+      const targetInv = list[historyViewIndex];
+      if (targetInv) {
+        const updatedInv = {
+          ...targetInv,
+          items: [...cart],
+          subTotal,
+          discountTotal,
+          gstTotal,
+          grandTotal,
+          paymentMethod
+        };
+        try {
+          const token = localStorage.getItem("token");
+          const invId = targetInv._id || targetInv.id;
+          await fetch(`http://localhost:5000/api/invoices/${invId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(updatedInv)
+          });
+        } catch (e) {
+          console.error("Failed to update invoice:", e);
+        }
+        setInvoiceList(prev => prev.map((inv, idx) => idx === historyViewIndex ? updatedInv : inv));
+        if (onAddNotification) onAddNotification("Bill Modified", `Invoice ${targetInv.invoiceNo} successfully updated!`, "success");
+      }
+    } else {
+      if (onAddNotification) onAddNotification("Modify Bill", "Bill modified in cart. Click Generate Invoice to issue.", "info");
+    }
+  };
 
   useEffect(() => {
     if (invoices && invoices.length > 0) {
@@ -784,22 +873,21 @@ export const BillingPOSView = ({
   }, [quickArticulateItem]);
 
   const activeCustomer = (customers || []).find(
-    (c) => c.id === selectedCustomerId,
-  ) ||
-    (customers || [])[0] || {
-      id: "c-walkin",
-      name: "Walk-in Customer",
-      phone: "0000000000",
-      email: "",
-      outstandingBalance: 0,
-      membership: "Bronze",
-      walletBalance: 0,
-      loyaltyPoints: 0,
-      birthday: "",
-      createdAt: "",
-      totalInvoices: 0,
-      totalSpent: 0,
-    };
+    (c) => (c.id || c._id) === selectedCustomerId,
+  ) || {
+    id: "c-walkin",
+    name: "Walk-in Customer",
+    phone: "N/A",
+    email: "",
+    outstandingBalance: 0,
+    membership: "Bronze",
+    walletBalance: 0,
+    loyaltyPoints: 0,
+    birthday: "",
+    createdAt: "",
+    totalInvoices: 0,
+    totalSpent: 0,
+  };
 
   const baseFilteredProducts = React.useMemo(() => {
     return (products || []).filter((p) => {
@@ -1819,49 +1907,49 @@ export const BillingPOSView = ({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in" id="billing-pos-root">
+    <div className="space-y-3 animate-fade-in" id="billing-pos-root">
       {/* POS Mode Selectors */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActivePOSMode("billing")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "billing" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "billing" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             POS Checkout
           </button>
           <button
             onClick={() => setActivePOSMode("history")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "history" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "history" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Invoice History
           </button>
           <button
             onClick={() => setActivePOSMode("returns")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "returns" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "returns" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Returns & Exchange
           </button>
           <button
             onClick={() => setActivePOSMode("quotations")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "quotations" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "quotations" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Quotations
           </button>
           <button
             onClick={() => setActivePOSMode("orders")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "orders" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "orders" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Sales Orders
           </button>
           <button
             onClick={() => setActivePOSMode("credit_notes")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "credit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "credit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Credit Notes
           </button>
           <button
             onClick={() => setActivePOSMode("debit_notes")}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "debit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "debit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
           >
             Debit Notes
           </button>
@@ -1872,7 +1960,7 @@ export const BillingPOSView = ({
           <select
             value={cashierId}
             onChange={(e) => setCashierId(e.target.value)}
-            className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             {employees
               .filter(
@@ -1892,9 +1980,9 @@ export const BillingPOSView = ({
 
       {/* POS TERMINAL INTERFACE */}
       {activePOSMode === "billing" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           {/* LEFT COLUMN: Cart, customer, checkout (Lg: col-span-5) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 lg:col-span-5 flex flex-col h-[calc(100vh-140px)] gap-4 relative">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5 lg:col-span-5 flex flex-col h-[calc(100vh-170px)] gap-2.5 relative">
             {/* Customer Lookup Header (Sticky Top) */}
             <div className="space-y-2 shrink-0">
               <div className="flex justify-between items-center">
@@ -2277,11 +2365,11 @@ export const BillingPOSView = ({
           </div>
 
           {/* RIGHT COLUMN: Scanners, filters, search and quick grid (Lg: col-span-7) */}
-          <div className="lg:col-span-7 flex flex-col h-[calc(100vh-140px)] gap-4">
+          <div className="lg:col-span-7 flex flex-col h-[calc(100vh-170px)] gap-2.5">
             
-            {/* Quick Actions Bar */}
+            {/* Quick Shortcuts Bar */}
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none shrink-0">
-              {["New Customer (F4)", "Hold Bill (F8)", "Resume Bill (F5)", "Goods Return", "Exchange", "Apply Coupon", "Assign Tailor", "Delivery Date"].map((action, i) => (
+              {["New Customer (F4)", "Hold Bill (F8)", "Resume Bill (F5)"].map((action, i) => (
                 <button 
                   key={i} 
                   id={`btn-action-${action}`}
@@ -2291,7 +2379,7 @@ export const BillingPOSView = ({
                     if (action === "Hold Bill (F8)") handleHoldBill();
                     if (action === "Resume Bill (F5)") handleResumeBill();
                   }}
-                  className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="bg-white border border-slate-200 text-slate-600 px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap shadow-xs hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   {action} {action === "Resume Bill (F5)" && heldBills.length > 0 && `(${heldBills.length})`}
                 </button>
@@ -2596,6 +2684,63 @@ export const BillingPOSView = ({
                 })()}
               </div>
             )}
+
+            {/* POS Action Navigation Toolbar (NEW BILL, PREVIOUS BILL, NEXT BILL, MODIFY BILL) */}
+            <div className="col-span-1 lg:col-span-12 mt-2 bg-white rounded-2xl border border-slate-200 p-3 shadow-sm space-y-2 shrink-0">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 w-full">
+                <button
+                  type="button"
+                  onClick={handleStartNewBill}
+                  className="flex items-center justify-center gap-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <Plus className="w-5 h-5 stroke-[2.5]" />
+                  <span className="tracking-wide">NEW BILL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLoadPreviousBill}
+                  className="flex items-center justify-center gap-2.5 bg-slate-50 border border-slate-300 hover:bg-slate-100 text-slate-800 font-extrabold text-xs sm:text-sm py-3.5 px-4 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <ChevronsLeft className="w-5 h-5 text-indigo-600 stroke-[2.5]" />
+                  <span className="tracking-wide">PREVIOUS BILL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLoadNextBill}
+                  className="flex items-center justify-center gap-2.5 bg-slate-50 border border-slate-300 hover:bg-slate-100 text-slate-800 font-extrabold text-xs sm:text-sm py-3.5 px-4 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <span className="tracking-wide">NEXT BILL</span>
+                  <ChevronRight className="w-5 h-5 text-indigo-600 stroke-[2.5]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleModifyBill}
+                  className="flex items-center justify-center gap-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <Scissors className="w-5 h-5 stroke-[2.5]" />
+                  <span className="tracking-wide">MODIFY BILL</span>
+                </button>
+              </div>
+
+              {historyViewIndex >= 0 && (
+                <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold px-4 py-2 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-indigo-600" />
+                    <span>Viewing Historical Bill #{invoiceList[historyViewIndex]?.invoiceNo} ({historyViewIndex + 1} of {invoiceList.length})</span>
+                  </div>
+                  <button
+                    onClick={handleStartNewBill}
+                    className="text-xs text-rose-600 hover:underline font-black cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-rose-200 shadow-xs"
+                  >
+                    Exit to New Bill
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}
