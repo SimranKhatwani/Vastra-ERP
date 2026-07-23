@@ -3072,7 +3072,7 @@ export const BillingPOSView = ({
                     <button
                       type="button"
                       disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
-                      onClick={() => {
+                      onClick={async () => {
                         const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
                         const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
                         const refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
@@ -3089,12 +3089,34 @@ export const BillingPOSView = ({
                           return item;
                         });
 
+                        const allRet = updatedItems.every(i => i.isReturned);
                         const updatedInvoice = {
                           ...selectedInvoiceForReturn,
                           hasReturn: true,
                           returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                          status: allRet ? 'Returned' : 'Partially Returned',
                           items: updatedItems
                         };
+
+                        // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                        try {
+                          const token = localStorage.getItem("token");
+                          const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                          await fetch(`http://localhost:5000/api/invoices/${invId}/return`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                              returnedItemIds,
+                              returnReason: finalReason,
+                              refundMethod: "Cash"
+                            })
+                          });
+                        } catch (apiErr) {
+                          console.warn("Backend return endpoint call error:", apiErr.message);
+                        }
 
                         // Update local invoices list so Invoice History reflects returned status immediately
                         setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
@@ -3109,7 +3131,7 @@ export const BillingPOSView = ({
                         }
 
                         if (onAddNotification) {
-                          onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Returned tag updated on bill.`, "success");
+                          onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
                         }
 
                         // Auto-clear data and reset selection
@@ -3277,7 +3299,7 @@ export const BillingPOSView = ({
                     <button
                       type="button"
                       disabled={!exchangeSelectedNewProduct}
-                      onClick={() => {
+                      onClick={async () => {
                         const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
                         if (!oldItem || !exchangeSelectedNewProduct) return;
 
@@ -3321,12 +3343,34 @@ export const BillingPOSView = ({
                           return item;
                         });
 
+                        const allEx = updatedItems.every(i => i.isExchanged);
                         const updatedInvoice = {
                           ...selectedInvoiceForReturn,
                           hasExchange: true,
                           exchangeSlip: docket,
+                          status: allEx ? 'Exchanged' : 'Partially Exchanged',
                           items: updatedItems
                         };
+
+                        // Call Backend API to process exchange in MongoDB
+                        try {
+                          const token = localStorage.getItem("token");
+                          const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                          await fetch(`http://localhost:5000/api/invoices/${invId}/exchange`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                              oldItemIdx: exchangeOldItemIdx,
+                              exchangeReason,
+                              newItem: exchangeSelectedNewProduct
+                            })
+                          });
+                        } catch (apiErr) {
+                          console.warn("Backend exchange endpoint call error:", apiErr.message);
+                        }
 
                         // Update local invoices list so Invoice History reflects exchanged status immediately
                         setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
@@ -3340,7 +3384,7 @@ export const BillingPOSView = ({
                         setShowExchangeSlipModal(true);
 
                         if (onAddNotification) {
-                          onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully.`, "success");
+                          onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
                         }
 
                         // Auto-clear search & selection data after completing exchange

@@ -292,26 +292,26 @@ export const ReportsView = ({ onAddNotification }) => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <KPISmall label="Gross Sales" value={`₹${fmt(kpis.grossSales || kpis.monthlySales)}`} color="blue" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Sales Returns (Refunds)" value={`₹${fmt(kpis.salesReturns || 0)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+              <KPISmall label="Net Sales Revenue" value={`₹${fmt(kpis.netSales || kpis.monthlySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Return Rate (%)" value={`${kpis.returnPercentage || 0}%`} color="amber" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Total Exchanges" value={kpis.exchangeCount || 0} color="indigo" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
+              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+
               <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
               <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
               <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              <KPISmall label="Monthly Sales" value={`₹${fmt(kpis.monthlySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
               <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
               <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              
               <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("expenses"); loadSectionReport("financial", "expenses"); }} />
-              <KPISmall label="Gross Profit" value={`₹${fmt(kpis.grossProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+
               <KPISmall label="Outstanding Receivables" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
               <KPISmall label="Outstanding Payables" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
               <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
-
               <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
               <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
               <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} onClick={() => { setActiveSection("people"); setSelectedReport("performance"); loadSectionReport("people", "performance"); }} />
-              <KPISmall label="Attendance %" value={`${kpis.attendancePercentage || 0}%`} color="emerald" icon={Clock} onClick={() => { setActiveSection("people"); setSelectedReport("attendance"); loadSectionReport("people", "attendance"); }} />
-              <KPISmall label="Low Stock Items" value={kpis.lowStockProducts || 0} color="red" icon={AlertTriangle} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
-              <KPISmall label="Fast Moving" value={kpis.fastMovingProducts || 0} color="emerald" icon={TrendingUp} onClick={() => { setActiveSection("inventory"); setSelectedReport("fast_moving"); loadSectionReport("inventory", "fast_moving"); }} />
             </div>
           </div>
 
@@ -393,15 +393,46 @@ export const ReportsView = ({ onAddNotification }) => {
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
               <h3 className="font-extrabold text-slate-800 text-sm uppercase">Live System Transaction Feed</h3>
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {(dashboardData?.recentActivities || []).map((act, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl text-xs">
-                    <div>
-                      <p className="font-bold text-slate-800">{act.invoiceNo || "Invoice Record"}</p>
-                      <p className="text-[10px] text-slate-400">{act.customerName || "Walk-in Customer"} | {fmtDate(act.createdAt)}</p>
+                {(dashboardData?.recentActivities || []).map((act, i) => {
+                  let retVal = act.returnedAmount || 0;
+                  if (!retVal && act.items) {
+                    retVal = act.items.filter(it => it.isReturned).reduce((sum, it) => sum + (it.totalPrice || (it.price * (it.quantity || 1))), 0);
+                  }
+                  const isRet = act.hasReturn || act.status === "Returned" || act.status === "Partially Returned" || retVal > 0;
+                  const isEx = act.hasExchange || act.status === "Exchanged" || act.status === "Partially Exchanged";
+                  const netVal = Math.max(0, (act.grandTotal || 0) - retVal);
+
+                  return (
+                    <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl text-xs border border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-mono font-bold text-slate-800">{act.invoiceNo || "Invoice Record"}</p>
+                          {isRet && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                              ↩ RETURNED
+                            </span>
+                          )}
+                          {isEx && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              🔁 EXCHANGED
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{act.customerName || "Walk-in Customer"} | {fmtDate(act.date || act.createdAt)}</p>
+                      </div>
+                      <div className="text-right font-mono">
+                        <p className={`font-bold ${isRet ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          ₹{fmt(netVal)}
+                        </p>
+                        {retVal > 0 && (
+                          <p className="text-[9px] text-slate-400 font-sans">
+                            Gross: ₹{fmt(act.grandTotal)} (-₹{fmt(retVal)})
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <span className="font-mono font-bold text-emerald-600">₹{fmt(act.grandTotal)}</span>
-                  </div>
-                ))}
+                  );
+                })}
                 {!(dashboardData?.recentActivities || []).length && (
                   <p className="text-slate-400 text-center py-8 text-xs">No recent transactions recorded.</p>
                 )}
@@ -535,11 +566,39 @@ export const ReportsView = ({ onAddNotification }) => {
                       .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                       .map((row, i) => (
                         <tr key={i} className="hover:bg-slate-50/50">
-                          {Object.values(row).slice(0, 8).map((val, colIdx) => (
-                            <td key={colIdx} className="p-3">
-                              {typeof val === "object" ? JSON.stringify(val) : String(val)}
-                            </td>
-                          ))}
+                          {Object.entries(row).slice(0, 8).map(([key, val], colIdx) => {
+                            const strVal = String(val ?? "");
+                            if (strVal === "Returned" || strVal === "Partially Returned") {
+                              return (
+                                <td key={colIdx} className="p-3">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                                    ↩ {strVal}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (strVal === "Exchanged" || strVal === "Partially Exchanged") {
+                              return (
+                                <td key={colIdx} className="p-3">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    🔁 {strVal}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (key.toLowerCase().includes("sales") || key.toLowerCase().includes("amount") || key.toLowerCase().includes("price") || key.toLowerCase().includes("cogs")) {
+                              return (
+                                <td key={colIdx} className="p-3 font-mono font-bold text-slate-800">
+                                  {typeof val === "number" ? `₹${fmt(val)}` : strVal}
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={colIdx} className="p-3">
+                                {typeof val === "object" ? JSON.stringify(val) : strVal}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     {!(reportData?.data || []).length && (

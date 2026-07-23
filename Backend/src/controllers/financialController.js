@@ -139,12 +139,17 @@ exports.getDashboardSummary = async (req, res) => {
       }
     });
 
-    // Invoices Paid
+    // Invoices Paid (Net of returns)
     invoices.forEach((inv) => {
       const paid = inv.amountPaid || 0;
-      if (paid > 0) {
-        if (inv.paymentMethod === 'Cash') cashBalance += paid;
-        else bankBalance += paid;
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      const netPaid = Math.max(0, paid - retAmt);
+      if (netPaid > 0) {
+        if (inv.paymentMethod === 'Cash') cashBalance += netPaid;
+        else bankBalance += netPaid;
       }
     });
 
@@ -489,17 +494,41 @@ exports.getCashBook = async (req, res) => {
 
     const cashBookEntries = [];
 
-    // Cash In: Invoices paid in Cash
+    // Cash In & Cash Out: Invoices paid in Cash (Net of returns + Cash Out refunds)
     invoices.forEach((inv) => {
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      const netPaid = Math.max(0, (inv.amountPaid || 0) - retAmt);
+
       if (inv.paymentMethod === 'Cash' && inv.amountPaid > 0) {
         cashBookEntries.push({
           date: inv.date || inv.createdAt,
           refNo: inv.invoiceNo,
           category: 'Retail/Wholesale Sales',
           type: 'Cash In',
-          amount: inv.amountPaid,
+          amount: netPaid,
+          grossAmount: inv.amountPaid,
+          returnedAmount: retAmt,
+          hasReturn: inv.hasReturn || retAmt > 0,
+          hasExchange: inv.hasExchange || false,
+          status: inv.status || (retAmt >= inv.amountPaid ? 'Returned' : retAmt > 0 ? 'Partially Returned' : 'Paid'),
           description: `Sale to ${inv.customerName}`,
         });
+
+        if (retAmt > 0) {
+          cashBookEntries.push({
+            date: inv.updatedAt || inv.date || inv.createdAt,
+            refNo: `REF-${inv.invoiceNo}`,
+            category: 'Sales Refund',
+            type: 'Cash Out',
+            amount: retAmt,
+            hasReturn: true,
+            status: 'Returned',
+            description: `Sales Return Refund to ${inv.customerName} (${inv.invoiceNo})`,
+          });
+        }
       }
     });
 
@@ -648,8 +677,14 @@ exports.getBankBook = async (req, res) => {
 
     const bankEntries = [];
 
-    // Bank In: Non-Cash Invoices
+    // Bank In & Bank Out: Non-Cash Invoices (Net of returns + Refund withdrawals)
     invoices.forEach((inv) => {
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      const netPaid = Math.max(0, (inv.amountPaid || 0) - retAmt);
+
       if (inv.paymentMethod !== 'Cash' && inv.amountPaid > 0) {
         bankEntries.push({
           date: inv.date || inv.createdAt,
@@ -657,10 +692,30 @@ exports.getBankBook = async (req, res) => {
           bankAccountName: 'Main Store Account',
           type: 'Deposit',
           mode: inv.paymentMethod,
-          amount: inv.amountPaid,
+          amount: netPaid,
+          grossAmount: inv.amountPaid,
+          returnedAmount: retAmt,
+          hasReturn: inv.hasReturn || retAmt > 0,
+          hasExchange: inv.hasExchange || false,
+          status: inv.status || (retAmt >= inv.amountPaid ? 'Returned' : retAmt > 0 ? 'Partially Returned' : 'Paid'),
           party: inv.customerName,
           remarks: `Sales settlement via ${inv.paymentMethod}`,
         });
+
+        if (retAmt > 0) {
+          bankEntries.push({
+            date: inv.updatedAt || inv.date || inv.createdAt,
+            refNo: `REF-${inv.invoiceNo}`,
+            bankAccountName: 'Main Store Account',
+            type: 'Withdrawal',
+            mode: inv.paymentMethod || 'Bank Transfer',
+            amount: retAmt,
+            hasReturn: true,
+            status: 'Returned',
+            party: inv.customerName,
+            remarks: `Sales Return Refund (${inv.invoiceNo})`,
+          });
+        }
       }
     });
 
@@ -878,18 +933,31 @@ exports.getIncomes = async (req, res) => {
     const invoices = await Invoice.find({ tenantId, amountPaid: { $gt: 0 } }).sort('-date');
     const receipts = await Receipt.find({ tenantId }).sort('-date');
 
-    // Aggregate sales incomes from Invoice collection
-    const autoIncomes = invoices.map((inv) => ({
-      _id: inv._id,
-      incomeNo: `INC-${inv.invoiceNo}`,
-      source: inv.invoiceType === 'Wholesale' ? 'Wholesale Sales' : 'Retail Sales',
-      amount: inv.amountPaid || inv.grandTotal,
-      date: inv.date || inv.createdAt,
-      paymentMode: inv.paymentMethod || 'Cash',
-      customerName: inv.customerName || 'Walk-in Customer',
-      referenceNo: inv.invoiceNo,
-      isAuto: true,
-    }));
+    // Aggregate sales incomes from Invoice collection (net of returns)
+    const autoIncomes = invoices.map((inv) => {
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      const netPaid = Math.max(0, (inv.amountPaid || inv.grandTotal) - retAmt);
+
+      return {
+        _id: inv._id,
+        incomeNo: `INC-${inv.invoiceNo}`,
+        source: inv.invoiceType === 'Wholesale' ? 'Wholesale Sales' : 'Retail Sales',
+        amount: netPaid,
+        grossAmount: inv.amountPaid || inv.grandTotal,
+        returnedAmount: retAmt,
+        hasReturn: inv.hasReturn || retAmt > 0,
+        hasExchange: inv.hasExchange || false,
+        status: inv.status,
+        date: inv.date || inv.createdAt,
+        paymentMode: inv.paymentMethod || 'Cash',
+        customerName: inv.customerName || 'Walk-in Customer',
+        referenceNo: inv.invoiceNo,
+        isAuto: true,
+      };
+    });
 
     // Aggregate customer receipts
     const receiptIncomes = receipts.map((rec) => ({
@@ -1241,10 +1309,17 @@ exports.getProfitLoss = async (req, res) => {
 
     const calcNetProfitForRange = (sDate) => {
       const filteredInv = allInvoices.filter(i => new Date(i.date || i.createdAt) >= sDate);
-      let sRev = filteredInv.reduce((s, i) => s + (i.grandTotal || 0), 0);
+      let sRev = 0;
       let sCogs = 0;
       filteredInv.forEach(inv => {
+        let retAmt = inv.returnedAmount || 0;
+        if (!retAmt && inv.items) {
+          retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+        }
+        sRev += Math.max(0, (inv.grandTotal || 0) - retAmt);
+
         (inv.items || []).forEach(item => {
+          if (item.isReturned) return; // Exclude returned items from COGS
           const pCost = item.productId ? (productCostMap[item.productId] || productCostMap[item.name?.toLowerCase().trim()] || 0) : 0;
           sCogs += pCost * (item.quantity || 1);
         });
@@ -1258,7 +1333,7 @@ exports.getProfitLoss = async (req, res) => {
     const monthlyProfit = calcNetProfitForRange(startMonth);
     const yearlyProfit = calcNetProfitForRange(startYear);
 
-    // 2. Compute Total Sales & Item COGS
+    // 2. Compute Total Sales & Item COGS (Net of returns)
     let totalSalesGross = 0;
     let totalCOGSGross = 0;
     const reportRows = [];
@@ -1266,11 +1341,18 @@ exports.getProfitLoss = async (req, res) => {
     const categoryProfitStats = {};
 
     invoices.forEach((inv) => {
-      const invSales = inv.grandTotal || inv.subTotal || 0;
-      totalSalesGross += invSales;
+      const grossInvSales = inv.grandTotal || inv.subTotal || 0;
+      let retAmt = inv.returnedAmount || 0;
+      if (!retAmt && inv.items) {
+        retAmt = inv.items.filter(i => i.isReturned).reduce((sum, i) => sum + (i.totalPrice || (i.price * (i.quantity || 1))), 0);
+      }
+      const netInvSales = Math.max(0, grossInvSales - retAmt);
+      totalSalesGross += netInvSales;
 
       let invCOGS = 0;
       (inv.items || []).forEach((item) => {
+        if (item.isReturned) return; // Returned items go back to inventory stock, exclude from COGS & sales
+
         const qty = item.quantity || 1;
         const pCost = item.productId
           ? (productCostMap[item.productId] || productCostMap[item.name?.toLowerCase()?.trim()] || 0)
@@ -1301,17 +1383,19 @@ exports.getProfitLoss = async (req, res) => {
 
       totalCOGSGross += invCOGS;
 
-      const invGrossProfit = invSales - invCOGS;
+      const invGrossProfit = netInvSales - invCOGS;
+      const computedStatus = inv.status && inv.status !== 'Paid' ? inv.status : (retAmt >= grossInvSales && grossInvSales > 0 ? 'Returned' : retAmt > 0 ? 'Partially Returned' : invGrossProfit >= 0 ? 'PROFIT' : 'LOSS');
+      
       reportRows.push({
         date: inv.date || inv.createdAt,
         invoiceNo: inv.invoiceNo,
         customerName: inv.customerName || 'Walk-in Customer',
-        salesAmount: invSales,
+        salesAmount: netInvSales,
         costAmount: invCOGS,
         grossProfit: invGrossProfit,
         expenseAllocation: 0, // Computed after total expenses
         netProfit: invGrossProfit,
-        status: invGrossProfit >= 0 ? 'PROFIT' : 'LOSS',
+        status: computedStatus,
         type: 'Sale',
       });
     });

@@ -1054,17 +1054,35 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredCashBookData.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50/50">
-                    <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
-                    <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
-                    <td className="p-3"><Badge label={row.category} color="indigo" /></td>
-                    <td className="p-3 text-slate-600">{row.description}</td>
-                    <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Cash In" ? `₹${fmt(row.amount)}` : "—"}</td>
-                    <td className="p-3 text-right font-mono text-red-600">{row.type === "Cash Out" ? `₹${fmt(row.amount)}` : "—"}</td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
-                  </tr>
-                ))}
+                {filteredCashBookData.map((row, i) => {
+                  const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || row.category === "Sales Refund";
+                  const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
+                  return (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                      <td className="p-3 font-mono font-bold text-slate-800">
+                        {row.refNo}
+                        {isRet && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                            ↩ RETURNED
+                          </span>
+                        )}
+                        {isEx && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            🔁 EXCHANGED
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <Badge label={row.category} color={row.category === "Sales Refund" ? "red" : "indigo"} />
+                      </td>
+                      <td className="p-3 text-slate-600">{row.description}</td>
+                      <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Cash In" ? `₹${fmt(row.amount)}` : "—"}</td>
+                      <td className="p-3 text-right font-mono text-red-600">{row.type === "Cash Out" ? `₹${fmt(row.amount)}` : "—"}</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
+                    </tr>
+                  );
+                })}
                 {!filteredCashBookData.length && (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-400">
@@ -1163,18 +1181,34 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredBankBookData.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50/50">
-                    <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
-                    <td className="p-3 font-mono font-bold text-slate-800">{row.refNo}</td>
-                    <td className="p-3 text-slate-600 font-semibold">{row.bankAccountName}</td>
-                    <td className="p-3"><Badge label={row.mode} color="blue" /></td>
-                    <td className="p-3 text-slate-600">{row.party} — {row.remarks}</td>
-                    <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Deposit" ? `₹${fmt(row.amount)}` : "—"}</td>
-                    <td className="p-3 text-right font-mono text-red-600">{row.type === "Withdrawal" ? `₹${fmt(row.amount)}` : "—"}</td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
-                  </tr>
-                ))}
+                {filteredBankBookData.map((row, i) => {
+                  const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || (row.remarks || "").toLowerCase().includes("return");
+                  const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
+                  return (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                      <td className="p-3 font-mono font-bold text-slate-800">
+                        {row.refNo}
+                        {isRet && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                            ↩ RETURNED
+                          </span>
+                        )}
+                        {isEx && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            🔁 EXCHANGED
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-600 font-semibold">{row.bankAccountName}</td>
+                      <td className="p-3"><Badge label={row.mode} color="blue" /></td>
+                      <td className="p-3 text-slate-600">{row.party} — {row.remarks}</td>
+                      <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Deposit" ? `₹${fmt(row.amount)}` : "—"}</td>
+                      <td className="p-3 text-right font-mono text-red-600">{row.type === "Withdrawal" ? `₹${fmt(row.amount)}` : "—"}</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
+                    </tr>
+                  );
+                })}
                 {!filteredBankBookData.length && (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-slate-400">
@@ -1330,17 +1364,40 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredIncomes.map((inc, i) => (
-                  <tr key={i} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-emerald-600">{inc.incomeNo}</td>
-                    <td className="p-3 text-slate-500">{fmtDate(inc.date)}</td>
-                    <td className="p-3"><Badge label={inc.source} color="green" /></td>
-                    <td className="p-3 font-bold text-slate-800">{inc.customerName || "Walk-in"}</td>
-                    <td className="p-3 font-mono text-slate-500">{inc.referenceNo || "—"}</td>
-                    <td className="p-3">{inc.paymentMode}</td>
-                    <td className="p-3 text-right font-mono font-bold text-emerald-600">₹{fmt(inc.amount)}</td>
-                  </tr>
-                ))}
+                {filteredIncomes.map((inc, i) => {
+                  const isRet = inc.hasReturn || inc.status === "Returned" || inc.status === "Partially Returned";
+                  const isEx = inc.hasExchange || inc.status === "Exchanged" || inc.status === "Partially Exchanged";
+                  return (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="p-3 font-mono font-bold text-emerald-600">
+                        {inc.incomeNo}
+                        {isRet && (
+                          <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                            ↩ RETURNED
+                          </span>
+                        )}
+                        {isEx && (
+                          <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            🔁 EXCHANGED
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-500">{fmtDate(inc.date)}</td>
+                      <td className="p-3"><Badge label={inc.source} color="green" /></td>
+                      <td className="p-3 font-bold text-slate-800">{inc.customerName || "Walk-in"}</td>
+                      <td className="p-3 font-mono text-slate-500">{inc.referenceNo || "—"}</td>
+                      <td className="p-3">{inc.paymentMode}</td>
+                      <td className="p-3 text-right font-mono font-bold text-emerald-600">
+                        ₹{fmt(inc.amount)}
+                        {inc.returnedAmount > 0 && (
+                          <p className="text-[10px] text-rose-600 font-sans font-normal">
+                            (Ref: -₹{fmt(inc.returnedAmount)})
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!filteredIncomes.length && (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-400">

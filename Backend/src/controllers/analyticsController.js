@@ -196,13 +196,16 @@ exports.getBIDashboard = async (req, res) => {
         return date >= d && date < nextD;
       });
 
-      const salesVal = monthInv.reduce((s, i) => s + (i.grandTotal || 0), 0);
+      const salesVal = monthInv.reduce((s, i) => s + Math.max(0, (i.grandTotal || 0) - (i.returnedAmount || 0)), 0);
+      const grossMonthSales = monthInv.reduce((s, i) => s + (i.grandTotal || 0), 0);
+      const retMonthVal = monthInv.reduce((s, i) => s + (i.returnedAmount || 0), 0);
       const purVal = monthPur.reduce((s, p) => s + (p.grandTotal || 0), 0);
       const expVal = monthExp.reduce((s, e) => s + (e.amount || 0), 0);
 
       let monthCOGS = 0;
       monthInv.forEach((inv) => {
         (inv.items || []).forEach((item) => {
+          if (item.isReturned) return; // Exclude returned items from COGS
           monthCOGS += (productCostMap[item.productId] || (item.price ? item.price * 0.7 : 0)) * (item.quantity || 1);
         });
       });
@@ -211,20 +214,32 @@ exports.getBIDashboard = async (req, res) => {
 
       monthlySalesTrend.push({
         month: label,
-        sales: salesVal,
+        grossSales: grossMonthSales,
+        sales: salesVal, // Net Sales
+        returns: retMonthVal,
         purchases: purVal,
         expenses: expVal,
         profit: profitVal,
       });
     }
 
+    const exchangeCount = invoices.filter(i => i.hasExchange).length;
+    const returnCount = invoices.filter(i => i.hasReturn).length;
+
     res.status(200).json({
       success: true,
       kpis: {
-        todaySales,
+        grossSales,
+        salesReturns: totalSalesReturns,
+        netSales: netSalesRevenue,
+        refundAmount: totalSalesReturns,
+        returnPercentage: grossSales > 0 ? Number(((totalSalesReturns / grossSales) * 100).toFixed(2)) : 0,
+        exchangeCount,
+        returnCount,
+        todaySales: netTodaySales,
         todayPurchase,
         todayProfit,
-        monthlySales,
+        monthlySales: netMonthlySales,
         monthlyPurchase,
         monthlyRevenue: totalRevenue,
         monthlyExpenses,
@@ -314,15 +329,38 @@ exports.getSalesAnalytics = async (req, res) => {
       });
     }
 
-    // Default: Sales Report
+    // Default: Sales Report (with Net Sales & Returned Amounts)
     const invoices = await Invoice.find(dateQuery).sort('-createdAt').lean();
-    const totalSales = invoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
-    const totalGST = invoices.reduce((s, i) => s + (i.gstTotal || 0), 0);
+    let grossSales = 0;
+    let totalSalesReturns = 0;
+
+    const formattedInvoices = invoices.map((i) => {
+      const g = i.grandTotal || 0;
+      let r = i.returnedAmount || 0;
+      if (!r && i.items) {
+        r = i.items.filter(it => it.isReturned).reduce((sum, it) => sum + (it.totalPrice || (it.price * (it.quantity || 1))), 0);
+      }
+      grossSales += g;
+      totalSalesReturns += r;
+
+      return {
+        invoiceNo: i.invoiceNo,
+        date: i.date || i.createdAt,
+        customerName: i.customerName || 'Walk-in Customer',
+        status: i.status || (r >= g ? 'Returned' : r > 0 ? 'Partially Returned' : 'Paid'),
+        grossSales: g,
+        returnedAmount: r,
+        netSales: Math.max(0, g - r),
+        paymentMethod: i.paymentMethod || 'Cash'
+      };
+    });
+
+    const netSales = Math.max(0, grossSales - totalSalesReturns);
 
     res.status(200).json({
       success: true,
-      summary: { totalSales, totalGST, invoiceCount: invoices.length },
-      data: invoices,
+      summary: { grossSales, salesReturns: totalSalesReturns, netSales, invoiceCount: invoices.length },
+      data: formattedInvoices,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -547,9 +585,30 @@ exports.getFinancialAnalytics = async (req, res) => {
     }
 
     const financialLedger = [
-      ...invoices.map(i => ({ refNo: i.invoiceNo, category: 'Sales Revenue', type: 'Income', amount: i.grandTotal || 0, date: i.date ? new Date(i.date).toLocaleDateString('en-IN') : '—', party: i.customerName || 'Walk-in' })),
-      ...expenses.map(e => ({ refNo: e.expenseNo || 'EXP', category: e.category || 'Expense', type: 'Expense', amount: e.amount || 0, date: e.date ? new Date(e.date).toLocaleDateString('en-IN') : '—', party: e.vendorName || 'Store' })),
-      ...purchases.map(p => ({ refNo: p.invoiceNo || 'PUR', category: 'Inventory Purchase', type: 'Purchase', amount: p.grandTotal || 0, date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : '—', party: p.vendorName || 'Supplier' }))
+      ...invoices.map(i => {
+        let retAmt = i.returnedAmount || 0;
+        if (!retAmt && i.items) {
+          retAmt = i.items.filter(it => it.isReturned).reduce((sum, it) => sum + (it.totalPrice || (it.price * (it.quantity || 1))), 0);
+        }
+        const netVal = Math.max(0, (i.grandTotal || 0) - retAmt);
+        const st = i.status || (retAmt >= (i.grandTotal || 0) && i.grandTotal > 0 ? 'Returned' : retAmt > 0 ? 'Partially Returned' : 'Paid');
+
+        return {
+          refNo: i.invoiceNo,
+          category: 'Sales Revenue',
+          type: 'Income',
+          status: st,
+          amount: netVal,
+          grossAmount: i.grandTotal || 0,
+          returnedAmount: retAmt,
+          hasReturn: i.hasReturn || retAmt > 0,
+          hasExchange: i.hasExchange || false,
+          date: i.date ? new Date(i.date).toLocaleDateString('en-IN') : '—',
+          party: i.customerName || 'Walk-in'
+        };
+      }),
+      ...expenses.map(e => ({ refNo: e.expenseNo || 'EXP', category: e.category || 'Expense', type: 'Expense', status: 'Completed', amount: e.amount || 0, date: e.date ? new Date(e.date).toLocaleDateString('en-IN') : '—', party: e.vendorName || 'Store' })),
+      ...purchases.map(p => ({ refNo: p.invoiceNo || 'PUR', category: 'Inventory Purchase', type: 'Purchase', status: 'Completed', amount: p.grandTotal || 0, date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : '—', party: p.vendorName || 'Supplier' }))
     ];
 
     res.status(200).json({

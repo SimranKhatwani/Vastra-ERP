@@ -1,5 +1,15 @@
 const express = require('express');
-const { createInvoice, getInvoices, getInvoiceById, sendWhatsApp, scanInvoice, changeDeliveryDate, assignTailor } = require('../controllers/invoiceController');
+const {
+  createInvoice,
+  getInvoices,
+  getInvoiceById,
+  sendWhatsApp,
+  scanInvoice,
+  changeDeliveryDate,
+  assignTailor,
+  processSalesReturn,
+  processSalesExchange
+} = require('../controllers/invoiceController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -7,6 +17,9 @@ const router = express.Router();
 router.get('/scan/:invoiceNo', protect, scanInvoice);
 router.put('/:id/delivery-date', protect, changeDeliveryDate);
 router.put('/:id/assign-tailor', protect, assignTailor);
+
+router.post('/:id/return', protect, processSalesReturn);
+router.post('/:id/exchange', protect, processSalesExchange);
 
 router.route('/')
   .post(protect, createInvoice)

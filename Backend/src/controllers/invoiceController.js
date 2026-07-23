@@ -334,3 +334,217 @@ exports.assignTailor = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ==========================================
+// PROCESS SALES RETURN
+// ==========================================
+exports.processSalesReturn = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params;
+    const { returnedItemIds, returnReason, refundMethod } = req.body;
+
+    const query = isValidObjectId(id)
+      ? { _id: id, tenantId }
+      : { invoiceNo: id, tenantId };
+
+    const invoice = await Invoice.findOne(query);
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    let refundAmt = 0;
+    const targetItemIds = returnedItemIds || [];
+
+    for (let item of invoice.items) {
+      const matchKey = item.productId || item._id?.toString() || item.sku;
+      if (targetItemIds.includes(matchKey) || targetItemIds.includes(item.name) || targetItemIds.includes(item.productId)) {
+        if (!item.isReturned) {
+          item.isReturned = true;
+          item.returnReason = returnReason || 'Defective / Customer Choice';
+          item.returnedAt = new Date();
+
+          const lineVal = item.totalPrice || (item.price * item.quantity);
+          refundAmt += lineVal;
+
+          // Restock product stock in inventory
+          if (item.productId && isValidObjectId(item.productId)) {
+            try {
+              const product = await Product.findOne({ _id: item.productId, tenantId });
+              if (product) {
+                product.stock = (product.stock || 0) + item.quantity;
+                product.soldQuantity = Math.max(0, (product.soldQuantity || 0) - item.quantity);
+                calculateStockStatus(product);
+                await product.save();
+
+                try {
+                  const inventoryMovementService = require('../services/inventoryMovementService');
+                  await inventoryMovementService.createMovement(tenantId, {
+                    product,
+                    movementType: 'INBOUND',
+                    activity: 'SALES_RETURN',
+                    quantity: item.quantity,
+                    referenceType: 'Invoice',
+                    referenceId: invoice._id,
+                    referenceNumber: invoice.invoiceNo || '',
+                    performedBy: req.user ? req.user.name : 'Returns POS',
+                    remarks: `Sales Return: ${returnReason || 'Customer return'}`
+                  });
+                } catch (moveErr) {
+                  console.error('Movement logging failed for return:', moveErr.message);
+                }
+              }
+            } catch (stockErr) {
+              console.warn('Stock restock skipped for returned item:', item.productId, stockErr.message);
+            }
+          }
+        }
+      }
+    }
+
+    invoice.hasReturn = true;
+    invoice.returnedAmount = (invoice.returnedAmount || 0) + refundAmt;
+
+    const allReturned = invoice.items.every(i => i.isReturned);
+    invoice.status = allReturned ? 'Returned' : 'Partially Returned';
+
+    await invoice.save();
+
+    // Deduct Customer totalSpent / balance
+    if (invoice.customerId && isValidObjectId(invoice.customerId)) {
+      try {
+        const customer = await Customer.findOne({ _id: invoice.customerId, tenantId });
+        if (customer) {
+          customer.totalSpent = Math.max(0, (customer.totalSpent || 0) - refundAmt);
+          if (refundMethod === 'Credit' || invoice.paymentMethod === 'Credit') {
+            customer.outstandingBalance = Math.max(0, (customer.outstandingBalance || 0) - refundAmt);
+          }
+          await customer.save();
+        }
+      } catch (custErr) {
+        console.warn('Customer ledger update skipped on return:', custErr.message);
+      }
+    }
+
+    emitToTenant(tenantId, 'invoice.updated', { invoice, tenantId, event: 'invoice.updated' });
+    emitToTenant(tenantId, 'inventory.updated', { tenantId, event: 'inventory.updated' });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
+
+    res.status(200).json({ success: true, message: 'Sales return processed successfully', data: invoice, refundAmount: refundAmt });
+  } catch (error) {
+    console.error('Process return error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// PROCESS SALES EXCHANGE
+// ==========================================
+exports.processSalesExchange = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params;
+    const { oldItemIdx, exchangeReason, newItem } = req.body;
+
+    const query = isValidObjectId(id)
+      ? { _id: id, tenantId }
+      : { invoiceNo: id, tenantId };
+
+    const invoice = await Invoice.findOne(query);
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    const idx = Number(oldItemIdx) || 0;
+    const oldItem = invoice.items[idx] || invoice.items[0];
+    if (!oldItem) {
+      return res.status(400).json({ success: false, message: 'Original item for exchange not found in invoice' });
+    }
+
+    oldItem.isExchanged = true;
+    oldItem.exchangedFor = newItem ? newItem.name : 'Exchanged Garment';
+    oldItem.exchangeReason = exchangeReason || 'Size / Fit Swap';
+
+    // Restock old item
+    if (oldItem.productId && isValidObjectId(oldItem.productId)) {
+      try {
+        const oldProduct = await Product.findOne({ _id: oldItem.productId, tenantId });
+        if (oldProduct) {
+          oldProduct.stock = (oldProduct.stock || 0) + (oldItem.quantity || 1);
+          oldProduct.soldQuantity = Math.max(0, (oldProduct.soldQuantity || 0) - (oldItem.quantity || 1));
+          calculateStockStatus(oldProduct);
+          await oldProduct.save();
+        }
+      } catch (e) {
+        console.warn('Old product restock skipped:', e.message);
+      }
+    }
+
+    // Deduct stock for new item
+    let newPrice = 0;
+    if (newItem) {
+      newPrice = Number(newItem.price || newItem.sellingPrice) || 0;
+      if (newItem.id || newItem._id) {
+        const newProdId = newItem.id || newItem._id;
+        if (isValidObjectId(newProdId)) {
+          try {
+            const newProduct = await Product.findOne({ _id: newProdId, tenantId });
+            if (newProduct) {
+              newProduct.stock = Math.max(0, (newProduct.stock || 0) - 1);
+              newProduct.soldQuantity = (newProduct.soldQuantity || 0) + 1;
+              calculateStockStatus(newProduct);
+              await newProduct.save();
+            }
+          } catch (e) {
+            console.warn('New product stock deduction skipped:', e.message);
+          }
+        }
+      }
+    }
+
+    const oldPrice = oldItem.totalPrice || (oldItem.price * oldItem.quantity);
+    const priceDiff = newPrice - oldPrice;
+
+    const docket = {
+      docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+      originalInvoiceNo: invoice.invoiceNo,
+      customerName: invoice.customerName,
+      customerPhone: invoice.customerPhone,
+      reason: exchangeReason,
+      oldItem: {
+        name: oldItem.name,
+        size: oldItem.size || 'M',
+        color: oldItem.color || 'Std',
+        price: oldPrice
+      },
+      newItem: {
+        name: newItem ? newItem.name : 'New Item',
+        sku: newItem ? (newItem.sku || newItem.barcode || newItem.id) : 'SKU-NEW',
+        size: newItem ? (newItem.size || 'M') : 'M',
+        color: newItem ? (newItem.color || 'Std') : 'Std',
+        price: newPrice
+      },
+      priceDiff,
+      cashierName: req.user ? req.user.name : 'Store Cashier',
+      createdAt: new Date().toISOString()
+    };
+
+    invoice.hasExchange = true;
+    invoice.exchangeSlip = docket;
+    
+    const allExchanged = invoice.items.every(i => i.isExchanged);
+    invoice.status = allExchanged ? 'Exchanged' : 'Partially Exchanged';
+
+    await invoice.save();
+
+    emitToTenant(tenantId, 'invoice.updated', { invoice, tenantId, event: 'invoice.updated' });
+    emitToTenant(tenantId, 'inventory.updated', { tenantId, event: 'inventory.updated' });
+    emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
+
+    res.status(200).json({ success: true, message: 'Exchange processed successfully', data: invoice, docket });
+  } catch (error) {
+    console.error('Process exchange error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+

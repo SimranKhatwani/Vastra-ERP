@@ -85,6 +85,26 @@ const invoiceItemSchema = new mongoose.Schema({
   },
   alterationRecord: {
     type: mongoose.Schema.Types.Mixed,
+  },
+  isReturned: {
+    type: Boolean,
+    default: false,
+  },
+  returnReason: {
+    type: String,
+  },
+  returnedAt: {
+    type: Date,
+  },
+  isExchanged: {
+    type: Boolean,
+    default: false,
+  },
+  exchangedFor: {
+    type: String,
+  },
+  exchangeReason: {
+    type: String,
   }
 });
 
@@ -182,6 +202,21 @@ const invoiceSchema = new mongoose.Schema(
     dueDate: {
       type: Date,
     },
+    hasReturn: {
+      type: Boolean,
+      default: false,
+    },
+    returnedAmount: {
+      type: Number,
+      default: 0,
+    },
+    hasExchange: {
+      type: Boolean,
+      default: false,
+    },
+    exchangeSlip: {
+      type: mongoose.Schema.Types.Mixed,
+    },
     reminderHistory: [{
       sentAt: { type: Date, default: Date.now },
       mode: { type: String }, // WhatsApp, SMS, Email
@@ -190,7 +225,7 @@ const invoiceSchema = new mongoose.Schema(
     }],
     status: {
       type: String,
-      enum: ['Paid', 'Partial', 'Unpaid'],
+      enum: ['Paid', 'Partial', 'Unpaid', 'Completed', 'Partially Returned', 'Returned', 'Partially Exchanged', 'Exchanged', 'Cancelled'],
       default: 'Paid',
     },
     expectedDeliveryDate: {
@@ -226,10 +261,13 @@ invoiceSchema.pre('validate', function () {
     this.invoiceNo = `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`;
   }
   
-  if (this.amountPaid < this.grandTotal) {
-    this.status = this.amountPaid > 0 ? 'Partial' : 'Unpaid';
-  } else {
-    this.status = 'Paid';
+  const customStatuses = ['Returned', 'Partially Returned', 'Exchanged', 'Partially Exchanged', 'Cancelled', 'Completed'];
+  if (!customStatuses.includes(this.status)) {
+    if (this.amountPaid < this.grandTotal) {
+      this.status = this.amountPaid > 0 ? 'Partial' : 'Unpaid';
+    } else {
+      this.status = 'Paid';
+    }
   }
 
   // Automatically compute outstanding amount
