@@ -403,7 +403,7 @@ export default function App() {
     let r = (role || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
     if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
     if (r === 'businessadmin' || r === 'admin' || r === 'administrator' || r === 'owner') return 'admin';
-    if (r === 'manager' || r === 'storemanager') return 'manager';
+    if (r === 'worker' || r === 'floorworker' || r === 'productionworker') return 'worker';
     if (r === 'cashier' || r === 'poscashier') return 'cashier';
     if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
     if (r === 'accountant' || r === 'accounts') return 'accountant';
@@ -1076,7 +1076,7 @@ export default function App() {
     ? employees
     : [
         "Admin",
-        "Manager",
+        "Worker",
         "Cashier",
         "Salesperson",
         "Tailor",

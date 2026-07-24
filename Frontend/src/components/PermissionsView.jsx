@@ -30,7 +30,7 @@ export const PermissionsView = ({
   // Roles Registry
   const rolesList = [
     { id: "admin", label: "Admin", badge: "Full System Access", color: "bg-purple-100 text-purple-800 border-purple-200" },
-    { id: "manager", label: "Manager", badge: "Store Operations", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
+    { id: "worker", label: "Worker", badge: "Production & Floor Worker", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
     { id: "cashier", label: "Cashier", badge: "POS Front Desk", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
     { id: "salesperson", label: "Salesperson", badge: "Sales Portal", color: "bg-amber-100 text-amber-800 border-amber-200" },
     { id: "tailor", label: "Tailor", badge: "Garment Fitting", color: "bg-rose-100 text-rose-800 border-rose-200" },

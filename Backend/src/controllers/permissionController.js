@@ -72,27 +72,26 @@ const defaultRolePermissions = {
       'apply_discounts': 'FULL_CONTROL',
     }
   },
-  manager: {
+  worker: {
     allowedModules: [
       'dashboard', 'billing', 'articulation', 'inventory', 'products',
       'stock-management', 'billing-sales', 'discount-offers', 'purchase',
-      'financial-management', 'accounts-treasury', 'customers', 'employees',
-      'reports', 'settings', 'attendance-dashboard', 'manager-review'
+      'customers', 'attendance-dashboard'
     ],
     moduleAccessLevels: {
-      'dashboard': 'FULL_CONTROL',
+      'dashboard': 'VIEW_ONLY',
       'billing': 'FULL_CONTROL',
       'articulation': 'FULL_CONTROL',
       'inventory': 'FULL_CONTROL',
       'products': 'FULL_CONTROL',
-      'purchase': 'FULL_CONTROL',
-      'financial-management': 'VIEW_ONLY',
+      'purchase': 'VIEW_ONLY',
+      'financial-management': 'NO_ACCESS',
       'customers': 'FULL_CONTROL',
-      'employees': 'VIEW_ONLY',
+      'employees': 'NO_ACCESS',
       'attendance-dashboard': 'FULL_CONTROL',
-      'reports': 'VIEW_ONLY',
+      'reports': 'NO_ACCESS',
       'permissions': 'NO_ACCESS',
-      'settings': 'VIEW_ONLY',
+      'settings': 'NO_ACCESS',
     },
     tabPermissions: {
       'articulation_dashboard': 'FULL_CONTROL',
@@ -100,10 +99,10 @@ const defaultRolePermissions = {
       'articulation_tracking': 'FULL_CONTROL',
       'billing_new_bill': 'FULL_CONTROL',
       'billing_prev_next': 'FULL_CONTROL',
-      'billing_modify_bill': 'FULL_CONTROL',
+      'billing_modify_bill': 'NO_ACCESS',
       'whatsapp_send': 'FULL_CONTROL',
       'export_csv': 'VIEW_ONLY',
-      'apply_discounts': 'FULL_CONTROL',
+      'apply_discounts': 'NO_ACCESS',
     }
   },
   cashier: {
@@ -244,6 +243,33 @@ exports.getPermissions = async (req, res) => {
 
     let records = await Permission.find(filter).lean();
 
+    // Auto-seed missing standard role documents into MongoDB collection for this tenant
+    const existingRoles = new Set(records.map(r => r.role ? String(r.role).toLowerCase() : ''));
+    const missingRoles = Object.keys(defaultRolePermissions).filter(r => !existingRoles.has(r));
+
+    if (missingRoles.length > 0 && tenantId) {
+      for (const role of missingRoles) {
+        const def = defaultRolePermissions[role];
+        await Permission.findOneAndUpdate(
+          { tenantId, role: role.toLowerCase(), employeeId: null },
+          {
+            $setOnInsert: {
+              tenantId,
+              role: role.toLowerCase(),
+              employeeId: null,
+              allowedModules: def.allowedModules || [],
+              moduleAccessLevels: def.moduleAccessLevels || {},
+              tabPermissions: def.tabPermissions || {},
+              actionPermissions: def.actionPermissions || {},
+              updatedBy: 'System Auto-Seed'
+            }
+          },
+          { upsert: true, new: true }
+        );
+      }
+      records = await Permission.find(filter).lean();
+    }
+
     // Convert stored records into map by role and employeeId
     const permissionMap = {};
 
@@ -260,7 +286,7 @@ exports.getPermissions = async (req, res) => {
       };
     });
 
-    // Fill missing standard roles with defaults
+    // Fill missing standard roles with defaults in output map
     Object.keys(defaultRolePermissions).forEach((role) => {
       if (!permissionMap[role]) {
         permissionMap[role] = defaultRolePermissions[role];
