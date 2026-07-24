@@ -1051,16 +1051,21 @@ export default function App() {
     setActiveModule("articulation");
   };
 
-  // Distinct employee profile per system role
-  const switchableEmployees = [
-    "Admin",
-    "Manager",
-    "Cashier",
-    "Salesperson",
-    "Tailor",
-  ]
-    .map((role) => (employees || []).find((e) => e.role === role))
-    .filter(Boolean);
+  // Complete list of employees for admin role swap
+  const switchableEmployees = Array.isArray(employees) && employees.length > 0
+    ? employees
+    : [
+        "Admin",
+        "Manager",
+        "Cashier",
+        "Salesperson",
+        "Tailor",
+      ]
+        .map((role) => (employees || []).find((e) => e.role === role))
+        .filter(Boolean);
+
+  const isAdminOrDhruv = ["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) ||
+    (currentUser?.name || '').toLowerCase().includes("dhruv");
 
   // Unread notifications tracker
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
@@ -1240,17 +1245,17 @@ export default function App() {
             )}
           </div>
 
-          {/* Quick Switch role picker directly in sidebar */}
-          {!sidebarCollapsed && (
+          {/* Quick Switch role picker directly in sidebar - ONLY FOR ADMIN / DHRUV */}
+          {!sidebarCollapsed && isAdminOrDhruv && (
             <div className="mt-1">
               <label className="text-[8px] text-slate-400 font-extrabold uppercase tracking-widest block mb-1">
                 Swap System Role
               </label>
               <select
-                value={currentUser.id}
+                value={currentUser.id || currentUser._id}
                 onChange={(e) => {
                   const selectedEmp = employees.find(
-                    (emp) => emp.id === e.target.value,
+                    (emp) => (emp.id || emp._id) === e.target.value,
                   );
                   if (selectedEmp) {
                     setCurrentUser(selectedEmp);
@@ -1265,8 +1270,8 @@ export default function App() {
                 className="w-full text-[10px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
               >
                 {switchableEmployees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.role}: {emp.name.split(" ")[0]}
+                  <option key={emp.id || emp._id} value={emp.id || emp._id}>
+                    {emp.name} ({emp.role})
                   </option>
                 ))}
               </select>
@@ -1370,34 +1375,36 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* Role Quick Switcher inside dropdown */}
-                  <div className="p-1.5 border-b border-slate-100 space-y-1">
-                    <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider px-1">
-                      Quick Switch Context
-                    </p>
-                    {switchableEmployees.map((emp) => (
-                      <button
-                        key={emp.id}
-                        type="button"
-                        onClick={() => {
-                          setCurrentUser(emp);
-                          localStorage.setItem("user", JSON.stringify(emp));
-                          addToastNotification(
-                            "Role Swapped",
-                            `Session context switched to ${emp.name} (${emp.role})`,
-                            "success",
-                          );
-                          setShowProfileDropdown(false);
-                        }}
-                        className={`w-full flex items-center justify-between text-left p-1.5 rounded-lg hover:bg-slate-50 transition-colors text-[10px] font-semibold ${currentUser.id === emp.id ? "bg-indigo-50/50 text-indigo-700 font-bold" : "text-slate-600"}`}
-                      >
-                        <span className="truncate">{emp.name}</span>
-                        <span className="text-[8px] px-1 py-0.5 bg-slate-100 rounded text-slate-500 uppercase font-bold">
-                          {emp.role}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                  {/* Role Quick Switcher inside dropdown - ONLY FOR ADMIN / DHRUV */}
+                  {isAdminOrDhruv && (
+                    <div className="p-1.5 border-b border-slate-100 space-y-1">
+                      <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider px-1">
+                        Quick Switch Context
+                      </p>
+                      {switchableEmployees.map((emp) => (
+                        <button
+                          key={emp.id || emp._id}
+                          type="button"
+                          onClick={() => {
+                            setCurrentUser(emp);
+                            localStorage.setItem("user", JSON.stringify(emp));
+                            addToastNotification(
+                              "Role Swapped",
+                              `Session context switched to ${emp.name} (${emp.role})`,
+                              "success",
+                            );
+                            setShowProfileDropdown(false);
+                          }}
+                          className={`w-full flex items-center justify-between text-left p-1.5 rounded-lg hover:bg-slate-50 transition-colors text-[10px] font-semibold ${(currentUser.id || currentUser._id) === (emp.id || emp._id) ? "bg-indigo-50/50 text-indigo-700 font-bold" : "text-slate-600"}`}
+                        >
+                          <span className="truncate">{emp.name}</span>
+                          <span className="text-[8px] px-1 py-0.5 bg-slate-100 rounded text-slate-500 uppercase font-bold">
+                            {emp.role}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <button
                     onClick={() => {
