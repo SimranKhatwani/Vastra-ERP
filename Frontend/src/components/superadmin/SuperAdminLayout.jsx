@@ -31,7 +31,19 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = React.useRef(null);
   const location = useLocation();
+
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const getUserInitials = (name = "") =>
     name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "SA";
@@ -135,15 +147,32 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
             </h2>
           </div>
 
-          <div className="search-container w-72">
-            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tenants, invoices, settings…"
-              className="search-input"
-            />
+          {/* PREMIUM Dynamic Search Bar */}
+          <div className="relative w-80 md:w-96 transition-all">
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-slate-100/90 hover:bg-slate-100 focus-within:bg-white border border-slate-200/90 focus-within:border-indigo-500 rounded-2xl shadow-2xs focus-within:shadow-md focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search businesses, invoices, settings (Ctrl+K)…"
+                className="w-full bg-transparent text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none"
+              />
+              {searchQuery ? (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="p-1 hover:bg-slate-200/80 rounded-full text-slate-400 hover:text-slate-700 transition-all cursor-pointer shrink-0"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[9px] font-mono font-bold text-slate-400 bg-white border border-slate-200/80 rounded-md shadow-2xs shrink-0">
+                  Ctrl K
+                </kbd>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
