@@ -192,10 +192,10 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
         <main className="erp-main-content">
           <Routes>
             <Route path="/" element={<Navigate to="/super-admin/dashboard" replace />} />
-            <Route path="dashboard" element={<SuperAdminDashboard tenants={tenants} />} />
-            <Route path="businesses" element={<SABusinesses tenants={tenants} />} />
-            <Route path="subscriptions" element={<SASubscriptions tenants={tenants} />} />
-            <Route path="settings" element={<SASettings />} />
+            <Route path="dashboard" element={<SuperAdminDashboard tenants={tenants} searchQuery={searchQuery} />} />
+            <Route path="businesses" element={<SABusinesses tenants={tenants} searchQuery={searchQuery} />} />
+            <Route path="subscriptions" element={<SASubscriptions tenants={tenants} searchQuery={searchQuery} />} />
+            <Route path="settings" element={<SASettings searchQuery={searchQuery} />} />
           </Routes>
         </main>
       </div>

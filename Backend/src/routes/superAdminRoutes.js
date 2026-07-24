@@ -4,13 +4,15 @@ const {
   registerBusiness, 
   getAllTenants, 
   toggleTenantStatus, 
-  updateTenantDetails 
+  updateTenantDetails,
+  getDashboardStats
 } = require('../controllers/superAdminController');
 const { protectSuperAdmin } = require('../middlewares/superAdminMiddleware');
 
 const router = express.Router();
 
 router.post('/login', superAdminLogin);
+router.get('/dashboard-stats', protectSuperAdmin, getDashboardStats);
 router.post('/register-business', protectSuperAdmin, registerBusiness);
 router.get('/tenants', protectSuperAdmin, getAllTenants);
 router.put('/tenants/:id/toggle-status', protectSuperAdmin, toggleTenantStatus);
