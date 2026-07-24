@@ -34,6 +34,111 @@ exports.createAlteration = async (req, res) => {
   }
 };
 
+const defaultSeedAlterations = [
+  {
+    alterationId: "ALT-2026-101",
+    invoiceNumber: "INV-2026-8801",
+    customerName: "Ritu Sharma",
+    customerPhone: "9823456789",
+    productName: "Silk Brocade Sherwani",
+    size: "42",
+    color: "Royal Crimson",
+    tailorName: "Master Ramesh Kumar",
+    priority: "Urgent",
+    status: "Ready for Delivery",
+    deliveryDate: new Date().toISOString().split('T')[0],
+    trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    alterationDetails: ["Sleeve Shortening", "Waist Fitting"],
+    measurements: { Chest: "42", Waist: "36", Shoulder: "18.5", Sleeve: "24.5" },
+    createdBy: "Cashier"
+  },
+  {
+    alterationId: "ALT-2026-102",
+    invoiceNumber: "INV-2026-8802",
+    customerName: "Ananya Roy",
+    customerPhone: "9812345678",
+    productName: "Italian Cut Blazer",
+    size: "40",
+    color: "Charcoal Gray",
+    tailorName: "Ustad Imran Ansari",
+    priority: "Normal",
+    status: "In Progress",
+    deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+    trialDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    alterationDetails: ["Shoulder Padding", "Length Adjustment"],
+    measurements: { Chest: "40", Waist: "34", Shoulder: "17.5", Sleeve: "25" },
+    createdBy: "Admin"
+  },
+  {
+    alterationId: "ALT-2026-103",
+    invoiceNumber: "INV-2026-8803",
+    customerName: "Vikram Malhotra",
+    customerPhone: "9834567890",
+    productName: "Designer Kurta Pajama",
+    size: "38",
+    color: "Classic White",
+    tailorName: "Darzi Amit Saxena",
+    priority: "Express",
+    status: "In Progress",
+    deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+    trialDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+    alterationDetails: ["Side Slit Fitting", "Collar Adjustment"],
+    measurements: { Chest: "38", Waist: "32", Shoulder: "17", Sleeve: "24" },
+    createdBy: "Cashier"
+  },
+  {
+    alterationId: "ALT-2026-104",
+    invoiceNumber: "INV-2026-8804",
+    customerName: "Deepak Verma",
+    customerPhone: "9876543210",
+    productName: "Slim Fit Formal Trousers",
+    size: "32",
+    color: "Navy Blue",
+    tailorName: "Karigar Mansoor Alam",
+    priority: "Normal",
+    status: "Pending",
+    deliveryDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
+    trialDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+    alterationDetails: ["Bottom Hemming", "Thigh Fitting"],
+    measurements: { Waist: "32", Length: "40", Thigh: "23", Bottom: "15" },
+    createdBy: "Cashier"
+  },
+  {
+    alterationId: "ALT-2026-105",
+    invoiceNumber: "INV-2026-8805",
+    customerName: "Pooja Hegde",
+    customerPhone: "9865432109",
+    productName: "Embroidered Anarkali Suit",
+    size: "36",
+    color: "Emerald Green",
+    tailorName: "Master Ramesh Kumar",
+    priority: "Urgent",
+    status: "Ready for Delivery",
+    deliveryDate: new Date().toISOString().split('T')[0],
+    trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    alterationDetails: ["Bust Fitting", "Drape Stitching"],
+    measurements: { Bust: "36", Waist: "30", Length: "52" },
+    createdBy: "Admin"
+  },
+  {
+    alterationId: "ALT-2026-106",
+    invoiceNumber: "INV-2026-8806",
+    customerName: "Rahul Kapoor",
+    customerPhone: "9854321098",
+    productName: "3-Piece Tuxedo Suit",
+    size: "42",
+    color: "Midnight Black",
+    tailorName: "Master Jitendra Dev",
+    priority: "Normal",
+    status: "Delivered",
+    deliveryDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+    trialDate: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+    alterationDetails: ["Lapel Ironing", "Waistcoat Fitting"],
+    measurements: { Chest: "42", Waist: "36", Shoulder: "18.5" },
+    createdBy: "Cashier"
+  }
+];
+
 // @desc    Get all alteration records
 // @route   GET /api/alterations
 // @access  Private
@@ -41,7 +146,16 @@ exports.getAlterations = async (req, res) => {
   try {
     const tenantId = req.user?.tenantId;
     const filter = tenantId ? { tenantId } : {};
-    const alterations = await Alteration.find(filter).sort('-createdAt');
+    let alterations = await Alteration.find(filter).sort('-createdAt');
+
+    if (alterations.length === 0) {
+      const recordsToCreate = defaultSeedAlterations.map(item => ({
+        ...item,
+        tenantId
+      }));
+      alterations = await Alteration.insertMany(recordsToCreate);
+    }
+
     res.status(200).json({ success: true, count: alterations.length, data: alterations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

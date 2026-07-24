@@ -47,6 +47,8 @@ export const ArticulationView = ({
   products = [],
   onAddCustomToCart,
   onAddNotification,
+  initialTab = "dashboard",
+  initialFilterStatus = "All"
 }) => {
   // ─── CORE SYSTEM DATA FALLBACKS ───
   const defaultCustomers = useMemo(() => {
@@ -101,6 +103,117 @@ export const ArticulationView = ({
     ];
   }, [employees]);
 
+  const defaultAlterationsList = useMemo(() => [
+    {
+      _id: "alt-101",
+      alterationId: "ALT-2026-101",
+      invoiceNumber: "INV-2026-8801",
+      customerName: "Ritu Sharma",
+      customerPhone: "9823456789",
+      productName: "Silk Brocade Sherwani",
+      size: "42",
+      color: "Royal Crimson",
+      tailorName: "Master Ramesh Kumar",
+      priority: "Urgent",
+      status: "Ready for Delivery",
+      deliveryDate: new Date().toISOString().split('T')[0],
+      trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      alterationDetails: ["Sleeve Shortening", "Waist Fitting"],
+      measurements: { Chest: "42", Waist: "36", Shoulder: "18.5", Sleeve: "24.5" },
+      createdBy: "Cashier"
+    },
+    {
+      _id: "alt-102",
+      alterationId: "ALT-2026-102",
+      invoiceNumber: "INV-2026-8802",
+      customerName: "Ananya Roy",
+      customerPhone: "9812345678",
+      productName: "Italian Cut Blazer",
+      size: "40",
+      color: "Charcoal Gray",
+      tailorName: "Ustad Imran Ansari",
+      priority: "Normal",
+      status: "In Progress",
+      deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+      trialDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      alterationDetails: ["Shoulder Padding", "Length Adjustment"],
+      measurements: { Chest: "40", Waist: "34", Shoulder: "17.5", Sleeve: "25" },
+      createdBy: "Admin"
+    },
+    {
+      _id: "alt-103",
+      alterationId: "ALT-2026-103",
+      invoiceNumber: "INV-2026-8803",
+      customerName: "Vikram Malhotra",
+      customerPhone: "9834567890",
+      productName: "Designer Kurta Pajama",
+      size: "38",
+      color: "Classic White",
+      tailorName: "Darzi Amit Saxena",
+      priority: "Express",
+      status: "In Progress",
+      deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      trialDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+      alterationDetails: ["Side Slit Fitting", "Collar Adjustment"],
+      measurements: { Chest: "38", Waist: "32", Shoulder: "17", Sleeve: "24" },
+      createdBy: "Cashier"
+    },
+    {
+      _id: "alt-104",
+      alterationId: "ALT-2026-104",
+      invoiceNumber: "INV-2026-8804",
+      customerName: "Deepak Verma",
+      customerPhone: "9876543210",
+      productName: "Slim Fit Formal Trousers",
+      size: "32",
+      color: "Navy Blue",
+      tailorName: "Karigar Mansoor Alam",
+      priority: "Normal",
+      status: "Pending",
+      deliveryDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
+      trialDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      alterationDetails: ["Bottom Hemming", "Thigh Fitting"],
+      measurements: { Waist: "32", Length: "40", Thigh: "23", Bottom: "15" },
+      createdBy: "Cashier"
+    },
+    {
+      _id: "alt-105",
+      alterationId: "ALT-2026-105",
+      invoiceNumber: "INV-2026-8805",
+      customerName: "Pooja Hegde",
+      customerPhone: "9865432109",
+      productName: "Embroidered Anarkali Suit",
+      size: "36",
+      color: "Emerald Green",
+      tailorName: "Master Ramesh Kumar",
+      priority: "Urgent",
+      status: "Ready for Delivery",
+      deliveryDate: new Date().toISOString().split('T')[0],
+      trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      alterationDetails: ["Bust Fitting", "Drape Stitching"],
+      measurements: { Bust: "36", Waist: "30", Length: "52" },
+      createdBy: "Admin"
+    },
+    {
+      _id: "alt-106",
+      alterationId: "ALT-2026-106",
+      invoiceNumber: "INV-2026-8806",
+      customerName: "Rahul Kapoor",
+      customerPhone: "9854321098",
+      productName: "3-Piece Tuxedo Suit",
+      size: "42",
+      color: "Midnight Black",
+      tailorName: "Master Jitendra Dev",
+      priority: "Normal",
+      status: "Delivered",
+      deliveryDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+      trialDate: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+      alterationDetails: ["Lapel Ironing", "Waistcoat Fitting"],
+      measurements: { Chest: "42", Waist: "36", Shoulder: "18.5" },
+      createdBy: "Cashier"
+    }
+  ], []);
+
   // ─── ACTIVE PANEL FOCUS STATE ───
   // 'customer_search' | 'order_info' | 'garments' | 'fabric_search' | 'fabrics' | 'colors' | 'measurements' | 'customizations' | 'tailors'
   const [focusedSection, setFocusedSection] = useState("customer_search");
@@ -129,12 +242,20 @@ export const ArticulationView = ({
 
   // ─── THREE NEW ENTERPRISE TABS & WHATSAPP STATE ───
   // 'dashboard' | 'reports' | 'tracking'
-  const [activeStudioTab, setActiveStudioTab] = useState("dashboard");
-  const [alterationRecords, setAlterationRecords] = useState([]);
-  const [alterationsFilterStatus, setAlterationsFilterStatus] = useState("All");
+  const [activeStudioTab, setActiveStudioTab] = useState(initialTab || "dashboard");
+  const [alterationRecords, setAlterationRecords] = useState(defaultAlterationsList);
+  const [alterationsFilterStatus, setAlterationsFilterStatus] = useState(initialFilterStatus || "All");
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
+
+  useEffect(() => {
+    if (initialTab) setActiveStudioTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (initialFilterStatus) setAlterationsFilterStatus(initialFilterStatus);
+  }, [initialFilterStatus]);
 
   // Filters State for Reports & Employee Tracking
   const [filterDateRange, setFilterDateRange] = useState("All");
@@ -355,12 +476,15 @@ export const ArticulationView = ({
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       const data = await res.json();
-      if (data.success) {
-        const sorted = (data.data || []).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      if (data.success && data.data && data.data.length > 0) {
+        const sorted = data.data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         setAlterationRecords(sorted);
+      } else {
+        setAlterationRecords(defaultAlterationsList);
       }
     } catch (err) {
       console.error("Failed to fetch alterations:", err);
+      setAlterationRecords(defaultAlterationsList);
     }
   };
 

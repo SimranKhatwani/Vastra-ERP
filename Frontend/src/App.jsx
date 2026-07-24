@@ -308,6 +308,9 @@ export default function App() {
     return localStorage.getItem("vastraActiveModule") || "dashboard";
   });
 
+  const [articulationInitialTab, setArticulationInitialTab] = useState("dashboard");
+  const [articulationInitialFilter, setArticulationInitialFilter] = useState("All");
+
   React.useEffect(() => {
     localStorage.setItem("vastraActiveModule", activeModule);
   }, [activeModule]);
@@ -939,13 +942,18 @@ export default function App() {
     }
   };
 
-  const openArticulationWithDefaults = () => {
+  const openArticulationWithDefaults = (options = {}) => {
+    if (options && options.tab) {
+      setArticulationInitialTab(options.tab);
+    } else {
+      setArticulationInitialTab("dashboard");
+    }
+    if (options && (options.filterStatus || options.filter)) {
+      setArticulationInitialFilter(options.filterStatus || options.filter);
+    } else {
+      setArticulationInitialFilter("All");
+    }
     setActiveModule("articulation");
-    addToastNotification(
-      "Tailoring Studio",
-      "Initialized standard blazer blueprint with default canvas dimensions.",
-      "info",
-    );
   };
 
   // Distinct employee profile per system role
@@ -1365,6 +1373,8 @@ export default function App() {
               customers={customers}
               employees={employees}
               products={products}
+              initialTab={articulationInitialTab}
+              initialFilterStatus={articulationInitialFilter}
               onAddCustomToCart={(customItem) => {
                 setQuickArticulateItem(customItem);
                 setActiveModule("billing");
