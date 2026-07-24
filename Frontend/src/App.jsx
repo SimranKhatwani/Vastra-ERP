@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   BarChart3,
   Wallet,
+  ShieldCheck,
 } from "lucide-react";
 
 // Import sub components
@@ -32,6 +33,7 @@ import { DashboardView } from "./components/DashboardView";
 import { BillingPOSView } from "./components/BillingPOSView";
 import { ArticulationView } from "./components/ArticulationView";
 import { ProductManagementView } from "./components/ProductManagementView";
+import { PermissionsView } from "./components/PermissionsView";
 
 import { PurchaseView } from "./components/PurchaseView";
 import { InventoryView } from "./components/InventoryView";
@@ -342,6 +344,7 @@ export default function App() {
           "developer",
           "integrations",
           "settings",
+          "permissions",
           "financial-management",
           "accounts-treasury",
           "attendance-dashboard",
@@ -349,6 +352,7 @@ export default function App() {
           "attendance-settings",
         ];
       case "businessadmin":
+      case "admin":
         return [
           "dashboard",
           "billing",
@@ -368,6 +372,7 @@ export default function App() {
           "staff",
           "accounting",
           "reports",
+          "permissions",
           "integrations",
           "dev",
           "settings",
@@ -393,6 +398,7 @@ export default function App() {
           "customers",
           "employees",
           "reports",
+          "permissions",
           "settings",
           "attendance-dashboard",
           "manager-review",
@@ -993,6 +999,7 @@ export default function App() {
     { id: "developer", label: "Developer Gate APIs", icon: Terminal },
     { id: "integrations", label: "Channel connectors", icon: Globe },
     { id: "settings", label: "System Configurations", icon: Settings },
+    { id: "permissions", label: "Permissions & Role Access", icon: ShieldCheck },
     { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
     { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
     { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
@@ -1535,6 +1542,14 @@ export default function App() {
 
           {activeModule === "settings" && (
             <SettingsView onAddNotification={addToastNotification} currentUser={currentUser} />
+          )}
+
+          {activeModule === "permissions" && (
+            <PermissionsView
+              employees={employees}
+              currentUser={currentUser}
+              onAddNotification={addToastNotification}
+            />
           )}
 
           {activeModule === "attendance-dashboard" && (

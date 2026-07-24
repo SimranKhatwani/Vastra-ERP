@@ -39,6 +39,7 @@ const purchaseRoutes = require('./routes/purchaseRoutes');
 const financialRoutes = require('./routes/financialRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const alterationRoutes = require('./routes/alterationRoutes');
+const permissionRoutes = require('./routes/permissionRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -83,6 +84,7 @@ app.use('/api/employee-alteration-performance', (req, res, next) => {
   req.url = '/employee-performance' + (req.url === '/' ? '' : req.url);
   alterationRoutes(req, res, next);
 });
+app.use('/api/permissions', permissionRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {
