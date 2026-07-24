@@ -74,6 +74,15 @@ app.use('/api/purchase', purchaseRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/alterations', alterationRoutes);
+app.use('/api/alteration', alterationRoutes);
+app.use('/api/alteration-reports', (req, res, next) => {
+  req.url = '/reports' + (req.url === '/' ? '' : req.url);
+  alterationRoutes(req, res, next);
+});
+app.use('/api/employee-alteration-performance', (req, res, next) => {
+  req.url = '/employee-performance' + (req.url === '/' ? '' : req.url);
+  alterationRoutes(req, res, next);
+});
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

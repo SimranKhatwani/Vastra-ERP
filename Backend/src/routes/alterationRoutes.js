@@ -5,6 +5,9 @@ const {
   getAlterationById,
   updateAlteration,
   deleteAlteration,
+  sendWhatsAppNotification,
+  getAlterationReports,
+  getEmployeeAlterationPerformance
 } = require('../controllers/alterationController');
 const { protect } = require('../middlewares/authMiddleware');
 
@@ -14,6 +17,10 @@ router
   .route('/')
   .post(protect, createAlteration)
   .get(protect, getAlterations);
+
+router.post('/send-whatsapp', protect, sendWhatsAppNotification);
+router.get('/reports', protect, getAlterationReports);
+router.get('/employee-performance', protect, getEmployeeAlterationPerformance);
 
 router
   .route('/:id')

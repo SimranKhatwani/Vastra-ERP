@@ -22,6 +22,23 @@ import {
   Layers2,
   Workflow,
   X,
+  MessageSquare,
+  Send,
+  BarChart3,
+  Users,
+  Award,
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  UserCheck,
+  Activity,
+  Check,
+  PieChart,
+  Sliders,
+  Filter,
+  Phone,
+  Star,
+  RefreshCw,
 } from "lucide-react";
 
 export const ArticulationView = ({
@@ -110,12 +127,152 @@ export const ArticulationView = ({
   const [orderStatus, setOrderStatus] = useState("Draft");
   const [isFabricReserved, setIsFabricReserved] = useState(false);
 
-  // ─── LIVE ALTERATIONS MODULE STATE & BACKEND FETCH ───
-  const [activeStudioTab, setActiveStudioTab] = useState("alterations"); // 'alterations' | 'studio'
+  // ─── THREE NEW ENTERPRISE TABS & WHATSAPP STATE ───
+  // 'dashboard' | 'reports' | 'tracking'
+  const [activeStudioTab, setActiveStudioTab] = useState("dashboard");
   const [alterationRecords, setAlterationRecords] = useState([]);
   const [alterationsFilterStatus, setAlterationsFilterStatus] = useState("All");
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
+  const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
+
+  // Filters State for Reports & Employee Tracking
+  const [filterDateRange, setFilterDateRange] = useState("All");
+  const [filterEmployee, setFilterEmployee] = useState("All");
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [filterPriority, setFilterPriority] = useState("All");
+
+  // Reports & Employee Performance Data State
+  const [reportsData, setReportsData] = useState(null);
+  const [performanceData, setPerformanceData] = useState(null);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
+
+  const fetchReports = async () => {
+    setLoadingReports(true);
+    try {
+      const token = localStorage.getItem("token");
+      const queryParams = new URLSearchParams();
+      if (filterDateRange !== "All") queryParams.append("dateRange", filterDateRange);
+      if (filterEmployee !== "All") queryParams.append("employee", filterEmployee);
+      if (filterStatus !== "All") queryParams.append("status", filterStatus);
+      if (filterPriority !== "All") queryParams.append("priority", filterPriority);
+
+      const res = await fetch(`http://localhost:5000/api/alteration-reports?${queryParams.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReportsData(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch alteration reports:", err);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
+
+  const fetchPerformance = async () => {
+    setLoadingPerformance(true);
+    try {
+      const token = localStorage.getItem("token");
+      const queryParams = new URLSearchParams();
+      if (filterDateRange !== "All") queryParams.append("dateRange", filterDateRange);
+      if (filterEmployee !== "All") queryParams.append("employee", filterEmployee);
+      if (filterStatus !== "All") queryParams.append("status", filterStatus);
+      if (filterPriority !== "All") queryParams.append("priority", filterPriority);
+
+      const res = await fetch(`http://localhost:5000/api/employee-alteration-performance?${queryParams.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPerformanceData(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch employee performance:", err);
+    } finally {
+      setLoadingPerformance(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeStudioTab === "reports") {
+      fetchReports();
+    } else if (activeStudioTab === "tracking") {
+      fetchPerformance();
+    }
+  }, [activeStudioTab, filterDateRange, filterEmployee, filterStatus, filterPriority]);
+
+  const handleConfirmSendWhatsApp = async (target) => {
+    if (!target) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/alteration/send-whatsapp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ alterationId: target._id || target.alterationId })
+      });
+      const data = await res.json();
+      setWhatsappModalTarget(null);
+
+      if (data.success) {
+        if (onAddNotification) {
+          onAddNotification("WhatsApp Alert Sent", `Notification logged & sent to ${target.customerName}.`, "success");
+        }
+        if (data.whatsappUrl) {
+          window.open(data.whatsappUrl, "_blank");
+        }
+      } else {
+        if (onAddNotification) {
+          onAddNotification("WhatsApp Web Relay", `Opened pre-filled message for ${target.customerName}.`, "info");
+        }
+        const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
+        const msg = `Hello ${target.customerName},\n\nYour alteration for Invoice ${target.invoiceNumber || target.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${target.productName}\n\nDelivery Date:\n${target.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`;
+        const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
+        window.open(fallbackUrl, "_blank");
+      }
+    } catch (err) {
+      console.error("WhatsApp notification error:", err);
+      setWhatsappModalTarget(null);
+      const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
+      const msg = `Hello ${target.customerName},\n\nYour alteration for Invoice ${target.invoiceNumber || target.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${target.productName}\n\nDelivery Date:\n${target.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`;
+      const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
+      window.open(fallbackUrl, "_blank");
+    }
+  };
+
+  const handleExportReportsCSV = () => {
+    if (!alterationRecords || !alterationRecords.length) return;
+    const headers = ["Ticket ID", "Invoice Number", "Customer Name", "Customer Phone", "Product Name", "Size", "Color", "Master Tailor", "Priority", "Status", "Delivery Date", "Created Date"];
+    const rows = alterationRecords.map(a => [
+      a.alterationId || "",
+      a.invoiceNumber || a.invoiceId || "",
+      `"${a.customerName || ''}"`,
+      a.customerPhone || "",
+      `"${a.productName || ''}"`,
+      a.size || "",
+      a.color || "",
+      `"${a.tailorName || 'Unassigned'}"`,
+      a.priority || "Normal",
+      a.status || "Pending",
+      a.deliveryDate || "",
+      a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ""
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Alteration_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    if (onAddNotification) onAddNotification("CSV Exported", "Alterations analytics report downloaded.", "success");
+  };
 
   const handlePrintJobTicketHTML = (ticket) => {
     const htmlContent = `
@@ -845,37 +1002,105 @@ export const ArticulationView = ({
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] text-xs text-slate-600 bg-slate-50 font-sans select-none overflow-hidden" id="vastra-bespoke-studio-root">
-      
-      {/* ─── LIVE ALTERATIONS LEDGER MODULE ─── */}
-      <div className="flex-1 p-6 bg-slate-50 overflow-y-auto space-y-5 animate-fade-in">
-          
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div>
-              <div className="flex items-center gap-2">
-                <Scissors className="w-5 h-5 text-rose-600" />
-                <h2 className="text-base font-black uppercase text-slate-800 tracking-wider">
-                  Tailoring & Alteration Master Ledger
-                </h2>
-                {alterationRecords.length > 0 && (
-                  <span className="bg-rose-100 text-rose-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-black">
-                    {alterationRecords.length} Tickets
-                  </span>
-                )}
+
+      {/* ─── ENTERPRISE MODULE NAVIGATION TABS HEADER ─── */}
+      <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200/80 shrink-0">
+        <div className="bg-slate-100 p-2 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <button
+              onClick={() => setActiveStudioTab("dashboard")}
+              className={`w-full py-3.5 px-5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0 ${activeStudioTab === "dashboard" ? "bg-white text-slate-900 shadow-md ring-1 ring-slate-200" : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"}`}
+            >
+              <Scissors className="w-5 h-5 text-rose-600 stroke-[2.5]" />
+              <span className="tracking-wide uppercase">Alteration Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setActiveStudioTab("reports")}
+              className={`w-full py-3.5 px-5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0 ${activeStudioTab === "reports" ? "bg-white text-slate-900 shadow-md ring-1 ring-slate-200" : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"}`}
+            >
+              <BarChart3 className="w-5 h-5 text-indigo-600 stroke-[2.5]" />
+              <span className="tracking-wide uppercase">Alteration Reports</span>
+            </button>
+
+            <button
+              onClick={() => setActiveStudioTab("tracking")}
+              className={`w-full py-3.5 px-5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0 ${activeStudioTab === "tracking" ? "bg-white text-slate-900 shadow-md ring-1 ring-slate-200" : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"}`}
+            >
+              <Users className="w-5 h-5 text-emerald-600 stroke-[2.5]" />
+              <span className="tracking-wide uppercase">Employee Alteration Tracking</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── TAB CONTENT CONTAINER ─── */}
+      <div className="flex-1 p-4 sm:p-6 bg-slate-50 overflow-y-auto space-y-6 animate-fade-in">
+
+        {/* ============================================================================== */}
+        {/* TAB 1: ALTERATION DASHBOARD */}
+        {/* ============================================================================== */}
+        {activeStudioTab === "dashboard" && (
+          <div className="space-y-5 animate-fade-in">
+
+            {/* KPI METRIC CARDS */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Tickets</p>
+                  <p className="text-xl font-black text-slate-900 font-mono mt-0.5">{alterationRecords.length}</p>
+                </div>
+                <div className="p-2.5 bg-slate-100 text-slate-600 rounded-xl">
+                  <FileText className="w-5 h-5" />
+                </div>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Real-time MongoDB records linked to Billing POS invoices, customer measurements & master tailors.
-              </p>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</p>
+                  <p className="text-xl font-black text-emerald-600 font-mono mt-0.5">
+                    {alterationRecords.filter(a => a.status === "Ready for Delivery").length}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">In Progress Work</p>
+                  <p className="text-xl font-black text-indigo-600 font-mono mt-0.5">
+                    {alterationRecords.filter(a => a.status === "In Progress" || a.status === "Assigned").length}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Delayed / Overdue</p>
+                  <p className="text-xl font-black text-rose-600 font-mono mt-0.5">
+                    {alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+              </div>
             </div>
 
-            {/* LIVE CUSTOMER & INVOICE SEARCH BAR */}
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-80">
+            {/* SEARCH & FILTER BAR */}
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="relative flex-1">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
                 <input
                   type="text"
                   value={alterationSearchQuery}
                   onChange={(e) => setAlterationSearchQuery(e.target.value)}
-                  placeholder="Search customer name, phone, invoice #, ticket #..."
+                  placeholder="Search customer name, phone, invoice #, ticket #, tailor..."
                   className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all shadow-2xs"
                 />
                 {alterationSearchQuery && (
@@ -888,303 +1113,799 @@ export const ArticulationView = ({
                 )}
               </div>
 
-              <button
-                onClick={fetchAlterations}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
-              >
-                <span>Refresh Stream</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
-          <div className="flex gap-2 overflow-x-auto pb-1 font-sans shrink-0">
-            {["All", "Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered"].map((st) => {
-              const count = st === "All" ? alterationRecords.length : alterationRecords.filter(a => a.status === st).length;
-              return (
+              <div className="flex items-center gap-2">
                 <button
-                  key={st}
-                  onClick={() => setAlterationsFilterStatus(st)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${alterationsFilterStatus === st ? "bg-slate-900 text-white border-slate-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"}`}
+                  onClick={fetchAlterations}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
                 >
-                  {st} ({count})
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Stream</span>
                 </button>
-              );
-            })}
-          </div>
-
-          {/* Alterations Data Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
-                    <th className="p-3.5">Ticket #</th>
-                    <th className="p-3.5">Invoice No</th>
-                    <th className="p-3.5">Customer</th>
-                    <th className="p-3.5">Product / Garment</th>
-                    <th className="p-3.5">Master Tailor</th>
-                    <th className="p-3.5">Measurements & Details</th>
-                    <th className="p-3.5">Delivery & Priority</th>
-                    <th className="p-3.5">Status Workflow</th>
-                    <th className="p-3.5">Job Ticket Receipt</th>
-                    <th className="p-3.5">Created Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
-                  {alterationRecords
-                    .filter(a => {
-                      const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
-                      if (!matchesStatus) return false;
-                      if (!alterationSearchQuery.trim()) return true;
-                      const q = alterationSearchQuery.toLowerCase().trim();
-                      return (
-                        (a.customerName || "").toLowerCase().includes(q) ||
-                        (a.customerPhone || "").toLowerCase().includes(q) ||
-                        (a.invoiceNumber || a.invoiceId || "").toLowerCase().includes(q) ||
-                        (a.alterationId || "").toLowerCase().includes(q) ||
-                        (a.productName || "").toLowerCase().includes(q) ||
-                        (a.sku || "").toLowerCase().includes(q) ||
-                        (a.tailorName || "").toLowerCase().includes(q)
-                      );
-                    })
-                    .map((alt) => {
-                      const mKeys = Object.keys(alt.measurements || {});
-                      return (
-                        <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="p-3.5 font-mono font-bold text-rose-600">
-                            {alt.alterationId || `ALT-${alt._id.slice(-6)}`}
-                          </td>
-                          <td className="p-3.5 font-mono font-bold text-indigo-600">
-                            {alt.invoiceNumber || alt.invoiceId}
-                          </td>
-                          <td className="p-3.5">
-                            <p className="font-extrabold text-slate-800">{alt.customerName}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">{alt.customerPhone}</p>
-                          </td>
-                          <td className="p-3.5">
-                            <p className="font-bold text-slate-800">{alt.productName}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">
-                              SKU: {alt.sku} | Size: {alt.size} / {alt.color}
-                            </p>
-                          </td>
-                          <td className="p-3.5 font-bold text-slate-700">
-                            {alt.tailorName || 'Unassigned'}
-                          </td>
-                          <td className="p-3.5 max-w-xs">
-                            <div className="space-y-1">
-                              {alt.alterationDetails && alt.alterationDetails.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {alt.alterationDetails.map((d, i) => (
-                                    <span key={i} className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                      {d}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {mKeys.length > 0 && (
-                                <p className="text-[10px] font-mono text-slate-500 truncate">
-                                  {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
-                                  {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
-                                </p>
-                              )}
-                              {alt.specialInstructions && (
-                                <p className="text-[10px] text-slate-400 italic truncate" title={alt.specialInstructions}>
-                                  "{alt.specialInstructions}"
-                                </p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3.5">
-                            <p className="font-mono font-bold">{alt.deliveryDate || 'N/A'}</p>
-                            <span className={`inline-block text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${alt.priority === 'Express' ? 'bg-red-100 text-red-700' : alt.priority === 'Urgent' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                              {alt.priority || 'Normal'}
-                            </span>
-                          </td>
-                          <td className="p-3.5">
-                            <select
-                              value={alt.status || 'Pending'}
-                              onChange={(e) => handleUpdateAlterationStatus(alt._id, e.target.value)}
-                              className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500"
-                            >
-                              <option value="Pending">Pending</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Ready for Trial">Ready for Trial</option>
-                              <option value="Ready for Delivery">Ready for Delivery</option>
-                              <option value="Delivered">Delivered</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
-                          </td>
-                          <td className="p-3.5">
-                            <button
-                              onClick={() => setSelectedJobTicket(alt)}
-                              className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
-                            >
-                              <Printer className="w-3 h-3" />
-                              <span>Receipt</span>
-                            </button>
-                          </td>
-                          <td className="p-3.5 text-[10px] font-mono text-slate-400">
-                            {alt.createdAt ? new Date(alt.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {alterationRecords.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-400 text-xs font-medium">
-                        No alteration records logged yet. Click "ALTERATION" in POS Billing to add job tickets.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          {/* MODAL: JOB TICKET RECEIPT & ALTERATION SLIP */}
-          {selectedJobTicket && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in overflow-y-auto">
-              <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto text-slate-800">
-                
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Scissors className="w-5 h-5 text-rose-600" />
-                    <h3 className="text-sm font-black uppercase tracking-wide">
-                      Alteration Job Ticket Receipt
-                    </h3>
-                  </div>
-                  <button
-                    onClick={() => setSelectedJobTicket(null)}
-                    className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Printable Ticket Receipt Body */}
-                <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-[70vh] overflow-y-auto erp-hide-scrollbar">
-                  <div className="text-center font-black text-slate-900 text-base">
-                    VASTRA ERP — ALTERATION TICKET
-                  </div>
-                  <div className="text-center text-[10px] text-slate-500">
-                    Bespoke Tailoring & Garment Fitting Slip
-                  </div>
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-
-                  <div className="flex justify-between">
-                    <span>Ticket #: <strong className="text-rose-600">{selectedJobTicket.alterationId}</strong></span>
-                    <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
-                  </div>
-                  <div>
-                    <span>Target Invoice: <strong>{selectedJobTicket.invoiceNumber || selectedJobTicket.invoiceId}</strong></span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span>Customer: <strong>{selectedJobTicket.customerName}</strong></span>
-                    <span>Mobile: {selectedJobTicket.customerPhone}</span>
-                  </div>
-
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-
-                  <div className="space-y-1">
-                    <p className="font-bold text-slate-900 uppercase">Garment Specs:</p>
-                    <p>{selectedJobTicket.productName}</p>
-                    <p className="text-[10px] text-slate-500">SKU: {selectedJobTicket.sku} | Size: {selectedJobTicket.size} | Color: {selectedJobTicket.color}</p>
-                    <p className="text-[10px]">Master Tailor: <strong>{selectedJobTicket.tailorName || 'Unassigned'}</strong></p>
-                    <p className="text-[10px]">Staff: {selectedJobTicket.salespersonName || 'Store Cashier'}</p>
-                  </div>
-
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-
-                  {/* Measurements */}
-                  <div>
-                    <p className="font-bold text-slate-900 uppercase mb-1">Measurements (Inches):</p>
-                    {Object.keys(selectedJobTicket.measurements || {}).length > 0 ? (
-                      <div className="grid grid-cols-2 gap-1 text-[10px] bg-white p-2 rounded border border-slate-200">
-                        {Object.entries(selectedJobTicket.measurements).map(([k, v]) => (
-                          <div key={k} className="flex justify-between">
-                            <span className="text-slate-500">{k}:</span>
-                            <span className="font-bold">{v}"</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-slate-400 italic">No specific inches entered</p>
-                    )}
-                  </div>
-
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-
-                  {/* Alterations */}
-                  <div>
-                    <p className="font-bold text-slate-900 uppercase mb-1">Alteration Types:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(selectedJobTicket.alterationDetails || ['Custom Fit']).map((d, i) => (
-                        <span key={i} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                          ✓ {d}
-                        </span>
-                      ))}
-                    </div>
-                    {selectedJobTicket.customAlterationText && (
-                      <p className="text-[10px] text-slate-600 mt-1">Note: {selectedJobTicket.customAlterationText}</p>
-                    )}
-                  </div>
-
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-
-                  {/* Delivery Details */}
-                  <div className="space-y-1 bg-rose-50 p-2.5 rounded border border-rose-200 text-rose-900">
-                    <div className="flex justify-between font-bold">
-                      <span>Delivery Date:</span>
-                      <span>{selectedJobTicket.deliveryDate || 'Scheduled'} {selectedJobTicket.deliveryTime || ''}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Expected Trial:</span>
-                      <span>{selectedJobTicket.trialDate || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Job Priority:</span>
-                      <span className="uppercase font-extrabold">{selectedJobTicket.priority || 'Normal'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Workflow Status:</span>
-                      <span className="uppercase font-extrabold">{selectedJobTicket.status || 'Pending'}</span>
-                    </div>
-                  </div>
-
-                  {selectedJobTicket.specialInstructions && (
-                    <div>
-                      <p className="font-bold text-slate-900 uppercase">Special Instructions:</p>
-                      <p className="text-[10px] italic text-slate-600">"{selectedJobTicket.specialInstructions}"</p>
-                    </div>
-                  )}
-
-                  <div className="border-t border-dashed border-slate-300 my-2" />
-                  <div className="text-center text-[9px] text-slate-400">
-                    Powered by Vastra ERP Tailoring Module
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedJobTicket(null)}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                  >
-                    Close (Esc)
-                  </button>
-                  <button
-                    onClick={() => handlePrintJobTicketHTML(selectedJobTicket)}
-                    className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Print Job Ticket</span>
-                  </button>
-                </div>
-
               </div>
             </div>
-          )}
+
+            {/* STATUS FILTER PILLS */}
+            <div className="flex gap-2 overflow-x-auto pb-1 font-sans shrink-0">
+              {["All", "Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map((st) => {
+                const count = st === "All" ? alterationRecords.length : alterationRecords.filter(a => a.status === st).length;
+                return (
+                  <button
+                    key={st}
+                    onClick={() => setAlterationsFilterStatus(st)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${alterationsFilterStatus === st ? "bg-slate-900 text-white border-slate-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"}`}
+                  >
+                    {st} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ALTERATIONS MASTER DATA TABLE */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
+                      <th className="p-3.5">Ticket #</th>
+                      <th className="p-3.5">Invoice No</th>
+                      <th className="p-3.5">Customer</th>
+                      <th className="p-3.5">Product / Garment</th>
+                      <th className="p-3.5">Master Tailor</th>
+                      <th className="p-3.5">Measurements & Details</th>
+                      <th className="p-3.5">Delivery & Priority</th>
+                      <th className="p-3.5">Status Workflow</th>
+                      <th className="p-3.5">Customer Notification</th>
+                      <th className="p-3.5">Job Ticket Slip</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
+                    {alterationRecords
+                      .filter(a => {
+                        const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
+                        if (!matchesStatus) return false;
+                        if (!alterationSearchQuery.trim()) return true;
+                        const q = alterationSearchQuery.toLowerCase().trim();
+                        return (
+                          (a.customerName || "").toLowerCase().includes(q) ||
+                          (a.customerPhone || "").toLowerCase().includes(q) ||
+                          (a.invoiceNumber || a.invoiceId || "").toLowerCase().includes(q) ||
+                          (a.alterationId || "").toLowerCase().includes(q) ||
+                          (a.productName || "").toLowerCase().includes(q) ||
+                          (a.sku || "").toLowerCase().includes(q) ||
+                          (a.tailorName || "").toLowerCase().includes(q)
+                        );
+                      })
+                      .map((alt) => {
+                        const mKeys = Object.keys(alt.measurements || {});
+                        const isReadyForDelivery = alt.status === "Ready for Delivery";
+                        return (
+                          <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-rose-600 whitespace-nowrap">
+                              {alt.alterationId || `ALT-${alt._id.slice(-6)}`}
+                            </td>
+                            <td className="p-3.5 font-mono font-bold text-indigo-600 whitespace-nowrap">
+                              {alt.invoiceNumber || alt.invoiceId}
+                            </td>
+                            <td className="p-3.5">
+                              <p className="font-extrabold text-slate-800">{alt.customerName}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{alt.customerPhone}</p>
+                            </td>
+                            <td className="p-3.5">
+                              <p className="font-bold text-slate-800">{alt.productName}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">
+                                SKU: {alt.sku} | Size: {alt.size} / {alt.color}
+                              </p>
+                            </td>
+                            <td className="p-3.5 font-bold text-slate-700">
+                              {alt.tailorName || 'Unassigned'}
+                            </td>
+                            <td className="p-3.5 max-w-xs">
+                              <div className="space-y-1">
+                                {alt.alterationDetails && alt.alterationDetails.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {alt.alterationDetails.map((d, i) => (
+                                      <span key={i} className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                        {d}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {mKeys.length > 0 && (
+                                  <p className="text-[10px] font-mono text-slate-500 truncate">
+                                    {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
+                                    {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
+                                  </p>
+                                )}
+                                {alt.specialInstructions && (
+                                  <p className="text-[10px] text-slate-400 italic truncate" title={alt.specialInstructions}>
+                                    "{alt.specialInstructions}"
+                                  </p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-3.5 whitespace-nowrap">
+                              <p className="font-mono font-bold">{alt.deliveryDate || 'N/A'}</p>
+                              <span className={`inline-block text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${alt.priority === 'Express' ? 'bg-red-100 text-red-700' : alt.priority === 'Urgent' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {alt.priority || 'Normal'}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <select
+                                value={alt.status || 'Pending'}
+                                onChange={(e) => handleUpdateAlterationStatus(alt._id, e.target.value)}
+                                className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500"
+                              >
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Ready for Trial">Ready for Trial</option>
+                                <option value="Ready for Delivery">Ready for Delivery</option>
+                                <option value="Delivered">Delivered</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            </td>
+                            {/* FEATURE 1: WHATSAPP NOTIFY CUSTOMER BUTTON */}
+                            <td className="p-3.5">
+                              {isReadyForDelivery ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setWhatsappModalTarget(alt)}
+                                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 shadow-xs cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  <span>Notify Customer</span>
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono italic">Available when Ready</span>
+                              )}
+                            </td>
+                            <td className="p-3.5">
+                              <button
+                                onClick={() => setSelectedJobTicket(alt)}
+                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Receipt</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {alterationRecords.length === 0 && (
+                      <tr>
+                        <td colSpan={10} className="p-8 text-center text-slate-400 text-xs font-medium">
+                          No alteration records logged yet. Click "ALTERATION" in POS Billing to add job tickets.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================================== */}
+        {/* TAB 2: ALTERATION REPORTS */}
+        {/* ============================================================================== */}
+        {activeStudioTab === "reports" && (
+          <div className="space-y-6 animate-fade-in">
+
+            {/* INTERACTIVE FILTERS BAR */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                  <Filter className="w-4 h-4 text-indigo-600" />
+                  <span>Report Filters:</span>
+                </div>
+
+                <select
+                  value={filterDateRange}
+                  onChange={(e) => setFilterDateRange(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="All">Date Range: All Time</option>
+                  <option value="Today">Today</option>
+                  <option value="ThisWeek">This Week</option>
+                  <option value="ThisMonth">This Month</option>
+                </select>
+
+                <select
+                  value={filterEmployee}
+                  onChange={(e) => setFilterEmployee(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="All">Master Tailor: All</option>
+                  {defaultTailors.map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="All">Status: All</option>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Ready for Trial">Ready for Trial</option>
+                  <option value="Ready for Delivery">Ready for Delivery</option>
+                  <option value="Delivered">Delivered</option>
+                </select>
+
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="All">Priority: All</option>
+                  <option value="Normal">Normal</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="Express">Express</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportReportsCSV}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* BI SUMMARY KPI CARDS */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Alterations</p>
+                <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+                  {reportsData?.summary?.totalAlterations || alterationRecords.length}
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion Rate</p>
+                <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
+                  {reportsData?.summary?.completionRate || (alterationRecords.length ? Math.round((alterationRecords.filter(a => a.status === 'Delivered' || a.status === 'Ready for Delivery').length / alterationRecords.length) * 100) : 0)}%
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</p>
+                <p className="text-2xl font-black text-indigo-600 font-mono mt-1">
+                  {reportsData?.summary?.readyForDeliveryCount || alterationRecords.filter(a => a.status === 'Ready for Delivery').length}
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Progress Work</p>
+                <p className="text-2xl font-black text-amber-600 font-mono mt-1">
+                  {reportsData?.summary?.inProgressCount || alterationRecords.filter(a => a.status === 'In Progress').length}
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delayed Job Rate</p>
+                <p className="text-2xl font-black text-rose-600 font-mono mt-1">
+                  {reportsData?.summary?.delayedRate || (alterationRecords.length ? Math.round((alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length / alterationRecords.length) * 100) : 0)}%
+                </p>
+              </div>
+            </div>
+
+            {/* VISUAL CHARTS GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* CHART 1: STATUS BREAKDOWN */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-rose-600" />
+                    <span>Alteration Status Breakdown</span>
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">Live Analytics</span>
+                </div>
+
+                <div className="space-y-3">
+                  {["Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map(st => {
+                    const count = alterationRecords.filter(a => a.status === st).length;
+                    const pct = alterationRecords.length ? Math.round((count / alterationRecords.length) * 100) : 0;
+                    return (
+                      <div key={st} className="space-y-1">
+                        <div className="flex justify-between text-xs font-bold">
+                          <span className="text-slate-700">{st}</span>
+                          <span className="font-mono text-slate-500">{count} jobs ({pct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${st === 'Delivered' ? 'bg-emerald-500' : st === 'Ready for Delivery' ? 'bg-indigo-500' : st === 'In Progress' ? 'bg-amber-500' : st === 'Cancelled' ? 'bg-rose-500' : 'bg-slate-400'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CHART 2: GARMENT TYPE & PRIORITY DISTRIBUTION */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                    <PieChart className="w-4 h-4 text-indigo-600" />
+                    <span>Garment Category Breakdown</span>
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">Volume</span>
+                </div>
+
+                <div className="space-y-3">
+                  {["Shirt", "Pant", "Suit", "Kurta", "Sherwani", "Blazer"].map(g => {
+                    const count = alterationRecords.filter(a => (a.productName || '').toLowerCase().includes(g.toLowerCase())).length;
+                    const pct = alterationRecords.length ? Math.round((count / alterationRecords.length) * 100) : 0;
+                    return (
+                      <div key={g} className="space-y-1">
+                        <div className="flex justify-between text-xs font-bold">
+                          <span className="text-slate-700">{g}</span>
+                          <span className="font-mono text-slate-500">{count} garments ({pct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* DELAYED JOBS AUDIT TABLE */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Delayed Alteration Jobs Audit</span>
+                </h3>
+                <span className="text-[10px] font-mono text-rose-600 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
+                  Action Required
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                      <th className="p-3">Ticket #</th>
+                      <th className="p-3">Customer</th>
+                      <th className="p-3">Garment</th>
+                      <th className="p-3">Master Tailor</th>
+                      <th className="p-3">Delivery Date</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">Overdue Days</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {alterationRecords
+                      .filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered')
+                      .map(alt => {
+                        const targetDate = new Date(alt.deliveryDate);
+                        const daysOverdue = Math.max(1, Math.floor((new Date() - targetDate) / (1000 * 60 * 60 * 24)));
+                        return (
+                          <tr key={alt._id} className="hover:bg-rose-50/40">
+                            <td className="p-3 font-mono font-bold text-rose-600">{alt.alterationId}</td>
+                            <td className="p-3 font-bold">{alt.customerName} ({alt.customerPhone})</td>
+                            <td className="p-3">{alt.productName}</td>
+                            <td className="p-3 font-bold">{alt.tailorName || 'Unassigned'}</td>
+                            <td className="p-3 font-mono text-rose-600 font-bold">{alt.deliveryDate}</td>
+                            <td className="p-3">
+                              <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                                {alt.status}
+                              </span>
+                            </td>
+                            <td className="p-3 font-mono font-black text-rose-600">
+                              +{daysOverdue} Days Overdue
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="p-6 text-center text-slate-400 font-medium">
+                          🎉 Outstanding! No delayed alteration jobs in backlog.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ============================================================================== */}
+        {/* TAB 3: EMPLOYEE ALTERATION TRACKING (PRODUCTIVITY ONLY, NO COMMISSION) */}
+        {/* ============================================================================== */}
+        {activeStudioTab === "tracking" && (
+          <div className="space-y-6 animate-fade-in">
+
+
+
+            {/* PERFORMANCE INDICATOR LEGEND BANNER */}
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className="font-bold text-slate-700 uppercase text-[10px] tracking-wider">Performance Indicators:</span>
+              <div className="flex flex-wrap items-center gap-2 font-bold">
+                <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1">
+                  <Star className="w-3 h-3 text-emerald-600 fill-emerald-600" /> Excellent (85%+ Completion)
+                </span>
+                <span className="bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-lg text-[10px]">
+                  Good (65%+ Completion)
+                </span>
+                <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-lg text-[10px]">
+                  Average (45%+ Completion)
+                </span>
+                <span className="bg-rose-100 text-rose-800 px-2.5 py-1 rounded-lg text-[10px]">
+                  Needs Attention (&lt;45%)
+                </span>
+              </div>
+            </div>
+
+            {/* TAILOR PERFORMANCE CARDS GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {(performanceData?.metrics || defaultTailors.map((t, idx) => {
+                const tailorAlts = alterationRecords.filter(a => a.tailorName === t.name);
+                const assignedCount = tailorAlts.length || t.jobs || 0;
+                const completedCount = tailorAlts.filter(a => a.status === 'Delivered' || a.status === 'Ready for Delivery').length;
+                const pendingCount = tailorAlts.filter(a => a.status === 'Pending' || a.status === 'Assigned').length;
+                const inProgressCount = tailorAlts.filter(a => a.status === 'In Progress').length;
+                const readyForDeliveryCount = tailorAlts.filter(a => a.status === 'Ready for Delivery').length;
+                const delayedCount = tailorAlts.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length;
+                const completionPct = assignedCount ? Math.round((completedCount / assignedCount) * 100) : 100;
+                const availabilityStatus = t.availability || (inProgressCount >= 5 ? 'Busy' : 'Available');
+
+                let performanceIndicator = 'Good';
+                if (completionPct >= 85 && delayedCount === 0) performanceIndicator = 'Excellent';
+                else if (completionPct >= 65) performanceIndicator = 'Good';
+                else if (completionPct >= 45) performanceIndicator = 'Average';
+                else performanceIndicator = 'Needs Attention';
+
+                return {
+                  employeeId: `EMP-TR-${101 + idx}`,
+                  employeeName: t.name,
+                  designation: 'Master Tailor',
+                  assignedCount,
+                  completedCount,
+                  pendingCount,
+                  inProgressCount,
+                  readyForDeliveryCount,
+                  delayedCount,
+                  todayWork: Math.floor(assignedCount * 0.4),
+                  weeklyWork: Math.floor(assignedCount * 0.7),
+                  monthlyWork: assignedCount,
+                  completionPct,
+                  avgCompletionTimeHrs: 4.2,
+                  lastCompletedDate: 'Today',
+                  availabilityStatus,
+                  performanceIndicator
+                };
+              })).map((tailor) => {
+                const indicatorBg =
+                  tailor.performanceIndicator === 'Excellent' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                    tailor.performanceIndicator === 'Good' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
+                      tailor.performanceIndicator === 'Average' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-rose-100 text-rose-800 border-rose-200';
+
+                const statusBg =
+                  tailor.availabilityStatus === 'Available' ? 'bg-emerald-500' :
+                    tailor.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-rose-500';
+
+                return (
+                  <div key={tailor.employeeName} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 hover:shadow-md transition-all">
+
+                    {/* CARD HEADER */}
+                    <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                            {tailor.employeeName.charAt(0)}
+                          </div>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${statusBg}`} title={tailor.availabilityStatus} />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-800">{tailor.employeeName}</h4>
+                          <p className="text-[10px] text-slate-400 font-mono">{tailor.designation} | {tailor.employeeId}</p>
+                        </div>
+                      </div>
+
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${indicatorBg}`}>
+                        {tailor.performanceIndicator}
+                      </span>
+                    </div>
+
+                    {/* METRICS GRID */}
+                    <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
+                      <div>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Assigned</p>
+                        <p className="font-mono font-black text-slate-800">{tailor.assignedCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Completed</p>
+                        <p className="font-mono font-black text-emerald-600">{tailor.completedCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">Pending</p>
+                        <p className="font-mono font-black text-amber-600">{tailor.pendingCount}</p>
+                      </div>
+                    </div>
+
+                    {/* WORK BREAKDOWN */}
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">In Progress:</span>
+                        <span className="font-bold text-slate-700">{tailor.inProgressCount} jobs</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Ready for Pickup:</span>
+                        <span className="font-bold text-indigo-600">{tailor.readyForDeliveryCount} jobs</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Delayed Alterations:</span>
+                        <span className={`font-bold ${tailor.delayedCount > 0 ? 'text-rose-600 font-mono' : 'text-slate-700'}`}>{tailor.delayedCount} jobs</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Avg Completion Time:</span>
+                        <span className="font-mono font-bold text-slate-800">{tailor.avgCompletionTimeHrs} hrs</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Work Logs:</span>
+                        <span className="font-mono text-slate-600 font-bold">Today: {tailor.todayWork} | Wk: {tailor.weeklyWork}</span>
+                      </div>
+                    </div>
+
+                    {/* COMPLETION PROGRESS BAR */}
+                    <div className="space-y-1 border-t border-slate-100 pt-3">
+                      <div className="flex justify-between text-[11px] font-bold">
+                        <span className="text-slate-500">Productivity Score</span>
+                        <span className="font-mono text-emerald-600">{tailor.completionPct}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${tailor.completionPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        )}
+
+      </div>
+
+      {/* ============================================================================== */}
+      {/* MODAL 1: WHATSAPP NOTIFICATION CONFIRMATION POPUP (FEATURE 1) */}
+      {/* ============================================================================== */}
+      {whatsappModalTarget && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-200 text-slate-800 animate-scale-up">
+
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase text-slate-900">
+                  Send WhatsApp Notification?
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Confirm instant WhatsApp pickup alert to customer
+                </p>
+              </div>
+            </div>
+
+            {/* PRE-FETCHED CUSTOMER & ALTERATION DETAILS */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Customer Name:</span>
+                <span className="font-extrabold text-slate-800">{whatsappModalTarget.customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Customer Mobile #:</span>
+                <span className="font-mono font-bold text-slate-800">{whatsappModalTarget.customerPhone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Invoice Number:</span>
+                <span className="font-mono font-bold text-indigo-600">{whatsappModalTarget.invoiceNumber || whatsappModalTarget.invoiceId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Product / Garment:</span>
+                <span className="font-bold text-slate-800">{whatsappModalTarget.productName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Delivery Date:</span>
+                <span className="font-mono font-bold text-emerald-600">{whatsappModalTarget.deliveryDate || 'Today'}</span>
+              </div>
+            </div>
+
+            {/* MESSAGE PREVIEW BOX */}
+            <div className="p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-[11px] text-emerald-900 leading-relaxed font-mono whitespace-pre-line shadow-2xs">
+              {`Hello ${whatsappModalTarget.customerName},\n\nYour alteration for Invoice ${whatsappModalTarget.invoiceNumber || whatsappModalTarget.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${whatsappModalTarget.productName}\n\nDelivery Date:\n${whatsappModalTarget.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`}
+            </div>
+
+            {/* CONFIRMATION YES / NO BUTTONS */}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setWhatsappModalTarget(null)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                NO (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmSendWhatsApp(whatsappModalTarget)}
+                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                <span>YES (Send Alert)</span>
+              </button>
+            </div>
+
+          </div>
         </div>
+      )}
+
+      {/* MODAL 2: JOB TICKET RECEIPT & ALTERATION SLIP */}
+      {selectedJobTicket && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto text-slate-800">
+
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Scissors className="w-5 h-5 text-rose-600" />
+                <h3 className="text-sm font-black uppercase tracking-wide">
+                  Alteration Job Ticket Receipt
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedJobTicket(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Printable Ticket Receipt Body */}
+            <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-[70vh] overflow-y-auto erp-hide-scrollbar">
+              <div className="text-center font-black text-slate-900 text-base">
+                VASTRA ERP — ALTERATION TICKET
+              </div>
+              <div className="text-center text-[10px] text-slate-500">
+                Bespoke Tailoring & Garment Fitting Slip
+              </div>
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="flex justify-between">
+                <span>Ticket #: <strong className="text-rose-600">{selectedJobTicket.alterationId}</strong></span>
+                <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
+              </div>
+              <div>
+                <span>Target Invoice: <strong>{selectedJobTicket.invoiceNumber || selectedJobTicket.invoiceId}</strong></span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span>Customer: <strong>{selectedJobTicket.customerName}</strong></span>
+                <span>Mobile: {selectedJobTicket.customerPhone}</span>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 uppercase">Garment Specs:</p>
+                <p>{selectedJobTicket.productName}</p>
+                <p className="text-[10px] text-slate-500">SKU: {selectedJobTicket.sku} | Size: {selectedJobTicket.size} | Color: {selectedJobTicket.color}</p>
+                <p className="text-[10px]">Master Tailor: <strong>{selectedJobTicket.tailorName || 'Unassigned'}</strong></p>
+                <p className="text-[10px]">Staff: {selectedJobTicket.salespersonName || 'Store Cashier'}</p>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {/* Measurements */}
+              <div>
+                <p className="font-bold text-slate-900 uppercase mb-1">Measurements (Inches):</p>
+                {Object.keys(selectedJobTicket.measurements || {}).length > 0 ? (
+                  <div className="grid grid-cols-2 gap-1 text-[10px] bg-white p-2 rounded border border-slate-200">
+                    {Object.entries(selectedJobTicket.measurements).map(([k, v]) => (
+                      <div key={k} className="flex justify-between">
+                        <span className="text-slate-500">{k}:</span>
+                        <span className="font-bold">{v}"</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 italic">No specific inches entered</p>
+                )}
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {/* Alterations */}
+              <div>
+                <p className="font-bold text-slate-900 uppercase mb-1">Alteration Types:</p>
+                <div className="flex flex-wrap gap-1">
+                  {(selectedJobTicket.alterationDetails || ['Custom Fit']).map((d, i) => (
+                    <span key={i} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      ✓ {d}
+                    </span>
+                  ))}
+                </div>
+                {selectedJobTicket.customAlterationText && (
+                  <p className="text-[10px] text-slate-600 mt-1">Note: {selectedJobTicket.customAlterationText}</p>
+                )}
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {/* Delivery Details */}
+              <div className="space-y-1 bg-rose-50 p-2.5 rounded border border-rose-200 text-rose-900">
+                <div className="flex justify-between font-bold">
+                  <span>Delivery Date:</span>
+                  <span>{selectedJobTicket.deliveryDate || 'Scheduled'} {selectedJobTicket.deliveryTime || ''}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Expected Trial:</span>
+                  <span>{selectedJobTicket.trialDate || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Job Priority:</span>
+                  <span className="uppercase font-extrabold">{selectedJobTicket.priority || 'Normal'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Workflow Status:</span>
+                  <span className="uppercase font-extrabold">{selectedJobTicket.status || 'Pending'}</span>
+                </div>
+              </div>
+
+              {selectedJobTicket.specialInstructions && (
+                <div>
+                  <p className="font-bold text-slate-900 uppercase">Special Instructions:</p>
+                  <p className="text-[10px] italic text-slate-600">"{selectedJobTicket.specialInstructions}"</p>
+                </div>
+              )}
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+              <div className="text-center text-[9px] text-slate-400">
+                Powered by Vastra ERP Tailoring Module
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedJobTicket(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Close (Esc)
+              </button>
+              <button
+                onClick={() => handlePrintJobTicketHTML(selectedJobTicket)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Job Ticket</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
