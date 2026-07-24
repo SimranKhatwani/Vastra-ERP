@@ -17,7 +17,11 @@ import {
   MessageCircle,
   UserPlus,
   Calendar,
-  ListTodo
+  ListTodo,
+  Users,
+  UserCheck,
+  XCircle,
+  CheckCircle2
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -37,8 +41,25 @@ export const DashboardView = ({
 }) => {
   const [morningActions, setMorningActions] = React.useState(null);
   const [commStats, setCommStats] = React.useState(null);
+  const [attendanceStats, setAttendanceStats] = React.useState(null);
 
   React.useEffect(() => {
+    const fetchAttendanceStats = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:5000/api/attendance/dashboard-stats", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (data && !data.message) {
+          setAttendanceStats(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch attendance stats", error);
+      }
+    };
+    fetchAttendanceStats();
+
     if (currentUser?.role?.toLowerCase() !== 'salesperson') {
       const fetchMorningActions = async () => {
         try {
@@ -659,6 +680,124 @@ export const DashboardView = ({
           <div className="text-2xl font-black text-red-700">{outOfStockCount}</div>
         </div>
       </div>
+
+      {/* ─── EMPLOYEE ATTENDANCE SUMMARY WIDGET ─── */}
+      {(() => {
+        const staffTotal = employees.length || 1;
+        const presentCount = attendanceStats?.present ?? employees.filter(e => e.attendanceStatus === 'Present' || (e.punchInTime && e.attendanceStatus !== 'Absent')).length;
+        const lateCount = attendanceStats?.veryLates ?? (attendanceStats?.normalArrivals ?? employees.filter(e => e.attendanceStatus === 'Late').length);
+        const absentCount = attendanceStats?.absent ?? employees.filter(e => e.attendanceStatus === 'Absent' || (!e.punchInTime && e.attendanceStatus !== 'Present')).length;
+        const ratePct = Math.round((presentCount / staffTotal) * 100) || 0;
+
+        const openAttendanceRecords = () => setActiveTab("attendance-dashboard");
+
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4 mt-6">
+            {/* Widget Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-xs">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <span>Today's Employee Attendance Summary</span>
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                      {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Click any metric tab below to open detailed attendance records
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={openAttendanceRecords}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer self-stretch sm:self-auto justify-center group"
+              >
+                <UserCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>Full Attendance Records & Shifts ➔</span>
+              </button>
+            </div>
+
+            {/* Attendance KPI Clickable Tabs Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* TOTAL STAFF */}
+              <div
+                onClick={openAttendanceRecords}
+                className="bg-slate-50 hover:bg-slate-100/90 p-4 rounded-xl border border-slate-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block group-hover:text-slate-800">Total Staff</span>
+                  <span className="text-2xl font-black text-slate-900 font-mono">{staffTotal}</span>
+                </div>
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-700 group-hover:scale-110 transition-transform">
+                  <Users className="w-5 h-5" />
+                </div>
+              </div>
+
+              {/* PRESENT TODAY */}
+              <div
+                onClick={openAttendanceRecords}
+                className="bg-emerald-50/80 hover:bg-emerald-100/90 p-4 rounded-xl border border-emerald-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block group-hover:text-emerald-900">Present Today</span>
+                  <span className="text-2xl font-black text-emerald-900 font-mono">{presentCount}</span>
+                </div>
+                <div className="p-2.5 bg-emerald-100 rounded-lg border border-emerald-200 text-emerald-700 group-hover:scale-110 transition-transform">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+
+              {/* LATE ARRIVAL */}
+              <div
+                onClick={openAttendanceRecords}
+                className="bg-amber-50/80 hover:bg-amber-100/90 p-4 rounded-xl border border-amber-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block group-hover:text-amber-900">Late Arrival</span>
+                  <span className="text-2xl font-black text-amber-900 font-mono">{lateCount}</span>
+                </div>
+                <div className="p-2.5 bg-amber-100 rounded-lg border border-amber-200 text-amber-700 group-hover:scale-110 transition-transform">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+
+              {/* ABSENT */}
+              <div
+                onClick={openAttendanceRecords}
+                className="bg-rose-50/80 hover:bg-rose-100/90 p-4 rounded-xl border border-rose-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div>
+                  <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider block group-hover:text-rose-900">Absent</span>
+                  <span className="text-2xl font-black text-rose-900 font-mono">{absentCount}</span>
+                </div>
+                <div className="p-2.5 bg-rose-100 rounded-lg border border-rose-200 text-rose-700 group-hover:scale-110 transition-transform">
+                  <XCircle className="w-5 h-5" />
+                </div>
+              </div>
+
+              {/* TURNOUT RATE */}
+              <div
+                onClick={openAttendanceRecords}
+                className="bg-indigo-50/80 hover:bg-indigo-100/90 p-4 rounded-xl border border-indigo-200/80 flex justify-between items-center col-span-2 lg:col-span-1 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="w-full">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider group-hover:text-indigo-900">Turnout Rate</span>
+                    <span className="text-sm font-black text-indigo-900 font-mono">{ratePct}%</span>
+                  </div>
+                  <div className="w-full bg-indigo-200/80 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-indigo-600 h-full rounded-full transition-all duration-500" style={{ width: `${ratePct}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Alert Banners & Second Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
