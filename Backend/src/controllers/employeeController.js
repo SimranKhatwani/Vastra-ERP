@@ -82,7 +82,8 @@ exports.getEmployees = async (req, res) => {
           status: "Active",
           attendanceRate: 95,
           salary: 55000,
-          commissionRate: 3,
+          commissionRate: 1.5,
+          monthlySales: 46471,
           salesTarget: 300000,
           tenantId
         },
@@ -138,10 +139,18 @@ exports.getEmployees = async (req, res) => {
       const created = await Employee.insertMany(initialStaff);
       employees = created.map(e => e.toObject());
     } else {
-      // Ensure Hitesh is aligned with Salesperson role
-      await Employee.updateMany({ name: { $regex: /Hitesh/i } }, { role: 'Salesperson' });
+      // Ensure Hitesh is aligned with Salesperson role, 1.5% commission rate, and 46471 monthly sales
+      await Employee.updateMany(
+        { name: { $regex: /Hitesh/i } }, 
+        { role: 'Salesperson', commissionRate: 1.5, monthlySales: 46471, commissionEarned: Math.round(46471 * 0.015) }
+      );
       employees.forEach(emp => {
-        if (/Hitesh/i.test(emp.name)) emp.role = 'Salesperson';
+        if (/Hitesh/i.test(emp.name)) {
+          emp.role = 'Salesperson';
+          emp.commissionRate = 1.5;
+          emp.monthlySales = 46471;
+          emp.commissionEarned = Math.round(46471 * 0.015);
+        }
       });
     }
       

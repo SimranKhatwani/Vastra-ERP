@@ -44,10 +44,8 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
               
               if (data.success) {
                 onLogin({
-                  id: data.user.id,
-                  name: data.user.name,
-                  email: data.user.email,
-                  role: data.user.role,
+                  ...data.user,
+                  id: data.user.id || data.user._id,
                   status: "Active",
                   token: data.token
                 });

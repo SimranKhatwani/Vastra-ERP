@@ -91,18 +91,18 @@ const demoAuditLogsData = generateAuditLogs();
 export default function App() {
   const { socket, connected } = useSocket();
 
-  // Master States
-  const [products, setProducts] = useState(demoProductsData);
+  // Master States - Single Source of Truth from Live MongoDB Backend
+  const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [invoices, setInvoices] = useState(demoInvoicesData);
-  const [purchaseOrders, setPurchaseOrders] = useState(demoPurchaseOrdersData);
-  const [expenses, setExpenses] = useState(demoExpensesData);
-  const [tenants, setTenants] = useState(demoTenantsData); 
-  const [supportTickets, setSupportTickets] = useState(demoSupportTicketsData);
-  const [notifications, setNotifications] = useState(demoNotificationsData);
-  const [auditLogs, setAuditLogs] = useState(demoAuditLogsData);
+  const [invoices, setInvoices] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [tenants, setTenants] = useState([]); 
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   // Purchase Management States
   const [vendors, setVendors] = useState([]);
@@ -256,8 +256,28 @@ export default function App() {
             setPurchaseOrders(arr);
           }
           if (dataEmployees.success) {
-            const arr = dataEmployees.data.map(e => ({...e, id: e._id}));
+            const arr = dataEmployees.data.map(e => ({...e, id: e._id || e.id}));
             setEmployees(arr);
+
+            // Synchronize currentUser with real DB record on refresh
+            const storedUserStr = localStorage.getItem("user");
+            if (storedUserStr) {
+              try {
+                const storedUser = JSON.parse(storedUserStr);
+                const matchUser = arr.find(e => 
+                  (e._id && String(e._id) === String(storedUser._id || storedUser.id)) ||
+                  (e.id && String(e.id) === String(storedUser.id || storedUser._id)) ||
+                  (storedUser.email && e.email && e.email.toLowerCase() === storedUser.email.toLowerCase()) ||
+                  (storedUser.name && e.name && e.name.toLowerCase() === storedUser.name.toLowerCase())
+                );
+                if (matchUser) {
+                  setCurrentUser(matchUser);
+                  localStorage.setItem("user", JSON.stringify(matchUser));
+                }
+              } catch (err) {
+                console.error("Error syncing stored user with DB employee", err);
+              }
+            }
           }
           if (dataExpenses.success) {
             const arr = dataExpenses.data.map(e => ({...e, id: e._id}));
@@ -301,7 +321,7 @@ export default function App() {
       }
     };
     fetchProducts();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, currentUser?.id, currentUser?._id, currentUser?.email]);
   
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
