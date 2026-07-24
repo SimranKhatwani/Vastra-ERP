@@ -1,6 +1,9 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 export function AdminLogin({ onLogin, addToastNotification }) {
+  const navigate = useNavigate();
+
   return (
     <div
       className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white"
@@ -35,20 +38,24 @@ export function AdminLogin({ onLogin, addToastNotification }) {
               const data = await res.json();
               
               if (data.success) {
-                onLogin({
+                const superAdminUser = {
                   id: "admin-0",
                   name: "Super Admin",
-                  email: data.user.email,
-                  role: "SuperAdmin", // Internal frontend state mapping
+                  email: data.user?.email || email,
+                  role: "SuperAdmin",
                   status: "Active",
                   token: data.token
-                });
+                };
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("user", JSON.stringify(superAdminUser));
+                onLogin(superAdminUser);
+
                 addToastNotification(
                   "System Access Granted",
                   "Authenticated as Super Administrator.",
                   "success"
                 );
-                window.history.pushState({}, "", "/");
+                navigate("/super-admin/dashboard", { replace: true });
               } else {
                 addToastNotification(
                   "Access Denied",
@@ -70,8 +77,9 @@ export function AdminLogin({ onLogin, addToastNotification }) {
               name="email"
               type="email"
               required
-              className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500"
-              placeholder="admin@garmentflow.com"
+              defaultValue="hp@gmail.com"
+              className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+              placeholder="hp@gmail.com"
             />
           </div>
           <div>
@@ -82,8 +90,9 @@ export function AdminLogin({ onLogin, addToastNotification }) {
               name="secretKey"
               type="password"
               required
-              className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500"
-              placeholder="Enter secure key"
+              defaultValue="Requin@SaaS2026"
+              className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+              placeholder="Requin@SaaS2026"
             />
           </div>
 

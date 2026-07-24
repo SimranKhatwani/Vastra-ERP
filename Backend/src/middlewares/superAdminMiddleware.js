@@ -13,7 +13,8 @@ exports.protectSuperAdmin = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const secret = process.env.JWT_SECRET || 'your_jwt_secret_key_here';
+    const decoded = jwt.verify(token, secret);
     
     if (decoded.role !== 'SuperAdmin') {
       return res.status(403).json({ success: false, message: 'Access denied. SuperAdmin only.' });

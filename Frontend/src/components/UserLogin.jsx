@@ -117,7 +117,7 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
         </form>
 
         {/* Footer */}
-        <p className="text-[10px] text-slate-500 text-center font-mono font-medium pt-2 border-t border-slate-700/40">
+        <p className="text-[10px] text-slate-500 text-center font-mono font-medium pt-3 border-t border-slate-700/40">
           Vastra ERP &bull; Encryption AES-256 Enabled
         </p>
       </div>

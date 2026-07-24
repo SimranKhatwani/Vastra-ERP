@@ -94,8 +94,8 @@ export default function App() {
   // Master States
   const [products, setProducts] = useState(demoProductsData);
   const [customers, setCustomers] = useState([]);
-  const [suppliers, setSuppliers] = useState(demoSuppliersData);
-  const [employees, setEmployees] = useState(demoEmployeesData);
+  const [suppliers, setSuppliers] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [invoices, setInvoices] = useState(demoInvoicesData);
   const [purchaseOrders, setPurchaseOrders] = useState(demoPurchaseOrdersData);
   const [expenses, setExpenses] = useState(demoExpensesData);
@@ -201,7 +201,7 @@ export default function App() {
 
   React.useEffect(() => {
     const fetchProducts = async () => {
-      if (isLoggedIn) {
+      if (isLoggedIn && currentUser?.role !== "SuperAdmin") {
         try {
           const token = localStorage.getItem("token");
           if (!token) return;
@@ -237,7 +237,7 @@ export default function App() {
 
           if (dataProducts.success) {
             const arr = dataProducts.data.map(p => ({...p, id: p._id}));
-            setProducts(arr.length > 0 ? arr : demoProductsData);
+            setProducts(arr);
           }
           if (dataCustomers.success) {
             const arr = dataCustomers.data.map(c => ({...c, id: c._id}));
@@ -245,31 +245,31 @@ export default function App() {
           }
           if (dataInvoices.success) {
             const arr = dataInvoices.data.map(i => ({...i, id: i._id}));
-            setInvoices(arr.length > 0 ? arr : demoInvoicesData);
+            setInvoices(arr);
           }
           if (dataSuppliers.success) {
             const arr = dataSuppliers.data.map(s => ({...s, id: s._id}));
-            setSuppliers(arr.length > 0 ? arr : demoSuppliersData);
+            setSuppliers(arr);
           }
           if (dataPurchaseOrders.success) {
             const arr = dataPurchaseOrders.data.map(p => ({...p, id: p._id}));
-            setPurchaseOrders(arr.length > 0 ? arr : demoPurchaseOrdersData);
+            setPurchaseOrders(arr);
           }
           if (dataEmployees.success) {
             const arr = dataEmployees.data.map(e => ({...e, id: e._id}));
-            setEmployees(arr.length > 0 ? arr : demoEmployeesData);
+            setEmployees(arr);
           }
           if (dataExpenses.success) {
             const arr = dataExpenses.data.map(e => ({...e, id: e._id}));
-            setExpenses(arr.length > 0 ? arr : demoExpensesData);
+            setExpenses(arr);
           }
           if (dataTickets.success) {
             const arr = dataTickets.data.map(t => ({...t, id: t._id}));
-            setSupportTickets(arr.length > 0 ? arr : demoSupportTicketsData);
+            setSupportTickets(arr);
           }
           if (dataNotifications.success) {
             const arr = dataNotifications.data.map(n => ({...n, id: n._id}));
-            setNotifications(arr.length > 0 ? arr : demoNotificationsData);
+            setNotifications(arr);
           }
 
           // Fetch purchase management data (non-blocking, best-effort)

@@ -56,8 +56,88 @@ exports.createEmployee = async (req, res) => {
 
 exports.getEmployees = async (req, res) => {
   try {
-    const tenantId = req.user.tenantId;
-    const employees = await Employee.find({ tenantId }).sort('-createdAt').lean();
+    const tenantId = req.user?.tenantId;
+    const filter = tenantId ? { tenantId } : {};
+    let employees = await Employee.find(filter).sort('-createdAt').lean();
+
+    if (employees.length === 0) {
+      const initialStaff = [
+        {
+          name: "Vijay Shekhar",
+          email: "vijay.shekhar@garmentflow.com",
+          phone: "7000000000",
+          role: "Admin",
+          status: "Active",
+          attendanceRate: 98,
+          salary: 85000,
+          commissionRate: 5,
+          salesTarget: 500000,
+          tenantId
+        },
+        {
+          name: "Hitesh Kumar",
+          email: "hitesh.kumar@garmentflow.com",
+          phone: "7000000001",
+          role: "Manager",
+          status: "Active",
+          attendanceRate: 95,
+          salary: 55000,
+          commissionRate: 3,
+          salesTarget: 300000,
+          tenantId
+        },
+        {
+          name: "Rajat Sharma",
+          email: "rajat.sharma@garmentflow.com",
+          phone: "7000000002",
+          role: "Salesperson",
+          status: "Active",
+          attendanceRate: 92,
+          salary: 35000,
+          commissionRate: 2.5,
+          salesTarget: 200000,
+          tenantId
+        },
+        {
+          name: "Mahesh Verma",
+          email: "mahesh.verma@garmentflow.com",
+          phone: "7000000003",
+          role: "Tailor",
+          status: "Active",
+          attendanceRate: 96,
+          salary: 40000,
+          commissionRate: 4,
+          salesTarget: 150000,
+          tenantId
+        },
+        {
+          name: "Ram Singh",
+          email: "ram.singh@garmentflow.com",
+          phone: "7000000004",
+          role: "Cashier",
+          status: "Active",
+          attendanceRate: 94,
+          salary: 30000,
+          commissionRate: 1,
+          salesTarget: 100000,
+          tenantId
+        },
+        {
+          name: "Aman Gupta",
+          email: "aman.gupta@garmentflow.com",
+          phone: "7000000005",
+          role: "Salesperson",
+          status: "Active",
+          attendanceRate: 90,
+          salary: 32000,
+          commissionRate: 2,
+          salesTarget: 180000,
+          tenantId
+        }
+      ];
+      const created = await Employee.insertMany(initialStaff);
+      employees = created.map(e => e.toObject());
+    }
       
     // Decrypt passwords if user is Admin or SuperAdmin
     if (req.user && (req.user.role === 'Admin' || req.user.role === 'BusinessAdmin' || req.user.role === 'SuperAdmin')) {
