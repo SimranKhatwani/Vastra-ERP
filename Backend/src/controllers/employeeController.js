@@ -78,7 +78,7 @@ exports.getEmployees = async (req, res) => {
           name: "Hitesh Kumar",
           email: "hitesh.kumar@garmentflow.com",
           phone: "7000000001",
-          role: "Manager",
+          role: "Salesperson",
           status: "Active",
           attendanceRate: 95,
           salary: 55000,
@@ -137,6 +137,12 @@ exports.getEmployees = async (req, res) => {
       ];
       const created = await Employee.insertMany(initialStaff);
       employees = created.map(e => e.toObject());
+    } else {
+      // Ensure Hitesh is aligned with Salesperson role
+      await Employee.updateMany({ name: { $regex: /Hitesh/i } }, { role: 'Salesperson' });
+      employees.forEach(emp => {
+        if (/Hitesh/i.test(emp.name)) emp.role = 'Salesperson';
+      });
     }
       
     // Decrypt passwords if user is Admin or SuperAdmin

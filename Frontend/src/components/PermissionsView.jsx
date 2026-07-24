@@ -254,6 +254,7 @@ export const PermissionsView = ({
         );
       }
     } finally {
+      window.dispatchEvent(new Event("vastra-permissions-updated"));
       if (onPermissionsUpdated) {
         onPermissionsUpdated();
       }

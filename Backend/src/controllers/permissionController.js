@@ -140,12 +140,12 @@ const defaultRolePermissions = {
   },
   salesperson: {
     allowedModules: [
-      'dashboard', 'billing', 'articulation', 'products', 'purchase', 'attendance-dashboard'
+      'dashboard', 'billing', 'products', 'purchase', 'attendance-dashboard'
     ],
     moduleAccessLevels: {
       'dashboard': 'VIEW_ONLY',
       'billing': 'FULL_CONTROL',
-      'articulation': 'VIEW_ONLY',
+      'articulation': 'NO_ACCESS',
       'inventory': 'NO_ACCESS',
       'products': 'VIEW_ONLY',
       'purchase': 'NO_ACCESS',
@@ -248,12 +248,13 @@ exports.getPermissions = async (req, res) => {
     const permissionMap = {};
 
     records.forEach((rec) => {
-      const key = rec.employeeId ? `emp_${rec.employeeId}` : rec.role.toLowerCase();
+      const roleStr = rec.role ? String(rec.role).toLowerCase() : 'admin';
+      const key = rec.employeeId ? `emp_${rec.employeeId}` : roleStr;
       permissionMap[key] = {
         allowedModules: rec.allowedModules || [],
-        moduleAccessLevels: rec.moduleAccessLevels ? Object.fromEntries(rec.moduleAccessLevels) : {},
-        tabPermissions: rec.tabPermissions ? Object.fromEntries(rec.tabPermissions) : {},
-        actionPermissions: rec.actionPermissions ? Object.fromEntries(rec.actionPermissions) : {},
+        moduleAccessLevels: rec.moduleAccessLevels ? (rec.moduleAccessLevels instanceof Map ? Object.fromEntries(rec.moduleAccessLevels) : rec.moduleAccessLevels) : {},
+        tabPermissions: rec.tabPermissions ? (rec.tabPermissions instanceof Map ? Object.fromEntries(rec.tabPermissions) : rec.tabPermissions) : {},
+        actionPermissions: rec.actionPermissions ? (rec.actionPermissions instanceof Map ? Object.fromEntries(rec.actionPermissions) : rec.actionPermissions) : {},
         updatedBy: rec.updatedBy,
         updatedAt: rec.updatedAt,
       };
@@ -272,6 +273,7 @@ exports.getPermissions = async (req, res) => {
       defaults: defaultRolePermissions,
     });
   } catch (error) {
+    console.error("GET /api/permissions error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

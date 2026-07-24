@@ -335,11 +335,70 @@ export default function App() {
   }, []);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
+  // Dynamic RBAC Permission Matrix State
+  const [permissionMatrix, setPermissionMatrix] = useState(() => {
+    try {
+      const saved = localStorage.getItem("vastra_permissions_matrix");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
+
+  // Listen for real-time RBAC updates
+  React.useEffect(() => {
+    const handlePermissionsUpdated = () => {
+      try {
+        const saved = localStorage.getItem("vastra_permissions_matrix");
+        if (saved) setPermissionMatrix(JSON.parse(saved));
+      } catch (e) {}
+    };
+    window.addEventListener("vastra-permissions-updated", handlePermissionsUpdated);
+    return () => window.removeEventListener("vastra-permissions-updated", handlePermissionsUpdated);
+  }, []);
+
+  // Fetch dynamic permissions matrix from API on login / mount
+  React.useEffect(() => {
+    const syncPermissions = async () => {
+      if (!isLoggedIn) return;
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const res = await fetch("http://localhost:5000/api/permissions", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          setPermissionMatrix(data.data);
+          localStorage.setItem("vastra_permissions_matrix", JSON.stringify(data.data));
+        }
+      } catch (err) {
+        console.warn("Could not sync permissions from API:", err);
+      }
+    };
+    syncPermissions();
+  }, [isLoggedIn]);
+
+  // Helper to normalize role keys safely (e.g. "Sales Person" -> "salesperson")
+  const normalizeRoleKey = (role) => {
+    let r = (role || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
+    if (r === 'businessadmin' || r === 'admin' || r === 'administrator' || r === 'owner') return 'admin';
+    if (r === 'manager' || r === 'storemanager') return 'manager';
+    if (r === 'cashier' || r === 'poscashier') return 'cashier';
+    if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
+    if (r === 'accountant' || r === 'accounts') return 'accountant';
+    return r;
+  };
+
   // Role-based sidebar module access helper
   const getAccessibleModules = (role) => {
-    switch ((role || '').toLowerCase()) {
+    const roleKey = normalizeRoleKey(role);
+    
+    // Base fallback modules per role
+    let baseModules = [];
+    switch (roleKey) {
       case "superadmin":
-        return [
+        baseModules = [
           "saas",
           "developer",
           "integrations",
@@ -351,9 +410,10 @@ export default function App() {
           "manager-review",
           "attendance-settings",
         ];
+        break;
       case "businessadmin":
       case "admin":
-        return [
+        baseModules = [
           "dashboard",
           "billing",
           "articulation",
@@ -380,8 +440,9 @@ export default function App() {
           "manager-review",
           "attendance-settings",
         ];
+        break;
       case "manager":
-        return [
+        baseModules = [
           "dashboard",
           "billing",
           "articulation",
@@ -403,8 +464,9 @@ export default function App() {
           "attendance-dashboard",
           "manager-review",
         ];
+        break;
       case "cashier":
-        return [
+        baseModules = [
           "dashboard",
           "billing",
           "billing-sales",
@@ -418,29 +480,56 @@ export default function App() {
           "accounting",
           "attendance-dashboard",
         ];
+        break;
       case "salesperson":
-        return [
+        baseModules = [
           "dashboard",
           "billing",
-          "articulation",
           "products",
           "purchase",
           "attendance-dashboard",
         ];
+        break;
       case "tailor":
-        return ["articulation", "attendance-dashboard"];
+        baseModules = ["articulation", "attendance-dashboard"];
+        break;
       default:
-        return ["billing", "financial-management", "accounts-treasury"];
+        baseModules = ["billing", "financial-management", "accounts-treasury"];
+        break;
     }
+
+    // Apply custom RBAC rules if saved by Admin
+    const config = permissionMatrix[roleKey] || permissionMatrix[roleKey.toLowerCase()] || permissionMatrix[role];
+    if (config) {
+      const levelsMap = config.moduleAccessLevels || {};
+      const allowedArr = config.allowedModules || [];
+
+      // Starting list: if Admin set allowedModules, start with allowedModules; otherwise start with baseModules
+      let finalModules = Array.isArray(allowedArr) && allowedArr.length > 0 ? [...allowedArr] : [...baseModules];
+
+      // Enforce 3-Level explicit overrides (NO_ACCESS vs FULL_CONTROL/VIEW_ONLY)
+      Object.keys(levelsMap).forEach((modId) => {
+        const lvl = levelsMap[modId];
+        if (lvl === 'NO_ACCESS') {
+          finalModules = finalModules.filter(m => m !== modId);
+        } else if ((lvl === 'FULL_CONTROL' || lvl === 'VIEW_ONLY') && !finalModules.includes(modId)) {
+          finalModules.push(modId);
+        }
+      });
+
+      return finalModules;
+    }
+
+    return baseModules;
   };
 
   // Ensure active module is always one the current user has access to
   React.useEffect(() => {
-    const allowed = getAccessibleModules(currentUser.role);
+    const allowed = getAccessibleModules(currentUser?.role);
     if (!allowed.includes(activeModule)) {
       setActiveModule(allowed[0] || "billing");
     }
-  }, [currentUser.role, activeModule]);
+  }, [currentUser?.role, activeModule, JSON.stringify(permissionMatrix)]);
 
   // Global Toast System
   const [toasts, setToasts] = useState([]);
@@ -1165,6 +1254,7 @@ export default function App() {
                   );
                   if (selectedEmp) {
                     setCurrentUser(selectedEmp);
+                    localStorage.setItem("user", JSON.stringify(selectedEmp));
                     addToastNotification(
                       "Role Swapped",
                       `Session context switched to ${selectedEmp.name} (${selectedEmp.role})`,
