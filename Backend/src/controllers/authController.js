@@ -39,6 +39,13 @@ exports.login = async (req, res) => {
 
     const token = generateToken(user._id);
 
+    try {
+      const staffActivityController = require('./staffActivityController');
+      await staffActivityController.recordLoginHistory(req, user, 'Online');
+    } catch (e) {
+      console.error('Failed to log login history', e);
+    }
+
     res.status(200).json({
       success: true,
       token,

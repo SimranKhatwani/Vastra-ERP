@@ -7,7 +7,7 @@ const defaultRolePermissions = {
       'dashboard', 'billing', 'articulation', 'inventory', 'products',
       'stock-management', 'billing-sales', 'discount-offers', 'purchase',
       'financial-management', 'accounts-treasury', 'customers', 'employees',
-      'staff', 'commissions', 'accounting', 'reports', 'permissions', 'settings',
+      'staff', 'commissions', 'accounting', 'reports', 'permissions', 'staff-activity', 'settings',
       'attendance-dashboard', 'manager-review', 'attendance-settings', 'saas'
     ],
     moduleAccessLevels: {
@@ -23,6 +23,7 @@ const defaultRolePermissions = {
       'attendance-dashboard': 'FULL_CONTROL',
       'reports': 'FULL_CONTROL',
       'permissions': 'FULL_CONTROL',
+      'staff-activity': 'FULL_CONTROL',
       'settings': 'FULL_CONTROL',
     },
     tabPermissions: {
@@ -42,7 +43,7 @@ const defaultRolePermissions = {
       'dashboard', 'billing', 'articulation', 'inventory', 'products',
       'stock-management', 'billing-sales', 'discount-offers', 'purchase',
       'financial-management', 'accounts-treasury', 'customers', 'employees',
-      'staff', 'commissions', 'accounting', 'reports', 'permissions', 'settings',
+      'staff', 'commissions', 'accounting', 'reports', 'permissions', 'staff-activity', 'settings',
       'attendance-dashboard', 'manager-review', 'attendance-settings'
     ],
     moduleAccessLevels: {
@@ -58,6 +59,7 @@ const defaultRolePermissions = {
       'attendance-dashboard': 'FULL_CONTROL',
       'reports': 'FULL_CONTROL',
       'permissions': 'FULL_CONTROL',
+      'staff-activity': 'FULL_CONTROL',
       'settings': 'FULL_CONTROL',
     },
     tabPermissions: {

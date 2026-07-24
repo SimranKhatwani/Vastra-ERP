@@ -34,6 +34,7 @@ import { BillingPOSView } from "./components/BillingPOSView";
 import { ArticulationView } from "./components/ArticulationView";
 import { ProductManagementView } from "./components/ProductManagementView";
 import { PermissionsView } from "./components/PermissionsView";
+import { StaffActivityView } from "./components/StaffActivityView";
 
 import { PurchaseView } from "./components/PurchaseView";
 import { InventoryView } from "./components/InventoryView";
@@ -424,6 +425,7 @@ export default function App() {
           "integrations",
           "settings",
           "permissions",
+          "staff-activity",
           "financial-management",
           "accounts-treasury",
           "attendance-dashboard",
@@ -453,6 +455,7 @@ export default function App() {
           "accounting",
           "reports",
           "permissions",
+          "staff-activity",
           "integrations",
           "dev",
           "settings",
@@ -537,7 +540,15 @@ export default function App() {
         }
       });
 
+      if (['admin', 'businessadmin', 'superadmin'].includes(roleKey) && !finalModules.includes('staff-activity')) {
+        finalModules.push('staff-activity');
+      }
+
       return finalModules;
+    }
+
+    if (['admin', 'businessadmin', 'superadmin'].includes(roleKey) && !baseModules.includes('staff-activity')) {
+      baseModules.push('staff-activity');
     }
 
     return baseModules;
@@ -1114,6 +1125,7 @@ export default function App() {
     { id: "integrations", label: "Channel connectors", icon: Globe },
     { id: "settings", label: "System Configurations", icon: Settings },
     { id: "permissions", label: "Permissions & Role Access", icon: ShieldCheck },
+    { id: "staff-activity", label: "Staff Activity Audit", icon: ShieldAlert },
     { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
     { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
     { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
@@ -1666,6 +1678,13 @@ export default function App() {
               employees={employees}
               currentUser={currentUser}
               onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "staff-activity" && (
+            <StaffActivityView
+              currentUser={currentUser}
+              addToastNotification={addToastNotification}
             />
           )}
 
