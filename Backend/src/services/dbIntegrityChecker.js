@@ -118,7 +118,7 @@ class DbIntegrityChecker {
 
         const invCount = empInvoices.length;
         const invSales = empInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
-        const commRate = emp.commissionRate || (emp.role === 'Worker' ? 0.5 : (emp.role === 'Tailor' ? 4 : (emp.role === 'Cashier' ? 1 : 1.5)));
+        const commRate = emp.commissionRate || 1.5;
         const commEarned = Math.round(invSales * (commRate / 100) * 100) / 100;
 
         let modified = false;

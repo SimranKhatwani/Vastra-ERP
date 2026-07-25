@@ -81,7 +81,7 @@ exports.getEmployees = async (req, res) => {
 
       const liveSales = empInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
       const liveCount = empInvoices.length;
-      const commRate = emp.commissionRate || (emp.role === 'Worker' ? 0.5 : (emp.role === 'Tailor' ? 4 : (emp.role === 'Cashier' ? 1 : 1.5)));
+      const commRate = emp.commissionRate || 1.5;
       const liveComm = Math.round(liveSales * (commRate / 100) * 100) / 100;
 
       // Always return live DB figures if invoices exist, otherwise fallback to document fields

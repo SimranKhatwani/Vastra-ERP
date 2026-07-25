@@ -45,9 +45,7 @@ class UniversalDashboardService {
 
     // 4. Compute commission metrics
     const parsedRate = parseFloat(empDoc?.commissionRate ?? resolvedCommRate);
-    const roleStr = (role || '').toLowerCase();
-    const defaultRate = roleStr.includes('worker') ? 0.5 : (roleStr.includes('tailor') ? 4 : (roleStr.includes('cashier') ? 1 : 1.5));
-    const commissionRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : defaultRate;
+    const commissionRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : 1.5;
 
     const commissionAmount = typeof empDoc?.commissionEarned === 'number' && empDoc.commissionEarned > 0
       ? empDoc.commissionEarned
