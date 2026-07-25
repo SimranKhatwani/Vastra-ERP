@@ -409,15 +409,17 @@ export const DashboardView = ({
               Here is your personal performance, sales, and earned commission breakdown.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setActiveTab("billing")}
-              className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New POS Bill</span>
-            </button>
-          </div>
+          {!['worker', 'tailor', 'accountant'].includes((currentUser?.role || '').toLowerCase()) && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab("billing")}
+                className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>New POS Bill</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* KPI Stats Grid */}
