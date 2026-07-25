@@ -30,7 +30,7 @@ exports.getMorningActions = async (req, res) => {
       whatsappStatus: 'Failed',
     });
     
-    // 3. Overdue Deliveries (expected delivery was before today, and not delivered)
+    // 3. Overdue Deliveries
     const overdueDeliveries = await Invoice.countDocuments({
       tenantId,
       expectedDeliveryDate: { $lt: startOfToday },
@@ -103,63 +103,42 @@ exports.getStaffDashboardStats = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const userId = req.user.id || req.user._id;
-    const userName = req.user.name || '';
-    const userEmail = req.user.email || '';
-    const userPhone = req.user.phone || '';
-    const firstName = userName.split(' ')[0];
 
-    // 1. Locate matching Employee record in MongoDB
+    // 1. Locate Employee record strictly by ObjectId reference
     let emp = null;
     if (req.user.employeeId) {
       emp = await Employee.findOne({ _id: req.user.employeeId, tenantId }).lean();
     }
-    if (!emp) {
-      emp = await Employee.findOne({
-        tenantId,
-        $or: [
-          { email: (userEmail).toLowerCase() },
-          { phone: userPhone },
-          { name: { $regex: new RegExp(`^${userName.trim()}$`, 'i') } },
-          { name: { $regex: new RegExp(firstName, 'i') } }
-        ]
-      }).lean();
+    if (!emp && userId) {
+      emp = await Employee.findOne({ userId, tenantId }).lean();
     }
 
-    const empIdStr = emp?._id ? String(emp._id) : String(userId);
-    const empNameStr = (emp?.name || userName).toLowerCase().trim();
+    const targetEmpId = emp?._id || req.user.employeeId;
 
-    // 2. Fetch all assigned invoices from MongoDB
-    const allInvoices = await Invoice.find({ tenantId }).sort('-createdAt').lean();
+    // 2. Fetch assigned invoices strictly using Mongo ObjectId relationships
+    const assignedInvoices = targetEmpId
+      ? await Invoice.find({
+          tenantId,
+          $or: [
+            { salespersonId: targetEmpId },
+            { workerId: targetEmpId },
+            { employeeId: targetEmpId }
+          ]
+        }).sort('-createdAt').lean()
+      : [];
 
-    const assignedInvoices = allInvoices.filter(inv => {
-      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId || inv.userId;
-      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || inv.createdBy || inv.cashierName || '').toLowerCase().trim();
-      
-      const idMatch = empIdStr && invEmpId && String(empIdStr) === String(invEmpId);
-      const nameMatch = empNameStr && invEmpName && (
-        invEmpName === empNameStr || 
-        invEmpName.includes(empNameStr) || 
-        empNameStr.includes(invEmpName) ||
-        (firstName && (invEmpName.includes(firstName.toLowerCase()) || firstName.toLowerCase().includes(invEmpName)))
-      );
+    // 3. Compute exact live metrics
+    const invoiceSalesTotal = assignedInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
+    const invoiceCountReal = assignedInvoices.length;
 
-      const itemMatch = (inv.items || []).some(item => {
-        const itemSpId = item.salespersonId || item.workerId || item.employeeId;
-        const itemSpName = (item.salespersonName || item.workerName || item.employeeName || '').toLowerCase().trim();
-        const itemIdMatch = empIdStr && itemSpId && String(empIdStr) === String(itemSpId);
-        const itemNameMatch = empNameStr && itemSpName && (
-          itemSpName === empNameStr ||
-          itemSpName.includes(empNameStr) ||
-          empNameStr.includes(itemSpName) ||
-          (firstName && (itemSpName.includes(firstName.toLowerCase()) || firstName.toLowerCase().includes(itemSpName)))
-        );
-        return itemIdMatch || itemNameMatch;
-      });
+    const totalSales = typeof emp?.monthlySales === 'number' && emp.monthlySales > 0
+      ? emp.monthlySales
+      : invoiceSalesTotal;
 
-      return idMatch || nameMatch || itemMatch;
-    });
+    const invoiceCount = typeof emp?.totalInvoices === 'number' && emp.totalInvoices > 0
+      ? emp.totalInvoices
+      : invoiceCountReal;
 
-    // 3. Compute exact totals from MongoDB Admin Employee record
     const rawCommRate = emp?.commissionRate ?? emp?.commRate ?? req.user?.commissionRate;
     const parsedRate = parseFloat(rawCommRate);
     const roleStr = (emp?.role || req.user?.role || '').toLowerCase();
@@ -169,35 +148,38 @@ exports.getStaffDashboardStats = async (req, res) => {
       ? parsedRate
       : defaultRate;
 
-    const invoiceSalesTotal = assignedInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-    const totalSales = typeof emp?.monthlySales === 'number' && emp.monthlySales > 0
-      ? emp.monthlySales
-      : (invoiceSalesTotal > 0 ? invoiceSalesTotal : (typeof req.user?.monthlySales === 'number' ? req.user.monthlySales : 0));
-
-    const invoiceCount = typeof emp?.totalInvoices === 'number' && emp.totalInvoices > 0
-      ? emp.totalInvoices
-      : (assignedInvoices.length > 0 ? assignedInvoices.length : (totalSales > 0 ? Math.max(1, Math.round(totalSales / 4500)) : 0));
-
     const rawCommEarned = emp?.commissionEarned ?? req.user?.commissionEarned;
     const commissionAmount = typeof emp?.commissionEarned === 'number' && emp.commissionEarned > 0
       ? emp.commissionEarned
-      : (typeof rawCommEarned === 'number' && rawCommEarned > 0 ? rawCommEarned : Math.round(totalSales * (commissionRate / 100) * 100) / 100);
+      : Math.round(totalSales * (commissionRate / 100) * 100) / 100;
+
+    // Today metrics
+    const startOfTodayStr = new Date().toISOString().split('T')[0];
+    const todayInvoices = assignedInvoices.filter(inv => {
+      const d = inv.createdAt ? String(inv.createdAt).split('T')[0] : '';
+      return d === startOfTodayStr;
+    });
+
+    const todaySales = todayInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
+    const todayBillsCount = todayInvoices.length;
 
     res.status(200).json({
       success: true,
       data: {
         employee: {
-          id: emp?._id || userId,
-          name: emp?.name || userName,
+          id: emp?._id || targetEmpId || userId,
+          name: emp?.name || req.user.name,
           role: emp?.role || req.user.role,
-          email: emp?.email || userEmail,
-          phone: emp?.phone || userPhone,
+          email: emp?.email || req.user.email,
+          phone: emp?.phone || req.user.phone,
         },
         totalSales,
         invoiceCount,
         commissionRate,
         commissionAmount,
-        attendanceRate: emp?.attendanceRate || 98,
+        todaySales,
+        todayBillsCount,
+        attendanceRate: emp?.attendanceRate || 95,
         invoices: assignedInvoices
       }
     });

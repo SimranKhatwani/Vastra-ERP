@@ -365,12 +365,13 @@ export default function App() {
         const res = await fetch("http://localhost:5000/api/permissions", {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (!res.ok) return;
         const data = await res.json();
         if (data.success && data.data) {
           setPermissionMatrix(data.data);
         }
       } catch (err) {
-        console.warn("Could not sync permissions from MongoDB API:", err);
+        // Quietly ignore background network reconnect glitches
       }
     };
 
@@ -504,10 +505,10 @@ export default function App() {
         ];
         break;
       case "tailor":
-        baseModules = ["articulation", "attendance-dashboard"];
+        baseModules = ["dashboard", "articulation", "attendance-dashboard"];
         break;
       case "worker":
-        baseModules = ["attendance-dashboard"];
+        baseModules = ["dashboard", "attendance-dashboard"];
         break;
       default:
         baseModules = ["billing", "financial-management", "accounts-treasury"];

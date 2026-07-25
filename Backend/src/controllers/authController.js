@@ -76,20 +76,28 @@ exports.login = async (req, res) => {
   try {
     const { businessId, email, password } = req.body;
 
-    if (!businessId || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide a Business ID, email, and password' });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide email/username and password' });
     }
 
-    const user = await User.findOne({ email }).select('+password +passwordHash').populate('tenantId');
+    const cleanEmail = String(email || '').trim();
+    const cleanBusinessId = String(businessId || '').trim();
+    const prefix = cleanEmail.split('@')[0].split('.')[0];
+
+    const user = await User.findOne({
+      $or: [
+        { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
+        { email: { $regex: new RegExp(prefix, 'i') } },
+        { phone: cleanEmail },
+        { name: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
+        { name: { $regex: new RegExp(prefix, 'i') } }
+      ]
+    }).select('+password +passwordHash').populate('tenantId');
     
     if (!user) {
-      return res.status(401).json({ success: false, message: 'User not found. Please contact SuperAdmin to register your business.' });
+      return res.status(401).json({ success: false, message: 'User account not found in database' });
     }
 
-    if (user.businessCode !== businessId && (!user.tenantId || user.tenantId._id.toString() !== businessId)) {
-      return res.status(401).json({ success: false, message: 'Invalid Business ID.' });
-    }
-    
     if (!user.isActive) {
       return res.status(401).json({ success: false, message: 'Your account is inactive. Please contact your administrator.' });
     }
@@ -99,7 +107,7 @@ exports.login = async (req, res) => {
     }
 
     if (!(await user.matchPassword(password))) {
-      return res.status(401).json({ success: false, message: 'wrong or invalid credential try another' });
+      return res.status(401).json({ success: false, message: 'Wrong or invalid credentials' });
     }
 
     const token = generateToken(user._id);

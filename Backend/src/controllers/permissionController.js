@@ -77,10 +77,10 @@ const defaultRolePermissions = {
   },
   worker: {
     allowedModules: [
-      'attendance-dashboard'
+      'dashboard', 'attendance-dashboard'
     ],
     moduleAccessLevels: {
-      'dashboard': 'NO_ACCESS',
+      'dashboard': 'VIEW_ONLY',
       'billing': 'NO_ACCESS',
       'articulation': 'NO_ACCESS',
       'inventory': 'NO_ACCESS',
@@ -171,10 +171,10 @@ const defaultRolePermissions = {
   },
   tailor: {
     allowedModules: [
-      'articulation', 'attendance-dashboard'
+      'dashboard', 'articulation', 'attendance-dashboard'
     ],
     moduleAccessLevels: {
-      'dashboard': 'NO_ACCESS',
+      'dashboard': 'VIEW_ONLY',
       'billing': 'NO_ACCESS',
       'articulation': 'FULL_CONTROL',
       'inventory': 'NO_ACCESS',

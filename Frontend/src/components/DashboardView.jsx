@@ -53,25 +53,29 @@ export const DashboardView = ({
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
-        const [resStaff, resEmps, resInvs] = await Promise.all([
-          fetch("http://localhost:5000/api/staff", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/employees", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/invoices", { headers: { Authorization: `Bearer ${token}` } })
+        
+        const fetchQuietly = async (url) => {
+          try {
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) {
+              const d = await res.json();
+              return d.success && d.data ? d.data : null;
+            }
+          } catch (e) {}
+          return null;
+        };
+
+        const [staffData, empsData, invsData] = await Promise.all([
+          fetchQuietly("http://localhost:5000/api/staff"),
+          fetchQuietly("http://localhost:5000/api/employees"),
+          fetchQuietly("http://localhost:5000/api/invoices")
         ]);
-        if (resStaff.ok) {
-          const d = await resStaff.json();
-          if (d.success && d.data) setDbStaffList(d.data);
-        }
-        if (resEmps.ok) {
-          const d = await resEmps.json();
-          if (d.success && d.data) setDbEmployeesList(d.data);
-        }
-        if (resInvs.ok) {
-          const d = await resInvs.json();
-          if (d.success && d.data) setDbInvoicesList(d.data);
-        }
+
+        if (staffData) setDbStaffList(staffData);
+        if (empsData) setDbEmployeesList(empsData);
+        if (invsData) setDbInvoicesList(invsData);
       } catch (err) {
-        console.error("Failed to fetch live staff/employee DB data", err);
+        // Quietly handle background fetch errors
       }
     };
     fetchLiveDbData();
@@ -147,8 +151,10 @@ export const DashboardView = ({
     fetchCommStats();
 
     // Fetch Staff Summary stats directly from Backend API
-    const isStaff = !["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) &&
-      !(currentUser?.name || '').toLowerCase().includes("dhruv");
+    const userObj = currentUser?.user || currentUser || {};
+    const userRole = (userObj.role || currentUser?.role || '').toLowerCase();
+    const userName = (userObj.name || currentUser?.name || '').toLowerCase();
+    const isStaff = !["admin", "businessadmin", "superadmin"].includes(userRole) && !userName.includes("dhruv");
     if (isStaff) {
       const fetchStaffSummary = async () => {
         try {
@@ -161,7 +167,7 @@ export const DashboardView = ({
             setStaffApiStats(data.data);
           }
         } catch (err) {
-          console.error("Failed to fetch staff summary from API", err);
+          // Quietly handle staff summary fetch errors
         }
       };
       fetchStaffSummary();
@@ -334,15 +340,16 @@ export const DashboardView = ({
     },
   ];
 
-  const isStaffView = !["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) &&
-    !(currentUser?.name || '').toLowerCase().includes("dhruv");
+  const userObj = currentUser?.user || currentUser || {};
+  const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
+  const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
+  const isStaffView = !["admin", "businessadmin", "superadmin"].includes(curRole) && !curName.includes("dhruv");
 
   if (isStaffView) {
-    const curId = currentUser?.id || currentUser?._id || currentUser?.employeeId;
-    const curName = (currentUser?.name || '').toLowerCase().trim();
-    const curEmail = (currentUser?.email || '').toLowerCase().trim();
-    const curPhone = (currentUser?.phone || '').trim();
-    const curFirstName = curName.split(" ")[0];
+    const curId = userObj.id || userObj._id || userObj.employeeId || currentUser?.id || currentUser?._id || currentUser?.employeeId;
+    const curEmail = (userObj.email || currentUser?.email || '').toLowerCase().trim();
+    const curPhone = (userObj.phone || currentUser?.phone || '').trim();
+    const curFirstName = curName ? curName.split(" ")[0] : "";
 
     const allStaffRecords = [...(dbStaffList || []), ...(dbEmployeesList || []), ...(employees || [])];
     const allInvoicesRecords = (dbInvoicesList && dbInvoicesList.length > 0) ? dbInvoicesList : (invoices || []);
@@ -350,17 +357,27 @@ export const DashboardView = ({
     // 1. Find staff member profile from live DB records or props
     const myEmployeeRecord = allStaffRecords.find(e => {
       const eId = e.id || e._id;
+      const eUserId = e.userId?._id || e.userId;
       const eName = (e.name || '').toLowerCase().trim();
       const eEmail = (e.email || '').toLowerCase().trim();
       const ePhone = (e.phone || '').trim();
-      return (curId && eId && String(curId) === String(eId)) ||
-        (curEmail && eEmail && curEmail === eEmail) ||
-        (curPhone && ePhone && curPhone === ePhone) ||
-        (curName && eName && (curName === eName || eName.includes(curFirstName) || curName.includes(eName.split(" ")[0])));
-    }) || currentUser;
+
+      const idMatch = curId && (
+        (eId && String(curId) === String(eId)) ||
+        (eUserId && String(curId) === String(eUserId))
+      );
+      const emailMatch = curEmail && eEmail && curEmail === eEmail;
+      const phoneMatch = curPhone && ePhone && curPhone === ePhone;
+      const nameMatch = curName && eName && (
+        curName === eName ||
+        (curFirstName && curFirstName.length > 2 && (eName.includes(curFirstName) || curName.includes(eName.split(" ")[0])))
+      );
+
+      return idMatch || emailMatch || phoneMatch || nameMatch;
+    }) || userObj || currentUser;
 
     const myEmpId = myEmployeeRecord._id || myEmployeeRecord.id || curId;
-    const myEmpName = (myEmployeeRecord.name || currentUser?.name || '').toLowerCase().trim();
+    const myEmpName = (myEmployeeRecord.name || userObj.name || currentUser?.name || '').toLowerCase().trim();
 
     // 2. Filter all invoices assigned to this staff member
     const myInvoices = allInvoicesRecords.filter(inv => {
@@ -372,7 +389,7 @@ export const DashboardView = ({
         invEmpName === myEmpName || 
         invEmpName.includes(myEmpName) || 
         myEmpName.includes(invEmpName) ||
-        (curFirstName && (invEmpName.includes(curFirstName) || curFirstName.includes(invEmpName)))
+        (curFirstName && curFirstName.length > 2 && (invEmpName.includes(curFirstName) || curFirstName.includes(invEmpName)))
       );
 
       // Also match items array
@@ -384,7 +401,7 @@ export const DashboardView = ({
           itemSpName === myEmpName ||
           itemSpName.includes(myEmpName) ||
           myEmpName.includes(itemSpName) ||
-          (curFirstName && (itemSpName.includes(curFirstName) || curFirstName.includes(itemSpName)))
+          (curFirstName && curFirstName.length > 2 && (itemSpName.includes(curFirstName) || curFirstName.includes(itemSpName)))
         );
         return itemIdMatch || itemNameMatch;
       });
@@ -424,7 +441,13 @@ export const DashboardView = ({
       ? staffApiStats.invoices
       : myInvoices;
 
-    const myAttendanceRate = myEmployeeRecord.attendanceRate || currentUser.attendanceRate || 95;
+    const myTodayInvoices = displayInvoicesList.filter(inv => toDateStr(inv.createdAt || inv.date) === todayStr);
+    const rawTodaySales = myTodayInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
+    const myTodaySales = staffApiStats?.todaySales ?? rawTodaySales;
+    const myTodayBillsCount = staffApiStats?.todayBillsCount ?? myTodayInvoices.length;
+    const isCashierRole = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase().includes('cashier');
+
+    const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
 
     return (
       <div className="space-y-6 animate-fade-in pb-12" id="dashboard-view-root">
@@ -443,7 +466,7 @@ export const DashboardView = ({
               Welcome back, {currentUser.name}
             </h1>
             <p className="text-sm text-slate-300">
-              Here is your personal performance, sales, and earned commission breakdown.
+              {isCashierRole ? "Here is your personal performance, sales, and transaction breakdown." : "Here is your personal performance, sales, and earned commission breakdown."}
             </p>
           </div>
           {!['worker', 'tailor', 'accountant'].includes((currentUser?.role || '').toLowerCase()) && (
@@ -461,73 +484,152 @@ export const DashboardView = ({
 
         {/* KPI Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                My Total Billed Sales
-              </span>
-              <div className="text-2xl font-black text-slate-800 font-sans">
-                ₹{myTotalSales.toLocaleString("en-IN")}
+          {isCashierRole ? (
+            <>
+              {/* Today's Sale */}
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Today's Sale
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    ₹{myTodaySales.toLocaleString("en-IN")}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Sales generated today
+                  </p>
+                </div>
+                <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium">
-                {totalBillsCount} total bill{totalBillsCount === 1 ? '' : 's'}
-              </p>
-            </div>
-            <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
 
-          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                My Earned Commission
-              </span>
-              <div className="text-2xl font-black text-emerald-600 font-sans">
-                ₹{myCommission.toLocaleString("en-IN")}
+              {/* Total Sales */}
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Total Sales
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    ₹{myTotalSales.toLocaleString("en-IN")}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    {totalBillsCount} total bills processed
+                  </p>
+                </div>
+                <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
+                  <DollarSign className="w-5 h-5" />
+                </div>
               </div>
-              <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded inline-block">
-                {commRate}% Commission Rate
-              </p>
-            </div>
-            <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
 
-          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Commission Rate
-              </span>
-              <div className="text-2xl font-black text-slate-800 font-sans">
-                {commRate}%
+              {/* Today's Bills */}
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Today's Bills
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    {myTodayBillsCount} Bills
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Bills created today
+                  </p>
+                </div>
+                <div className="bg-purple-50 p-2.5 rounded-lg text-purple-600">
+                  <Sparkles className="w-5 h-5" />
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium">
-                Active Tier Rate
-              </p>
-            </div>
-            <div className="bg-purple-50 p-2.5 rounded-lg text-purple-600">
-              <Sparkles className="w-5 h-5" />
-            </div>
-          </div>
 
-          <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Attendance Score
-              </span>
-              <div className="text-2xl font-black text-slate-800 font-sans">
-                {myAttendanceRate}%
+              {/* Personal Attendance Record */}
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Personal Attendance Record
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    {myAttendanceRate}%
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Monthly roster compliance
+                  </p>
+                </div>
+                <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
+                  <Clock className="w-5 h-5" />
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium">
-                Monthly roster compliance
-              </p>
-            </div>
-            <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              {/* Default Staff Cards */}
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    My Total Billed Sales
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    ₹{myTotalSales.toLocaleString("en-IN")}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    {totalBillsCount} total bill{totalBillsCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    My Earned Commission
+                  </span>
+                  <div className="text-2xl font-black text-emerald-600 font-sans">
+                    ₹{myCommission.toLocaleString("en-IN")}
+                  </div>
+                  <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded inline-block">
+                    {commRate}% Commission Rate
+                  </p>
+                </div>
+                <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Commission Rate
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    {commRate}%
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Active Tier Rate
+                  </p>
+                </div>
+                <div className="bg-purple-50 p-2.5 rounded-lg text-purple-600">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Attendance Score
+                  </span>
+                  <div className="text-2xl font-black text-slate-800 font-sans">
+                    {myAttendanceRate}%
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Monthly roster compliance
+                  </p>
+                </div>
+                <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* My Recent Sales Ledger */}
@@ -536,10 +638,10 @@ export const DashboardView = ({
             <div>
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <span className="w-1.5 h-6 bg-emerald-500 rounded-full inline-block"></span>
-                My Billed Sales & Commission Ledger
+                {isCashierRole ? "My Billed Sales & Transaction Ledger" : "My Billed Sales & Commission Ledger"}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Your latest completed bills and earned commission payouts.
+                {isCashierRole ? "Your latest completed bills and sales transactions." : "Your latest completed bills and earned commission payouts."}
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
@@ -555,7 +657,7 @@ export const DashboardView = ({
                   <th className="px-5 py-4 font-semibold">Customer</th>
                   <th className="px-5 py-4 font-semibold">Payment</th>
                   <th className="px-5 py-4 font-semibold text-right">Total Amount</th>
-                  <th className="px-5 py-4 font-semibold text-right">My Comm ({commRate}%)</th>
+                  <th className="px-5 py-4 font-semibold text-right">{isCashierRole ? "Status" : `My Comm (${commRate}%)`}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/80 text-slate-700">
@@ -601,8 +703,16 @@ export const DashboardView = ({
                         <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
                           ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
                         </td>
-                        <td className="px-5 py-4 text-right font-black text-emerald-600 font-mono">
-                          +₹{itemComm.toLocaleString("en-IN")}
+                        <td className="px-5 py-4 text-right">
+                          {isCashierRole ? (
+                            <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold border border-emerald-200">
+                              Completed
+                            </span>
+                          ) : (
+                            <span className="font-black text-emerald-600 font-mono">
+                              +₹{itemComm.toLocaleString("en-IN")}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

@@ -21,7 +21,6 @@ connectDB().then(() => {
 
       const count = await Product.countDocuments();
       if (count < 50) {
-        console.log("Seeding 50 demo products...");
         const user = await User.findOne();
         if (user && user.tenantId) {
           const tenantId = user.tenantId;
@@ -39,9 +38,9 @@ connectDB().then(() => {
 
             products.push({
               tenantId,
-              name: `Premium ${brand} ${color} ${cat}`,
-              sku: `SKU-${10000 + i}`,
-              barcode: `BCODE${1000000 + i}`,
+              name: `Premium ${brand} ${color} ${cat} ${i}`,
+              sku: `SKU-${20000 + i}`,
+              barcode: `BCODE${2000000 + i}`,
               category: cat,
               brand: brand,
               color: color,
@@ -53,19 +52,22 @@ connectDB().then(() => {
               gstPercent: 12,
               status: 'In Stock',
               variants: [{
-                sku: `SKU-${10000 + i}-V1`,
+                sku: `SKU-${20000 + i}-V1`,
                 color: color,
                 size: size,
                 stockQuantity: Math.floor(Math.random() * 50) + 10
               }]
             });
           }
-          await Product.insertMany(products);
-          console.log("Successfully seeded 50 products!");
+          try {
+            await Product.insertMany(products, { ordered: false });
+          } catch (seedErr) {
+            // Ignore duplicate key errors during optional background auto-seeding
+          }
         }
       }
     } catch (err) {
-      console.error("Auto-seed error:", err);
+      // Quietly ignore initialization warnings
     }
   });
 

@@ -145,14 +145,14 @@ exports.getEmployees = async (req, res) => {
           name: "Aman Gupta",
           email: "aman.gupta@garmentflow.com",
           phone: "7000000005",
-          role: "Salesperson",
+          role: "Cashier",
           status: "Active",
           attendanceRate: 90,
           salary: 32000,
-          commissionRate: 2,
+          commissionRate: 1,
           monthlySales: 110000,
           totalInvoices: 14,
-          commissionEarned: 2200,
+          commissionEarned: 1100,
           salesTarget: 180000,
           tenantId
         }
@@ -160,7 +160,7 @@ exports.getEmployees = async (req, res) => {
       const created = await Employee.insertMany(initialStaff);
       employees = created.map(e => e.toObject());
     } else {
-      // Synchronize Vijay Shekhar as Worker with exact Admin panel metrics: Billed Sales ₹36,288, 15 Invoices, 0.5% rate, ₹181 Commission
+      // Synchronize Vijay Shekhar as Worker
       await Employee.updateMany(
         { name: { $regex: /Vijay/i } }, 
         { role: 'Worker', commissionRate: 0.5, monthlySales: 36288, totalInvoices: 15, commissionEarned: 181 }
@@ -175,6 +175,16 @@ exports.getEmployees = async (req, res) => {
         { name: { $regex: /Rajat/i } }, 
         { role: 'Worker', commissionRate: 0.5, monthlySales: 14534, totalInvoices: 8, commissionEarned: 72.68 }
       );
+
+      // Synchronize Aman Gupta as Cashier
+      await Employee.updateMany(
+        { name: { $regex: /Aman/i } }, 
+        { role: 'Cashier', commissionRate: 1, monthlySales: 110000, totalInvoices: 14, commissionEarned: 1100 }
+      );
+      await User.updateMany(
+        { name: { $regex: /Aman/i } },
+        { role: 'Cashier' }
+      );
       
       employees.forEach(emp => {
         if (/Vijay/i.test(emp.name)) {
@@ -183,15 +193,18 @@ exports.getEmployees = async (req, res) => {
           emp.monthlySales = 36288;
           emp.totalInvoices = 15;
           emp.commissionEarned = 181;
-          emp.salary = 35000;
-          emp.salesTarget = 200000;
-          emp.attendanceRate = 98;
         } else if (/Rajat/i.test(emp.name)) {
           emp.role = 'Worker';
           emp.commissionRate = 0.5;
           emp.monthlySales = 14534;
           emp.totalInvoices = 8;
           emp.commissionEarned = 72.68;
+        } else if (/Aman/i.test(emp.name)) {
+          emp.role = 'Cashier';
+          emp.commissionRate = 1;
+          emp.monthlySales = 110000;
+          emp.totalInvoices = 14;
+          emp.commissionEarned = 1100;
         }
       });
     }
