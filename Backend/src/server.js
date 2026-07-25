@@ -14,6 +14,14 @@ connectDB().then(() => {
   server.listen(PORT, async () => {
     console.log(`backend running on localhost link: http://localhost:${PORT}`);
 
+    // Enterprise Startup Database Integrity Check & Auto-Repair
+    try {
+      const DbIntegrityChecker = require('./services/dbIntegrityChecker');
+      await DbIntegrityChecker.runCheckAndRepair();
+    } catch (integrityErr) {
+      console.warn('Startup DbIntegrityChecker note:', integrityErr.message);
+    }
+
     // Auto-seed 50 products if none exist
     try {
       const Product = require('./models/productModel');
