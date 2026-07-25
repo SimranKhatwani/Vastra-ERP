@@ -35,13 +35,13 @@ class UniversalDashboardService {
     const liveSalesTotal = assignedInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
     const liveInvoiceCount = assignedInvoices.length;
 
-    const totalSales = typeof empDoc?.monthlySales === 'number' && empDoc.monthlySales > 0
-      ? empDoc.monthlySales
-      : liveSalesTotal;
+    const totalSales = liveInvoiceCount > 0
+      ? liveSalesTotal
+      : (typeof empDoc?.monthlySales === 'number' && empDoc.monthlySales > 0 ? empDoc.monthlySales : 0);
 
-    const invoiceCount = typeof empDoc?.totalInvoices === 'number' && empDoc.totalInvoices > 0
-      ? empDoc.totalInvoices
-      : liveInvoiceCount;
+    const invoiceCount = liveInvoiceCount > 0
+      ? liveInvoiceCount
+      : (typeof empDoc?.totalInvoices === 'number' && empDoc.totalInvoices > 0 ? empDoc.totalInvoices : 0);
 
     // 4. Compute commission metrics
     const parsedRate = parseFloat(empDoc?.commissionRate ?? resolvedCommRate);

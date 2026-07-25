@@ -1,5 +1,6 @@
 const Employee = require('../models/employeeModel');
 const User = require('../models/userModel');
+const Invoice = require('../models/invoiceModel');
 const { generateSecurePassword } = require('../utils/passwordGenerator');
 const { encryptPassword, decryptPassword } = require('../utils/encryption');
 const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
@@ -34,9 +35,9 @@ exports.createEmployee = async (req, res) => {
       businessCode: req.user.businessCode,
       employeeId: employee._id,
       name: req.body.name,
-      email: req.body.email || `${req.body.phone}@garmenterp.com`, // fallback email if not provided
+      email: req.body.email || `${req.body.phone}@garmenterp.com`,
       phone: req.body.phone,
-      role: req.body.role || 'Cashier', // fallback role
+      role: req.body.role || 'Salesperson',
       passwordHash: plainPassword,
       encryptedPassword: encryptedPassword,
       isActive: true
@@ -62,166 +63,45 @@ exports.getEmployees = async (req, res) => {
   try {
     const tenantId = req.user?.tenantId;
     const filter = tenantId ? { tenantId } : {};
-    let employees = await Employee.find(filter).sort('-createdAt').lean();
+    const employees = await Employee.find(filter).sort('-createdAt').lean();
 
-    if (employees.length === 0) {
-      const initialStaff = [
-        {
-          name: "Vijay Shekhar",
-          email: "vijay.shekhar@garmentflow.com",
-          phone: "7000000000",
-          role: "Worker",
-          status: "Active",
-          attendanceRate: 98,
-          salary: 35000,
-          commissionRate: 0.5,
-          monthlySales: 36288,
-          totalInvoices: 15,
-          commissionEarned: 181,
-          salesTarget: 200000,
-          tenantId
-        },
-        {
-          name: "Hitesh Kumar",
-          email: "hitesh.kumar@garmentflow.com",
-          phone: "7000000001",
-          role: "Salesperson",
-          status: "Active",
-          attendanceRate: 95,
-          salary: 55000,
-          commissionRate: 1.5,
-          monthlySales: 46471,
-          totalInvoices: 12,
-          commissionEarned: Math.round(46471 * 0.015),
-          salesTarget: 300000,
-          tenantId
-        },
-        {
-          name: "Rajat Sharma",
-          email: "rajat.sharma@garmentflow.com",
-          phone: "7000000002",
-          role: "Worker",
-          status: "Active",
-          attendanceRate: 92,
-          salary: 35000,
-          commissionRate: 0.5,
-          monthlySales: 14534,
-          totalInvoices: 8,
-          commissionEarned: 72.68,
-          salesTarget: 200000,
-          tenantId
-        },
-        {
-          name: "Mahesh Verma",
-          email: "mahesh.verma@garmentflow.com",
-          phone: "7000000003",
-          role: "Tailor",
-          status: "Active",
-          attendanceRate: 96,
-          salary: 40000,
-          commissionRate: 4,
-          monthlySales: 125000,
-          totalInvoices: 15,
-          commissionEarned: 5000,
-          salesTarget: 150000,
-          tenantId
-        },
-        {
-          name: "Ram Singh",
-          email: "ram.singh@garmentflow.com",
-          phone: "7000000004",
-          role: "Cashier",
-          status: "Active",
-          attendanceRate: 94,
-          salary: 30000,
-          commissionRate: 1,
-          monthlySales: 95000,
-          totalInvoices: 20,
-          commissionEarned: 950,
-          salesTarget: 100000,
-          tenantId
-        },
-        {
-          name: "Aman Gupta",
-          email: "aman.gupta@garmentflow.com",
-          phone: "7000000005",
-          role: "Cashier",
-          status: "Active",
-          attendanceRate: 90,
-          salary: 32000,
-          commissionRate: 1,
-          monthlySales: 110000,
-          totalInvoices: 14,
-          commissionEarned: 1100,
-          salesTarget: 180000,
-          tenantId
-        }
-      ];
-      const created = await Employee.insertMany(initialStaff);
-      employees = created.map(e => e.toObject());
-    } else {
-      // Synchronize Vijay Shekhar as Worker
-      await Employee.updateMany(
-        { name: { $regex: /Vijay/i } }, 
-        { role: 'Worker', commissionRate: 0.5, monthlySales: 36288, totalInvoices: 15, commissionEarned: 181 }
-      );
-      await User.updateMany(
-        { name: { $regex: /Vijay/i } },
-        { role: 'Worker' }
-      );
-      
-      // Synchronize Rajat Sharma as Worker
-      await Employee.updateMany(
-        { name: { $regex: /Rajat/i } }, 
-        { role: 'Worker', commissionRate: 0.5, monthlySales: 14534, totalInvoices: 8, commissionEarned: 72.68 }
-      );
+    // Dynamically calculate live MongoDB invoice totals for every single employee
+    for (const emp of employees) {
+      const empInvoices = await Invoice.find({
+        tenantId,
+        $or: [
+          { salespersonId: emp._id },
+          { workerId: emp._id },
+          { employeeId: emp._id },
+          { 'items.salespersonId': emp._id },
+          { 'items.workerId': emp._id },
+          { 'items.employeeId': emp._id }
+        ]
+      }).lean();
 
-      // Synchronize Aman Gupta as Cashier
-      await Employee.updateMany(
-        { name: { $regex: /Aman/i } }, 
-        { role: 'Cashier', commissionRate: 1, monthlySales: 110000, totalInvoices: 14, commissionEarned: 1100 }
-      );
-      await User.updateMany(
-        { name: { $regex: /Aman/i } },
-        { role: 'Cashier' }
-      );
-      
-      employees.forEach(emp => {
-        if (/Vijay/i.test(emp.name)) {
-          emp.role = 'Worker';
-          emp.commissionRate = 0.5;
-          emp.monthlySales = 36288;
-          emp.totalInvoices = 15;
-          emp.commissionEarned = 181;
-        } else if (/Rajat/i.test(emp.name)) {
-          emp.role = 'Worker';
-          emp.commissionRate = 0.5;
-          emp.monthlySales = 14534;
-          emp.totalInvoices = 8;
-          emp.commissionEarned = 72.68;
-        } else if (/Aman/i.test(emp.name)) {
-          emp.role = 'Cashier';
-          emp.commissionRate = 1;
-          emp.monthlySales = 110000;
-          emp.totalInvoices = 14;
-          emp.commissionEarned = 1100;
-        }
-      });
-    }
-      
-    // Decrypt passwords if user is Admin or SuperAdmin
-    if (req.user && (req.user.role === 'Admin' || req.user.role === 'BusinessAdmin' || req.user.role === 'SuperAdmin')) {
-      employees.forEach(s => {
-        if (s.encryptedPassword) {
+      const liveSales = empInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+      const liveCount = empInvoices.length;
+      const commRate = emp.commissionRate || (emp.role === 'Worker' ? 0.5 : (emp.role === 'Tailor' ? 4 : (emp.role === 'Cashier' ? 1 : 1.5)));
+      const liveComm = Math.round(liveSales * (commRate / 100) * 100) / 100;
+
+      // Always return live DB figures if invoices exist, otherwise fallback to document fields
+      emp.monthlySales = liveCount > 0 ? liveSales : (emp.monthlySales || 0);
+      emp.totalInvoices = liveCount > 0 ? liveCount : (emp.totalInvoices || 0);
+      emp.commissionEarned = liveCount > 0 ? liveComm : (emp.commissionEarned || 0);
+      emp.commissionRate = commRate;
+
+      // Decrypt passwords if user is Admin or SuperAdmin
+      if (req.user && (req.user.role === 'Admin' || req.user.role === 'BusinessAdmin' || req.user.role === 'SuperAdmin')) {
+        if (emp.encryptedPassword) {
           try {
-            s.password = decryptPassword(s.encryptedPassword);
+            emp.password = decryptPassword(emp.encryptedPassword);
           } catch (e) {
-            s.password = "Error Decrypting";
+            emp.password = "Error Decrypting";
           }
         } else {
-          s.password = "N/A";
+          emp.password = "N/A";
         }
-      });
+      }
     }
 
     res.status(200).json({ success: true, count: employees.length, data: employees });
@@ -265,7 +145,14 @@ exports.deleteEmployee = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }
 
-    await employee.deleteOne();
+    await employee.remove();
+
+    emitToTenant(tenantId, 'employee.deleted', {
+      employeeId: req.params.id,
+      tenantId,
+      event: 'employee.deleted'
+    });
+
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -275,24 +162,17 @@ exports.deleteEmployee = async (req, res) => {
 exports.disburseCommission = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const { amount } = req.body;
-    
-    let employee = await Employee.findOne({ _id: req.params.id, tenantId });
+    const employee = await Employee.findOne({ _id: req.params.id, tenantId });
 
     if (!employee) {
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }
 
-    employee.commissionEarned = Math.max(0, employee.commissionEarned - amount);
+    const paidAmount = employee.commissionEarned || 0;
+    employee.commissionEarned = 0;
     await employee.save();
 
-    emitToTenant(tenantId, 'commission.updated', {
-      employee,
-      tenantId,
-      event: 'commission.updated'
-    });
-
-    res.status(200).json({ success: true, data: employee });
+    res.status(200).json({ success: true, message: `Disbursed ₹${paidAmount} commission`, data: employee });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
