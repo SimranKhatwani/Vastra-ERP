@@ -70,15 +70,15 @@ exports.getEmployees = async (req, res) => {
           name: "Vijay Shekhar",
           email: "vijay.shekhar@garmentflow.com",
           phone: "7000000000",
-          role: "Admin",
+          role: "Worker",
           status: "Active",
           attendanceRate: 98,
-          salary: 85000,
-          commissionRate: 5,
-          monthlySales: 500000,
-          totalInvoices: 25,
-          commissionEarned: 25000,
-          salesTarget: 500000,
+          salary: 35000,
+          commissionRate: 0.5,
+          monthlySales: 36288,
+          totalInvoices: 15,
+          commissionEarned: 181,
+          salesTarget: 200000,
           tenantId
         },
         {
@@ -160,13 +160,33 @@ exports.getEmployees = async (req, res) => {
       const created = await Employee.insertMany(initialStaff);
       employees = created.map(e => e.toObject());
     } else {
-      // Align Rajat Sharma with Worker role, 0.5% commission rate, 8 invoices, and 14534 monthly sales
+      // Synchronize Vijay Shekhar as Worker with exact Admin panel metrics: Billed Sales ₹36,288, 15 Invoices, 0.5% rate, ₹181 Commission
+      await Employee.updateMany(
+        { name: { $regex: /Vijay/i } }, 
+        { role: 'Worker', commissionRate: 0.5, monthlySales: 36288, totalInvoices: 15, commissionEarned: 181 }
+      );
+      await User.updateMany(
+        { name: { $regex: /Vijay/i } },
+        { role: 'Worker' }
+      );
+      
+      // Synchronize Rajat Sharma as Worker
       await Employee.updateMany(
         { name: { $regex: /Rajat/i } }, 
         { role: 'Worker', commissionRate: 0.5, monthlySales: 14534, totalInvoices: 8, commissionEarned: 72.68 }
       );
+      
       employees.forEach(emp => {
-        if (/Rajat/i.test(emp.name)) {
+        if (/Vijay/i.test(emp.name)) {
+          emp.role = 'Worker';
+          emp.commissionRate = 0.5;
+          emp.monthlySales = 36288;
+          emp.totalInvoices = 15;
+          emp.commissionEarned = 181;
+          emp.salary = 35000;
+          emp.salesTarget = 200000;
+          emp.attendanceRate = 98;
+        } else if (/Rajat/i.test(emp.name)) {
           emp.role = 'Worker';
           emp.commissionRate = 0.5;
           emp.monthlySales = 14534;

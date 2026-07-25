@@ -41,20 +41,23 @@ const attachEmployeeDetails = async (userObj) => {
     const cleanName = (userObj.name || '').toLowerCase().trim();
     const firstName = cleanName.split(' ')[0];
 
+    const searchConditions = [];
+    if (userObj.employeeId) searchConditions.push({ _id: userObj.employeeId });
+    if (userObj.id) searchConditions.push({ userId: userObj.id });
+    if (cleanEmail) searchConditions.push({ email: cleanEmail });
+    if (cleanName) searchConditions.push({ name: { $regex: new RegExp(`^${cleanName}$`, 'i') } });
+    if (firstName) searchConditions.push({ name: { $regex: new RegExp(firstName, 'i') } });
+
     const emp = await Employee.findOne({
       tenantId: cleanTenantId,
-      $or: [
-        { email: cleanEmail },
-        { name: { $regex: new RegExp(`^${cleanName}$`, 'i') } },
-        { name: { $regex: new RegExp(firstName, 'i') } }
-      ]
+      $or: searchConditions
     }).lean();
 
     if (emp) {
       return {
         ...userObj,
         employeeId: emp._id,
-        commissionRate: emp.commissionRate ?? 0,
+        commissionRate: emp.commissionRate ?? (emp.role?.toLowerCase()?.includes('worker') ? 0.5 : (emp.role?.toLowerCase()?.includes('tailor') ? 4 : 1.5)),
         monthlySales: emp.monthlySales ?? 0,
         commissionEarned: emp.commissionEarned ?? Math.round((emp.monthlySales || 0) * ((emp.commissionRate || 0) / 100)),
         salary: emp.salary ?? 0,
@@ -111,6 +114,7 @@ exports.login = async (req, res) => {
     const permissions = await getTenantPermissions(user.tenantId?._id || user.tenantId);
     let baseUser = { 
       id: user._id, 
+      employeeId: user.employeeId,
       name: user.name, 
       email: user.email, 
       role: user.role,

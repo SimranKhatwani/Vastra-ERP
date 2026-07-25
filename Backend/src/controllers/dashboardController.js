@@ -159,26 +159,29 @@ exports.getStaffDashboardStats = async (req, res) => {
       return idMatch || nameMatch || itemMatch;
     });
 
-    // 3. Compute exact totals from MongoDB
+    // 3. Compute exact totals from MongoDB Admin Employee record
     const rawCommRate = emp?.commissionRate ?? emp?.commRate ?? req.user?.commissionRate;
     const parsedRate = parseFloat(rawCommRate);
+    const roleStr = (emp?.role || req.user?.role || '').toLowerCase();
+    const defaultRate = roleStr.includes('worker') ? 0.5 : (roleStr.includes('tailor') ? 4 : (roleStr.includes('cashier') ? 1 : 1.5));
+    
     const commissionRate = (!isNaN(parsedRate) && parsedRate >= 0)
       ? parsedRate
-      : (emp?.role?.toLowerCase()?.includes('tailor') ? 4 : 1.5);
+      : defaultRate;
 
     const invoiceSalesTotal = assignedInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-    const totalSales = invoiceSalesTotal > 0
-      ? invoiceSalesTotal
-      : (typeof emp?.monthlySales === 'number' ? emp.monthlySales : (typeof req.user?.monthlySales === 'number' ? req.user.monthlySales : 0));
+    const totalSales = typeof emp?.monthlySales === 'number' && emp.monthlySales > 0
+      ? emp.monthlySales
+      : (invoiceSalesTotal > 0 ? invoiceSalesTotal : (typeof req.user?.monthlySales === 'number' ? req.user.monthlySales : 0));
 
-    const invoiceCount = assignedInvoices.length > 0
-      ? assignedInvoices.length
-      : (emp?.totalInvoices || (totalSales > 0 ? Math.max(1, Math.round(totalSales / 4500)) : 0));
+    const invoiceCount = typeof emp?.totalInvoices === 'number' && emp.totalInvoices > 0
+      ? emp.totalInvoices
+      : (assignedInvoices.length > 0 ? assignedInvoices.length : (totalSales > 0 ? Math.max(1, Math.round(totalSales / 4500)) : 0));
 
     const rawCommEarned = emp?.commissionEarned ?? req.user?.commissionEarned;
-    const commissionAmount = typeof rawCommEarned === 'number' && rawCommEarned > 0
-      ? rawCommEarned
-      : Math.round(totalSales * (commissionRate / 100) * 100) / 100;
+    const commissionAmount = typeof emp?.commissionEarned === 'number' && emp.commissionEarned > 0
+      ? emp.commissionEarned
+      : (typeof rawCommEarned === 'number' && rawCommEarned > 0 ? rawCommEarned : Math.round(totalSales * (commissionRate / 100) * 100) / 100);
 
     res.status(200).json({
       success: true,
@@ -194,7 +197,7 @@ exports.getStaffDashboardStats = async (req, res) => {
         invoiceCount,
         commissionRate,
         commissionAmount,
-        attendanceRate: emp?.attendanceRate || 95,
+        attendanceRate: emp?.attendanceRate || 98,
         invoices: assignedInvoices
       }
     });

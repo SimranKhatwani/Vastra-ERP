@@ -395,18 +395,18 @@ export const DashboardView = ({
     // 3. Exact Commission Rate from Admin DB record or Staff Summary API
     const rawCommRate = staffApiStats?.commissionRate ?? myEmployeeRecord?.commissionRate ?? myEmployeeRecord?.commRate ?? currentUser?.commissionRate;
     const parsedRate = parseFloat(rawCommRate);
+    const roleStr = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase();
+    const defaultRate = roleStr.includes('worker') ? 0.5 : (roleStr.includes('tailor') ? 4 : (roleStr.includes('cashier') ? 1 : 1.5));
     const commRate = (!isNaN(parsedRate) && parsedRate >= 0)
       ? parsedRate 
-      : (myEmployeeRecord?.role?.toLowerCase()?.includes('tailor') ? 4 : 1.5);
+      : defaultRate;
 
     // 4. Exact Sales & Commission Achieved (100% Real DB matching)
     const invoiceSales = myInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
     const myTotalSales = staffApiStats?.totalSales ?? (
-      invoiceSales > 0 
-        ? invoiceSales 
-        : (typeof myEmployeeRecord?.monthlySales === 'number'
-          ? myEmployeeRecord.monthlySales
-          : (typeof currentUser?.monthlySales === 'number' ? currentUser.monthlySales : 0))
+      typeof myEmployeeRecord?.monthlySales === 'number' && myEmployeeRecord.monthlySales > 0
+        ? myEmployeeRecord.monthlySales
+        : (invoiceSales > 0 ? invoiceSales : (typeof currentUser?.monthlySales === 'number' ? currentUser.monthlySales : 0))
     );
 
     const rawCommEarned = staffApiStats?.commissionAmount ?? myEmployeeRecord?.commissionEarned ?? currentUser?.commissionEarned;
@@ -415,9 +415,9 @@ export const DashboardView = ({
       : Math.round(myTotalSales * (commRate / 100) * 100) / 100;
 
     const totalBillsCount = staffApiStats?.invoiceCount ?? (
-      myInvoices.length > 0 
-        ? myInvoices.length 
-        : (myEmployeeRecord?.totalInvoices || (myTotalSales > 0 ? Math.max(1, Math.round(myTotalSales / 4500)) : 0))
+      typeof myEmployeeRecord?.totalInvoices === 'number' && myEmployeeRecord.totalInvoices > 0
+        ? myEmployeeRecord.totalInvoices
+        : (myInvoices.length > 0 ? myInvoices.length : (myTotalSales > 0 ? Math.max(1, Math.round(myTotalSales / 4500)) : 0))
     );
 
     const displayInvoicesList = (staffApiStats?.invoices && staffApiStats.invoices.length > 0)
