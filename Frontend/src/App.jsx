@@ -183,16 +183,12 @@ export default function App() {
         setInvoices((prev) => [{ ...payload.invoice, id: payload.invoice._id }, ...prev]);
       }
 
-      if (payload?.event === 'purchase.created' || payload?.event === 'purchase.approved') {
-        setPurchaseOrders((prev) => [{ ...payload.purchaseOrder, id: payload.purchaseOrder._id }, ...prev]);
-      }
-
-      if (payload?.event === 'dashboard.stats.updated') {
-        // no-op, dashboard will re-render from state changes
+      if (payload?.event === 'permissions.updated') {
+        window.dispatchEvent(new Event("vastra-permissions-updated"));
       }
     };
 
-    const events = ['notification.created','notification.updated','inventory.updated','inventory.low','invoice.created','invoice.updated','purchase.created','purchase.approved','employee.created','employee.updated','commission.updated','supplier.updated','payroll.updated','whatsapp.sent','whatsapp.failed','tenant.activity','dashboard.stats.updated'];
+    const events = ['notification.created','notification.updated','inventory.updated','inventory.low','invoice.created','invoice.updated','purchase.created','purchase.approved','employee.created','employee.updated','commission.updated','supplier.updated','payroll.updated','whatsapp.sent','whatsapp.failed','tenant.activity','dashboard.stats.updated','permissions.updated'];
     events.forEach((eventName) => socket.on(eventName, handleRealtimeEvent));
 
     return () => {
@@ -356,28 +352,10 @@ export default function App() {
   }, []);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
-  // Dynamic RBAC Permission Matrix State
-  const [permissionMatrix, setPermissionMatrix] = useState(() => {
-    try {
-      const saved = localStorage.getItem("vastra_permissions_matrix");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {};
-  });
+  // Dynamic RBAC Permission Matrix State (Fetched directly from MongoDB)
+  const [permissionMatrix, setPermissionMatrix] = useState({});
 
-  // Listen for real-time RBAC updates
-  React.useEffect(() => {
-    const handlePermissionsUpdated = () => {
-      try {
-        const saved = localStorage.getItem("vastra_permissions_matrix");
-        if (saved) setPermissionMatrix(JSON.parse(saved));
-      } catch (e) {}
-    };
-    window.addEventListener("vastra-permissions-updated", handlePermissionsUpdated);
-    return () => window.removeEventListener("vastra-permissions-updated", handlePermissionsUpdated);
-  }, []);
-
-  // Fetch dynamic permissions matrix from API on login / mount
+  // Fetch dynamic permissions matrix directly from API on login / mount / socket event / interval
   React.useEffect(() => {
     const syncPermissions = async () => {
       if (!isLoggedIn) return;
@@ -390,14 +368,26 @@ export default function App() {
         const data = await res.json();
         if (data.success && data.data) {
           setPermissionMatrix(data.data);
-          localStorage.setItem("vastra_permissions_matrix", JSON.stringify(data.data));
         }
       } catch (err) {
-        console.warn("Could not sync permissions from API:", err);
+        console.warn("Could not sync permissions from MongoDB API:", err);
       }
     };
+
     syncPermissions();
-  }, [isLoggedIn]);
+
+    const handlePermEvent = () => {
+      syncPermissions();
+    };
+
+    window.addEventListener("vastra-permissions-updated", handlePermEvent);
+    const intervalId = setInterval(syncPermissions, 3000); // 3-second instant sync check for active staff
+
+    return () => {
+      window.removeEventListener("vastra-permissions-updated", handlePermEvent);
+      clearInterval(intervalId);
+    };
+  }, [isLoggedIn, currentUser?.role]);
 
   // Helper to normalize role keys safely (e.g. "Sales Person" -> "salesperson")
   const normalizeRoleKey = (role) => {
@@ -515,6 +505,9 @@ export default function App() {
         break;
       case "tailor":
         baseModules = ["articulation", "attendance-dashboard"];
+        break;
+      case "worker":
+        baseModules = ["attendance-dashboard"];
         break;
       default:
         baseModules = ["billing", "financial-management", "accounts-treasury"];

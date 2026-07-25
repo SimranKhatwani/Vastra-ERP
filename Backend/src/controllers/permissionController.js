@@ -1,4 +1,5 @@
 const Permission = require('../models/permissionModel');
+const { emitToTenant } = require('../socket/socketServer');
 
 // Standard default module permissions per role
 const defaultRolePermissions = {
@@ -76,19 +77,17 @@ const defaultRolePermissions = {
   },
   worker: {
     allowedModules: [
-      'dashboard', 'billing', 'articulation', 'inventory', 'products',
-      'stock-management', 'billing-sales', 'discount-offers', 'purchase',
-      'customers', 'attendance-dashboard'
+      'attendance-dashboard'
     ],
     moduleAccessLevels: {
-      'dashboard': 'VIEW_ONLY',
-      'billing': 'FULL_CONTROL',
-      'articulation': 'FULL_CONTROL',
-      'inventory': 'FULL_CONTROL',
-      'products': 'FULL_CONTROL',
-      'purchase': 'VIEW_ONLY',
+      'dashboard': 'NO_ACCESS',
+      'billing': 'NO_ACCESS',
+      'articulation': 'NO_ACCESS',
+      'inventory': 'NO_ACCESS',
+      'products': 'NO_ACCESS',
+      'purchase': 'NO_ACCESS',
       'financial-management': 'NO_ACCESS',
-      'customers': 'FULL_CONTROL',
+      'customers': 'NO_ACCESS',
       'employees': 'NO_ACCESS',
       'attendance-dashboard': 'FULL_CONTROL',
       'reports': 'NO_ACCESS',
@@ -96,14 +95,14 @@ const defaultRolePermissions = {
       'settings': 'NO_ACCESS',
     },
     tabPermissions: {
-      'articulation_dashboard': 'FULL_CONTROL',
-      'articulation_reports': 'VIEW_ONLY',
-      'articulation_tracking': 'FULL_CONTROL',
-      'billing_new_bill': 'FULL_CONTROL',
-      'billing_prev_next': 'FULL_CONTROL',
+      'articulation_dashboard': 'NO_ACCESS',
+      'articulation_reports': 'NO_ACCESS',
+      'articulation_tracking': 'NO_ACCESS',
+      'billing_new_bill': 'NO_ACCESS',
+      'billing_prev_next': 'NO_ACCESS',
       'billing_modify_bill': 'NO_ACCESS',
-      'whatsapp_send': 'FULL_CONTROL',
-      'export_csv': 'VIEW_ONLY',
+      'whatsapp_send': 'NO_ACCESS',
+      'export_csv': 'NO_ACCESS',
       'apply_discounts': 'NO_ACCESS',
     }
   },
@@ -240,8 +239,8 @@ const defaultRolePermissions = {
 // @access  Private (Admin / All)
 exports.getPermissions = async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId;
-    const filter = tenantId ? { tenantId } : {};
+    const cleanTenantId = req.user?.tenantId?._id || req.user?.tenantId;
+    const filter = cleanTenantId ? { tenantId: cleanTenantId } : {};
 
     let records = await Permission.find(filter).lean();
 
@@ -249,14 +248,14 @@ exports.getPermissions = async (req, res) => {
     const existingRoles = new Set(records.map(r => r.role ? String(r.role).toLowerCase() : ''));
     const missingRoles = Object.keys(defaultRolePermissions).filter(r => !existingRoles.has(r));
 
-    if (missingRoles.length > 0 && tenantId) {
+    if (missingRoles.length > 0 && cleanTenantId) {
       for (const role of missingRoles) {
         const def = defaultRolePermissions[role];
         await Permission.findOneAndUpdate(
-          { tenantId, role: role.toLowerCase(), employeeId: null },
+          { tenantId: cleanTenantId, role: role.toLowerCase(), employeeId: null },
           {
             $setOnInsert: {
-              tenantId,
+              tenantId: cleanTenantId,
               role: role.toLowerCase(),
               employeeId: null,
               allowedModules: def.allowedModules || [],
@@ -266,7 +265,7 @@ exports.getPermissions = async (req, res) => {
               updatedBy: 'System Auto-Seed'
             }
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
       records = await Permission.find(filter).lean();
@@ -318,13 +317,21 @@ exports.updatePermissions = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Role is required' });
     }
 
+    const cleanRole = String(role).toLowerCase().trim();
+    const cleanEmployeeId = (employeeId && employeeId !== 'null' && employeeId !== 'undefined' && String(employeeId).trim() !== '')
+      ? employeeId
+      : null;
+
     const query = {
       tenantId,
-      role: role.toLowerCase(),
-      employeeId: employeeId || null,
+      role: cleanRole,
+      employeeId: cleanEmployeeId,
     };
 
     const updateData = {
+      tenantId,
+      role: cleanRole,
+      employeeId: cleanEmployeeId,
       allowedModules: allowedModules || [],
       moduleAccessLevels: moduleAccessLevels || {},
       tabPermissions: tabPermissions || {},
@@ -335,15 +342,24 @@ exports.updatePermissions = async (req, res) => {
     const permission = await Permission.findOneAndUpdate(
       query,
       { $set: updateData },
-      { new: true, upsert: true, runValidators: true }
+      { returnDocument: 'after', upsert: true, runValidators: true }
     );
+
+    try {
+      if (tenantId) {
+        emitToTenant(tenantId, 'permissions.updated', { role: cleanRole, data: permission });
+      }
+    } catch (sockErr) {
+      console.warn("Socket emission for permissions failed:", sockErr.message);
+    }
 
     res.status(200).json({
       success: true,
-      message: `Permissions updated successfully for ${employeeId ? 'Employee Override' : role.toUpperCase()}`,
+      message: `Permissions updated successfully for ${cleanEmployeeId ? 'Employee Override' : cleanRole.toUpperCase()}`,
       data: permission,
     });
   } catch (error) {
+    console.error("PUT /api/permissions error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

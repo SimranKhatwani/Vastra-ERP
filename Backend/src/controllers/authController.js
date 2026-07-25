@@ -1,10 +1,35 @@
 const User = require('../models/userModel');
+const Permission = require('../models/permissionModel');
 const jwt = require('jsonwebtoken');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '30d',
   });
+};
+
+const getTenantPermissions = async (tenantId) => {
+  try {
+    if (!tenantId) return {};
+    const records = await Permission.find({ tenantId }).lean();
+    const permissionMap = {};
+    records.forEach((rec) => {
+      const roleStr = rec.role ? String(rec.role).toLowerCase() : 'admin';
+      const key = rec.employeeId ? `emp_${rec.employeeId}` : roleStr;
+      permissionMap[key] = {
+        allowedModules: rec.allowedModules || [],
+        moduleAccessLevels: rec.moduleAccessLevels ? (rec.moduleAccessLevels instanceof Map ? Object.fromEntries(rec.moduleAccessLevels) : rec.moduleAccessLevels) : {},
+        tabPermissions: rec.tabPermissions ? (rec.tabPermissions instanceof Map ? Object.fromEntries(rec.tabPermissions) : rec.tabPermissions) : {},
+        actionPermissions: rec.actionPermissions ? (rec.actionPermissions instanceof Map ? Object.fromEntries(rec.actionPermissions) : rec.actionPermissions) : {},
+        updatedBy: rec.updatedBy,
+        updatedAt: rec.updatedAt,
+      };
+    });
+    return permissionMap;
+  } catch (err) {
+    console.error('Failed to fetch permissions for tenant:', err);
+    return {};
+  }
 };
 
 exports.login = async (req, res) => {
@@ -46,6 +71,8 @@ exports.login = async (req, res) => {
       console.error('Failed to log login history', e);
     }
 
+    const permissions = await getTenantPermissions(user.tenantId?._id || user.tenantId);
+
     res.status(200).json({
       success: true,
       token,
@@ -54,8 +81,9 @@ exports.login = async (req, res) => {
         name: user.name, 
         email: user.email, 
         role: user.role,
-        tenantId: user.tenantId._id
-      }
+        tenantId: user.tenantId?._id || user.tenantId
+      },
+      permissions
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -65,7 +93,9 @@ exports.login = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('tenantId', 'businessName plan status');
-    res.status(200).json({ success: true, data: user });
+    const tenantId = user?.tenantId?._id || user?.tenantId;
+    const permissions = await getTenantPermissions(tenantId);
+    res.status(200).json({ success: true, data: user, permissions });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -82,18 +82,9 @@ export const PermissionsView = ({
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
 
-  // Fetch permissions matrix
+  // Fetch permissions matrix directly from MongoDB API
   const fetchPermissions = async () => {
     setLoadingPermissions(true);
-    // 1. Check LocalStorage
-    const localSaved = localStorage.getItem("vastra_permissions_matrix");
-    if (localSaved) {
-      try {
-        setPermissionMatrix(JSON.parse(localSaved));
-      } catch (e) {}
-    }
-
-    // 2. Fetch from backend API
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("http://localhost:5000/api/permissions", {
@@ -102,10 +93,9 @@ export const PermissionsView = ({
       const data = await res.json();
       if (data.success && data.data) {
         setPermissionMatrix(data.data);
-        localStorage.setItem("vastra_permissions_matrix", JSON.stringify(data.data));
       }
     } catch (err) {
-      console.warn("Backend sync offline, using cached permission matrix.");
+      console.warn("Backend permissions sync error:", err);
     } finally {
       setLoadingPermissions(false);
     }
@@ -192,29 +182,20 @@ export const PermissionsView = ({
     }));
   };
 
-  // Save Permissions to MongoDB API & LocalStorage
+  // Save Permissions to MongoDB API
   const handleSavePermissions = async () => {
     setSavingPermissions(true);
     
-    const updatedMatrix = {
-      ...permissionMatrix,
-      [currentRoleKey]: {
-        allowedModules: activeConfig.allowedModules || [],
-        moduleAccessLevels: activeConfig.moduleAccessLevels || {},
-        tabPermissions: activeConfig.tabPermissions || {}
-      }
-    };
-    localStorage.setItem("vastra_permissions_matrix", JSON.stringify(updatedMatrix));
-    setPermissionMatrix(updatedMatrix);
+    const roleConfig = permissionMatrix[currentRoleKey] || activeConfig;
 
     try {
       const token = localStorage.getItem("token");
       const bodyPayload = {
-        role: selectedRole,
+        role: currentRoleKey,
         employeeId: null,
-        allowedModules: activeConfig.allowedModules || [],
-        moduleAccessLevels: activeConfig.moduleAccessLevels || {},
-        tabPermissions: activeConfig.tabPermissions || {}
+        allowedModules: roleConfig.allowedModules || [],
+        moduleAccessLevels: roleConfig.moduleAccessLevels || {},
+        tabPermissions: roleConfig.tabPermissions || {}
       };
 
       const res = await fetch("http://localhost:5000/api/permissions", {
@@ -228,29 +209,30 @@ export const PermissionsView = ({
       const data = await res.json();
 
       if (data.success) {
+        await fetchPermissions();
         if (onAddNotification) {
           onAddNotification(
-            "Permissions Saved",
-            `Access matrix updated for role: ${selectedRole.toUpperCase()}.`,
+            "Permissions Saved to MongoDB",
+            `Access matrix updated in database for role: ${selectedRole.toUpperCase()}.`,
             "success"
           );
         }
       } else {
         if (onAddNotification) {
           onAddNotification(
-            "Permissions Saved (Local Cache)",
-            `Saved permission matrix to local browser cache.`,
-            "success"
+            "Save Failed",
+            data.message || "Failed to update permissions in database.",
+            "danger"
           );
         }
       }
     } catch (err) {
-      console.warn("Backend save failed, saved locally:", err);
+      console.error("Backend save failed:", err);
       if (onAddNotification) {
         onAddNotification(
-          "Permissions Saved",
-          `Access rules saved locally in browser storage.`,
-          "success"
+          "Error",
+          "Failed to save permissions to database.",
+          "danger"
         );
       }
     } finally {
