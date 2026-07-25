@@ -1,5 +1,6 @@
 const User = require('../models/userModel');
 const Permission = require('../models/permissionModel');
+const Employee = require('../models/employeeModel');
 const jwt = require('jsonwebtoken');
 
 const generateToken = (id) => {
@@ -30,6 +31,42 @@ const getTenantPermissions = async (tenantId) => {
     console.error('Failed to fetch permissions for tenant:', err);
     return {};
   }
+};
+
+const attachEmployeeDetails = async (userObj) => {
+  try {
+    if (!userObj || !userObj.tenantId) return userObj;
+    const cleanTenantId = userObj.tenantId._id || userObj.tenantId;
+    const cleanEmail = (userObj.email || '').toLowerCase().trim();
+    const cleanName = (userObj.name || '').toLowerCase().trim();
+    const firstName = cleanName.split(' ')[0];
+
+    const emp = await Employee.findOne({
+      tenantId: cleanTenantId,
+      $or: [
+        { email: cleanEmail },
+        { name: { $regex: new RegExp(`^${cleanName}$`, 'i') } },
+        { name: { $regex: new RegExp(firstName, 'i') } }
+      ]
+    }).lean();
+
+    if (emp) {
+      return {
+        ...userObj,
+        employeeId: emp._id,
+        commissionRate: emp.commissionRate ?? 0,
+        monthlySales: emp.monthlySales ?? 0,
+        commissionEarned: emp.commissionEarned ?? Math.round((emp.monthlySales || 0) * ((emp.commissionRate || 0) / 100)),
+        salary: emp.salary ?? 0,
+        salesTarget: emp.salesTarget ?? 0,
+        attendanceRate: emp.attendanceRate ?? 95,
+        role: emp.role || userObj.role
+      };
+    }
+  } catch (err) {
+    console.error('Failed to attach employee details:', err);
+  }
+  return userObj;
 };
 
 exports.login = async (req, res) => {
@@ -72,17 +109,20 @@ exports.login = async (req, res) => {
     }
 
     const permissions = await getTenantPermissions(user.tenantId?._id || user.tenantId);
+    let baseUser = { 
+      id: user._id, 
+      name: user.name, 
+      email: user.email, 
+      role: user.role,
+      tenantId: user.tenantId?._id || user.tenantId
+    };
+
+    baseUser = await attachEmployeeDetails(baseUser);
 
     res.status(200).json({
       success: true,
       token,
-      user: { 
-        id: user._id, 
-        name: user.name, 
-        email: user.email, 
-        role: user.role,
-        tenantId: user.tenantId?._id || user.tenantId
-      },
+      user: baseUser,
       permissions
     });
   } catch (error) {
@@ -95,7 +135,9 @@ exports.getProfile = async (req, res) => {
     const user = await User.findById(req.user.id).populate('tenantId', 'businessName plan status');
     const tenantId = user?.tenantId?._id || user?.tenantId;
     const permissions = await getTenantPermissions(tenantId);
-    res.status(200).json({ success: true, data: user, permissions });
+    let userObj = user.toObject();
+    userObj = await attachEmployeeDetails(userObj);
+    res.status(200).json({ success: true, data: userObj, permissions });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

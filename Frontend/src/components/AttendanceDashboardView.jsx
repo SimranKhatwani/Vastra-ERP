@@ -1,17 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Fingerprint, Clock, Calendar, CheckCircle, AlertTriangle, XCircle, ChevronRight, Activity, DollarSign, Award, Target, UserCheck, ShieldAlert } from 'lucide-react';
 
-export default function AttendanceDashboardView({ employees, token, onAddNotification }) {
+export default function AttendanceDashboardView({ employees, token, onAddNotification, currentUser }) {
   const [stats, setStats] = useState(null);
   const [myPunch, setMyPunch] = useState(null);
   const [activeEmployeeId, setActiveEmployeeId] = useState(""); 
   
-  // Initialize to first employee if not set, or let them select
+  const isAdmin = ["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) || 
+    (currentUser?.name || '').toLowerCase().includes("dhruv");
+
+  // Lock activeEmployeeId to logged in user for non-admins, or initialize first employee for admins
   useEffect(() => {
-    if (employees && employees.length > 0 && !activeEmployeeId) {
+    if (!isAdmin && currentUser) {
+      const myEmp = employees?.find(e => 
+        (e.id || e._id) === (currentUser.employeeId || currentUser._id || currentUser.id) ||
+        (e.email && currentUser.email && e.email.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (e.name && currentUser.name && e.name.toLowerCase() === currentUser.name.toLowerCase())
+      );
+      const myId = myEmp?.id || myEmp?._id || currentUser.employeeId || currentUser._id || currentUser.id;
+      setActiveEmployeeId(myId);
+    } else if (employees && employees.length > 0 && !activeEmployeeId) {
       setActiveEmployeeId(employees[0].id || employees[0]._id);
     }
-  }, [employees]);
+  }, [employees, currentUser, isAdmin]);
 
   useEffect(() => {
     fetchStats();
@@ -127,17 +138,24 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
           </h1>
           <p className="text-sm font-semibold text-slate-500 mt-1">Real-time Rule Engine & Payroll Sync</p>
         </div>
-        <div className="flex gap-4">
-          <select 
-            value={activeEmployeeId}
-            onChange={(e) => setActiveEmployeeId(e.target.value)}
-            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">-- Select Kiosk User --</option>
-            {employees?.map(e => (
-              <option key={e.id || e._id} value={e.id || e._id}>{e.name} - {e.role || 'Staff'}</option>
-            ))}
-          </select>
+        <div className="flex gap-4 items-center">
+          {isAdmin ? (
+            <select 
+              value={activeEmployeeId}
+              onChange={(e) => setActiveEmployeeId(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">-- Select Kiosk User --</option>
+              {employees?.map(e => (
+                <option key={e.id || e._id} value={e.id || e._id}>{e.name} - {e.role || 'Staff'}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Punching for: <strong className="text-indigo-600">{currentUser?.name || 'My Account'}</strong> ({currentUser?.role || 'Staff'})</span>
+            </div>
+          )}
         </div>
       </div>
 

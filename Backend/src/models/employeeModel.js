@@ -8,6 +8,10 @@ const employeeSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     name: {
       type: String,
       required: [true, 'Please add an employee name'],
@@ -35,6 +39,18 @@ const employeeSchema = new mongoose.Schema(
       type: String,
       enum: ['Morning', 'Evening', 'Full-Day'],
       default: 'Full-Day',
+    },
+    commissionRate: {
+      type: Number,
+      default: 0,
+    },
+    monthlySales: {
+      type: Number,
+      default: 0,
+    },
+    totalInvoices: {
+      type: Number,
+      default: 0,
     },
     commissionEarned: {
       type: Number,

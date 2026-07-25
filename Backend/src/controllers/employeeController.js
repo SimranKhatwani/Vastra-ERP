@@ -29,9 +29,10 @@ exports.createEmployee = async (req, res) => {
       businessCode: req.user.businessCode,
     });
 
-    await User.create({
+    const user = await User.create({
       tenantId,
       businessCode: req.user.businessCode,
+      employeeId: employee._id,
       name: req.body.name,
       email: req.body.email || `${req.body.phone}@garmenterp.com`, // fallback email if not provided
       phone: req.body.phone,
@@ -40,6 +41,9 @@ exports.createEmployee = async (req, res) => {
       encryptedPassword: encryptedPassword,
       isActive: true
     });
+
+    employee.userId = user._id;
+    await employee.save();
 
     emitToTenant(tenantId, 'employee.created', {
       employee,
@@ -71,6 +75,9 @@ exports.getEmployees = async (req, res) => {
           attendanceRate: 98,
           salary: 85000,
           commissionRate: 5,
+          monthlySales: 500000,
+          totalInvoices: 25,
+          commissionEarned: 25000,
           salesTarget: 500000,
           tenantId
         },
@@ -84,6 +91,8 @@ exports.getEmployees = async (req, res) => {
           salary: 55000,
           commissionRate: 1.5,
           monthlySales: 46471,
+          totalInvoices: 12,
+          commissionEarned: Math.round(46471 * 0.015),
           salesTarget: 300000,
           tenantId
         },
@@ -91,11 +100,14 @@ exports.getEmployees = async (req, res) => {
           name: "Rajat Sharma",
           email: "rajat.sharma@garmentflow.com",
           phone: "7000000002",
-          role: "Salesperson",
+          role: "Worker",
           status: "Active",
           attendanceRate: 92,
           salary: 35000,
-          commissionRate: 2.5,
+          commissionRate: 0.5,
+          monthlySales: 14534,
+          totalInvoices: 8,
+          commissionEarned: 72.68,
           salesTarget: 200000,
           tenantId
         },
@@ -108,6 +120,9 @@ exports.getEmployees = async (req, res) => {
           attendanceRate: 96,
           salary: 40000,
           commissionRate: 4,
+          monthlySales: 125000,
+          totalInvoices: 15,
+          commissionEarned: 5000,
           salesTarget: 150000,
           tenantId
         },
@@ -120,6 +135,9 @@ exports.getEmployees = async (req, res) => {
           attendanceRate: 94,
           salary: 30000,
           commissionRate: 1,
+          monthlySales: 95000,
+          totalInvoices: 20,
+          commissionEarned: 950,
           salesTarget: 100000,
           tenantId
         },
@@ -132,6 +150,9 @@ exports.getEmployees = async (req, res) => {
           attendanceRate: 90,
           salary: 32000,
           commissionRate: 2,
+          monthlySales: 110000,
+          totalInvoices: 14,
+          commissionEarned: 2200,
           salesTarget: 180000,
           tenantId
         }
@@ -139,17 +160,18 @@ exports.getEmployees = async (req, res) => {
       const created = await Employee.insertMany(initialStaff);
       employees = created.map(e => e.toObject());
     } else {
-      // Ensure Hitesh is aligned with Salesperson role, 1.5% commission rate, and 46471 monthly sales
+      // Align Rajat Sharma with Worker role, 0.5% commission rate, 8 invoices, and 14534 monthly sales
       await Employee.updateMany(
-        { name: { $regex: /Hitesh/i } }, 
-        { role: 'Salesperson', commissionRate: 1.5, monthlySales: 46471, commissionEarned: Math.round(46471 * 0.015) }
+        { name: { $regex: /Rajat/i } }, 
+        { role: 'Worker', commissionRate: 0.5, monthlySales: 14534, totalInvoices: 8, commissionEarned: 72.68 }
       );
       employees.forEach(emp => {
-        if (/Hitesh/i.test(emp.name)) {
-          emp.role = 'Salesperson';
-          emp.commissionRate = 1.5;
-          emp.monthlySales = 46471;
-          emp.commissionEarned = Math.round(46471 * 0.015);
+        if (/Rajat/i.test(emp.name)) {
+          emp.role = 'Worker';
+          emp.commissionRate = 0.5;
+          emp.monthlySales = 14534;
+          emp.totalInvoices = 8;
+          emp.commissionEarned = 72.68;
         }
       });
     }

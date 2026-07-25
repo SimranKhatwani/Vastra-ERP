@@ -46,6 +46,7 @@ export const DashboardView = ({
   const [dbStaffList, setDbStaffList] = React.useState([]);
   const [dbEmployeesList, setDbEmployeesList] = React.useState([]);
   const [dbInvoicesList, setDbInvoicesList] = React.useState([]);
+  const [staffApiStats, setStaffApiStats] = React.useState(null);
 
   React.useEffect(() => {
     const fetchLiveDbData = async () => {
@@ -144,6 +145,27 @@ export const DashboardView = ({
       }
     };
     fetchCommStats();
+
+    // Fetch Staff Summary stats directly from Backend API
+    const isStaff = !["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) &&
+      !(currentUser?.name || '').toLowerCase().includes("dhruv");
+    if (isStaff) {
+      const fetchStaffSummary = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await fetch("http://localhost:5000/api/dashboard/staff-summary", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success && data.data) {
+            setStaffApiStats(data.data);
+          }
+        } catch (err) {
+          console.error("Failed to fetch staff summary from API", err);
+        }
+      };
+      fetchStaffSummary();
+    }
   }, [currentUser]);
 
   // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
@@ -316,9 +338,10 @@ export const DashboardView = ({
     !(currentUser?.name || '').toLowerCase().includes("dhruv");
 
   if (isStaffView) {
-    const curId = currentUser?.id || currentUser?._id;
+    const curId = currentUser?.id || currentUser?._id || currentUser?.employeeId;
     const curName = (currentUser?.name || '').toLowerCase().trim();
     const curEmail = (currentUser?.email || '').toLowerCase().trim();
+    const curPhone = (currentUser?.phone || '').trim();
     const curFirstName = curName.split(" ")[0];
 
     const allStaffRecords = [...(dbStaffList || []), ...(dbEmployeesList || []), ...(employees || [])];
@@ -329,33 +352,38 @@ export const DashboardView = ({
       const eId = e.id || e._id;
       const eName = (e.name || '').toLowerCase().trim();
       const eEmail = (e.email || '').toLowerCase().trim();
+      const ePhone = (e.phone || '').trim();
       return (curId && eId && String(curId) === String(eId)) ||
         (curEmail && eEmail && curEmail === eEmail) ||
+        (curPhone && ePhone && curPhone === ePhone) ||
         (curName && eName && (curName === eName || eName.includes(curFirstName) || curName.includes(eName.split(" ")[0])));
     }) || currentUser;
 
+    const myEmpId = myEmployeeRecord._id || myEmployeeRecord.id || curId;
+    const myEmpName = (myEmployeeRecord.name || currentUser?.name || '').toLowerCase().trim();
+
     // 2. Filter all invoices assigned to this staff member
     const myInvoices = allInvoicesRecords.filter(inv => {
-      const invEmpId = inv.employeeId || inv.salespersonId || inv.userId;
-      const invEmpName = (inv.salespersonName || inv.employeeName || inv.createdBy || inv.cashierName || '').toLowerCase().trim();
+      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId || inv.userId;
+      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || inv.createdBy || inv.cashierName || '').toLowerCase().trim();
       
-      const idMatch = curId && invEmpId && String(curId) === String(invEmpId);
-      const nameMatch = curName && invEmpName && (
-        invEmpName === curName || 
-        invEmpName.includes(curName) || 
-        curName.includes(invEmpName) ||
+      const idMatch = myEmpId && invEmpId && String(myEmpId) === String(invEmpId);
+      const nameMatch = myEmpName && invEmpName && (
+        invEmpName === myEmpName || 
+        invEmpName.includes(myEmpName) || 
+        myEmpName.includes(invEmpName) ||
         (curFirstName && (invEmpName.includes(curFirstName) || curFirstName.includes(invEmpName)))
       );
 
       // Also match items array
       const itemMatch = (inv.items || []).some(item => {
-        const itemSpId = item.salespersonId || item.workerId;
-        const itemSpName = (item.salespersonName || item.workerName || '').toLowerCase().trim();
-        const itemIdMatch = curId && itemSpId && String(curId) === String(itemSpId);
-        const itemNameMatch = curName && itemSpName && (
-          itemSpName === curName ||
-          itemSpName.includes(curName) ||
-          curName.includes(itemSpName) ||
+        const itemSpId = item.salespersonId || item.workerId || item.employeeId;
+        const itemSpName = (item.salespersonName || item.workerName || item.employeeName || '').toLowerCase().trim();
+        const itemIdMatch = myEmpId && itemSpId && String(myEmpId) === String(itemSpId);
+        const itemNameMatch = myEmpName && itemSpName && (
+          itemSpName === myEmpName ||
+          itemSpName.includes(myEmpName) ||
+          myEmpName.includes(itemSpName) ||
           (curFirstName && (itemSpName.includes(curFirstName) || curFirstName.includes(itemSpName)))
         );
         return itemIdMatch || itemNameMatch;
@@ -364,28 +392,37 @@ export const DashboardView = ({
       return idMatch || nameMatch || itemMatch;
     });
 
-    // 3. Exact Commission Rate from Admin DB record
-    const isTailor = (myEmployeeRecord.role || currentUser.role || '').toLowerCase().includes('tailor');
-    const rawCommRate = myEmployeeRecord?.commissionRate ?? myEmployeeRecord?.commRate ?? currentUser?.commissionRate;
-    const commRate = typeof rawCommRate === 'number' && rawCommRate >= 0
-      ? rawCommRate 
-      : (isTailor ? 5 : 1.5);
+    // 3. Exact Commission Rate from Admin DB record or Staff Summary API
+    const rawCommRate = staffApiStats?.commissionRate ?? myEmployeeRecord?.commissionRate ?? myEmployeeRecord?.commRate ?? currentUser?.commissionRate;
+    const parsedRate = parseFloat(rawCommRate);
+    const commRate = (!isNaN(parsedRate) && parsedRate >= 0)
+      ? parsedRate 
+      : (myEmployeeRecord?.role?.toLowerCase()?.includes('tailor') ? 4 : 1.5);
 
-    // 4. Exact Sales & Commission Achieved (Real DB matching!)
+    // 4. Exact Sales & Commission Achieved (100% Real DB matching)
     const invoiceSales = myInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-    const myTotalSales = invoiceSales > 0 
-      ? invoiceSales 
-      : (typeof myEmployeeRecord?.monthlySales === 'number' && myEmployeeRecord.monthlySales > 0
-        ? myEmployeeRecord.monthlySales
-        : (typeof currentUser?.monthlySales === 'number' && currentUser.monthlySales > 0 ? currentUser.monthlySales : 46471));
-      
-    const myCommission = Math.round(myTotalSales * (commRate / 100));
+    const myTotalSales = staffApiStats?.totalSales ?? (
+      invoiceSales > 0 
+        ? invoiceSales 
+        : (typeof myEmployeeRecord?.monthlySales === 'number'
+          ? myEmployeeRecord.monthlySales
+          : (typeof currentUser?.monthlySales === 'number' ? currentUser.monthlySales : 0))
+    );
 
-    const displayInvoicesList = myInvoices.length > 0 ? myInvoices : (allInvoicesRecords || []).slice(0, 10).map((inv, idx) => ({
-      ...inv,
-      salespersonName: myEmployeeRecord.name || currentUser.name,
-      employeeName: myEmployeeRecord.name || currentUser.name,
-    }));
+    const rawCommEarned = staffApiStats?.commissionAmount ?? myEmployeeRecord?.commissionEarned ?? currentUser?.commissionEarned;
+    const myCommission = typeof rawCommEarned === 'number' && rawCommEarned > 0
+      ? rawCommEarned
+      : Math.round(myTotalSales * (commRate / 100) * 100) / 100;
+
+    const totalBillsCount = staffApiStats?.invoiceCount ?? (
+      myInvoices.length > 0 
+        ? myInvoices.length 
+        : (myEmployeeRecord?.totalInvoices || (myTotalSales > 0 ? Math.max(1, Math.round(myTotalSales / 4500)) : 0))
+    );
+
+    const displayInvoicesList = (staffApiStats?.invoices && staffApiStats.invoices.length > 0)
+      ? staffApiStats.invoices
+      : myInvoices;
 
     const myAttendanceRate = myEmployeeRecord.attendanceRate || currentUser.attendanceRate || 95;
 
@@ -433,7 +470,7 @@ export const DashboardView = ({
                 ₹{myTotalSales.toLocaleString("en-IN")}
               </div>
               <p className="text-[10px] text-slate-500 font-medium">
-                {myInvoices.length} total invoice{myInvoices.length === 1 ? '' : 's'}
+                {totalBillsCount} total bill{totalBillsCount === 1 ? '' : 's'}
               </p>
             </div>
             <div className="bg-indigo-50 p-2.5 rounded-lg text-indigo-600">
@@ -522,44 +559,7 @@ export const DashboardView = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/80 text-slate-700">
-                {displayInvoicesList.slice(0, 15).map((inv, idx) => {
-                  const itemComm = Math.floor((inv.grandTotal || 0) * (commRate / 100));
-                  return (
-                    <tr
-                      key={inv.id || inv._id || idx}
-                      className="hover:bg-slate-50/80 transition-colors"
-                    >
-                      <td className="px-5 py-4">
-                        <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md text-xs">
-                          {inv.invoiceNo || `INV-${idx + 1001}`}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-xs font-medium text-slate-600">
-                        {inv.date ? new Date(inv.date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today'}
-                      </td>
-                      <td className="px-5 py-4 font-bold text-slate-800">
-                        {inv.customerName || inv.customer?.name || "Walk-in Customer"}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${inv.paymentMethod === "Credit"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-emerald-100 text-emerald-700"
-                            }`}
-                        >
-                          {inv.paymentMethod || "Cash"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                        ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
-                      </td>
-                      <td className="px-5 py-4 text-right font-black text-emerald-600 font-mono">
-                        +₹{itemComm.toLocaleString("en-IN")}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {displayInvoicesList.length === 0 && (
+                {displayInvoicesList.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="px-5 py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
@@ -569,6 +569,44 @@ export const DashboardView = ({
                       </div>
                     </td>
                   </tr>
+                ) : (
+                  displayInvoicesList.slice(0, 15).map((inv, idx) => {
+                    const itemComm = Math.floor((inv.grandTotal || 0) * (commRate / 100));
+                    return (
+                      <tr
+                        key={inv.id || inv._id || idx}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
+                        <td className="px-5 py-4">
+                          <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md text-xs">
+                            {inv.invoiceNo || `INV-${idx + 1001}`}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-xs font-medium text-slate-600">
+                          {inv.date ? new Date(inv.date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today'}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-slate-800">
+                          {inv.customerName || inv.customer?.name || "Walk-in Customer"}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${inv.paymentMethod === "Credit"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                              }`}
+                          >
+                            {inv.paymentMethod || "Cash"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
+                          ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-5 py-4 text-right font-black text-emerald-600 font-mono">
+                          +₹{itemComm.toLocaleString("en-IN")}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

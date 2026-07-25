@@ -1682,7 +1682,7 @@ export default function App() {
           )}
 
           {activeModule === "attendance-dashboard" && (
-            <AttendanceDashboardView employees={employees} token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
+            <AttendanceDashboardView employees={employees} token={localStorage.getItem('token')} onAddNotification={addToastNotification} currentUser={currentUser} />
           )}
 
           {activeModule === "manager-review" && (
