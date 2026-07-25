@@ -41,6 +41,7 @@ export const PermissionsView = ({
   const modulesRegistry = [
     { id: "dashboard", name: "Overview Dashboard", category: "Core Operations", icon: Layers, desc: "Main system metrics, sales widgets & operational overview" },
     { id: "billing", name: "POS Billing & Invoicing", category: "Sales & Billing", icon: ShoppingBag, desc: "POS cart checkout, barcode billing & receipt processing" },
+    { id: "billing-sales", name: "Billing & Sales Management", category: "Sales & Billing", icon: ShoppingBag, desc: "Comprehensive billing records, invoice tracking & sales management" },
     { id: "articulation", name: "Tailoring & Alterations Studio", category: "Garment Fitting", icon: Scissors, desc: "Alteration job tickets, tailor tracking & pickup notifications" },
     { id: "products", name: "Products & Garment Catalog", category: "Inventory", icon: Layers, desc: "Garment product items, prices, MRP, sizes & categories" },
     { id: "inventory", name: "Inventory Stock Control", category: "Inventory", icon: Layers, desc: "Adjust stock levels, warehouse counts & low stock alerts" },

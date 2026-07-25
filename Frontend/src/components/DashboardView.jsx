@@ -446,6 +446,8 @@ export const DashboardView = ({
     const myTodaySales = staffApiStats?.todaySales ?? rawTodaySales;
     const myTodayBillsCount = staffApiStats?.todayBillsCount ?? myTodayInvoices.length;
     const isCashierRole = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase().includes('cashier');
+    const isAccountantRole = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase().includes('accountant');
+    const hideCommissionUI = isCashierRole || isAccountantRole;
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
 
@@ -466,7 +468,7 @@ export const DashboardView = ({
               Welcome back, {currentUser.name}
             </h1>
             <p className="text-sm text-slate-300">
-              {isCashierRole ? "Here is your personal performance, sales, and transaction breakdown." : "Here is your personal performance, sales, and earned commission breakdown."}
+              {hideCommissionUI ? "Here is your personal performance, sales, and transaction breakdown." : "Here is your personal performance, sales, and earned commission breakdown."}
             </p>
           </div>
           {!['worker', 'tailor', 'accountant'].includes((currentUser?.role || '').toLowerCase()) && (
@@ -484,7 +486,7 @@ export const DashboardView = ({
 
         {/* KPI Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {isCashierRole ? (
+          {hideCommissionUI ? (
             <>
               {/* Today's Sale */}
               <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
@@ -638,10 +640,10 @@ export const DashboardView = ({
             <div>
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <span className="w-1.5 h-6 bg-emerald-500 rounded-full inline-block"></span>
-                {isCashierRole ? "My Billed Sales & Transaction Ledger" : "My Billed Sales & Commission Ledger"}
+                {hideCommissionUI ? "My Billed Sales & Transaction Ledger" : "My Billed Sales & Commission Ledger"}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                {isCashierRole ? "Your latest completed bills and sales transactions." : "Your latest completed bills and earned commission payouts."}
+                {hideCommissionUI ? "Your latest completed bills and sales transactions." : "Your latest completed bills and earned commission payouts."}
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
@@ -657,7 +659,7 @@ export const DashboardView = ({
                   <th className="px-5 py-4 font-semibold">Customer</th>
                   <th className="px-5 py-4 font-semibold">Payment</th>
                   <th className="px-5 py-4 font-semibold text-right">Total Amount</th>
-                  <th className="px-5 py-4 font-semibold text-right">{isCashierRole ? "Status" : `My Comm (${commRate}%)`}</th>
+                  <th className="px-5 py-4 font-semibold text-right">{hideCommissionUI ? "Status" : `My Comm (${commRate}%)`}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/80 text-slate-700">
@@ -704,7 +706,7 @@ export const DashboardView = ({
                           ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
                         </td>
                         <td className="px-5 py-4 text-right">
-                          {isCashierRole ? (
+                          {hideCommissionUI ? (
                             <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold border border-emerald-200">
                               Completed
                             </span>

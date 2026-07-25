@@ -510,6 +510,17 @@ export default function App() {
       case "worker":
         baseModules = ["dashboard", "attendance-dashboard"];
         break;
+      case "accountant":
+        baseModules = [
+          "dashboard",
+          "financial-management",
+          "accounts-treasury",
+          "accounting",
+          "reports",
+          "purchase",
+          "attendance-dashboard",
+        ];
+        break;
       default:
         baseModules = ["billing", "financial-management", "accounts-treasury"];
         break;
