@@ -122,7 +122,10 @@ exports.getStaffDashboardStats = async (req, res) => {
           $or: [
             { salespersonId: targetEmpId },
             { workerId: targetEmpId },
-            { employeeId: targetEmpId }
+            { employeeId: targetEmpId },
+            { 'items.salespersonId': targetEmpId },
+            { 'items.workerId': targetEmpId },
+            { 'items.employeeId': targetEmpId }
           ]
         }).sort('-createdAt').lean()
       : [];
