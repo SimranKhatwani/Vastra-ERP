@@ -104,9 +104,10 @@ export const BillingPOSView = ({
       const r = (e.role || "").toLowerCase();
       const name = (e.name || "").toLowerCase();
 
-      // Exclude cashiers & tailors (e.g. Aman, Mahesh if cashier/tailor)
+      // Exclude cashiers & tailors (e.g. Aman, Mahesh if cashier/tailor) & Dhruv
       if (des.includes("cashier") || r.includes("cashier") || name === "aman" || name === "mahesh") return false;
       if (des.includes("tailor") || r.includes("tailor")) return false;
+      if (name.includes("dhruv")) return false;
 
       return des.includes("sales") || r.includes("sales") || des.includes("executive") || r.includes("executive") || des.includes("manager") || r.includes("manager") || des.includes("admin") || r.includes("admin");
     });
@@ -116,7 +117,7 @@ export const BillingPOSView = ({
       const r = (e.role || "").toLowerCase();
       const des = (e.designation || "").toLowerCase();
       const n = (e.name || "").toLowerCase();
-      return e.isActive !== false && !r.includes("cashier") && !des.includes("cashier") && !r.includes("tailor") && !des.includes("tailor") && n !== "aman" && n !== "mahesh";
+      return e.isActive !== false && !r.includes("cashier") && !des.includes("cashier") && !r.includes("tailor") && !des.includes("tailor") && n !== "aman" && n !== "mahesh" && !n.includes("dhruv");
     });
   }, [employees]);
 

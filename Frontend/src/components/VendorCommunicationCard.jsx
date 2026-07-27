@@ -4,7 +4,7 @@ import {
   Star, ShieldCheck, Copy, ExternalLink, Download, Eye, Plus, CheckCircle2,
   Clock, AlertCircle, Search, Filter, Share2, Upload, Trash2, Edit3,
   UserCheck, MapPin, CreditCard, FileCheck, Tag, ArrowRight, RefreshCw,
-  Send, Lock, Bookmark, Paperclip, ChevronRight, X, Printer
+  Send, Lock, Bookmark, Paperclip, ChevronRight, X, Printer, ArrowLeft
 } from 'lucide-react';
 
 const DEFAULT_FALLBACK_VENDORS = [
@@ -599,6 +599,7 @@ export default function VendorCommunicationCard({ currentUser }) {
   const [hubData, setHubData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [viewMode, setViewMode] = useState('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
 
@@ -770,6 +771,13 @@ export default function VendorCommunicationCard({ currentUser }) {
         lastPaymentDate: new Date(Date.now() - 86400000 * 5)
       }
     });
+  };
+
+  const handleSelectVendor = (vId) => {
+    setSelectedVendorId(vId);
+    fetchVendorHub(vId);
+    setViewMode('detail');
+    setActiveTab('overview');
   };
 
   useEffect(() => {
@@ -1193,11 +1201,96 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       </div>
 
-      {/* FULL-WIDTH TABBED INTERFACE */}
-      <div className="space-y-0">
+      {/* ─── STANDARD VENDOR DIRECTORY LIST MODE ─── */}
+      {viewMode === 'list' ? (
+        <div className="space-y-4 animate-fade-in text-sm">
+          {/* Header Title info */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-1">
+            <h2 className="text-lg font-black text-slate-800">Vendor Master Directory</h2>
+            <p className="text-slate-500 font-medium text-xs">
+              Select any vendor from the list below to view and manage their full profile card, timeline history, financials and settlement ledger.
+            </p>
+          </div>
+
+          {/* Clean Directory Table */}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[900px]">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold text-xs uppercase tracking-wider">
+                    <th className="p-4 w-28">Vendor Code</th>
+                    <th className="p-4 w-56">Supplier Name</th>
+                    <th className="p-4 w-44">Category</th>
+                    <th className="p-4 w-52">Primary Contact</th>
+                    <th className="p-4">Registered Office Address</th>
+                    <th className="p-4 text-center w-36">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-sm">
+                  {filteredVendors.map((v) => (
+                    <tr 
+                      key={v._id} 
+                      onClick={() => handleSelectVendor(v._id)}
+                      className="hover:bg-indigo-50/30 transition cursor-pointer group"
+                    >
+                      <td className="p-4 font-mono font-bold text-slate-500">{v.vendorCode}</td>
+                      <td className="p-4 font-bold text-indigo-600 group-hover:text-indigo-800 group-hover:underline text-[15px]">
+                        {v.name}
+                      </td>
+                      <td className="p-4">
+                        <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded border border-slate-200 uppercase">
+                          {v.category}
+                        </span>
+                      </td>
+                      <td className="p-4 text-slate-600">
+                        <div>{v.phone}</div>
+                        <div className="text-xs text-slate-400 font-normal">{v.email}</div>
+                      </td>
+                      <td className="p-4 text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[280px]" title={v.address}>
+                        {v.address}
+                      </td>
+                      <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleSelectVendor(v._id)}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition text-xs flex items-center gap-1 mx-auto"
+                        >
+                          Open Profile ➜
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredVendors.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-10 text-center text-slate-400 italic font-bold">
+                        No vendors found matching your search.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ─── DETAILED VIEW MODE (PAGE INSIDE PAGE) ─── */
+        <div className="space-y-4 animate-fade-in">
+          
+          {/* Back Navigation Bar */}
+          <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm">
+            <button
+              onClick={() => setViewMode('list')}
+              className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl shadow-xs transition"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Vendor Directory Grid
+            </button>
+            <div className="text-xs font-bold text-slate-500 font-mono">
+              Editing Profile: <span className="text-indigo-600 font-black">{vendor.name} ({vendor.vendorCode})</span>
+            </div>
+          </div>
+
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             
-            {/* 12-Tab Header */}
+            {/* 11-Tab Header */}
             <div className="bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center gap-1 p-2">
               {[
                 { id: 'overview', label: '1. Overview' },
@@ -1230,6 +1323,8 @@ export default function VendorCommunicationCard({ currentUser }) {
             {/* Tab Contents */}
             <div className="p-5 md:p-6 space-y-6">
               
+
+
               {/* TAB 1: OVERVIEW — includes inline vendor profile card */}
               {activeTab === 'overview' && (
                 <div className="space-y-5 animate-fade-in">
@@ -1943,8 +2038,8 @@ export default function VendorCommunicationCard({ currentUser }) {
             </div>
 
           </div>
-
-      </div>
+        </div>
+      )}
 
       {/* MODAL 1: VIEW DOCUMENT PREVIEW MODAL */}
       {previewDoc && (
