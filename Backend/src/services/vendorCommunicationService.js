@@ -44,12 +44,30 @@ class VendorCommunicationService {
     let grns = [];
 
     try {
-      purchaseOrders = await PurchaseOrder.find({ tenantId, $or: [{ vendorId }, { vendorName: vendor.name }] }).sort('-createdAt').limit(20).lean();
-    } catch (e) {}
+      // PurchaseOrder uses supplierId / supplierName (see purchaseOrderModel)
+      purchaseOrders = await PurchaseOrder.find({
+        tenantId,
+        $or: [
+          { supplierId: vendorId },
+          { vendorId },
+          { supplierName: vendor.name },
+          { vendorName: vendor.name }
+        ]
+      }).sort('-createdAt').limit(20).lean();
+    } catch (e) { console.error('PO fetch error:', e.message); }
 
     try {
-      purchaseInvoices = await PurchaseInvoice.find({ tenantId, $or: [{ vendorId }, { vendorName: vendor.name }] }).sort('-createdAt').limit(20).lean();
-    } catch (e) {}
+      // PurchaseInvoice uses vendorId / vendorName
+      purchaseInvoices = await PurchaseInvoice.find({
+        tenantId,
+        $or: [
+          { vendorId },
+          { supplierId: vendorId },
+          { vendorName: vendor.name },
+          { supplierName: vendor.name }
+        ]
+      }).sort('-createdAt').limit(20).lean();
+    } catch (e) { console.error('PI fetch error:', e.message); }
 
     try {
       purchaseReturns = await PurchaseReturn.find({ tenantId, $or: [{ vendorId }, { vendorName: vendor.name }] }).sort('-createdAt').limit(20).lean();

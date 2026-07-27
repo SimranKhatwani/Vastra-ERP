@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  createVendor,
   getVendorList,
   getVendorHub,
   logActivity,
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.use(protect);
 
+router.post('/', createVendor);
 router.get('/list', getVendorList);
 router.get('/:vendorId', getVendorHub);
 router.put('/:vendorId', updateVendor);

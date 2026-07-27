@@ -89,9 +89,41 @@ const INV_STATUS_STYLE = {
 };
 
 function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
-  const [invoices, setInvoices] = useState(DEMO_INVOICES);
-  const [payModal, setPayModal] = useState(null); // selected invoice for payment
+  // Detect if this is a real MongoDB vendor (ObjectId) or a local demo fallback
+  const isRealVendor = vendor?._id && !String(vendor._id).startsWith('demo-');
+  // hubData !== null means the API has responded (even if empty)
+  const hubLoaded = hubData !== null;
+
+  const mapInvoices = (list) => (list || []).map(inv => ({
+    id: inv.invoiceNo || inv._id,
+    date: inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+    billAmount: inv.grandTotal || 0,
+    amountPaid: inv.amountPaid || 0,
+    outstanding: inv.outstandingAmount ?? Math.max(0, (inv.grandTotal || 0) - (inv.amountPaid || 0)),
+    status: inv.paymentStatus || (inv.amountPaid >= inv.grandTotal ? 'Paid' : inv.amountPaid > 0 ? 'Partial' : 'Unpaid'),
+    dueDate: inv.dueDate,
+    _id: inv._id
+  }));
+
+  // Initial state: demo data for demo vendors, real data for real vendors
+  const [invoices, setInvoices] = useState(
+    isRealVendor ? [] : DEMO_INVOICES
+  );
+  const [payModal, setPayModal] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', mode: 'Bank Transfer', referenceNo: '', remarks: '' });
+
+  // Sync whenever hubData changes (API responds)
+  useEffect(() => {
+    if (!hubLoaded) return;
+    const mapped = mapInvoices(hubData?.purchaseHistory?.invoices);
+    if (mapped.length > 0) {
+      setInvoices(mapped);
+    } else if (isRealVendor) {
+      setInvoices([]); // Real vendor with no invoices → show empty state
+    }
+    // Demo vendor with no API data → keep DEMO_INVOICES
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubData]);
 
   const totalOutstanding = invoices.reduce((s, inv) => s + inv.outstanding, 0);
 
@@ -137,19 +169,23 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-1">
           <span className="text-red-500 font-bold block">Total Outstanding</span>
-          <span className="text-xl font-black text-red-600 font-mono">₹{totalOutstanding.toLocaleString('en-IN')}</span>
+          <span className="text-xl font-black text-red-600 font-mono">₹{(hubData?.outstanding?.totalOutstanding ?? totalOutstanding).toLocaleString('en-IN')}</span>
         </div>
         <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
           <span className="text-slate-400 font-bold block">Credit Limit</span>
-          <span className="text-lg font-black text-slate-800 font-mono">₹{(vendor?.creditLimit || 250000).toLocaleString('en-IN')}</span>
+          <span className="text-lg font-black text-slate-800 font-mono">₹{(vendor?.creditLimit || hubData?.outstanding?.creditLimit || 0).toLocaleString('en-IN')}</span>
         </div>
         <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
           <span className="text-slate-400 font-bold block">Credit Terms</span>
-          <span className="text-lg font-bold text-slate-700">{vendor?.paymentTerms || 'Net 30'} ({vendor?.creditDays || 30} Days)</span>
+          <span className="text-lg font-bold text-slate-700">{vendor?.paymentTerms || hubData?.outstanding?.paymentTerms || 'Net 30'} ({vendor?.creditDays || hubData?.outstanding?.creditDays || 30} Days)</span>
         </div>
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
           <span className="text-emerald-600 font-bold block">Last Payment</span>
-          <span className="text-sm font-bold text-emerald-700">{new Date(Date.now() - 86400000 * 5).toLocaleDateString()}</span>
+          <span className="text-sm font-bold text-emerald-700">
+            {hubData?.outstanding?.lastPaymentDate
+              ? new Date(hubData.outstanding.lastPaymentDate).toLocaleDateString('en-IN')
+              : 'No payments yet'}
+          </span>
         </div>
       </div>
 
@@ -170,7 +206,17 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
-              {invoices.map((inv) => (
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <FileCheck className="w-8 h-8 opacity-30" />
+                      <span className="font-bold text-sm">No purchase invoices yet</span>
+                      <span className="text-xs">Invoices from the Purchase module will appear here automatically</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : invoices.map((inv) => (
                 <tr key={inv.id} className={`hover:bg-white transition-colors ${inv.status === 'Unpaid' ? 'bg-red-50/20' : ''}`}>
                   <td className="p-3 font-mono font-bold text-indigo-600">{inv.id}</td>
                   <td className="p-3 font-mono text-slate-500">{inv.date}</td>
@@ -342,8 +388,38 @@ const STATUS_COLORS = {
 };
 
 function PurchaseTab({ vendor, showToast, handleOpenShareModal, hubData }) {
-  const [orders, setOrders] = useState(DEMO_PURCHASE_ORDERS);
+  const isRealVendor = vendor?._id && !String(vendor._id).startsWith('demo-');
+  const hubLoaded = hubData !== null;
+
+  const mapOrders = (list) => (list || []).map(po => ({
+    id: po.poNo || po._id,
+    date: po.date ? new Date(po.date).toISOString().split('T')[0] : new Date(po.createdAt).toISOString().split('T')[0],
+    items: po.items?.map(i => `${i.name}${i.quantity ? ' ' + i.quantity : ''}`).join(', ') || '—',
+    qty: po.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0,
+    unit: 'Units',
+    rate: po.items?.length > 0 ? Math.round((po.grandTotal || 0) / (po.items.reduce((s, i) => s + (i.quantity || 0), 1))) : 0,
+    amount: po.grandTotal || po.subTotal || 0,
+    status: po.status || 'Pending',
+    grnStatus: po.status === 'Completed' ? 'GRN Done' : 'Pending',
+    invoiceNo: po.invoiceNo || '—',
+    _id: po._id
+  }));
+
+  const [orders, setOrders] = useState(isRealVendor ? [] : DEMO_PURCHASE_ORDERS);
   const [showNewPOModal, setShowNewPOModal] = useState(false);
+
+  // Sync whenever hubData changes (API responds)
+  useEffect(() => {
+    if (!hubLoaded) return;
+    const mapped = mapOrders(hubData?.purchaseHistory?.orders);
+    if (mapped.length > 0) {
+      setOrders(mapped);
+    } else if (isRealVendor) {
+      setOrders([]); // Real vendor with no POs → show empty state
+    }
+    // Demo vendor → keep DEMO_PURCHASE_ORDERS
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubData]);
   const [newPO, setNewPO] = useState({
     items: '',
     qty: '',
@@ -432,7 +508,17 @@ function PurchaseTab({ vendor, showToast, handleOpenShareModal, hubData }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-800">
-              {orders.map((o, i) => (
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <FileText className="w-8 h-8 opacity-30" />
+                      <span className="font-bold text-sm">No purchase orders yet</span>
+                      <span className="text-xs">Create a purchase order using the Purchase module — it will appear here automatically</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : orders.map((o, i) => (
                 <tr key={i} className="hover:bg-white transition-colors">
                   <td className="p-3 font-mono font-black text-indigo-600">{o.id}</td>
                   <td className="p-3 font-mono text-slate-500">{o.date}</td>
@@ -463,6 +549,7 @@ function PurchaseTab({ vendor, showToast, handleOpenShareModal, hubData }) {
                 </tr>
               ))}
             </tbody>
+
             <tfoot className="bg-slate-100 border-t-2 border-slate-200">
               <tr>
                 <td colSpan={5} className="p-3 font-black text-slate-700 text-right">Grand Total:</td>
@@ -673,37 +760,19 @@ export default function VendorCommunicationCard({ currentUser }) {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/suppliers', {
+      const res = await fetch('http://localhost:5000/api/vendor-communication/list', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        const mapped = data.data.map(v => ({
-          _id: v._id || v.id,
-          vendorCode: v.vendorCode || `VND-${(v._id || v.id).substring(0, 6)}`,
-          name: v.name || v.supplierName || v.companyName,
-          businessName: v.companyName || v.businessName || v.name,
-          phone: v.phone || v.mobile || '9876543210',
-          email: v.email || 'vendor@example.com',
-          gstin: v.gstin || v.gstNo || '27AABCU9603R1ZM',
-          panNumber: v.panNumber || 'AABCU9603R',
-          category: v.category || 'Fabric & Materials',
-          businessType: v.businessType || 'Manufacturer',
-          rating: v.rating || 4.8,
-          brandsSupplied: Array.isArray(v.brandsSupplied) && v.brandsSupplied.length > 0 ? v.brandsSupplied : ['Raymond', 'Linen Club'],
-          address: v.address || 'Surat Textile Market, Surat, Gujarat - 395002',
-          bankDetails: v.bankDetails || { bankName: 'HDFC Bank', accountNo: '50200018291029', ifscCode: 'HDFC0000124' },
-          currentOutstanding: v.currentOutstanding || v.outstandingBalance || v.balance || 0,
-          isActive: v.isActive !== false
-        }));
-        setVendorList(mapped);
-        setSelectedVendorId(prev => prev || mapped[0]._id);
+        setVendorList(data.data);
+        setSelectedVendorId(prev => prev || data.data[0]._id);
       } else {
         setVendorList(DEFAULT_FALLBACK_VENDORS);
         setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
       }
     } catch (err) {
-      console.error('API load failed, using local vendor store:', err);
+      console.error('fetchVendors failed:', err);
       setVendorList(DEFAULT_FALLBACK_VENDORS);
       setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
     } finally {
@@ -731,7 +800,7 @@ export default function VendorCommunicationCard({ currentUser }) {
           return;
         }
       }
-    } catch (err) {}
+    } catch (err) { }
 
     // Fallback Hub State synced 1:1 with Vendor Document
     setHubData({
@@ -960,7 +1029,7 @@ export default function VendorCommunicationCard({ currentUser }) {
           status: 'Completed'
         })
       });
-    } catch (e) {}
+    } catch (e) { }
 
     // Update local Timeline
     setHubData(prev => prev ? {
@@ -1010,21 +1079,41 @@ export default function VendorCommunicationCard({ currentUser }) {
       return;
     }
 
+    // Build a clean payload matching the Vendor model schema
     const payload = {
-      ...newVendorForm,
-      brandsSupplied: newVendorForm.brandsSuppliedStr.split(',').map(b => b.trim()).filter(Boolean),
+      name: newVendorForm.name,
+      businessName: newVendorForm.businessName,
+      phone: newVendorForm.phone,
+      email: newVendorForm.email,
+      gstin: newVendorForm.gstin,
+      panNumber: newVendorForm.panNumber,
+      category: newVendorForm.category,
+      businessType: newVendorForm.businessType,
+      rating: newVendorForm.rating,
+      address: newVendorForm.address,
+      city: newVendorForm.city,
+      state: newVendorForm.state,
+      pinCode: newVendorForm.pinCode,
+      upiId: newVendorForm.upiId,
+      paymentTerms: newVendorForm.paymentTerms,
+      creditDays: newVendorForm.creditDays,
+      creditLimit: newVendorForm.creditLimit,
+      outstandingBalance: newVendorForm.outstandingBalance,
+      brandsSupplied: newVendorForm.brandsSuppliedStr
+        ? newVendorForm.brandsSuppliedStr.split(',').map(b => b.trim()).filter(Boolean)
+        : [],
       bankDetails: {
         bankName: newVendorForm.bankName,
         accountHolder: newVendorForm.accountHolder || newVendorForm.name,
         accountNo: newVendorForm.accountNo,
         ifscCode: newVendorForm.ifscCode,
-        branch: `${newVendorForm.city} Branch`
+        branch: `${newVendorForm.city || ''} Branch`
       }
     };
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/suppliers', {
+      const res = await fetch('http://localhost:5000/api/vendor-communication', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1034,22 +1123,26 @@ export default function VendorCommunicationCard({ currentUser }) {
       });
       const data = await res.json();
       if (data.success && data.data) {
-        showToast('New vendor created successfully in MongoDB!');
+        showToast(`✅ Vendor "${data.data.name}" created successfully!`);
         setShowAddVendorModal(false);
         setNewVendorForm({
           name: '', businessName: '', phone: '', email: '', gstin: '', panNumber: '',
           category: 'Fabric & Materials', businessType: 'Manufacturer', rating: 4.5,
-          brandsSuppliedStr: 'Raymond, Linen Club', address: '', city: 'Surat', state: 'Gujarat', pinCode: '395002',
-          bankName: 'HDFC Bank', accountHolder: '', accountNo: '', ifscCode: '', upiId: '',
+          brandsSuppliedStr: '', address: '', city: '', state: 'Gujarat', pinCode: '',
+          bankName: '', accountHolder: '', accountNo: '', ifscCode: '', upiId: '',
           paymentTerms: 'Net 30', creditDays: 30, creditLimit: 100000, outstandingBalance: 0
         });
         await fetchVendors();
-        setSelectedVendorId(data.data._id || data.data.id);
+        setSelectedVendorId(data.data._id);
+        setViewMode('detail');
+        setActiveTab('overview');
       } else {
-        showToast(data.message || 'Error creating vendor', 'error');
+        console.error('createVendor API error:', data);
+        showToast(data.message || 'Error creating vendor — check browser console', 'error');
       }
     } catch (err) {
-      showToast('Error connecting to backend API', 'error');
+      console.error('createVendor network error:', err);
+      showToast('Network error — is the backend server running?', 'error');
     }
   };
 
@@ -1135,12 +1228,11 @@ export default function VendorCommunicationCard({ currentUser }) {
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in bg-slate-50/60 p-4 md:p-6 rounded-2xl min-h-screen text-slate-800">
-      
+
       {/* Toast Alert */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs font-bold border ${
-          notification.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-        }`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs font-bold border ${notification.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}>
           <AlertCircle className="w-4 h-4" />
           <span>{notification.msg}</span>
         </div>
@@ -1180,17 +1272,7 @@ export default function VendorCommunicationCard({ currentUser }) {
             />
           </div>
 
-          <select
-            value={selectedVendorId}
-            onChange={(e) => setSelectedVendorId(e.target.value)}
-            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-          >
-            {filteredVendors.map(v => (
-              <option key={v._id} value={v._id}>
-                {v.name} ({v.vendorCode || 'VND-001'})
-              </option>
-            ))}
-          </select>
+
 
           <button
             onClick={() => setShowAddVendorModal(true)}
@@ -1228,8 +1310,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-sm">
                   {filteredVendors.map((v) => (
-                    <tr 
-                      key={v._id} 
+                    <tr
+                      key={v._id}
                       onClick={() => handleSelectVendor(v._id)}
                       className="hover:bg-indigo-50/30 transition cursor-pointer group"
                     >
@@ -1274,7 +1356,7 @@ export default function VendorCommunicationCard({ currentUser }) {
       ) : (
         /* ─── DETAILED VIEW MODE (PAGE INSIDE PAGE) ─── */
         <div className="space-y-4 animate-fade-in">
-          
+
           {/* Back Navigation Bar */}
           <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm">
             <button
@@ -1289,7 +1371,7 @@ export default function VendorCommunicationCard({ currentUser }) {
           </div>
 
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-            
+
             {/* 11-Tab Header */}
             <div className="bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center gap-1 p-2">
               {[
@@ -1309,11 +1391,10 @@ export default function VendorCommunicationCard({ currentUser }) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`py-2 px-3 text-xs font-black rounded-xl transition-all ${
-                    activeTab === tab.id
+                  className={`py-2 px-3 text-xs font-black rounded-xl transition-all ${activeTab === tab.id
                       ? 'bg-indigo-600 text-white shadow-sm'
                       : 'bg-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -1322,7 +1403,7 @@ export default function VendorCommunicationCard({ currentUser }) {
 
             {/* Tab Contents */}
             <div className="p-5 md:p-6 space-y-6">
-              
+
 
 
               {/* TAB 1: OVERVIEW — includes inline vendor profile card */}
@@ -1775,9 +1856,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <div key={f._id} className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase border ${
-                              f.priority === 'Urgent' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}>
+                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase border ${f.priority === 'Urgent' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
                               {f.priority} Priority
                             </span>
                             <h4 className="font-bold text-slate-800">{f.title}</h4>
@@ -1849,7 +1929,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                         <div className="flex items-center gap-2">
                           <span className="text-xl font-black text-amber-600 font-mono">{vendor.rating || 4.8}</span>
                           <div className="flex gap-0.5">
-                            {[1,2,3,4,5].map(star => (
+                            {[1, 2, 3, 4, 5].map(star => (
                               <Star key={star} className={`w-4 h-4 ${star <= Math.round(vendor.rating || 4.8) ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
                             ))}
                           </div>
@@ -2026,9 +2106,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                   <button
                     key={i}
                     onClick={btn.action}
-                    className={`flex flex-col items-center justify-center gap-1 py-3 flex-1 ${btn.bg} ${btn.text} ${btn.hoverBg} transition ${
-                      btn.border ? 'border-l border-slate-200' : ''
-                    } text-[10px] font-black`}
+                    className={`flex flex-col items-center justify-center gap-1 py-3 flex-1 ${btn.bg} ${btn.text} ${btn.hoverBg} transition ${btn.border ? 'border-l border-slate-200' : ''
+                      } text-[10px] font-black`}
                   >
                     <btn.icon className="w-4 h-4" />
                     <span>{btn.label}</span>

@@ -4,6 +4,51 @@ const VendorDocument = require('../models/vendorDocumentModel');
 const VendorFollowUp = require('../models/vendorFollowUpModel');
 const VendorNote = require('../models/vendorNoteModel');
 
+// @desc    Create a new Vendor
+// @route   POST /api/vendor-communication
+// @access  Private
+exports.createVendor = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+
+    // Check for duplicate phone within same tenant
+    const existing = await Vendor.findOne({ tenantId, phone: req.body.phone });
+    if (existing) {
+      return res.status(400).json({ success: false, message: `A vendor with phone number ${req.body.phone} already exists (${existing.name})` });
+    }
+
+    // Build bankDetails from flat fields if not already an object
+    const bankDetails = req.body.bankDetails || {
+      bankName: req.body.bankName,
+      accountHolder: req.body.accountHolder || req.body.name,
+      accountNo: req.body.accountNo,
+      ifscCode: req.body.ifscCode,
+      branch: req.body.branch || `${req.body.city || ''} Branch`
+    };
+
+    const vendorData = {
+      ...req.body,
+      bankDetails,
+      currentOutstanding: req.body.outstandingBalance || req.body.currentOutstanding || 0,
+      tenantId
+    };
+
+    // Remove flat bank fields that are now inside bankDetails
+    delete vendorData.bankName;
+    delete vendorData.accountHolder;
+    delete vendorData.accountNo;
+    delete vendorData.ifscCode;
+    delete vendorData.branch;
+    delete vendorData.brandsSuppliedStr; // frontend helper field
+
+    const vendor = await Vendor.create(vendorData);
+    res.status(201).json({ success: true, data: vendor });
+  } catch (err) {
+    console.error('createVendor error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // @desc    Get All Vendors for Header Selector / Search
 // @route   GET /api/vendor-communication/list
 // @access  Private
