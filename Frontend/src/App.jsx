@@ -418,6 +418,8 @@ export default function App() {
           "settings",
           "permissions",
           "staff-activity",
+          "purchase",
+          "vendor-communication",
           "financial-management",
           "accounts-treasury",
           "attendance-dashboard",
@@ -470,6 +472,7 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "vendor-communication",
           "financial-management",
           "accounts-treasury",
           "customers",
@@ -490,6 +493,7 @@ export default function App() {
           "articulation",
           "products",
           "purchase",
+          "vendor-communication",
           "financial-management",
           "accounts-treasury",
           "customers",
@@ -503,6 +507,7 @@ export default function App() {
           "billing",
           "products",
           "purchase",
+          "vendor-communication",
           "attendance-dashboard",
         ];
         break;
@@ -520,11 +525,12 @@ export default function App() {
           "accounting",
           "reports",
           "purchase",
+          "vendor-communication",
           "attendance-dashboard",
         ];
         break;
       default:
-        baseModules = ["billing", "financial-management", "accounts-treasury"];
+        baseModules = ["billing", "financial-management", "accounts-treasury", "vendor-communication"];
         break;
     }
 
@@ -547,15 +553,19 @@ export default function App() {
         }
       });
 
-      if (['admin', 'businessadmin', 'superadmin'].includes(roleKey) && !finalModules.includes('staff-activity')) {
-        finalModules.push('staff-activity');
+      if (['admin', 'businessadmin', 'superadmin', 'manager', 'accountant'].includes(roleKey)) {
+        if (!finalModules.includes('staff-activity')) finalModules.push('staff-activity');
+        if (!finalModules.includes('vendor-communication') && levelsMap['vendor-communication'] !== 'NO_ACCESS') {
+          finalModules.push('vendor-communication');
+        }
       }
 
       return finalModules;
     }
 
-    if (['admin', 'businessadmin', 'superadmin'].includes(roleKey) && !baseModules.includes('staff-activity')) {
-      baseModules.push('staff-activity');
+    if (['admin', 'businessadmin', 'superadmin', 'manager', 'accountant'].includes(roleKey)) {
+      if (!baseModules.includes('staff-activity')) baseModules.push('staff-activity');
+      if (!baseModules.includes('vendor-communication')) baseModules.push('vendor-communication');
     }
 
     return baseModules;
