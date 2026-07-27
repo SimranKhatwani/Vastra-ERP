@@ -46,6 +46,7 @@ export const PermissionsView = ({
     { id: "products", name: "Products & Garment Catalog", category: "Inventory", icon: Layers, desc: "Garment product items, prices, MRP, sizes & categories" },
     { id: "inventory", name: "Inventory Stock Control", category: "Inventory", icon: Layers, desc: "Adjust stock levels, warehouse counts & low stock alerts" },
     { id: "purchase", name: "Purchase & Vendor Orders", category: "Procurement", icon: Briefcase, desc: "Supplier invoices, GRNs & vendor outstanding ledgers" },
+    { id: "vendor-communication", name: "Vendor Communication Card", category: "Procurement", icon: Briefcase, desc: "Vendor relationship hub, documents, timeline & follow-ups" },
     { id: "financial-management", name: "Financial Analytics & Expenses", category: "Finance", icon: DollarSign, desc: "Revenue vs expenses, profit margins & financial ledgers" },
     { id: "customers", name: "CRM & Customer Directory", category: "CRM", icon: Users, desc: "Customer phone directory, credit balance & loyalty points" },
     { id: "employees", name: "Employee Directory & Roster", category: "HR & Payroll", icon: User, desc: "Staff profiles, commissions earned & payroll ledgers" },

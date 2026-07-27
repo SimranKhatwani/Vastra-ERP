@@ -48,6 +48,7 @@ import { FinancialView } from "./components/FinancialView";
 import { ReportsView } from "./components/ReportsView";
 import { SaaSPanelView } from "./components/SaaSPanelView";
 import { DeveloperPortalView } from "./components/DeveloperPortalView";
+import VendorCommunicationCard from "./components/VendorCommunicationCard";
 import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
@@ -438,6 +439,7 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "vendor-communication",
           "financial-management",
           "accounts-treasury",
           "customers",
@@ -1118,6 +1120,7 @@ export default function App() {
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
     { id: "purchase", label: "Purchase Management", icon: FileText },
+    { id: "vendor-communication", label: "Vendor Communication Card", icon: Building2 },
     { id: "financial-management", label: "Financial Management", icon: BarChart3 },
     { id: "accounts-treasury", label: "Accounts & Treasury", icon: Wallet },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
@@ -1595,6 +1598,10 @@ export default function App() {
               purchaseOrders={purchaseOrders}
               onAddNotification={addToastNotification}
             />
+          )}
+
+          {activeModule === "vendor-communication" && (
+            <VendorCommunicationCard currentUser={currentUser} />
           )}
 
           {activeModule === "financial-management" && (

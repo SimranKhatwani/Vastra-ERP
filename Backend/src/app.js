@@ -47,7 +47,10 @@ app.get('/', (req, res) => {
   res.send('VastraERP API is running...');
 });
 
+const vendorCommunicationRoutes = require('./routes/vendorCommunicationRoutes');
+
 // Mount Routes
+app.use('/api/vendor-communication', vendorCommunicationRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/staff', staffRoutes);

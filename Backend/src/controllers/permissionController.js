@@ -6,7 +6,7 @@ const defaultRolePermissions = {
   admin: {
     allowedModules: [
       'dashboard', 'billing', 'articulation', 'inventory', 'products',
-      'stock-management', 'billing-sales', 'discount-offers', 'purchase',
+      'stock-management', 'billing-sales', 'discount-offers', 'purchase', 'vendor-communication',
       'financial-management', 'accounts-treasury', 'customers', 'employees',
       'staff', 'commissions', 'accounting', 'reports', 'permissions', 'staff-activity', 'settings',
       'attendance-dashboard', 'manager-review', 'attendance-settings', 'saas'
