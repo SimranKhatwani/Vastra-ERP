@@ -1367,16 +1367,14 @@ export const PurchaseView = ({
   products = [],
   onAddNotification,
 }) => {
-  const [activeTab, setActiveTab] = useState("vendors");
+  const [activeTab, setActiveTab] = useState("grn");
 
   const tabs = [
-    { id: "vendors",     label: "Vendor Management",      icon: Building2 },
     { id: "grn",         label: "Goods Receipt (GRN)",     icon: ClipboardList },
     { id: "invoice",     label: "Purchase Invoices",       icon: FileText },
     { id: "returns",     label: "Purchase Returns",        icon: RotateCcw },
     { id: "pending",     label: "Pending Tracking",        icon: Clock },
     { id: "reports",     label: "Purchase Reports",        icon: BarChart3 },
-    { id: "outstanding", label: "Vendor Outstanding",      icon: Wallet },
   ];
 
   return (
@@ -1385,10 +1383,10 @@ export const PurchaseView = ({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-black text-slate-800">Purchase Management</h2>
-          <p className="text-xs text-slate-400">End-to-end procurement, vendor, invoice and outstanding management.</p>
+          <p className="text-xs text-slate-400">End-to-end procurement, goods receipt, purchase invoices and returns.</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full font-semibold">
-          <ShoppingBag className="w-3.5 h-3.5" /> {vendors.length} Vendors · {grns.length} GRNs · {purchaseInvoices.length} Invoices
+          <ShoppingBag className="w-3.5 h-3.5" /> {grns.length} GRNs · {purchaseInvoices.length} Invoices
         </div>
       </div>
 
@@ -1404,13 +1402,11 @@ export const PurchaseView = ({
 
       {/* Tab Content */}
       <div>
-        {activeTab === "vendors" && <VendorManagement vendors={vendors} setVendors={setVendors} onAddNotification={onAddNotification} />}
         {activeTab === "grn" && <GRNEntry grns={grns} setGrns={setGrns} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
         {activeTab === "invoice" && <PurchaseInvoiceManager purchaseInvoices={purchaseInvoices} setPurchaseInvoices={setPurchaseInvoices} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
         {activeTab === "returns" && <PurchaseReturns purchaseReturns={purchaseReturns} setPurchaseReturns={setPurchaseReturns} vendors={vendors} products={products} purchaseInvoices={purchaseInvoices} onAddNotification={onAddNotification} />}
         {activeTab === "pending" && <PendingTracking pendingPurchases={pendingPurchases} setPendingPurchases={setPendingPurchases} onAddNotification={onAddNotification} />}
         {activeTab === "reports" && <PurchaseReportsTab purchaseReports={purchaseReports} setPurchaseReports={setPurchaseReports} onAddNotification={onAddNotification} />}
-        {activeTab === "outstanding" && <VendorOutstandingReports vendorOutstanding={vendorOutstanding} setVendorOutstanding={setVendorOutstanding} onAddNotification={onAddNotification} />}
       </div>
     </div>
   );

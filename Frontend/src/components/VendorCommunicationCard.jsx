@@ -75,6 +75,524 @@ const DEFAULT_FALLBACK_VENDORS = [
   }
 ];
 
+// ─── OutstandingTab Sub-Component ──────────────────────────────────────────
+const DEMO_INVOICES = [
+  { id: 'INV-2026-091', date: '18-Jul-2026', billAmount: 45000, amountPaid: 15000, outstanding: 30000, status: 'Partial' },
+  { id: 'INV-2026-084', date: '10-Jul-2026', billAmount: 15000, amountPaid: 0, outstanding: 15000, status: 'Unpaid' },
+  { id: 'INV-2026-072', date: '02-Jul-2026', billAmount: 22000, amountPaid: 22000, outstanding: 0, status: 'Paid' },
+];
+
+const INV_STATUS_STYLE = {
+  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Partial: 'bg-amber-50 text-amber-700 border-amber-200',
+  Unpaid: 'bg-red-50 text-red-700 border-red-200',
+};
+
+function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
+  const [invoices, setInvoices] = useState(DEMO_INVOICES);
+  const [payModal, setPayModal] = useState(null); // selected invoice for payment
+  const [payForm, setPayForm] = useState({ amount: '', mode: 'Bank Transfer', referenceNo: '', remarks: '' });
+
+  const totalOutstanding = invoices.reduce((s, inv) => s + inv.outstanding, 0);
+
+  const openPayModal = (inv) => {
+    setPayModal(inv);
+    setPayForm({ amount: inv.outstanding, mode: 'Bank Transfer', referenceNo: '', remarks: '' });
+  };
+
+  const handleConfirmPayment = (e) => {
+    e.preventDefault();
+    const paid = Number(payForm.amount);
+    if (!paid || paid <= 0) { showToast('Enter a valid payment amount', 'error'); return; }
+    if (paid > payModal.outstanding) { showToast('Amount exceeds outstanding balance', 'error'); return; }
+
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id !== payModal.id) return inv;
+      const newPaid = inv.amountPaid + paid;
+      const newOutstanding = inv.billAmount - newPaid;
+      const newStatus = newOutstanding <= 0 ? 'Paid' : 'Partial';
+      return { ...inv, amountPaid: newPaid, outstanding: Math.max(0, newOutstanding), status: newStatus };
+    }));
+
+    showToast(`✅ Payment of ₹${paid.toLocaleString('en-IN')} recorded for ${payModal.id}!`);
+    setPayModal(null);
+  };
+
+  return (
+    <div className="space-y-5 animate-fade-in text-xs">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-2 gap-2">
+        <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
+          Financial Outstanding & Settlement Ledger
+        </h3>
+        <button
+          onClick={() => handleOpenShareModal('Ledger Statement', 'STMT-2026-001')}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 shadow-sm"
+        >
+          <FileCheck className="w-3.5 h-3.5" /> Share Ledger Statement
+        </button>
+      </div>
+
+      {/* KPI Tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-1">
+          <span className="text-red-500 font-bold block">Total Outstanding</span>
+          <span className="text-xl font-black text-red-600 font-mono">₹{totalOutstanding.toLocaleString('en-IN')}</span>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
+          <span className="text-slate-400 font-bold block">Credit Limit</span>
+          <span className="text-lg font-black text-slate-800 font-mono">₹{(vendor?.creditLimit || 250000).toLocaleString('en-IN')}</span>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
+          <span className="text-slate-400 font-bold block">Credit Terms</span>
+          <span className="text-lg font-bold text-slate-700">{vendor?.paymentTerms || 'Net 30'} ({vendor?.creditDays || 30} Days)</span>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
+          <span className="text-emerald-600 font-bold block">Last Payment</span>
+          <span className="text-sm font-bold text-emerald-700">{new Date(Date.now() - 86400000 * 5).toLocaleDateString()}</span>
+        </div>
+      </div>
+
+      {/* Invoice Table */}
+      <div className="space-y-2">
+        <span className="font-bold text-slate-700 block">Pending Vendor Invoices & Payment Ledger:</span>
+        <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-100 text-slate-500 font-mono text-[11px] uppercase">
+              <tr>
+                <th className="p-3">Invoice #</th>
+                <th className="p-3">Date</th>
+                <th className="p-3 text-right">Bill Amount</th>
+                <th className="p-3 text-right">Paid Amount</th>
+                <th className="p-3 text-right">Outstanding</th>
+                <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
+              {invoices.map((inv) => (
+                <tr key={inv.id} className={`hover:bg-white transition-colors ${inv.status === 'Unpaid' ? 'bg-red-50/20' : ''}`}>
+                  <td className="p-3 font-mono font-bold text-indigo-600">{inv.id}</td>
+                  <td className="p-3 font-mono text-slate-500">{inv.date}</td>
+                  <td className="p-3 text-right font-mono font-bold">₹{inv.billAmount.toLocaleString('en-IN')}</td>
+                  <td className="p-3 text-right font-mono text-emerald-600 font-bold">₹{inv.amountPaid.toLocaleString('en-IN')}</td>
+                  <td className="p-3 text-right font-mono font-black text-red-600">₹{inv.outstanding.toLocaleString('en-IN')}</td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${INV_STATUS_STYLE[inv.status]}`}>
+                      {inv.status}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    {inv.status !== 'Paid' ? (
+                      <button
+                        onClick={() => openPayModal(inv)}
+                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg shadow-sm transition flex items-center gap-1 mx-auto"
+                      >
+                        <DollarSign className="w-3 h-3" /> Pay
+                      </button>
+                    ) : (
+                      <span className="text-emerald-600 font-bold text-[10px] flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-100 border-t-2 border-slate-200">
+              <tr>
+                <td colSpan={4} className="p-3 text-right font-black text-slate-700">Total Outstanding Balance:</td>
+                <td className="p-3 text-right font-black text-red-600 font-mono">₹{totalOutstanding.toLocaleString('en-IN')}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* PAYMENT MODAL */}
+      {payModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">Record Payment</h3>
+                  <p className="text-[10px] font-mono text-indigo-600 font-bold">{payModal.id} — {vendor?.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setPayModal(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Invoice Summary */}
+            <div className="grid grid-cols-3 gap-3 text-xs bg-slate-50 rounded-xl p-3 border border-slate-200">
+              <div>
+                <span className="text-slate-400 block font-medium">Bill Amount</span>
+                <span className="font-black text-slate-800 text-sm">₹{payModal.billAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Already Paid</span>
+                <span className="font-black text-emerald-600 text-sm">₹{payModal.amountPaid.toLocaleString('en-IN')}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Outstanding</span>
+                <span className="font-black text-red-600 text-sm">₹{payModal.outstanding.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+
+            {/* Payment Form */}
+            <form onSubmit={handleConfirmPayment} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Payment Amount (₹) *</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max={payModal.outstanding}
+                  step="0.01"
+                  value={payForm.amount}
+                  onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 font-mono font-black text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  placeholder="Enter amount"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Payment Mode *</label>
+                  <select
+                    value={payForm.mode}
+                    onChange={e => setPayForm(p => ({ ...p, mode: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-emerald-500"
+                  >
+                    {['Bank Transfer', 'NEFT', 'RTGS', 'UPI', 'Cheque', 'Cash', 'Other'].map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Reference / UTR No.</label>
+                  <input
+                    type="text"
+                    value={payForm.referenceNo}
+                    onChange={e => setPayForm(p => ({ ...p, referenceNo: e.target.value }))}
+                    placeholder="UTR / Cheque / UPI Ref"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Remarks</label>
+                <input
+                  type="text"
+                  value={payForm.remarks}
+                  onChange={e => setPayForm(p => ({ ...p, remarks: e.target.value }))}
+                  placeholder="Optional payment remarks..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Live remaining balance preview */}
+              {payForm.amount > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+                  <span className="font-bold text-emerald-700">Remaining after this payment:</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">
+                    ₹{Math.max(0, payModal.outstanding - Number(payForm.amount)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setPayModal(null)} className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-sm flex items-center gap-2 transition"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Confirm Payment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PurchaseTab Sub-Component ─────────────────────────────────────────────
+const DEMO_PURCHASE_ORDERS = [
+  { id: 'PO-2026-081', date: '2026-07-20', items: 'Cotton Fabric 500M, Linen Shirting 200M', qty: 700, unit: 'Meters', rate: 120, amount: 84000, status: 'Received', grnStatus: 'GRN Done', invoiceNo: 'INV-2026-081' },
+  { id: 'PO-2026-074', date: '2026-07-10', items: 'Raymond Suiting 300M', qty: 300, unit: 'Meters', rate: 180, amount: 54000, status: 'Partially Received', grnStatus: 'Pending', invoiceNo: 'INV-2026-074' },
+  { id: 'PO-2026-068', date: '2026-06-28', items: 'Linen Club Fabric 400M', qty: 400, unit: 'Meters', rate: 160, amount: 64000, status: 'Received', grnStatus: 'GRN Done', invoiceNo: 'INV-2026-068' },
+  { id: 'PO-2026-059', date: '2026-06-15', items: 'Cotton Bale 20 Units', qty: 20, unit: 'Bales', rate: 1500, amount: 30000, status: 'Cancelled', grnStatus: '—', invoiceNo: '—' },
+];
+
+const STATUS_COLORS = {
+  'Received': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Partially Received': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Pending': 'bg-blue-50 text-blue-700 border-blue-200',
+  'Cancelled': 'bg-red-50 text-red-700 border-red-200',
+};
+
+function PurchaseTab({ vendor, showToast, handleOpenShareModal, hubData }) {
+  const [orders, setOrders] = useState(DEMO_PURCHASE_ORDERS);
+  const [showNewPOModal, setShowNewPOModal] = useState(false);
+  const [newPO, setNewPO] = useState({
+    items: '',
+    qty: '',
+    unit: 'Meters',
+    rate: '',
+    expectedDelivery: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+    remarks: '',
+    paymentTerms: vendor?.paymentTerms || 'Net 30',
+  });
+
+  const totalValue = orders.reduce((s, o) => s + o.amount, 0);
+  const receivedCount = orders.filter(o => o.status === 'Received').length;
+  const pendingCount = orders.filter(o => o.status === 'Partially Received' || o.status === 'Pending').length;
+
+  const handleCreatePO = (e) => {
+    e.preventDefault();
+    const amount = Number(newPO.qty) * Number(newPO.rate);
+    const poId = `PO-2026-${Math.floor(100 + Math.random() * 900)}`;
+    const created = {
+      id: poId,
+      date: new Date().toISOString().split('T')[0],
+      items: newPO.items,
+      qty: Number(newPO.qty),
+      unit: newPO.unit,
+      rate: Number(newPO.rate),
+      amount,
+      status: 'Pending',
+      grnStatus: 'Pending',
+      invoiceNo: '—',
+    };
+    setOrders(prev => [created, ...prev]);
+    setShowNewPOModal(false);
+    showToast(`Purchase Order ${poId} created for ₹${amount.toLocaleString('en-IN')}!`);
+  };
+
+  return (
+    <div className="space-y-5 animate-fade-in text-xs">
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-1">
+          <span className="text-indigo-500 font-bold block">Total Purchase Value</span>
+          <span className="text-xl font-black text-indigo-700 font-mono">₹{totalValue.toLocaleString('en-IN')}</span>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
+          <span className="text-slate-400 font-bold block">Total Orders</span>
+          <span className="text-xl font-black text-slate-800">{orders.length}</span>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
+          <span className="text-emerald-600 font-bold block">Received</span>
+          <span className="text-xl font-black text-emerald-700">{receivedCount}</span>
+        </div>
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-1">
+          <span className="text-amber-600 font-bold block">Pending / Partial</span>
+          <span className="text-xl font-black text-amber-700">{pendingCount}</span>
+        </div>
+      </div>
+
+      {/* Header with + Create PO */}
+      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
+          Purchase Orders & History — {vendor?.name}
+        </h3>
+        <button
+          onClick={() => setShowNewPOModal(true)}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition"
+        >
+          <Plus className="w-3.5 h-3.5" /> Create New Purchase
+        </button>
+      </div>
+
+      {/* Detailed PO Table */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-100 text-slate-500 font-mono text-[11px] uppercase">
+              <tr>
+                <th className="p-3">PO Number</th>
+                <th className="p-3">Date</th>
+                <th className="p-3">Items</th>
+                <th className="p-3 text-right">Qty</th>
+                <th className="p-3 text-right">Rate</th>
+                <th className="p-3 text-right">Amount</th>
+                <th className="p-3 text-center">GRN</th>
+                <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-800">
+              {orders.map((o, i) => (
+                <tr key={i} className="hover:bg-white transition-colors">
+                  <td className="p-3 font-mono font-black text-indigo-600">{o.id}</td>
+                  <td className="p-3 font-mono text-slate-500">{o.date}</td>
+                  <td className="p-3 font-medium text-slate-700 max-w-[180px]">{o.items}</td>
+                  <td className="p-3 text-right font-mono font-bold">{o.qty} {o.unit}</td>
+                  <td className="p-3 text-right font-mono text-slate-600">₹{o.rate}</td>
+                  <td className="p-3 text-right font-mono font-black text-slate-800">₹{o.amount.toLocaleString('en-IN')}</td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${o.grnStatus === 'GRN Done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                      {o.grnStatus}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                      {o.status}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={() => handleOpenShareModal('Purchase Order', o.id)}
+                        className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-200"
+                      >
+                        Share PO
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-100 border-t-2 border-slate-200">
+              <tr>
+                <td colSpan={5} className="p-3 font-black text-slate-700 text-right">Grand Total:</td>
+                <td className="p-3 text-right font-black text-indigo-700 font-mono">₹{totalValue.toLocaleString('en-IN')}</td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* CREATE NEW PURCHASE MODAL */}
+      {showNewPOModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><FileText className="w-5 h-5" /></div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">Create New Purchase Order</h3>
+                  <p className="text-[10px] text-slate-500 font-medium">Vendor: {vendor?.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowNewPOModal(false)} className="text-slate-400 hover:text-slate-700 p-1"><X className="w-5 h-5" /></button>
+            </div>
+
+            <form onSubmit={handleCreatePO} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Items / Product Description *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Cotton Fabric 500M, Linen Shirting 200M"
+                  value={newPO.items}
+                  onChange={e => setNewPO(p => ({ ...p, items: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="500"
+                    value={newPO.qty}
+                    onChange={e => setNewPO(p => ({ ...p, qty: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Unit</label>
+                  <select
+                    value={newPO.unit}
+                    onChange={e => setNewPO(p => ({ ...p, unit: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                  >
+                    {['Meters', 'Yards', 'Kg', 'Bales', 'Pieces', 'Rolls', 'Sets'].map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Rate per Unit (₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="120"
+                    value={newPO.rate}
+                    onChange={e => setNewPO(p => ({ ...p, rate: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {newPO.qty && newPO.rate && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex justify-between items-center">
+                  <span className="font-bold text-indigo-700">Estimated Total Order Value:</span>
+                  <span className="text-lg font-black text-indigo-700 font-mono">₹{(Number(newPO.qty) * Number(newPO.rate)).toLocaleString('en-IN')}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Expected Delivery</label>
+                  <input
+                    type="date"
+                    value={newPO.expectedDelivery}
+                    onChange={e => setNewPO(p => ({ ...p, expectedDelivery: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-600 block mb-1">Payment Terms</label>
+                  <select
+                    value={newPO.paymentTerms}
+                    onChange={e => setNewPO(p => ({ ...p, paymentTerms: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                  >
+                    {['Net 7', 'Net 15', 'Net 30', 'Net 45', 'Advance', 'COD'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Remarks / Special Instructions</label>
+                <textarea
+                  rows={2}
+                  placeholder="Any special delivery instructions or quality notes..."
+                  value={newPO.remarks}
+                  onChange={e => setNewPO(p => ({ ...p, remarks: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setShowNewPOModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
+                <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-700 shadow-sm flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" /> Create Purchase Order
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VendorCommunicationCard({ currentUser }) {
   const [vendorList, setVendorList] = useState([]);
   const [selectedVendorId, setSelectedVendorId] = useState('');
@@ -675,96 +1193,8 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       </div>
 
-      {/* MAIN 2-PANEL LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        {/* LEFT PANEL: Sticky Vendor Profile Card (Cols 3) */}
-        <div className="lg:col-span-3 space-y-5">
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-5 sticky top-6">
-            <div className="flex flex-col items-center text-center space-y-3 pb-4 border-b border-slate-100">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center text-2xl font-black text-white shadow-md border border-indigo-200">
-                {vendor.logoUrl ? (
-                  <img src={vendor.logoUrl} alt={vendor.name} className="w-full h-full object-cover rounded-2xl" />
-                ) : (
-                  vendor.name ? vendor.name.substring(0, 2).toUpperCase() : 'VN'
-                )}
-              </div>
-              <div>
-                <h2 className="text-lg font-black text-slate-800">{vendor.name}</h2>
-                <p className="text-xs font-mono font-bold text-indigo-600">{vendor.vendorCode || 'VND-2026-001'}</p>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{vendor.businessName || 'Garment Manufacturing & Supply Co.'}</p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-                  vendor.isActive !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
-                }`}>
-                  {vendor.isActive !== false ? 'Active Supplier' : 'Inactive'}
-                </span>
-                <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                  {vendor.rating || 4.8}
-                </span>
-              </div>
-            </div>
-
-            {/* Supplied Brands */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Tag className="w-3 h-3 text-indigo-600" /> Supplied Brands
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {(vendor.brandsSupplied && vendor.brandsSupplied.length > 0 ? vendor.brandsSupplied : ['Raymond', 'Linen Club']).map((b, i) => (
-                  <span key={i} className="bg-slate-100 text-slate-700 border border-slate-200 text-xs px-2.5 py-0.5 rounded-lg font-bold font-mono">
-                    {b}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Key Vendor Info */}
-            <div className="space-y-2 text-xs border-t border-slate-100 pt-4">
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400 font-medium">Category:</span>
-                <span className="font-bold text-slate-700">{vendor.category || 'Fabric & Materials'}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400 font-medium">Business Type:</span>
-                <span className="font-bold text-slate-700">{vendor.businessType || 'Manufacturer'}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400 font-medium">GSTIN:</span>
-                <span className="font-mono font-bold text-indigo-600 cursor-pointer flex items-center gap-1" onClick={() => copyToClipboard(vendor.gstin || '27AABCU9603R1ZM', 'GSTIN')}>
-                  {vendor.gstin || '27AABCU9603R1ZM'} <Copy className="w-3 h-3" />
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-400 font-medium">PAN Number:</span>
-                <span className="font-mono font-bold text-indigo-600 cursor-pointer flex items-center gap-1" onClick={() => copyToClipboard(vendor.panNumber || 'AABCU9603R', 'PAN')}>
-                  {vendor.panNumber || 'AABCU9603R'} <Copy className="w-3 h-3" />
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-2 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleOpenShareModal('Call')}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition"
-              >
-                <Phone className="w-3.5 h-3.5" /> Call
-              </button>
-              <button
-                onClick={() => handleOpenShareModal('WhatsApp Message')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition"
-              >
-                <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT FULL-WIDTH TABBED INTERFACE (Cols 9) */}
-        <div className="lg:col-span-9 space-y-5">
+      {/* FULL-WIDTH TABBED INTERFACE */}
+      <div className="space-y-0">
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             
             {/* 10-Tab Header */}
@@ -798,57 +1228,91 @@ export default function VendorCommunicationCard({ currentUser }) {
             {/* Tab Contents */}
             <div className="p-5 md:p-6 space-y-6">
               
-              {/* TAB 1: OVERVIEW */}
+              {/* TAB 1: OVERVIEW — includes inline vendor profile card */}
               {activeTab === 'overview' && (
                 <div className="space-y-5 animate-fade-in">
+
+                  {/* INLINE VENDOR PROFILE CARD (only shown here) */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-slate-50 border border-indigo-100 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center text-xl font-black text-white shadow-md border border-indigo-200 flex-shrink-0">
+                      {vendor.name ? vendor.name.substring(0, 2).toUpperCase() : 'VN'}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-black text-slate-800">{vendor.name}</h2>
+                        <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{vendor.vendorCode || 'VND-2026-001'}</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${vendor.isActive !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                          {vendor.isActive !== false ? 'Active Supplier' : 'Inactive'}
+                        </span>
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {vendor.rating || 4.8}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium">{vendor.businessName || 'Garment Manufacturing & Supply Co.'}</p>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {(vendor.brandsSupplied && vendor.brandsSupplied.length > 0 ? vendor.brandsSupplied : ['Raymond', 'Linen Club']).map((b, i) => (
+                          <span key={i} className="bg-white text-slate-700 border border-slate-200 text-[10px] px-2 py-0.5 rounded font-bold font-mono">{b}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+                      <button onClick={() => handleOpenShareModal('Call')} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5 shadow-sm transition">
+                        <Phone className="w-3.5 h-3.5" /> Call
+                      </button>
+                      <button onClick={() => handleOpenShareModal('WhatsApp Message')} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5 shadow-sm transition">
+                        <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
                     <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
                       Vendor Profile Master Record
                     </h3>
-
-                    {/* Integrated Functional Share Buttons */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <button onClick={() => handleOpenShareModal('Purchase Order', 'PO-2026-9810')} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-200 shadow-2xs">
+                      <button onClick={() => handleOpenShareModal('Purchase Order', 'PO-2026-9810')} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-200">
                         <FileText className="w-3.5 h-3.5" /> Share PO
                       </button>
-                      <button onClick={() => handleOpenShareModal('Goods Return', 'GRN-2026-042')} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-amber-200 shadow-2xs">
+                      <button onClick={() => handleOpenShareModal('Goods Return', 'GRN-2026-042')} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-amber-200">
                         <RefreshCw className="w-3.5 h-3.5" /> Goods Return
                       </button>
-                      <button onClick={() => handleOpenShareModal('Payment Advice', 'PAY-2026-118')} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200 shadow-2xs">
+                      <button onClick={() => handleOpenShareModal('Payment Advice', 'PAY-2026-118')} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200">
                         <DollarSign className="w-3.5 h-3.5" /> Payment Advice
                       </button>
-                      <button onClick={() => handleOpenShareModal('Ledger Statement', 'STMT-2026-001')} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 shadow-2xs">
+                      <button onClick={() => handleOpenShareModal('Ledger Statement', 'STMT-2026-001')} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200">
                         <FileCheck className="w-3.5 h-3.5" /> Ledger Statement
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-xs">
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Vendor Name</span>
-                      <span className="font-black text-slate-800 text-sm block">{vendor.name}</span>
+                      <span className="text-slate-400 font-medium">Category</span>
+                      <span className="font-bold text-slate-800 block">{vendor.category || 'Fabric & Materials'}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Vendor Code</span>
-                      <span className="font-mono font-bold text-indigo-600 text-sm block">{vendor.vendorCode || 'VND-2026-001'}</span>
+                      <span className="text-slate-400 font-medium">Business Type</span>
+                      <span className="font-bold text-slate-800 block">{vendor.businessType || 'Manufacturer'}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Company Name</span>
-                      <span className="font-bold text-slate-700 block">{vendor.businessName || vendor.name}</span>
+                      <span className="text-slate-400 font-medium">GSTIN</span>
+                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.gstin || '27AABCU9603R1ZM', 'GSTIN')}>{vendor.gstin || '27AABCU9603R1ZM'} <Copy className="w-3 h-3" /></span>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">PAN Number</span>
+                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.panNumber || 'AABCU9603R', 'PAN')}>{vendor.panNumber || 'AABCU9603R'} <Copy className="w-3 h-3" /></span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Supplied Brands</span>
                       <span className="font-bold text-slate-700 block">{(vendor.brandsSupplied || ['Raymond', 'Linen Club']).join(', ')}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Preferred Contact Person</span>
-                      <span className="font-bold text-slate-700 block">{vendor.preferredContactPerson || vendor.contactPerson || 'Mr. Ramesh Shah (Sales Head)'}</span>
+                      <span className="text-slate-400 font-medium">Preferred Contact</span>
+                      <span className="font-bold text-slate-700 block">{vendor.preferredContactPerson || 'Mr. Ramesh Shah (Sales Head)'}</span>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Preferred Calling Time</span>
-                      <span className="font-bold text-emerald-600 flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || '10:00 AM - 06:00 PM'}
-                      </span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1 col-span-2">
+                      <span className="text-slate-400 font-medium">Calling Window</span>
+                      <span className="font-bold text-emerald-600 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || '10:00 AM - 06:00 PM'}</span>
                     </div>
                   </div>
 
@@ -1077,48 +1541,19 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* TAB 8: PURCHASES */}
+              {/* TAB 8: PURCHASES — Full Detail + Create New PO */}
               {activeTab === 'purchase_history' && (
-                <div className="space-y-5 animate-fade-in">
-                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Live Purchase Orders & History
-                  </h3>
-
-                  <div className="grid grid-cols-3 gap-4 text-xs">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block font-medium">Total Purchase Value</span>
-                      <span className="text-xl font-black text-indigo-600">₹{(hubData?.purchaseHistory?.totalPurchaseValue || 185000).toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block font-medium">Purchase Orders</span>
-                      <span className="text-xl font-black text-slate-800">{hubData?.purchaseHistory?.purchaseOrdersCount || 4}</span>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block font-medium">Goods Returns</span>
-                      <span className="text-xl font-black text-amber-600">{hubData?.purchaseHistory?.returnsCount || 1}</span>
-                    </div>
-                  </div>
-                </div>
+                <PurchaseTab vendor={vendor} showToast={showToast} handleOpenShareModal={handleOpenShareModal} hubData={hubData} />
               )}
 
               {/* TAB 9: OUTSTANDING */}
               {activeTab === 'outstanding' && (
-                <div className="space-y-5 animate-fade-in">
-                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Financial Outstanding & Settlement Ledger
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Current Outstanding Balance</span>
-                      <span className="text-2xl font-black text-red-600 block font-mono">₹{(hubData?.outstanding?.totalOutstanding || 45000).toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Credit Limit</span>
-                      <span className="text-lg font-black text-slate-800 block font-mono">₹{(hubData?.outstanding?.creditLimit || 250000).toLocaleString('en-IN')} ({hubData?.outstanding?.creditDays || 30} Days)</span>
-                    </div>
-                  </div>
-                </div>
+                <OutstandingTab
+                  vendor={vendor}
+                  hubData={hubData}
+                  showToast={showToast}
+                  handleOpenShareModal={handleOpenShareModal}
+                />
               )}
 
               {/* TAB 10: NOTES */}
@@ -1149,7 +1584,6 @@ export default function VendorCommunicationCard({ currentUser }) {
 
             </div>
           </div>
-        </div>
 
       </div>
 
