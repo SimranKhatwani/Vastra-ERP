@@ -264,49 +264,124 @@ export default function VendorCommunicationCard({ currentUser }) {
     }
   }, [selectedVendorId]);
 
+  // Helper function to generate professional HTML Document / Invoice files
+  const generateHTMLDocument = ({ title, docNumber, documentType, vendor, summaryText }) => {
+    const v = vendor || {};
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = new Date().toLocaleTimeString('en-IN');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} - ${v.name || 'Vendor'}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { background-color: #f8fafc; color: #1e293b; padding: 40px 20px; min-height: 100vh; display: flex; justify-content: center; }
+    .page-container { background: #ffffff; width: 100%; max-width: 800px; padding: 40px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 24px; border-bottom: 2px solid #4f46e5; margin-bottom: 24px; }
+    .brand-title { font-size: 22px; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px; }
+    .brand-subtitle { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+    .doc-badge { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 800; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px; font-size: 13px; }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-label { color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .meta-value { font-weight: 700; color: #0f172a; }
+    .meta-mono { font-family: 'JetBrains Mono', monospace; color: #4f46e5; font-weight: 700; }
+    .content-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
+    .content-box h3 { color: #0f172a; font-size: 14px; font-weight: 800; margin-bottom: 12px; text-transform: uppercase; }
+    .footer { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; border-top: 1px solid #e2e8f0; margin-top: 32px; font-size: 11px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; }
+    .btn-print { background: #4f46e5; color: #ffffff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25); transition: background 0.2s; }
+    .btn-print:hover { background: #4338ca; }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .page-container { border: none; box-shadow: none; max-width: 100%; padding: 0; }
+      .btn-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    <div class="header">
+      <div>
+        <div class="brand-title">Vastra ERP Enterprise</div>
+        <div class="brand-subtitle">Garment ERP Official Document</div>
+      </div>
+      <div style="text-align: right;">
+        <span class="doc-badge">${documentType || title}</span>
+        <div style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #64748b; margin-top: 6px;">Doc ID: #${docNumber || 'DOC-2026-001'}</div>
+      </div>
+    </div>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <span class="meta-label">Vendor / Supplier Name</span>
+        <span class="meta-value">${v.name || 'N/A'}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Vendor Code</span>
+        <span class="meta-mono">${v.vendorCode || 'VND-001'}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">GSTIN Number</span>
+        <span class="meta-mono">${v.gstin || '27AABCU9603R1ZM'}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Date & Time</span>
+        <span class="meta-value">${dateStr} | ${timeStr}</span>
+      </div>
+      <div class="meta-item" style="grid-column: span 2;">
+        <span class="meta-label">Facility Address</span>
+        <span class="meta-value">${v.address || 'Surat Textile Industrial Market, Gujarat - 395002'}</span>
+      </div>
+    </div>
+
+    <div class="content-box">
+      <h3>${title} Details</h3>
+      <p style="white-space: pre-line;">${summaryText || 'Official document record verified and issued from Vastra ERP Repository.'}</p>
+    </div>
+
+    <div style="text-align: right; margin-top: 20px;">
+      <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    </div>
+
+    <div class="footer">
+      <span>Verified by Vastra ERP Systems</span>
+      <span>Page 1 of 1</span>
+    </div>
+  </div>
+</body>
+</html>`;
+  };
+
   // 3. Document Repository: VIEW handler
   const handleViewDocument = (doc) => {
     setPreviewDoc(doc);
   };
 
-  // 4. Document Repository: DOWNLOAD handler
+  // 4. Document Repository: DOWNLOAD handler (Generates HTML file)
   const handleDownloadDocument = (doc) => {
     const v = hubData?.vendor || vendorList.find(x => String(x._id) === String(selectedVendorId)) || DEFAULT_FALLBACK_VENDORS[0];
-    const fileContent = `====================================================
-VASTRA ERP - OFFICIAL VENDOR DOCUMENT REPOSITORY
-====================================================
-Document Title: ${doc.title}
-Document Type:  ${doc.documentType}
-File Size:      ${doc.fileSize || '1.2 MB'}
-Upload Date:    ${new Date(doc.uploadedAt || Date.now()).toLocaleString()}
-Uploaded By:    ${doc.uploadedBy || 'Admin'}
+    const htmlContent = generateHTMLDocument({
+      title: doc.title,
+      docNumber: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
+      documentType: doc.documentType,
+      vendor: v,
+      summaryText: `This is an official copy of ${doc.title} (${doc.documentType}) registered under Vendor Code ${v.vendorCode}.\nFile Size: ${doc.fileSize || '1.2 MB'}\nUpload Timestamp: ${new Date(doc.uploadedAt || Date.now()).toLocaleString()}`
+    });
 
-----------------------------------------------------
-VENDOR DETAILS:
-Vendor Name:    ${v.name}
-Vendor Code:    ${v.vendorCode}
-Business Name:  ${v.businessName || v.name}
-GSTIN Number:   ${v.gstin || '27AABCU9603R1ZM'}
-PAN Number:     ${v.panNumber || 'AABCU9603R'}
-Category:       ${v.category}
-Phone Number:   ${v.phone}
-Address:        ${v.address}
-----------------------------------------------------
-
-This document is verified and stored in Vastra ERP MongoDB Document Repository.
-Generated on: ${new Date().toLocaleString()}
-====================================================`;
-
-    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}_Document.txt`;
+    link.download = `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast(`Downloaded: ${doc.title}`);
+    showToast(`Downloaded HTML document: ${doc.title}`);
   };
 
   // 5. Open Share Modal (Share PO, Goods Return, Payment Advice, Ledger Statement)
@@ -336,7 +411,7 @@ Generated on: ${new Date().toLocaleString()}
     });
   };
 
-  // 6. Execute Share (WhatsApp, Email, or File Download)
+  // 6. Execute Share (WhatsApp, Email, or HTML File Download)
   const handleExecuteShare = async (channel) => {
     if (!shareModalData) return;
     const { category, docNumber, recipientPhone, recipientEmail, summaryText, vendor } = shareModalData;
@@ -378,38 +453,24 @@ Generated on: ${new Date().toLocaleString()}
       window.open(mailtoUrl, '_self');
       showToast(`Opened email client to share ${category}!`);
     } else if (channel === 'Download') {
-      const fileContent = `====================================================
-VASTRA ERP - OFFICIAL VENDOR DOCUMENT STATEMENT
-====================================================
-Document:       ${category}
-Document No:    #${docNumber}
-Date:           ${new Date().toLocaleString()}
-Shared By:      ${currentUser?.name || 'Admin'}
+      const htmlContent = generateHTMLDocument({
+        title: category,
+        docNumber,
+        documentType: category,
+        vendor,
+        summaryText
+      });
 
-----------------------------------------------------
-VENDOR DETAILS:
-Vendor Name:    ${vendor.name}
-Vendor Code:    ${vendor.vendorCode}
-Business Name:  ${vendor.businessName || vendor.name}
-GSTIN:          ${vendor.gstin || '27AABCU9603R1ZM'}
-Phone:          ${vendor.phone}
-----------------------------------------------------
-
-STATEMENT SUMMARY:
-${summaryText}
-
-====================================================`;
-
-      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${category.replace(/\s+/g, '_')}_${docNumber}.txt`;
+      link.download = `${category.replace(/\s+/g, '_')}_${docNumber}.html`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showToast(`Downloaded ${category} statement!`);
+      showToast(`Downloaded HTML invoice: ${category}`);
     }
 
     setShareModalData(null);
