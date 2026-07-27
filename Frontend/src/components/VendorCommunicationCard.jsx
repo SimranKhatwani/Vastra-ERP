@@ -1197,7 +1197,7 @@ export default function VendorCommunicationCard({ currentUser }) {
       <div className="space-y-0">
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             
-            {/* 10-Tab Header */}
+            {/* 12-Tab Header */}
             <div className="bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center gap-1 p-2">
               {[
                 { id: 'overview', label: '1. Overview' },
@@ -1209,7 +1209,9 @@ export default function VendorCommunicationCard({ currentUser }) {
                 { id: 'followups', label: '7. Follow-ups' },
                 { id: 'purchase_history', label: '8. Purchases' },
                 { id: 'outstanding', label: '9. Outstanding' },
-                { id: 'notes', label: '10. Notes' },
+                { id: 'internal', label: '10. Internal Info' },
+                { id: 'primary_uses', label: '11. Uses & Actions' },
+                { id: 'notes', label: '12. Notes' },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -1361,55 +1363,222 @@ export default function VendorCommunicationCard({ currentUser }) {
               {/* TAB 3: ADDRESSES */}
               {activeTab === 'addresses' && (
                 <div className="space-y-5 animate-fade-in">
-                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Vendor Facility & Shipping Addresses
-                  </h3>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
+                      Vendor Facility & Shipping Addresses
+                    </h3>
+                    <span className="text-[10px] font-bold text-slate-400 font-mono">Click address to copy</span>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-3">
+
+                    {/* Office Address */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-indigo-700 flex items-center gap-1.5 text-sm">
-                          <MapPin className="w-4 h-4" /> Registered Office Address
-                        </span>
-                        <button onClick={() => copyToClipboard(vendor.address || 'Plot 45, Textile Park, Surat, Gujarat - 395002', 'Office Address')} className="p-1 text-slate-400 hover:text-slate-700"><Copy className="w-3.5 h-3.5" /></button>
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><MapPin className="w-4 h-4" /></div>
+                          <span className="font-black text-slate-800">Office Address</span>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002', 'Office Address')}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                        ><Copy className="w-3.5 h-3.5" /></button>
                       </div>
-                      <p className="text-slate-600 leading-relaxed font-medium">
+                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
                         {vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002'}
                       </p>
-                      <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline">
-                        Open in Google Maps <ExternalLink className="w-3.5 h-3.5" />
+                      <a
+                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002')}`}
+                        target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
                       </a>
                     </div>
+
+                    {/* Factory Address */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-amber-50 rounded-xl text-amber-600"><Building2 className="w-4 h-4" /></div>
+                          <span className="font-black text-slate-800">Factory Address</span>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(vendor.factoryAddress || 'Survey No. 112, GIDC Estate, Pandesara, Surat, Gujarat - 394221', 'Factory Address')}
+                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                        ><Copy className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
+                        {vendor.factoryAddress || 'Survey No. 112, GIDC Industrial Estate, Pandesara, Surat, Gujarat - 394221'}
+                      </p>
+                      <a
+                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.factoryAddress || 'Survey No. 112, GIDC Industrial Estate, Pandesara, Surat')}`}
+                        target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-amber-600 font-bold hover:underline text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
+                      </a>
+                    </div>
+
+                    {/* Warehouse Address */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><Bookmark className="w-4 h-4" /></div>
+                          <span className="font-black text-slate-800">Warehouse Address</span>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat, Gujarat - 394120', 'Warehouse Address')}
+                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                        ><Copy className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
+                        {vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat, Gujarat - 394120'}
+                      </p>
+                      <a
+                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat')}`}
+                        target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-emerald-600 font-bold hover:underline text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
+                      </a>
+                    </div>
+
+                    {/* Pickup Address */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-purple-50 rounded-xl text-purple-600"><Paperclip className="w-4 h-4" /></div>
+                          <span className="font-black text-slate-800">Pickup Address</span>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin, Surat, Gujarat - 394230', 'Pickup Address')}
+                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                        ><Copy className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
+                        {vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin Industrial Area, Surat, Gujarat - 394230'}
+                      </p>
+                      <a
+                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin Industrial Area, Surat')}`}
+                        target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-purple-600 font-bold hover:underline text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
+                      </a>
+                    </div>
+
                   </div>
                 </div>
               )}
 
-              {/* TAB 4: BANKING */}
+              {/* TAB 4: BANKING & FINANCIAL INFORMATION */}
               {activeTab === 'banking' && (
-                <div className="space-y-5 animate-fade-in">
+                <div className="space-y-6 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Banking & Settlement Details
+                    Banking & Financial Information
                   </h3>
 
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4 text-xs">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {/* Bank Account Card */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><CreditCard className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Bank Account Details</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 text-xs">
                       <div>
-                        <span className="text-slate-400 block mb-1 font-medium">Bank Name</span>
+                        <span className="text-slate-400 font-medium block mb-1">Bank Name</span>
                         <span className="font-black text-slate-800 text-sm">{vendor.bankDetails?.bankName || 'HDFC Bank Ltd.'}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block mb-1 font-medium">Account Holder</span>
+                        <span className="text-slate-400 font-medium block mb-1">Account Holder Name</span>
                         <span className="font-bold text-slate-700">{vendor.bankDetails?.accountHolder || vendor.name}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block mb-1 font-medium">Account Number</span>
-                        <span className="font-mono font-bold text-indigo-600 text-sm flex items-center gap-2">
+                        <span className="text-slate-400 font-medium block mb-1">Branch Name</span>
+                        <span className="font-bold text-slate-700">{vendor.bankDetails?.branch || 'Ring Road, Surat Branch'}</span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-slate-400 font-medium block mb-1">Account Number</span>
+                        <span className="font-mono font-black text-indigo-700 text-sm flex items-center gap-2">
                           {vendor.bankDetails?.accountNo || '50200049281920'}
-                          <Copy className="w-3.5 h-3.5 cursor-pointer hover:text-slate-900" onClick={() => copyToClipboard(vendor.bankDetails?.accountNo || '50200049281920', 'A/C No')} />
+                          <button onClick={() => copyToClipboard(vendor.bankDetails?.accountNo || '50200049281920', 'Account Number')} className="text-slate-400 hover:text-indigo-600">
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-medium block mb-1">IFSC Code</span>
+                        <span className="font-mono font-black text-indigo-700 flex items-center gap-2">
+                          {vendor.bankDetails?.ifscCode || 'HDFC0001234'}
+                          <button onClick={() => copyToClipboard(vendor.bankDetails?.ifscCode || 'HDFC0001234', 'IFSC Code')} className="text-slate-400 hover:text-indigo-600">
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-medium block mb-1">UPI ID <span className="text-[10px] font-normal">(Optional)</span></span>
+                        <span className="font-mono font-bold text-slate-700 flex items-center gap-2">
+                          {vendor.bankDetails?.upiId || vendor.upiId || 'raymond@hdfcbank'}
+                          <button onClick={() => copyToClipboard(vendor.bankDetails?.upiId || 'raymond@hdfcbank', 'UPI ID')} className="text-slate-400 hover:text-indigo-600">
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
                         </span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Financial Terms Card */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><DollarSign className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Financial & Payment Terms</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Payment Terms</span>
+                        <span className="font-black text-slate-800 text-sm">{vendor.paymentTerms || 'Net 30'}</span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Credit Days</span>
+                        <span className="font-black text-indigo-700 text-xl font-mono">{vendor.creditDays || 30}<span className="text-xs ml-1 font-bold text-slate-500">days</span></span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Credit Limit</span>
+                        <span className="font-black text-emerald-700 text-sm font-mono">₹{(vendor.creditLimit || 250000).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Current Outstanding</span>
+                        <span className="font-black text-red-600 text-sm font-mono">₹{(vendor.currentOutstanding || 45000).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-3">
+                        <ShieldCheck className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                        <div>
+                          <span className="text-indigo-500 font-bold block">GSTIN</span>
+                          <span className="font-mono font-black text-indigo-700 flex items-center gap-1">
+                            {vendor.gstin || '24AABCR1234F1ZX'}
+                            <button onClick={() => copyToClipboard(vendor.gstin || '24AABCR1234F1ZX', 'GSTIN')} className="text-indigo-400 hover:text-indigo-700"><Copy className="w-3 h-3" /></button>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3">
+                        <FileCheck className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                        <div>
+                          <span className="text-slate-400 font-bold block">PAN Number</span>
+                          <span className="font-mono font-black text-slate-700 flex items-center gap-1">
+                            {vendor.panNumber || 'AABCR1234F'}
+                            <button onClick={() => copyToClipboard(vendor.panNumber || 'AABCR1234F', 'PAN')} className="text-slate-400 hover:text-slate-700"><Copy className="w-3 h-3" /></button>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               )}
 
@@ -1556,7 +1725,159 @@ export default function VendorCommunicationCard({ currentUser }) {
                 />
               )}
 
-              {/* TAB 10: NOTES */}
+              {/* TAB 10: INTERNAL INFORMATION */}
+              {activeTab === 'internal' && (
+                <div className="space-y-6 animate-fade-in">
+                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
+                    Internal Information — {vendor.name}
+                  </h3>
+
+                  {/* Contact & Calling Preferences */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><UserCheck className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Contact Preferences</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Preferred Contact Person</span>
+                        <span className="font-black text-slate-800">{vendor.preferredContactPerson || 'Mr. Ramesh Shah (Sales Head)'}</span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Preferred Calling Time</span>
+                        <span className="font-bold text-emerald-700 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || '10:00 AM – 06:00 PM'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                        <span className="text-slate-400 font-medium block">Vendor Rating</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl font-black text-amber-600 font-mono">{vendor.rating || 4.8}</span>
+                          <div className="flex gap-0.5">
+                            {[1,2,3,4,5].map(star => (
+                              <Star key={star} className={`w-4 h-4 ${star <= Math.round(vendor.rating || 4.8) ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quality Remarks */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><ShieldCheck className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Quality & Performance Remarks</span>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
+                      <p className="text-slate-700 font-medium italic leading-relaxed">
+                        &ldquo;{vendor.qualityRemarks || 'Vendor maintains 98% quality compliance and on-time order fulfillment. Fabric quality is excellent with no returns in the last 6 months. Recommended for premium garment production.'}&rdquo;
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-lg font-bold">✓ Quality Compliant</span>
+                      <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-lg font-bold">✓ On-time Delivery</span>
+                      <span className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-lg font-bold">★ Preferred Vendor</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 11: PRIMARY USES & ACTIONS */}
+              {activeTab === 'primary_uses' && (
+                <div className="space-y-6 animate-fade-in">
+                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
+                    Primary Uses & Actions — Vendor Communication Card
+                  </h3>
+
+                  {/* Communication Actions */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><MessageSquare className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Communication</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      {[
+                        { label: 'Call Vendor', icon: Phone, bg: 'bg-indigo-600', text: 'text-white', action: () => handleOpenShareModal('Call') },
+                        { label: 'Send WhatsApp', icon: MessageSquare, bg: 'bg-emerald-600', text: 'text-white', action: () => handleOpenShareModal('WhatsApp Message') },
+                        { label: 'Send Email', icon: Mail, bg: 'bg-sky-600', text: 'text-white', action: () => handleOpenShareModal('Email') },
+                      ].map((item, i) => (
+                        <button key={i} onClick={item.action} className={`flex items-center gap-2 p-3 ${item.bg} ${item.text} rounded-xl font-black transition hover:opacity-90 shadow-sm`}>
+                          <item.icon className="w-4 h-4" /> {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Document Sharing */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-amber-50 rounded-xl text-amber-600"><FileText className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Document Sharing</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      {[
+                        { label: 'Share Purchase Order', icon: FileText, action: () => handleOpenShareModal('Purchase Order', 'PO-2026-9810') },
+                        { label: 'Share Goods Return', icon: RefreshCw, action: () => handleOpenShareModal('Goods Return', 'GRN-2026-042') },
+                        { label: 'Send Payment Advice', icon: DollarSign, action: () => handleOpenShareModal('Payment Advice', 'PAY-2026-118') },
+                        { label: 'Share Debit Note', icon: ArrowRight, action: () => handleOpenShareModal('Debit Note', 'DN-2026-001') },
+                        { label: 'Share Credit Note', icon: ArrowRight, action: () => handleOpenShareModal('Credit Note', 'CN-2026-001') },
+                        { label: 'Share Rate Enquiry', icon: Send, action: () => handleOpenShareModal('Rate Enquiry', 'RFQ-2026-001') },
+                        { label: 'Share Product Images', icon: Paperclip, action: () => setActiveTab('documents') },
+                        { label: 'Share Agreements', icon: Lock, action: () => setActiveTab('documents') },
+                      ].map((item, i) => (
+                        <button key={i} onClick={item.action} className="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-amber-50 border border-slate-100 hover:border-amber-200 rounded-xl text-left font-bold text-slate-700 hover:text-amber-700 transition">
+                          <item.icon className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" /> {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Financial Statements */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><DollarSign className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Financial Statements</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      {[
+                        { label: 'Send Outstanding Statement', icon: FileCheck, action: () => setActiveTab('outstanding') },
+                        { label: 'Send Purchase Statement', icon: Paperclip, action: () => setActiveTab('purchase_history') },
+                        { label: 'Share Ledger Statement', icon: FileCheck, action: () => handleOpenShareModal('Ledger Statement', 'STMT-2026-001') },
+                      ].map((item, i) => (
+                        <button key={i} onClick={item.action} className="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-100 hover:border-emerald-200 rounded-xl text-left font-bold text-slate-700 hover:text-emerald-700 transition">
+                          <item.icon className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" /> {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tracking */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-2 bg-slate-100 rounded-xl text-slate-600"><ArrowRight className="w-4 h-4" /></div>
+                      <span className="font-black text-slate-800 text-sm">Tracking & Follow-ups</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      {[
+                        { label: 'View Communication Timeline', icon: Calendar, action: () => setActiveTab('timeline') },
+                        { label: 'View Shared Documents', icon: Eye, action: () => setActiveTab('documents') },
+                        { label: 'Track LR & Dispatch', icon: ArrowRight, action: () => setActiveTab('timeline') },
+                        { label: 'Track Goods Return', icon: RefreshCw, action: () => setActiveTab('followups') },
+                        { label: 'Track Replacement Status', icon: ArrowRight, action: () => setActiveTab('followups') },
+                        { label: 'Track Credit Note Status', icon: ArrowRight, action: () => setActiveTab('followups') },
+                        { label: 'Track Vendor Payment', icon: DollarSign, action: () => setActiveTab('followups') },
+                      ].map((item, i) => (
+                        <button key={i} onClick={item.action} className="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-xl text-left font-bold text-slate-700 transition">
+                          <item.icon className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" /> {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 11: NOTES */}
               {activeTab === 'notes' && (
                 <div className="space-y-5 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -1571,11 +1892,20 @@ export default function VendorCommunicationCard({ currentUser }) {
                     </button>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-3 text-xs">
+                    {(hubData?.notes || []).length === 0 && (
+                      <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 text-center text-slate-400 font-medium">
+                        No internal notes yet. Click &ldquo;Add Note&rdquo; to add the first one.
+                      </div>
+                    )}
                     {(hubData?.notes || []).map((n, i) => (
-                      <div key={i} className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs space-y-1">
-                        <p className="text-slate-700 font-medium">{n.content}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">By: {n.employeeName} • {new Date(n.createdAt).toLocaleDateString()}</p>
+                      <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 space-y-1.5 shadow-sm">
+                        <p className="text-slate-800 font-medium leading-relaxed">{n.content}</p>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-mono">
+                          <span>By: <span className="font-bold text-slate-600">{n.employeeName}</span></span>
+                          <span>•</span>
+                          <span>{new Date(n.createdAt).toLocaleDateString()}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1583,6 +1913,35 @@ export default function VendorCommunicationCard({ currentUser }) {
               )}
 
             </div>
+
+            {/* ⚡ BOTTOM QUICK ACTION TAB BAR */}
+            <div className="border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+              <div className="flex items-stretch w-full">
+                {[
+                  { label: 'Call', icon: Phone, bg: 'bg-indigo-600', text: 'text-white', hoverBg: 'hover:bg-indigo-700', action: () => handleOpenShareModal('Call') },
+                  { label: 'WhatsApp', icon: MessageSquare, bg: 'bg-emerald-600', text: 'text-white', hoverBg: 'hover:bg-emerald-700', action: () => handleOpenShareModal('WhatsApp Message') },
+                  { label: 'Email', icon: Mail, bg: 'bg-sky-600', text: 'text-white', hoverBg: 'hover:bg-sky-700', action: () => handleOpenShareModal('Email') },
+                  { label: 'Share PO', icon: FileText, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-indigo-50', border: true, action: () => handleOpenShareModal('Purchase Order', 'PO-2026-9810') },
+                  { label: 'Share GR', icon: RefreshCw, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-amber-50', border: true, action: () => handleOpenShareModal('Goods Return', 'GRN-2026-042') },
+                  { label: 'Pmt Advice', icon: DollarSign, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-emerald-50', border: true, action: () => handleOpenShareModal('Payment Advice', 'PAY-2026-118') },
+                  { label: 'Statement', icon: FileCheck, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-red-50', border: true, action: () => handleOpenShareModal('Ledger Statement', 'STMT-2026-001') },
+                  { label: 'Documents', icon: Paperclip, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-slate-100', border: true, action: () => setActiveTab('documents') },
+                  { label: 'Add Note', icon: Edit3, bg: 'bg-white', text: 'text-slate-700', hoverBg: 'hover:bg-slate-100', border: true, action: () => { setActiveTab('notes'); setShowNoteModal(true); } },
+                ].map((btn, i) => (
+                  <button
+                    key={i}
+                    onClick={btn.action}
+                    className={`flex flex-col items-center justify-center gap-1 py-3 flex-1 ${btn.bg} ${btn.text} ${btn.hoverBg} transition ${
+                      btn.border ? 'border-l border-slate-200' : ''
+                    } text-[10px] font-black`}
+                  >
+                    <btn.icon className="w-4 h-4" />
+                    <span>{btn.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
           </div>
 
       </div>
