@@ -379,30 +379,20 @@ export const DashboardView = ({
     const myEmpId = myEmployeeRecord._id || myEmployeeRecord.id || curId;
     const myEmpName = (myEmployeeRecord.name || userObj.name || currentUser?.name || '').toLowerCase().trim();
 
-    // 2. Filter all invoices assigned to this staff member
+    // 2. Filter all invoices assigned to this staff member strictly by ObjectId or exact name match
     const myInvoices = allInvoicesRecords.filter(inv => {
-      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId || inv.userId;
-      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || inv.createdBy || inv.cashierName || '').toLowerCase().trim();
+      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId;
+      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || '').toLowerCase().trim();
       
       const idMatch = myEmpId && invEmpId && String(myEmpId) === String(invEmpId);
-      const nameMatch = myEmpName && invEmpName && (
-        invEmpName === myEmpName || 
-        invEmpName.includes(myEmpName) || 
-        myEmpName.includes(invEmpName) ||
-        (curFirstName && curFirstName.length > 2 && (invEmpName.includes(curFirstName) || curFirstName.includes(invEmpName)))
-      );
+      const nameMatch = myEmpName && invEmpName && invEmpName === myEmpName;
 
-      // Also match items array
+      // Also match items array strictly by ObjectId or exact name match
       const itemMatch = (inv.items || []).some(item => {
         const itemSpId = item.salespersonId || item.workerId || item.employeeId;
         const itemSpName = (item.salespersonName || item.workerName || item.employeeName || '').toLowerCase().trim();
         const itemIdMatch = myEmpId && itemSpId && String(myEmpId) === String(itemSpId);
-        const itemNameMatch = myEmpName && itemSpName && (
-          itemSpName === myEmpName ||
-          itemSpName.includes(myEmpName) ||
-          myEmpName.includes(itemSpName) ||
-          (curFirstName && curFirstName.length > 2 && (itemSpName.includes(curFirstName) || curFirstName.includes(itemSpName)))
-        );
+        const itemNameMatch = myEmpName && itemSpName && itemSpName === myEmpName;
         return itemIdMatch || itemNameMatch;
       });
 
@@ -412,29 +402,25 @@ export const DashboardView = ({
     // 3. Exact Commission Rate from Admin DB record or Staff Summary API
     const rawCommRate = staffApiStats?.commissionRate ?? myEmployeeRecord?.commissionRate ?? myEmployeeRecord?.commRate ?? currentUser?.commissionRate;
     const parsedRate = parseFloat(rawCommRate);
-    const roleStr = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase();
-    const defaultRate = roleStr.includes('worker') ? 0.5 : (roleStr.includes('tailor') ? 4 : (roleStr.includes('cashier') ? 1 : 1.5));
-    const commRate = (!isNaN(parsedRate) && parsedRate >= 0)
-      ? parsedRate 
-      : defaultRate;
+    const commRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : 1.5;
 
     // 4. Exact Sales & Commission Achieved (100% Real DB matching)
     const invoiceSales = myInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
     const myTotalSales = staffApiStats?.totalSales ?? (
       typeof myEmployeeRecord?.monthlySales === 'number' && myEmployeeRecord.monthlySales > 0
         ? myEmployeeRecord.monthlySales
-        : (invoiceSales > 0 ? invoiceSales : (typeof currentUser?.monthlySales === 'number' ? currentUser.monthlySales : 0))
+        : invoiceSales
     );
 
     const rawCommEarned = staffApiStats?.commissionAmount ?? myEmployeeRecord?.commissionEarned ?? currentUser?.commissionEarned;
-    const myCommission = typeof rawCommEarned === 'number' && rawCommEarned > 0
+    const myCommission = typeof rawCommEarned === 'number' && rawCommEarned >= 0
       ? rawCommEarned
       : Math.round(myTotalSales * (commRate / 100) * 100) / 100;
 
     const totalBillsCount = staffApiStats?.invoiceCount ?? (
       typeof myEmployeeRecord?.totalInvoices === 'number' && myEmployeeRecord.totalInvoices > 0
         ? myEmployeeRecord.totalInvoices
-        : (myInvoices.length > 0 ? myInvoices.length : (myTotalSales > 0 ? Math.max(1, Math.round(myTotalSales / 4500)) : 0))
+        : myInvoices.length
     );
 
     const displayInvoicesList = (staffApiStats?.invoices && staffApiStats.invoices.length > 0)
