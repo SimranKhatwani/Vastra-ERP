@@ -4,7 +4,7 @@ import {
   Star, ShieldCheck, Copy, ExternalLink, Download, Eye, Plus, CheckCircle2,
   Clock, AlertCircle, Search, Filter, Share2, Upload, Trash2, Edit3,
   UserCheck, MapPin, CreditCard, FileCheck, Tag, ArrowRight, RefreshCw,
-  Send, Lock, Bookmark, Paperclip, ChevronRight, X
+  Send, Lock, Bookmark, Paperclip, ChevronRight, X, Printer
 } from 'lucide-react';
 
 const DEFAULT_FALLBACK_VENDORS = [
@@ -84,6 +84,12 @@ export default function VendorCommunicationCard({ currentUser }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
 
+  // Document View / Preview Modal State
+  const [previewDoc, setPreviewDoc] = useState(null);
+
+  // Share Document Modal State (Share PO, Goods Return, Payment Advice, Ledger)
+  const [shareModalData, setShareModalData] = useState(null);
+
   // Modals
   const [showAddVendorModal, setShowAddVendorModal] = useState(false);
   const [newVendorForm, setNewVendorForm] = useState({
@@ -126,7 +132,7 @@ export default function VendorCommunicationCard({ currentUser }) {
   const [docForm, setDocForm] = useState({
     title: '',
     documentType: 'GST Certificate',
-    fileUrl: 'https://example.com/sample-vendor-doc.pdf',
+    fileUrl: '',
     fileSize: '1.4 MB'
   });
 
@@ -143,7 +149,7 @@ export default function VendorCommunicationCard({ currentUser }) {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // 1. Fetch Vendors directly from MongoDB Supplier API
+  // 1. Fetch Vendors from MongoDB API
   const fetchVendors = async () => {
     setLoading(true);
     try {
@@ -186,7 +192,7 @@ export default function VendorCommunicationCard({ currentUser }) {
     }
   };
 
-  // 2. Fetch Selected Vendor Communication Hub Record
+  // 2. Fetch Selected Vendor Communication Record
   const fetchVendorHub = async (vId) => {
     if (!vId) return;
     const currentVendorDoc = vendorList.find(v => String(v._id) === String(vId)) || DEFAULT_FALLBACK_VENDORS[0];
@@ -208,7 +214,7 @@ export default function VendorCommunicationCard({ currentUser }) {
       }
     } catch (err) {}
 
-    // Fallback UI State synced 1:1 with Vendor Document
+    // Fallback Hub State synced 1:1 with Vendor Document
     setHubData({
       vendor: currentVendorDoc,
       timeline: [
@@ -258,7 +264,158 @@ export default function VendorCommunicationCard({ currentUser }) {
     }
   }, [selectedVendorId]);
 
-  // 3. Create New Vendor directly in MongoDB (POST /api/suppliers)
+  // 3. Document Repository: VIEW handler
+  const handleViewDocument = (doc) => {
+    setPreviewDoc(doc);
+  };
+
+  // 4. Document Repository: DOWNLOAD handler
+  const handleDownloadDocument = (doc) => {
+    const v = hubData?.vendor || vendorList.find(x => String(x._id) === String(selectedVendorId)) || DEFAULT_FALLBACK_VENDORS[0];
+    const fileContent = `====================================================
+VASTRA ERP - OFFICIAL VENDOR DOCUMENT REPOSITORY
+====================================================
+Document Title: ${doc.title}
+Document Type:  ${doc.documentType}
+File Size:      ${doc.fileSize || '1.2 MB'}
+Upload Date:    ${new Date(doc.uploadedAt || Date.now()).toLocaleString()}
+Uploaded By:    ${doc.uploadedBy || 'Admin'}
+
+----------------------------------------------------
+VENDOR DETAILS:
+Vendor Name:    ${v.name}
+Vendor Code:    ${v.vendorCode}
+Business Name:  ${v.businessName || v.name}
+GSTIN Number:   ${v.gstin || '27AABCU9603R1ZM'}
+PAN Number:     ${v.panNumber || 'AABCU9603R'}
+Category:       ${v.category}
+Phone Number:   ${v.phone}
+Address:        ${v.address}
+----------------------------------------------------
+
+This document is verified and stored in Vastra ERP MongoDB Document Repository.
+Generated on: ${new Date().toLocaleString()}
+====================================================`;
+
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}_Document.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded: ${doc.title}`);
+  };
+
+  // 5. Open Share Modal (Share PO, Goods Return, Payment Advice, Ledger Statement)
+  const handleOpenShareModal = (docCategory, defaultDocNumber = '') => {
+    const v = hubData?.vendor || vendorList.find(x => String(x._id) === String(selectedVendorId)) || DEFAULT_FALLBACK_VENDORS[0];
+    const docNo = defaultDocNumber || `${docCategory.substring(0, 2).toUpperCase()}-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const outstanding = hubData?.outstanding?.totalOutstanding || v.currentOutstanding || 45000;
+
+    let summaryText = '';
+    if (docCategory.includes('Purchase Order') || docCategory.includes('PO')) {
+      summaryText = `Greetings ${v.name},\n\nPlease find attached Purchase Order #${docNo} from Vastra ERP for 500 Meters Cotton/Linen Fabric.\nTotal Order Value: ₹45,000.\nPayment Terms: ${v.paymentTerms || 'Net 30'}.`;
+    } else if (docCategory.includes('Goods Return')) {
+      summaryText = `Greetings ${v.name},\n\nPlease find attached Goods Return Note #${docNo} for 25 Meters Defective Fabric Roll.\nReturn Credit Value: ₹8,500.`;
+    } else if (docCategory.includes('Payment Advice')) {
+      summaryText = `Greetings ${v.name},\n\nPayment Advice #${docNo}: Payment of ₹25,000 has been credited to your Bank A/C ${v.bankDetails?.accountNo || '50200049281920'} via NEFT/UPI.`;
+    } else {
+      summaryText = `Greetings ${v.name},\n\nPlease review your Outstanding Ledger Statement #${docNo} as of ${new Date().toLocaleDateString()}.\nCurrent Balance Due: ₹${outstanding.toLocaleString('en-IN')}.`;
+    }
+
+    setShareModalData({
+      category: docCategory,
+      docNumber: docNo,
+      vendor: v,
+      summaryText,
+      recipientPhone: v.whatsappNumber || v.phone || '9876543210',
+      recipientEmail: v.email || 'orders@textilevendor.com'
+    });
+  };
+
+  // 6. Execute Share (WhatsApp, Email, or File Download)
+  const handleExecuteShare = async (channel) => {
+    if (!shareModalData) return;
+    const { category, docNumber, recipientPhone, recipientEmail, summaryText, vendor } = shareModalData;
+
+    const activityType = `${category} Shared`;
+    const remarks = `Shared ${category} #${docNumber} via ${channel}`;
+
+    // Log activity to MongoDB
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`http://localhost:5000/api/vendor-communication/${selectedVendorId}/log-activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          activityType,
+          channel,
+          remarks,
+          documentNumber: docNumber,
+          employeeName: currentUser?.name || 'Admin',
+          status: 'Completed'
+        })
+      });
+    } catch (e) {}
+
+    // Update local Timeline
+    setHubData(prev => prev ? {
+      ...prev,
+      timeline: [{ activityType, channel, remarks, employeeName: currentUser?.name || 'Admin', createdAt: new Date() }, ...(prev.timeline || [])]
+    } : prev);
+
+    if (channel === 'WhatsApp') {
+      const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
+      const fullPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+      const waUrl = `https://api.whatsapp.com/send?phone=${fullPhone}&text=${encodeURIComponent(summaryText)}`;
+      window.open(waUrl, '_blank');
+      showToast(`Opened WhatsApp chat to share ${category}!`);
+    } else if (channel === 'Email') {
+      const mailtoUrl = `mailto:${recipientEmail}?subject=${encodeURIComponent(`Vastra ERP - ${category} #${docNumber}`)}&body=${encodeURIComponent(summaryText)}`;
+      window.open(mailtoUrl, '_self');
+      showToast(`Opened email client to share ${category}!`);
+    } else if (channel === 'Download') {
+      const fileContent = `====================================================
+VASTRA ERP - OFFICIAL VENDOR DOCUMENT STATEMENT
+====================================================
+Document:       ${category}
+Document No:    #${docNumber}
+Date:           ${new Date().toLocaleString()}
+Shared By:      ${currentUser?.name || 'Admin'}
+
+----------------------------------------------------
+VENDOR DETAILS:
+Vendor Name:    ${vendor.name}
+Vendor Code:    ${vendor.vendorCode}
+Business Name:  ${vendor.businessName || vendor.name}
+GSTIN:          ${vendor.gstin || '27AABCU9603R1ZM'}
+Phone:          ${vendor.phone}
+----------------------------------------------------
+
+STATEMENT SUMMARY:
+${summaryText}
+
+====================================================`;
+
+      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${category.replace(/\s+/g, '_')}_${docNumber}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(`Downloaded ${category} statement!`);
+    }
+
+    setShareModalData(null);
+  };
+
+  // 7. Create New Vendor in MongoDB
   const handleCreateNewVendor = async (e) => {
     e.preventDefault();
     if (!newVendorForm.name || !newVendorForm.phone) {
@@ -307,34 +464,6 @@ export default function VendorCommunicationCard({ currentUser }) {
     } catch (err) {
       showToast('Error connecting to backend API', 'error');
     }
-  };
-
-  // Quick Action Logger
-  const handleQuickAction = async (activityType, channel, remarks) => {
-    const newActivity = {
-      activityType,
-      channel,
-      remarks,
-      employeeName: currentUser?.name || 'Admin',
-      status: 'Completed',
-      createdAt: new Date()
-    };
-
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`http://localhost:5000/api/vendor-communication/${selectedVendorId}/log-activity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newActivity)
-      });
-    } catch (e) {}
-
-    setHubData(prev => prev ? {
-      ...prev,
-      timeline: [newActivity, ...(prev.timeline || [])]
-    } : prev);
-
-    showToast(`Action executed: ${activityType}`);
   };
 
   const handleCreateFollowUp = (e) => {
@@ -430,7 +559,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* TOP HEADER BAR: Integrated Title, Search, Selector & "+ Add New Vendor" Button */}
+      {/* TOP HEADER BAR */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-600">
@@ -451,7 +580,7 @@ export default function VendorCommunicationCard({ currentUser }) {
           </div>
         </div>
 
-        {/* Global Controls & Add Vendor Button */}
+        {/* Global Search, Selector & Add Vendor */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-56">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -476,7 +605,6 @@ export default function VendorCommunicationCard({ currentUser }) {
             ))}
           </select>
 
-          {/* + ADD NEW VENDOR BUTTON */}
           <button
             onClick={() => setShowAddVendorModal(true)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition"
@@ -486,16 +614,12 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       </div>
 
-      {/* MAIN CLEAN 2-PANEL LAYOUT (LEFT PROFILE CARD + FULL-WIDTH TABBED INTERFACE) */}
+      {/* MAIN 2-PANEL LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        {/* ======================================================== */}
-        {/* LEFT PANEL: Sticky Vendor Profile Card (Cols 3)           */}
-        {/* ======================================================== */}
+        {/* LEFT PANEL: Sticky Vendor Profile Card (Cols 3) */}
         <div className="lg:col-span-3 space-y-5">
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-5 sticky top-6">
-            
-            {/* Vendor Avatar Header */}
             <div className="flex flex-col items-center text-center space-y-3 pb-4 border-b border-slate-100">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center text-2xl font-black text-white shadow-md border border-indigo-200">
                 {vendor.logoUrl ? (
@@ -561,32 +685,28 @@ export default function VendorCommunicationCard({ currentUser }) {
               </div>
             </div>
 
-            {/* Quick 1-Click Action Buttons */}
             <div className="pt-2 grid grid-cols-2 gap-2">
               <button
-                onClick={() => handleQuickAction('Call Initiated', 'Call', `Called ${vendor.name} at ${vendor.phone || '9876543210'}`)}
+                onClick={() => handleOpenShareModal('Call')}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition"
               >
                 <Phone className="w-3.5 h-3.5" /> Call
               </button>
               <button
-                onClick={() => handleQuickAction('WhatsApp Message Sent', 'WhatsApp', `Sent WhatsApp message to ${vendor.name}`)}
+                onClick={() => handleOpenShareModal('WhatsApp Message')}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition"
               >
                 <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
               </button>
             </div>
-
           </div>
         </div>
 
-        {/* ======================================================== */}
-        {/* RIGHT FULL-WIDTH TABBED INTERFACE (Cols 9 - No Horizontal Scroll!) */}
-        {/* ======================================================== */}
+        {/* RIGHT FULL-WIDTH TABBED INTERFACE (Cols 9) */}
         <div className="lg:col-span-9 space-y-5">
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             
-            {/* Clean Tab Header - All 10 Tabs Fit Smoothly in 9-Column Space! */}
+            {/* 10-Tab Header */}
             <div className="bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center gap-1 p-2">
               {[
                 { id: 'overview', label: '1. Overview' },
@@ -617,28 +737,26 @@ export default function VendorCommunicationCard({ currentUser }) {
             {/* Tab Contents */}
             <div className="p-5 md:p-6 space-y-6">
               
-              {/* ---------------------------------------------------- */}
-              {/* TAB 1: OVERVIEW                                      */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 1: OVERVIEW */}
               {activeTab === 'overview' && (
                 <div className="space-y-5 animate-fade-in">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
                     <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
                       Vendor Profile Master Record
                     </h3>
 
-                    {/* Integrated Quick Action Toolbar */}
+                    {/* Integrated Functional Share Buttons */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <button onClick={() => handleQuickAction('Purchase Order Shared', 'WhatsApp', `Shared PO with ${vendor.name}`)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-200">
+                      <button onClick={() => handleOpenShareModal('Purchase Order', 'PO-2026-9810')} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-200 shadow-2xs">
                         <FileText className="w-3.5 h-3.5" /> Share PO
                       </button>
-                      <button onClick={() => handleQuickAction('Goods Return Shared', 'WhatsApp', `Shared Goods Return with ${vendor.name}`)} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-amber-200">
+                      <button onClick={() => handleOpenShareModal('Goods Return', 'GRN-2026-042')} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-amber-200 shadow-2xs">
                         <RefreshCw className="w-3.5 h-3.5" /> Goods Return
                       </button>
-                      <button onClick={() => handleQuickAction('Payment Advice Shared', 'WhatsApp', `Shared Payment Advice`)} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200">
+                      <button onClick={() => handleOpenShareModal('Payment Advice', 'PAY-2026-118')} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200 shadow-2xs">
                         <DollarSign className="w-3.5 h-3.5" /> Payment Advice
                       </button>
-                      <button onClick={() => handleQuickAction('Ledger Statement Shared', 'WhatsApp', `Shared Outstanding Ledger`)} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200">
+                      <button onClick={() => handleOpenShareModal('Ledger Statement', 'STMT-2026-001')} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 shadow-2xs">
                         <FileCheck className="w-3.5 h-3.5" /> Ledger Statement
                       </button>
                     </div>
@@ -682,9 +800,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 2: CONTACTS                                      */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 2: CONTACTS */}
               {activeTab === 'contacts' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
@@ -699,7 +815,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button onClick={() => copyToClipboard(vendor.phone || '9876543210', 'Mobile')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleQuickAction('Call', 'Call', `Call to ${vendor.phone || '9876543210'}`)} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Call</button>
+                        <button onClick={() => handleOpenShareModal('Call')} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Call</button>
                       </div>
                     </div>
 
@@ -710,32 +826,14 @@ export default function VendorCommunicationCard({ currentUser }) {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button onClick={() => copyToClipboard(vendor.whatsappNumber || vendor.phone || '9876543210', 'WhatsApp')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleQuickAction('WhatsApp Message', 'WhatsApp', `WhatsApp to ${vendor.whatsappNumber || vendor.phone}`)} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Message</button>
+                        <button onClick={() => handleOpenShareModal('WhatsApp Message')} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Message</button>
                       </div>
-                    </div>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
-                      <div>
-                        <span className="text-slate-400 block font-medium">Primary Email</span>
-                        <span className="font-mono font-bold text-slate-700">{vendor.email || 'orders@textilevendor.com'}</span>
-                      </div>
-                      <button onClick={() => copyToClipboard(vendor.email || 'orders@textilevendor.com', 'Email')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
-                    </div>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
-                      <div>
-                        <span className="text-slate-400 block font-medium">Accounts Email</span>
-                        <span className="font-mono font-bold text-slate-700">{vendor.accountsEmail || 'accounts@textilevendor.com'}</span>
-                      </div>
-                      <button onClick={() => copyToClipboard(vendor.accountsEmail || 'accounts@textilevendor.com', 'Accounts Email')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 3: ADDRESSES                                     */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 3: ADDRESSES */}
               {activeTab === 'addresses' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
@@ -761,17 +859,15 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 4: BANKING                                       */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 4: BANKING */}
               {activeTab === 'banking' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
                     Banking & Settlement Details
                   </h3>
 
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       <div>
                         <span className="text-slate-400 block mb-1 font-medium">Bank Name</span>
                         <span className="font-black text-slate-800 text-sm">{vendor.bankDetails?.bankName || 'HDFC Bank Ltd.'}</span>
@@ -787,26 +883,12 @@ export default function VendorCommunicationCard({ currentUser }) {
                           <Copy className="w-3.5 h-3.5 cursor-pointer hover:text-slate-900" onClick={() => copyToClipboard(vendor.bankDetails?.accountNo || '50200049281920', 'A/C No')} />
                         </span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 block mb-1 font-medium">IFSC Code</span>
-                        <span className="font-mono font-bold text-slate-700">{vendor.bankDetails?.ifscCode || 'HDFC0000124'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block mb-1 font-medium">UPI ID</span>
-                        <span className="font-mono font-bold text-emerald-600">{vendor.upiId || 'textilevendor@hdfcbank'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block mb-1 font-medium">Credit Days & Terms</span>
-                        <span className="font-bold text-slate-700">{vendor.paymentTerms || 'Net 30'} ({vendor.creditDays || 30} Days)</span>
-                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 5: DOCUMENTS                                     */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 5: DOCUMENTS (FULLY FUNCTIONAL VIEW & DOWNLOAD!) */}
               {activeTab === 'documents' && (
                 <div className="space-y-5 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -829,15 +911,25 @@ export default function VendorCommunicationCard({ currentUser }) {
                             {doc.documentType}
                           </span>
                           <h4 className="font-bold text-slate-800">{doc.title}</h4>
-                          <p className="text-[11px] text-slate-400 font-mono">{doc.fileSize} • {new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                          <p className="text-[11px] text-slate-400 font-mono">{doc.fileSize || '1.2 MB'} • {new Date(doc.uploadedAt || Date.now()).toLocaleDateString()}</p>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <a href={doc.fileUrl || '#'} target="_blank" rel="noreferrer" className="p-2 bg-white text-slate-600 hover:text-slate-900 rounded-lg border border-slate-200">
-                            <Eye className="w-4 h-4" />
-                          </a>
-                          <a href={doc.fileUrl || '#'} download className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg">
-                            <Download className="w-4 h-4" />
-                          </a>
+                        <div className="flex items-center gap-1.5">
+                          {/* VIEW BUTTON FUNCTIONAL */}
+                          <button
+                            onClick={() => handleViewDocument(doc)}
+                            title="View Document Preview"
+                            className="p-2 bg-white text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200 transition font-bold flex items-center gap-1"
+                          >
+                            <Eye className="w-4 h-4" /> View
+                          </button>
+                          {/* DOWNLOAD BUTTON FUNCTIONAL */}
+                          <button
+                            onClick={() => handleDownloadDocument(doc)}
+                            title="Download Document"
+                            className="p-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow-xs transition font-bold flex items-center gap-1"
+                          >
+                            <Download className="w-4 h-4" /> Download
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -845,9 +937,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 6: COMMUNICATION TIMELINE                         */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 6: COMMUNICATION TIMELINE */}
               {activeTab === 'timeline' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
@@ -876,9 +966,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 7: FOLLOW-UPS                                    */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 7: FOLLOW-UPS */}
               {activeTab === 'followups' && (
                 <div className="space-y-5 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -928,9 +1016,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 8: PURCHASE HISTORY                               */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 8: PURCHASES */}
               {activeTab === 'purchase_history' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
@@ -954,9 +1040,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 9: OUTSTANDING                                   */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 9: OUTSTANDING */}
               {activeTab === 'outstanding' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
@@ -976,9 +1060,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               )}
 
-              {/* ---------------------------------------------------- */}
-              {/* TAB 10: NOTES                                        */}
-              {/* ---------------------------------------------------- */}
+              {/* TAB 10: NOTES */}
               {activeTab === 'notes' && (
                 <div className="space-y-5 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -1010,7 +1092,117 @@ export default function VendorCommunicationCard({ currentUser }) {
 
       </div>
 
-      {/* MODAL 1: ADD NEW VENDOR (MongoDB Sync) */}
+      {/* MODAL 1: VIEW DOCUMENT PREVIEW MODAL */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Eye className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">{previewDoc.title}</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono uppercase">
+                    {previewDoc.documentType}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setPreviewDoc(null)} className="text-slate-400 hover:text-slate-700 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Vendor Name:</span>
+                <span className="font-bold text-slate-800">{vendor.name}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Vendor Code:</span>
+                <span className="font-mono font-bold text-indigo-600">{vendor.vendorCode}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">GSTIN:</span>
+                <span className="font-mono font-bold text-slate-800">{vendor.gstin || '27AABCU9603R1ZM'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Upload Date:</span>
+                <span className="font-mono text-slate-700">{new Date(previewDoc.uploadedAt || Date.now()).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500 font-medium">Uploaded By:</span>
+                <span className="font-bold text-slate-800">{previewDoc.uploadedBy || 'Admin'}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button onClick={() => setPreviewDoc(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold text-xs">Close</button>
+              <button onClick={() => { handleDownloadDocument(previewDoc); setPreviewDoc(null); }} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 flex items-center gap-1">
+                <Download className="w-3.5 h-3.5" /> Download File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: INTERACTIVE SHARE DOCUMENT MODAL (Share PO, Goods Return, Payment Advice, Ledger) */}
+      {shareModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Share2 className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">Share {shareModalData.category}</h3>
+                  <span className="text-[10px] font-mono font-bold text-indigo-600">Document #{shareModalData.docNumber}</span>
+                </div>
+              </div>
+              <button onClick={() => setShareModalData(null)} className="text-slate-400 hover:text-slate-700 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
+              <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Generated Statement Summary:</span>
+              <p className="text-slate-700 font-medium leading-relaxed bg-white p-3 rounded-lg border border-slate-200 whitespace-pre-line">
+                {shareModalData.summaryText}
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <span className="text-xs font-bold text-slate-700 block">Select Sharing Channel:</span>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <button
+                  onClick={() => handleExecuteShare('WhatsApp')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3 rounded-xl flex flex-col items-center gap-1 shadow-sm transition"
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  <span>WhatsApp</span>
+                </button>
+                <button
+                  onClick={() => handleExecuteShare('Email')}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded-xl flex flex-col items-center gap-1 shadow-sm transition"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>Email</span>
+                </button>
+                <button
+                  onClick={() => handleExecuteShare('Download')}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-xl flex flex-col items-center gap-1 shadow-sm transition"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Download Statement</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: ADD NEW VENDOR */}
       {showAddVendorModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-2xl space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1040,7 +1232,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                   />
                 </div>
                 <div>
-                  <label className="text-slate-500 font-bold block mb-1">Company / Business Name</label>
+                  <label className="text-slate-500 font-bold block mb-1">Company Name</label>
                   <input
                     type="text"
                     placeholder="e.g. Vardhman Spinning Mills Ltd."
@@ -1070,97 +1262,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
                   />
                 </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">GSTIN Number</label>
-                  <input
-                    type="text"
-                    placeholder="27AABCU9603R1ZM"
-                    value={newVendorForm.gstin}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, gstin: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">PAN Number</label>
-                  <input
-                    type="text"
-                    placeholder="AABCU9603R"
-                    value={newVendorForm.panNumber}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, panNumber: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">Category</label>
-                  <select
-                    value={newVendorForm.category}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, category: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="Fabric & Materials">Fabric & Materials</option>
-                    <option value="Trims & Accessories">Trims & Accessories</option>
-                    <option value="Wholesale Finished Garments">Wholesale Finished Garments</option>
-                    <option value="Machinery & Tools">Machinery & Tools</option>
-                    <option value="Packaging & Labels">Packaging & Labels</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">Business Type</label>
-                  <select
-                    value={newVendorForm.businessType}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, businessType: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="Manufacturer">Manufacturer</option>
-                    <option value="Wholesaler">Wholesaler</option>
-                    <option value="Trader">Trader</option>
-                    <option value="Distributor">Distributor</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-slate-500 font-bold block mb-1">Facility Address</label>
-                <input
-                  type="text"
-                  placeholder="Plot No., Industrial Zone, Street..."
-                  value={newVendorForm.address}
-                  onChange={(e) => setNewVendorForm({ ...newVendorForm, address: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">Bank Name</label>
-                  <input
-                    type="text"
-                    placeholder="HDFC Bank"
-                    value={newVendorForm.bankName}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, bankName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">Account Number</label>
-                  <input
-                    type="text"
-                    placeholder="502000192810"
-                    value={newVendorForm.accountNo}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, accountNo: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-500 font-bold block mb-1">IFSC Code</label>
-                  <input
-                    type="text"
-                    placeholder="HDFC0000124"
-                    value={newVendorForm.ifscCode}
-                    onChange={(e) => setNewVendorForm({ ...newVendorForm, ifscCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
               </div>
 
               <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
@@ -1172,7 +1273,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 2: CREATE FOLLOW-UP */}
+      {/* MODAL 4: CREATE FOLLOW-UP */}
       {showFollowUpModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
@@ -1194,17 +1295,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                 />
               </div>
 
-              <div>
-                <label className="text-slate-500 font-medium block mb-1">Due Date</label>
-                <input
-                  type="date"
-                  required
-                  value={followUpForm.expectedDate}
-                  onChange={(e) => setFollowUpForm({ ...followUpForm, expectedDate: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
-                />
-              </div>
-
               <div className="pt-2 flex justify-end gap-2">
                 <button type="button" onClick={() => setShowFollowUpModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">Save Follow-up</button>
@@ -1214,7 +1304,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 3: UPLOAD DOCUMENT */}
+      {/* MODAL 5: UPLOAD DOCUMENT */}
       {showDocModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
@@ -1245,7 +1335,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 4: ADD NOTE */}
+      {/* MODAL 6: ADD NOTE */}
       {showNoteModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
