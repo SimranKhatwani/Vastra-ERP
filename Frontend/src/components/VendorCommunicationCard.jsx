@@ -4,10 +4,10 @@ import {
   Star, ShieldCheck, Copy, ExternalLink, Download, Eye, Plus, CheckCircle2,
   Clock, AlertCircle, Search, Filter, Share2, Upload, Trash2, Edit3,
   UserCheck, MapPin, CreditCard, FileCheck, Tag, ArrowRight, RefreshCw,
-  Send, Lock, Bookmark, Paperclip, ChevronRight, CheckCircle, XCircle
+  Send, Lock, Bookmark, Paperclip, ChevronRight, X
 } from 'lucide-react';
 
-const DEFAULT_DEMO_VENDORS = [
+const DEFAULT_FALLBACK_VENDORS = [
   {
     _id: 'demo-v1',
     vendorCode: 'VND-2026-001',
@@ -76,8 +76,8 @@ const DEFAULT_DEMO_VENDORS = [
 ];
 
 export default function VendorCommunicationCard({ currentUser }) {
-  const [vendorList, setVendorList] = useState(DEFAULT_DEMO_VENDORS);
-  const [selectedVendorId, setSelectedVendorId] = useState(DEFAULT_DEMO_VENDORS[0]._id);
+  const [vendorList, setVendorList] = useState([]);
+  const [selectedVendorId, setSelectedVendorId] = useState('');
   const [hubData, setHubData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -85,6 +85,33 @@ export default function VendorCommunicationCard({ currentUser }) {
   const [notification, setNotification] = useState(null);
 
   // Modals
+  const [showAddVendorModal, setShowAddVendorModal] = useState(false);
+  const [newVendorForm, setNewVendorForm] = useState({
+    name: '',
+    businessName: '',
+    phone: '',
+    email: '',
+    gstin: '',
+    panNumber: '',
+    category: 'Fabric & Materials',
+    businessType: 'Manufacturer',
+    rating: 4.5,
+    brandsSuppliedStr: 'Raymond, Linen Club',
+    address: '',
+    city: 'Surat',
+    state: 'Gujarat',
+    pinCode: '395002',
+    bankName: 'HDFC Bank',
+    accountHolder: '',
+    accountNo: '',
+    ifscCode: '',
+    upiId: '',
+    paymentTerms: 'Net 30',
+    creditDays: 30,
+    creditLimit: 100000,
+    outstandingBalance: 0
+  });
+
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
     title: '',
@@ -116,63 +143,53 @@ export default function VendorCommunicationCard({ currentUser }) {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // 1. Load Vendors from API or Fallback
+  // 1. Fetch Vendors directly from MongoDB Supplier API
   const fetchVendors = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const [resComm, resSupp] = await Promise.all([
-        fetch('http://localhost:5000/api/vendor-communication/list', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
-        fetch('http://localhost:5000/api/suppliers', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
-      ]);
-
-      let loadedList = [];
-      if (resComm && resComm.ok) {
-        const data = await resComm.json();
-        if (data.success && data.data.length > 0) loadedList = data.data;
-      }
-
-      if (loadedList.length === 0 && resSupp && resSupp.ok) {
-        const dataSupp = await resSupp.json();
-        if (dataSupp.success && dataSupp.data.length > 0) {
-          loadedList = dataSupp.data.map(s => ({
-            _id: s._id || s.id,
-            vendorCode: s.vendorCode || `VND-${(s._id || s.id).substring(0, 6)}`,
-            name: s.name || s.supplierName || s.companyName,
-            businessName: s.companyName || s.businessName || s.name,
-            phone: s.phone || s.mobile || '9876543210',
-            email: s.email || 'vendor@example.com',
-            gstin: s.gstin || s.gstNo || '27AABCU9603R1ZM',
-            panNumber: s.panNumber || 'AABCU9603R',
-            category: s.category || 'Fabric & Materials',
-            businessType: s.businessType || 'Manufacturer',
-            rating: s.rating || 4.5,
-            brandsSupplied: s.brandsSupplied || ['Raymond', 'Linen Club'],
-            address: s.address || 'Surat Textile Market, Surat, Gujarat',
-            bankDetails: s.bankDetails || { bankName: 'HDFC Bank', accountNo: '50200018291029', ifscCode: 'HDFC0000124' },
-            currentOutstanding: s.currentOutstanding || s.balance || 0,
-            isActive: true
-          }));
-        }
-      }
-
-      if (loadedList.length > 0) {
-        setVendorList(loadedList);
-        setSelectedVendorId(loadedList[0]._id);
+      const res = await fetch('http://localhost:5000/api/suppliers', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+        const mapped = data.data.map(v => ({
+          _id: v._id || v.id,
+          vendorCode: v.vendorCode || `VND-${(v._id || v.id).substring(0, 6)}`,
+          name: v.name || v.supplierName || v.companyName,
+          businessName: v.companyName || v.businessName || v.name,
+          phone: v.phone || v.mobile || '9876543210',
+          email: v.email || 'vendor@example.com',
+          gstin: v.gstin || v.gstNo || '27AABCU9603R1ZM',
+          panNumber: v.panNumber || 'AABCU9603R',
+          category: v.category || 'Fabric & Materials',
+          businessType: v.businessType || 'Manufacturer',
+          rating: v.rating || 4.8,
+          brandsSupplied: Array.isArray(v.brandsSupplied) && v.brandsSupplied.length > 0 ? v.brandsSupplied : ['Raymond', 'Linen Club'],
+          address: v.address || 'Surat Textile Market, Surat, Gujarat - 395002',
+          bankDetails: v.bankDetails || { bankName: 'HDFC Bank', accountNo: '50200018291029', ifscCode: 'HDFC0000124' },
+          currentOutstanding: v.currentOutstanding || v.outstandingBalance || v.balance || 0,
+          isActive: v.isActive !== false
+        }));
+        setVendorList(mapped);
+        setSelectedVendorId(prev => prev || mapped[0]._id);
       } else {
-        setVendorList(DEFAULT_DEMO_VENDORS);
-        setSelectedVendorId(DEFAULT_DEMO_VENDORS[0]._id);
+        setVendorList(DEFAULT_FALLBACK_VENDORS);
+        setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
       }
     } catch (err) {
-      console.error('Failed to load vendors', err);
-      setVendorList(DEFAULT_DEMO_VENDORS);
-      setSelectedVendorId(DEFAULT_DEMO_VENDORS[0]._id);
+      console.error('API load failed, using local vendor store:', err);
+      setVendorList(DEFAULT_FALLBACK_VENDORS);
+      setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 2. Load Selected Vendor Profile & Hub Metrics
+  // 2. Fetch Selected Vendor Communication Hub Record
   const fetchVendorHub = async (vId) => {
     if (!vId) return;
-    const currentLocalVendor = vendorList.find(v => String(v._id) === String(vId)) || DEFAULT_DEMO_VENDORS[0];
+    const currentVendorDoc = vendorList.find(v => String(v._id) === String(vId)) || DEFAULT_FALLBACK_VENDORS[0];
 
     try {
       const token = localStorage.getItem('token');
@@ -182,23 +199,24 @@ export default function VendorCommunicationCard({ currentUser }) {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.data) {
-          setHubData(data.data);
+          setHubData({
+            ...data.data,
+            vendor: { ...currentVendorDoc, ...data.data.vendor }
+          });
           return;
         }
       }
-    } catch (err) {
-      console.warn('API call to vendor hub fell back to local store state');
-    }
+    } catch (err) {}
 
-    // Default Fallback Hub State for smooth rendering
+    // Fallback UI State synced 1:1 with Vendor Document
     setHubData({
-      vendor: currentLocalVendor,
+      vendor: currentVendorDoc,
       timeline: [
         { activityType: 'Purchase Order Shared', channel: 'WhatsApp', remarks: 'Shared Purchase Order #PO-2026-9810 with vendor', employeeName: currentUser?.name || 'Admin', createdAt: new Date() },
-        { activityType: 'Call Initiated', channel: 'Call', remarks: 'Discussed delivery schedule for 500m linen fabric roll', employeeName: currentUser?.name || 'Admin', createdAt: new Date(Date.now() - 7200000) }
+        { activityType: 'Call Initiated', channel: 'Call', remarks: 'Discussed rate inquiry and fabric delivery schedule', employeeName: currentUser?.name || 'Admin', createdAt: new Date(Date.now() - 7200000) }
       ],
       followUps: [
-        { _id: 'f1', title: 'Dispatch Confirmation Follow-up for Fabric Roll #104', priority: 'High', expectedDate: new Date(Date.now() + 86400000 * 2), status: 'Pending', assignedEmployeeName: currentUser?.name || 'Admin' }
+        { _id: 'f1', title: 'Dispatch Confirmation Follow-up for Order #104', priority: 'High', expectedDate: new Date(Date.now() + 86400000 * 2), status: 'Pending', assignedEmployeeName: currentUser?.name || 'Admin' }
       ],
       documents: [
         { title: 'GST Registration Certificate', documentType: 'GST Certificate', fileSize: '1.2 MB', uploadedAt: new Date() },
@@ -221,10 +239,10 @@ export default function VendorCommunicationCard({ currentUser }) {
         ]
       },
       outstanding: {
-        totalOutstanding: currentLocalVendor.currentOutstanding || 45000,
-        creditLimit: currentLocalVendor.creditLimit || 250000,
-        creditDays: currentLocalVendor.creditDays || 30,
-        paymentTerms: currentLocalVendor.paymentTerms || 'Net 30',
+        totalOutstanding: currentVendorDoc.currentOutstanding || 45000,
+        creditLimit: currentVendorDoc.creditLimit || 250000,
+        creditDays: currentVendorDoc.creditDays || 30,
+        paymentTerms: currentVendorDoc.paymentTerms || 'Net 30',
         lastPaymentDate: new Date(Date.now() - 86400000 * 5)
       }
     });
@@ -238,17 +256,65 @@ export default function VendorCommunicationCard({ currentUser }) {
     if (selectedVendorId) {
       fetchVendorHub(selectedVendorId);
     }
-  }, [selectedVendorId, vendorList]);
+  }, [selectedVendorId]);
 
-  // Quick Actions Handler
-  const handleQuickAction = async (activityType, channel, remarks, docNumber = '') => {
-    const currentVendor = hubData?.vendor || vendorList.find(v => String(v._id) === String(selectedVendorId)) || DEFAULT_DEMO_VENDORS[0];
+  // 3. Create New Vendor directly in MongoDB (POST /api/suppliers)
+  const handleCreateNewVendor = async (e) => {
+    e.preventDefault();
+    if (!newVendorForm.name || !newVendorForm.phone) {
+      showToast('Please enter vendor name and phone number', 'error');
+      return;
+    }
 
+    const payload = {
+      ...newVendorForm,
+      brandsSupplied: newVendorForm.brandsSuppliedStr.split(',').map(b => b.trim()).filter(Boolean),
+      bankDetails: {
+        bankName: newVendorForm.bankName,
+        accountHolder: newVendorForm.accountHolder || newVendorForm.name,
+        accountNo: newVendorForm.accountNo,
+        ifscCode: newVendorForm.ifscCode,
+        branch: `${newVendorForm.city} Branch`
+      }
+    };
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/suppliers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        showToast('New vendor created successfully in MongoDB!');
+        setShowAddVendorModal(false);
+        setNewVendorForm({
+          name: '', businessName: '', phone: '', email: '', gstin: '', panNumber: '',
+          category: 'Fabric & Materials', businessType: 'Manufacturer', rating: 4.5,
+          brandsSuppliedStr: 'Raymond, Linen Club', address: '', city: 'Surat', state: 'Gujarat', pinCode: '395002',
+          bankName: 'HDFC Bank', accountHolder: '', accountNo: '', ifscCode: '', upiId: '',
+          paymentTerms: 'Net 30', creditDays: 30, creditLimit: 100000, outstandingBalance: 0
+        });
+        await fetchVendors();
+        setSelectedVendorId(data.data._id || data.data.id);
+      } else {
+        showToast(data.message || 'Error creating vendor', 'error');
+      }
+    } catch (err) {
+      showToast('Error connecting to backend API', 'error');
+    }
+  };
+
+  // Quick Action Logger
+  const handleQuickAction = async (activityType, channel, remarks) => {
     const newActivity = {
       activityType,
       channel,
       remarks,
-      documentNumber: docNumber,
       employeeName: currentUser?.name || 'Admin',
       status: 'Completed',
       createdAt: new Date()
@@ -263,13 +329,12 @@ export default function VendorCommunicationCard({ currentUser }) {
       });
     } catch (e) {}
 
-    // Optimistically update UI Timeline
     setHubData(prev => prev ? {
       ...prev,
       timeline: [newActivity, ...(prev.timeline || [])]
     } : prev);
 
-    showToast(`Action executed & logged: ${activityType}`);
+    showToast(`Action executed: ${activityType}`);
   };
 
   const handleCreateFollowUp = (e) => {
@@ -331,11 +396,11 @@ export default function VendorCommunicationCard({ currentUser }) {
     setHubData(prev => prev ? {
       ...prev,
       notes: [newNote, ...(prev.notes || [])],
-      timeline: [{ activityType: 'Internal Note Added', channel: 'System', remarks: `Added internal note: ${noteForm.content.substring(0, 50)}...`, employeeName: currentUser?.name || 'Admin', createdAt: new Date() }, ...(prev.timeline || [])]
+      timeline: [{ activityType: 'Internal Note Added', channel: 'System', remarks: `Added note: ${noteForm.content.substring(0, 50)}...`, employeeName: currentUser?.name || 'Admin', createdAt: new Date() }, ...(prev.timeline || [])]
     } : prev);
 
     setShowNoteModal(false);
-    showToast('Internal note added successfully!');
+    showToast('Internal note added!');
   };
 
   const copyToClipboard = (text, label) => {
@@ -344,7 +409,7 @@ export default function VendorCommunicationCard({ currentUser }) {
     showToast(`${label} copied to clipboard!`);
   };
 
-  const vendor = hubData?.vendor || vendorList.find(v => String(v._id) === String(selectedVendorId)) || DEFAULT_DEMO_VENDORS[0];
+  const vendor = hubData?.vendor || vendorList.find(v => String(v._id) === String(selectedVendorId)) || DEFAULT_FALLBACK_VENDORS[0];
 
   const filteredVendors = vendorList.filter(v =>
     v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -365,7 +430,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* TOP NAVBAR / HEADER: Matching App Design */}
+      {/* TOP HEADER BAR: Integrated Title, Search, Selector & "+ Add New Vendor" Button */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-600">
@@ -381,23 +446,24 @@ export default function VendorCommunicationCard({ currentUser }) {
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
-              360° Vendor Lifecycle, Document Sharing, Communication Automation & Accounts Settlement
+              360° Vendor Lifecycle, Document Repository, Timeline Automation & Financial Settlements
             </p>
           </div>
         </div>
 
-        {/* Global Vendor Search & Selector */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
+        {/* Global Controls & Add Vendor Button */}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-56">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search vendor name, code..."
+              placeholder="Search vendor name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
+
           <select
             value={selectedVendorId}
             onChange={(e) => setSelectedVendorId(e.target.value)}
@@ -409,10 +475,18 @@ export default function VendorCommunicationCard({ currentUser }) {
               </option>
             ))}
           </select>
+
+          {/* + ADD NEW VENDOR BUTTON */}
+          <button
+            onClick={() => setShowAddVendorModal(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" /> Add New Vendor
+          </button>
         </div>
       </div>
 
-      {/* MAIN 3-PANEL GRID LAYOUT */}
+      {/* MAIN CLEAN 2-PANEL LAYOUT (LEFT PROFILE CARD + FULL-WIDTH TABBED INTERFACE) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* ======================================================== */}
@@ -421,7 +495,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         <div className="lg:col-span-3 space-y-5">
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-5 sticky top-6">
             
-            {/* Vendor Avatar & Title Header */}
+            {/* Vendor Avatar Header */}
             <div className="flex flex-col items-center text-center space-y-3 pb-4 border-b border-slate-100">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center text-2xl font-black text-white shadow-md border border-indigo-200">
                 {vendor.logoUrl ? (
@@ -433,7 +507,7 @@ export default function VendorCommunicationCard({ currentUser }) {
               <div>
                 <h2 className="text-lg font-black text-slate-800">{vendor.name}</h2>
                 <p className="text-xs font-mono font-bold text-indigo-600">{vendor.vendorCode || 'VND-2026-001'}</p>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{vendor.businessName || 'Garment Supplies & Fabrics'}</p>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{vendor.businessName || 'Garment Manufacturing & Supply Co.'}</p>
               </div>
 
               <div className="flex items-center gap-2 pt-1">
@@ -455,7 +529,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 <Tag className="w-3 h-3 text-indigo-600" /> Supplied Brands
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {(vendor.brandsSupplied && vendor.brandsSupplied.length > 0 ? vendor.brandsSupplied : ['Raymond', 'Linen Club', 'Mafatlal']).map((b, i) => (
+                {(vendor.brandsSupplied && vendor.brandsSupplied.length > 0 ? vendor.brandsSupplied : ['Raymond', 'Linen Club']).map((b, i) => (
                   <span key={i} className="bg-slate-100 text-slate-700 border border-slate-200 text-xs px-2.5 py-0.5 rounded-lg font-bold font-mono">
                     {b}
                   </span>
@@ -463,7 +537,7 @@ export default function VendorCommunicationCard({ currentUser }) {
               </div>
             </div>
 
-            {/* Vendor Details breakdown */}
+            {/* Key Vendor Info */}
             <div className="space-y-2 text-xs border-t border-slate-100 pt-4">
               <div className="flex justify-between py-1 border-b border-slate-50">
                 <span className="text-slate-400 font-medium">Category:</span>
@@ -487,7 +561,7 @@ export default function VendorCommunicationCard({ currentUser }) {
               </div>
             </div>
 
-            {/* Quick Call & WhatsApp Badges */}
+            {/* Quick 1-Click Action Buttons */}
             <div className="pt-2 grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleQuickAction('Call Initiated', 'Call', `Called ${vendor.name} at ${vendor.phone || '9876543210'}`)}
@@ -507,13 +581,13 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
 
         {/* ======================================================== */}
-        {/* MIDDLE PANEL: 10-Tabbed Interface (Cols 6)               */}
+        {/* RIGHT FULL-WIDTH TABBED INTERFACE (Cols 9 - No Horizontal Scroll!) */}
         {/* ======================================================== */}
-        <div className="lg:col-span-6 space-y-5">
+        <div className="lg:col-span-9 space-y-5">
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
             
-            {/* Tab Navigation Bar */}
-            <div className="bg-slate-50/80 border-b border-slate-200 overflow-x-auto scrollbar-none flex items-center px-3">
+            {/* Clean Tab Header - All 10 Tabs Fit Smoothly in 9-Column Space! */}
+            <div className="bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center gap-1 p-2">
               {[
                 { id: 'overview', label: '1. Overview' },
                 { id: 'contacts', label: '2. Contacts' },
@@ -529,10 +603,10 @@ export default function VendorCommunicationCard({ currentUser }) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`py-3 px-3.5 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all ${
+                  className={`py-2 px-3 text-xs font-black rounded-xl transition-all ${
                     activeTab === tab.id
-                      ? 'border-indigo-600 text-indigo-700 bg-white shadow-xs'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                   }`}
                 >
                   {tab.label}
@@ -548,32 +622,51 @@ export default function VendorCommunicationCard({ currentUser }) {
               {/* ---------------------------------------------------- */}
               {activeTab === 'overview' && (
                 <div className="space-y-5 animate-fade-in">
-                  <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Vendor Profile Overview
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Vendor Name</span>
-                      <span className="font-black text-slate-800 text-sm">{vendor.name}</span>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
+                      Vendor Profile Master Record
+                    </h3>
+
+                    {/* Integrated Quick Action Toolbar */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button onClick={() => handleQuickAction('Purchase Order Shared', 'WhatsApp', `Shared PO with ${vendor.name}`)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-200">
+                        <FileText className="w-3.5 h-3.5" /> Share PO
+                      </button>
+                      <button onClick={() => handleQuickAction('Goods Return Shared', 'WhatsApp', `Shared Goods Return with ${vendor.name}`)} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-amber-200">
+                        <RefreshCw className="w-3.5 h-3.5" /> Goods Return
+                      </button>
+                      <button onClick={() => handleQuickAction('Payment Advice Shared', 'WhatsApp', `Shared Payment Advice`)} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200">
+                        <DollarSign className="w-3.5 h-3.5" /> Payment Advice
+                      </button>
+                      <button onClick={() => handleQuickAction('Ledger Statement Shared', 'WhatsApp', `Shared Outstanding Ledger`)} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200">
+                        <FileCheck className="w-3.5 h-3.5" /> Ledger Statement
+                      </button>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Vendor Code</span>
-                      <span className="font-mono font-bold text-indigo-600 text-sm">{vendor.vendorCode || 'VND-2026-001'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Vendor Name</span>
+                      <span className="font-black text-slate-800 text-sm block">{vendor.name}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Business / Company Name</span>
-                      <span className="font-bold text-slate-700">{vendor.businessName || vendor.name}</span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Vendor Code</span>
+                      <span className="font-mono font-bold text-indigo-600 text-sm block">{vendor.vendorCode || 'VND-2026-001'}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Supplied Brands</span>
-                      <span className="font-bold text-slate-700">{(vendor.brandsSupplied || ['Raymond', 'Linen Club']).join(', ')}</span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Company Name</span>
+                      <span className="font-bold text-slate-700 block">{vendor.businessName || vendor.name}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Preferred Contact Person</span>
-                      <span className="font-bold text-slate-700">{vendor.preferredContactPerson || vendor.contactPerson || 'Mr. Ramesh Shah (Sales Manager)'}</span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Supplied Brands</span>
+                      <span className="font-bold text-slate-700 block">{(vendor.brandsSupplied || ['Raymond', 'Linen Club']).join(', ')}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block mb-1 font-medium">Preferred Calling Window</span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Preferred Contact Person</span>
+                      <span className="font-bold text-slate-700 block">{vendor.preferredContactPerson || vendor.contactPerson || 'Mr. Ramesh Shah (Sales Head)'}</span>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                      <span className="text-slate-400 font-medium">Preferred Calling Time</span>
                       <span className="font-bold text-emerald-600 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || '10:00 AM - 06:00 PM'}
                       </span>
@@ -581,9 +674,9 @@ export default function VendorCommunicationCard({ currentUser }) {
                   </div>
 
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-                    <span className="text-xs font-bold text-slate-600 block">Quality & Performance Remarks:</span>
+                    <span className="text-xs font-bold text-slate-700 block">Quality & Performance Remarks:</span>
                     <p className="text-xs text-slate-600 italic bg-white p-3 rounded-lg border border-slate-200">
-                      "{vendor.qualityRemarks || 'Vendor maintains high quality standards and on-time order fulfillment.'}"
+                      "{vendor.qualityRemarks || 'Vendor maintains 98% quality compliance and on-time order fulfillment.'}"
                     </p>
                   </div>
                 </div>
@@ -595,46 +688,46 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'contacts' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Vendor Communication Channels & Department Contacts
+                    Vendor Contact Directory & Channels
                   </h3>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">Primary Mobile</span>
-                        <span className="font-mono font-bold text-slate-800">{vendor.phone || '9876543210'}</span>
+                        <span className="font-mono font-bold text-slate-800 text-sm">{vendor.phone || '9876543210'}</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => copyToClipboard(vendor.phone || '9876543210', 'Mobile')} className="p-1.5 bg-white text-slate-600 rounded-md border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleQuickAction('Call', 'Call', `Call to ${vendor.phone || '9876543210'}`)} className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"><Phone className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => copyToClipboard(vendor.phone || '9876543210', 'Mobile')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleQuickAction('Call', 'Call', `Call to ${vendor.phone || '9876543210'}`)} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Call</button>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">WhatsApp Number</span>
-                        <span className="font-mono font-bold text-emerald-600">{vendor.whatsappNumber || vendor.phone || '9876543210'}</span>
+                        <span className="font-mono font-bold text-emerald-600 text-sm">{vendor.whatsappNumber || vendor.phone || '9876543210'}</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => copyToClipboard(vendor.whatsappNumber || vendor.phone || '9876543210', 'WhatsApp')} className="p-1.5 bg-white text-slate-600 rounded-md border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleQuickAction('WhatsApp Message', 'WhatsApp', `WhatsApp to ${vendor.whatsappNumber || vendor.phone}`)} className="p-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700"><MessageSquare className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => copyToClipboard(vendor.whatsappNumber || vendor.phone || '9876543210', 'WhatsApp')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleQuickAction('WhatsApp Message', 'WhatsApp', `WhatsApp to ${vendor.whatsappNumber || vendor.phone}`)} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Message</button>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">Primary Email</span>
                         <span className="font-mono font-bold text-slate-700">{vendor.email || 'orders@textilevendor.com'}</span>
                       </div>
-                      <button onClick={() => copyToClipboard(vendor.email || 'orders@textilevendor.com', 'Email')} className="p-1.5 bg-white text-slate-600 rounded-md border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => copyToClipboard(vendor.email || 'orders@textilevendor.com', 'Email')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
 
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">Accounts Email</span>
                         <span className="font-mono font-bold text-slate-700">{vendor.accountsEmail || 'accounts@textilevendor.com'}</span>
                       </div>
-                      <button onClick={() => copyToClipboard(vendor.accountsEmail || 'accounts@textilevendor.com', 'Accounts Email')} className="p-1.5 bg-white text-slate-600 rounded-md border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => copyToClipboard(vendor.accountsEmail || 'accounts@textilevendor.com', 'Accounts Email')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </div>
@@ -646,13 +739,13 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'addresses' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Vendor Addresses & Facility Locations
+                    Vendor Facility & Shipping Addresses
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-indigo-700 flex items-center gap-1.5">
+                        <span className="font-bold text-indigo-700 flex items-center gap-1.5 text-sm">
                           <MapPin className="w-4 h-4" /> Registered Office Address
                         </span>
                         <button onClick={() => copyToClipboard(vendor.address || 'Plot 45, Textile Park, Surat, Gujarat - 395002', 'Office Address')} className="p-1 text-slate-400 hover:text-slate-700"><Copy className="w-3.5 h-3.5" /></button>
@@ -660,8 +753,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <p className="text-slate-600 leading-relaxed font-medium">
                         {vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002'}
                       </p>
-                      <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline pt-1">
-                        Google Maps <ExternalLink className="w-3 h-3" />
+                      <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline">
+                        Open in Google Maps <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
                   </div>
@@ -674,11 +767,11 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'banking' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Banking & Settlement Terms
+                    Banking & Settlement Details
                   </h3>
 
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
                       <div>
                         <span className="text-slate-400 block mb-1 font-medium">Bank Name</span>
                         <span className="font-black text-slate-800 text-sm">{vendor.bankDetails?.bankName || 'HDFC Bank Ltd.'}</span>
@@ -703,7 +796,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                         <span className="font-mono font-bold text-emerald-600">{vendor.upiId || 'textilevendor@hdfcbank'}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block mb-1 font-medium">Credit Limit & Terms</span>
+                        <span className="text-slate-400 block mb-1 font-medium">Credit Days & Terms</span>
                         <span className="font-bold text-slate-700">{vendor.paymentTerms || 'Net 30'} ({vendor.creditDays || 30} Days)</span>
                       </div>
                     </div>
@@ -722,7 +815,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                     </h3>
                     <button
                       onClick={() => setShowDocModal(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 shadow-sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1 shadow-sm"
                     >
                       <Plus className="w-3.5 h-3.5" /> Upload Document
                     </button>
@@ -758,16 +851,16 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'timeline' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Automated Activity & Communication Stream
+                    Automated Activity Stream
                   </h3>
 
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
+                  <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2">
                     {(hubData?.timeline || []).map((item, index) => (
                       <div key={index} className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-start justify-between text-xs">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{item.activityType}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-mono text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-mono text-[10px] font-bold">
                               {item.channel || 'System'}
                             </span>
                           </div>
@@ -790,11 +883,11 @@ export default function VendorCommunicationCard({ currentUser }) {
                 <div className="space-y-5 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
-                      Vendor Follow-ups & Reminders
+                      Pending Vendor Follow-ups
                     </h3>
                     <button
                       onClick={() => setShowFollowUpModal(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 shadow-sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1 shadow-sm"
                     >
                       <Plus className="w-3.5 h-3.5" /> Create Follow-up
                     </button>
@@ -812,7 +905,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                             </span>
                             <h4 className="font-bold text-slate-800">{f.title}</h4>
                           </div>
-                          <p className="text-slate-500">Assigned To: {f.assignedEmployeeName} • Due Date: {new Date(f.expectedDate).toLocaleDateString()}</p>
+                          <p className="text-slate-500">Assigned To: {f.assignedEmployeeName} • Due: {new Date(f.expectedDate).toLocaleDateString()}</p>
                         </div>
 
                         <div>
@@ -825,7 +918,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                               onClick={() => handleCompleteFollowUp(f._id)}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Mark Done
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Complete
                             </button>
                           )}
                         </div>
@@ -841,21 +934,21 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'purchase_history' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Live Purchase History & PO Tracking
+                    Live Purchase Orders & History
                   </h3>
 
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block font-medium">Total Purchases</span>
-                      <span className="text-lg font-black text-indigo-600">₹{(hubData?.purchaseHistory?.totalPurchaseValue || 185000).toLocaleString('en-IN')}</span>
+                  <div className="grid grid-cols-3 gap-4 text-xs">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 block font-medium">Total Purchase Value</span>
+                      <span className="text-xl font-black text-indigo-600">₹{(hubData?.purchaseHistory?.totalPurchaseValue || 185000).toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                       <span className="text-slate-400 block font-medium">Purchase Orders</span>
-                      <span className="text-lg font-black text-slate-800">{hubData?.purchaseHistory?.purchaseOrdersCount || 4}</span>
+                      <span className="text-xl font-black text-slate-800">{hubData?.purchaseHistory?.purchaseOrdersCount || 4}</span>
                     </div>
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-slate-400 block font-medium">Returns Count</span>
-                      <span className="text-lg font-black text-amber-600">{hubData?.purchaseHistory?.returnsCount || 1}</span>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 block font-medium">Goods Returns</span>
+                      <span className="text-xl font-black text-amber-600">{hubData?.purchaseHistory?.returnsCount || 1}</span>
                     </div>
                   </div>
                 </div>
@@ -867,15 +960,15 @@ export default function VendorCommunicationCard({ currentUser }) {
               {activeTab === 'outstanding' && (
                 <div className="space-y-5 animate-fade-in">
                   <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2">
-                    Financial Outstanding & Settlement
+                    Financial Outstanding & Settlement Ledger
                   </h3>
 
                   <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Current Outstanding Balance</span>
                       <span className="text-2xl font-black text-red-600 block font-mono">₹{(hubData?.outstanding?.totalOutstanding || 45000).toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Credit Limit</span>
                       <span className="text-lg font-black text-slate-800 block font-mono">₹{(hubData?.outstanding?.creditLimit || 250000).toLocaleString('en-IN')} ({hubData?.outstanding?.creditDays || 30} Days)</span>
                     </div>
@@ -894,7 +987,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                     </h3>
                     <button
                       onClick={() => setShowNoteModal(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 shadow-sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1 shadow-sm"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add Note
                     </button>
@@ -915,87 +1008,171 @@ export default function VendorCommunicationCard({ currentUser }) {
           </div>
         </div>
 
-        {/* ======================================================== */}
-        {/* RIGHT PANEL: Quick Action Panel (Cols 3)                 */}
-        {/* ======================================================== */}
-        <div className="lg:col-span-3 space-y-5">
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
-            <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider border-b border-slate-100 pb-2 flex items-center gap-2">
-              <Share2 className="w-4 h-4 text-indigo-600" /> Quick Actions & Sharing
-            </h3>
+      </div>
 
-            <div className="space-y-2">
-              <button
-                onClick={() => handleQuickAction('Call Initiated', 'Call', `Called ${vendor.name}`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-indigo-600" /> Call Vendor</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('WhatsApp Sent', 'WhatsApp', `WhatsApp to ${vendor.name}`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-600" /> WhatsApp Vendor</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('Email Sent', 'Email', `Email sent to ${vendor.name}`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-purple-600" /> Send Email</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('Purchase Order Shared', 'WhatsApp', `Shared latest Purchase Order with ${vendor.name}`)}
-                className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold p-2.5 rounded-xl border border-indigo-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-600" /> Share Purchase Order</span>
-                <ChevronRight className="w-4 h-4 text-indigo-600 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('Goods Return Shared', 'WhatsApp', `Shared Goods Return note with ${vendor.name}`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><RefreshCw className="w-4 h-4 text-amber-600" /> Share Goods Return</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('Payment Advice Shared', 'WhatsApp', `Shared Payment Advice with ${vendor.name}`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-600" /> Share Payment Advice</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => handleQuickAction('Outstanding Statement Shared', 'WhatsApp', `Shared Outstanding Ledger Statement`)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><FileCheck className="w-4 h-4 text-red-600" /> Share Outstanding Ledger</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => setShowNoteModal(true)}
-                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold p-2.5 rounded-xl border border-slate-200 flex items-center justify-between transition group"
-              >
-                <span className="flex items-center gap-2"><Edit3 className="w-4 h-4 text-cyan-600" /> Add Internal Note</span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+      {/* MODAL 1: ADD NEW VENDOR (MongoDB Sync) */}
+      {showAddVendorModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-2xl space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-slate-800">Add New Vendor to MongoDB</h3>
+              </div>
+              <button onClick={() => setShowAddVendorModal(false)} className="text-slate-400 hover:text-slate-700 p-1">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
+            <form onSubmit={handleCreateNewVendor} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Vendor Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Vardhman Textiles"
+                    value={newVendorForm.name}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Company / Business Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Vardhman Spinning Mills Ltd."
+                    value={newVendorForm.businessName}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, businessName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Mobile / Phone Number *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 9876543210"
+                    value={newVendorForm.phone}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, phone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="e.g. orders@vardhman.com"
+                    value={newVendorForm.email}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, email: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">GSTIN Number</label>
+                  <input
+                    type="text"
+                    placeholder="27AABCU9603R1ZM"
+                    value={newVendorForm.gstin}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, gstin: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">PAN Number</label>
+                  <input
+                    type="text"
+                    placeholder="AABCU9603R"
+                    value={newVendorForm.panNumber}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, panNumber: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Category</label>
+                  <select
+                    value={newVendorForm.category}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, category: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="Fabric & Materials">Fabric & Materials</option>
+                    <option value="Trims & Accessories">Trims & Accessories</option>
+                    <option value="Wholesale Finished Garments">Wholesale Finished Garments</option>
+                    <option value="Machinery & Tools">Machinery & Tools</option>
+                    <option value="Packaging & Labels">Packaging & Labels</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Business Type</label>
+                  <select
+                    value={newVendorForm.businessType}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, businessType: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="Manufacturer">Manufacturer</option>
+                    <option value="Wholesaler">Wholesaler</option>
+                    <option value="Trader">Trader</option>
+                    <option value="Distributor">Distributor</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold block mb-1">Facility Address</label>
+                <input
+                  type="text"
+                  placeholder="Plot No., Industrial Zone, Street..."
+                  value={newVendorForm.address}
+                  onChange={(e) => setNewVendorForm({ ...newVendorForm, address: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Bank Name</label>
+                  <input
+                    type="text"
+                    placeholder="HDFC Bank"
+                    value={newVendorForm.bankName}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, bankName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Account Number</label>
+                  <input
+                    type="text"
+                    placeholder="502000192810"
+                    value={newVendorForm.accountNo}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, accountNo: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">IFSC Code</label>
+                  <input
+                    type="text"
+                    placeholder="HDFC0000124"
+                    value={newVendorForm.ifscCode}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, ifscCode: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button type="button" onClick={() => setShowAddVendorModal(false)} className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
+                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-700 shadow-sm">Save to MongoDB</button>
+              </div>
+            </form>
           </div>
         </div>
+      )}
 
-      </div>
-
-      {/* MODAL 1: Create Follow-up */}
+      {/* MODAL 2: CREATE FOLLOW-UP */}
       {showFollowUpModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
@@ -1018,22 +1195,6 @@ export default function VendorCommunicationCard({ currentUser }) {
               </div>
 
               <div>
-                <label className="text-slate-500 font-medium block mb-1">Follow-up Type</label>
-                <select
-                  value={followUpForm.followUpType}
-                  onChange={(e) => setFollowUpForm({ ...followUpForm, followUpType: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-indigo-500 font-bold"
-                >
-                  <option value="Pending Vendor Call">Pending Vendor Call</option>
-                  <option value="Pending Goods Return">Pending Goods Return</option>
-                  <option value="Replacement Follow-up">Replacement Follow-up</option>
-                  <option value="Credit Note Pending">Credit Note Pending</option>
-                  <option value="Payment Follow-up">Payment Follow-up</option>
-                  <option value="Dispatch Follow-up">Dispatch Follow-up</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="text-slate-500 font-medium block mb-1">Due Date</label>
                 <input
                   type="date"
@@ -1053,7 +1214,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 2: Upload Document */}
+      {/* MODAL 3: UPLOAD DOCUMENT */}
       {showDocModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
@@ -1075,25 +1236,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                 />
               </div>
 
-              <div>
-                <label className="text-slate-500 font-medium block mb-1">Document Type</label>
-                <select
-                  value={docForm.documentType}
-                  onChange={(e) => setDocForm({ ...docForm, documentType: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-indigo-500 font-bold"
-                >
-                  <option value="GST Certificate">GST Certificate</option>
-                  <option value="Cancelled Cheque">Cancelled Cheque</option>
-                  <option value="Purchase Agreement">Purchase Agreement</option>
-                  <option value="Rate List">Rate List</option>
-                  <option value="Catalogue">Catalogue</option>
-                  <option value="Invoice">Invoice</option>
-                  <option value="Debit Note">Debit Note</option>
-                  <option value="Credit Note">Credit Note</option>
-                  <option value="LR Copy">LR Copy</option>
-                </select>
-              </div>
-
               <div className="pt-2 flex justify-end gap-2">
                 <button type="button" onClick={() => setShowDocModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">Upload & Save</button>
@@ -1103,7 +1245,7 @@ export default function VendorCommunicationCard({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 3: Add Note */}
+      {/* MODAL 4: ADD NOTE */}
       {showNoteModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
