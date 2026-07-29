@@ -61,8 +61,33 @@ exports.getActivityFeed = async (req, res) => {
       // Employee model may differ — skip silently
     }
 
+    // Fetch recent alterations (created)
+    let alterationActivities = [];
+    try {
+      const Alteration = require('../models/alterationModel');
+      const recentAlterations = await Alteration.find({ tenantId })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean();
+
+      alterationActivities = recentAlterations.map((alt) => ({
+        id: `alt-${alt._id}`,
+        type: 'alteration',
+        action: 'ALTERATION_CREATED',
+        icon: '✂️',
+        color: 'red',
+        title: `Alteration request ${alt.alterationId || '#' + alt._id.toString().slice(-6)} created`,
+        detail: `Invoice: ${alt.invoiceNumber} · Customer: ${alt.customerName} · Product: ${alt.productName}`,
+        user: alt.createdBy || 'Staff',
+        timestamp: alt.createdAt,
+        meta: { alterationId: alt.alterationId, customer: alt.customerName, item: alt.productName },
+      }));
+    } catch (altErr) {
+      console.warn('Alteration query skipped:', altErr.message);
+    }
+
     // Merge, sort by timestamp desc, slice
-    const allActivities = [...invoiceActivities, ...employeeActivities]
+    const allActivities = [...invoiceActivities, ...employeeActivities, ...alterationActivities]
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, limit);
 

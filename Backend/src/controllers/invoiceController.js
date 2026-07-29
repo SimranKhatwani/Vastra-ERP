@@ -1,6 +1,7 @@
 const Invoice = require('../models/invoiceModel');
 const Product = require('../models/productModel');
 const Customer = require('../models/customerModel');
+const Alteration = require('../models/alterationModel');
 const mongoose = require('mongoose');
 const { emitToTenant, emitToRole, emitToUser } = require('../socket/socketServer');
 const { processWhatsAppDispatch } = require('../services/invoiceService');
@@ -27,6 +28,23 @@ exports.createInvoice = async (req, res) => {
       ...invoiceData,
       tenantId
     });
+
+    // Update any pre-created alteration tickets with the final invoice number and ID
+    if (items && items.length > 0) {
+      for (const item of items) {
+        if (item.alterationRecord && (item.alterationRecord._id || item.alterationRecord.id)) {
+          try {
+            const altId = item.alterationRecord._id || item.alterationRecord.id;
+            await Alteration.findByIdAndUpdate(altId, {
+              invoiceNumber: invoice.invoiceNo,
+              invoiceId: invoice._id.toString()
+            });
+          } catch (altErr) {
+            console.error('Failed to update alteration record invoice number:', altErr.message);
+          }
+        }
+      }
+    }
 
     // 2. Deduct Stock for each product (skip custom/non-catalog items)
     for (const item of items) {
@@ -239,8 +257,30 @@ exports.getInvoices = async (req, res) => {
     }
 
     const invoices = await Invoice.find(query).sort('-date');
+
+    // Fetch and dynamically attach alterations
+    const invoiceNos = invoices.map(inv => inv.invoiceNo).filter(Boolean);
+    const alterations = await Alteration.find({ invoiceNumber: { $in: invoiceNos }, tenantId });
+
+    const plainInvoices = invoices.map(inv => {
+      const plainInv = inv.toObject();
+      plainInv.items = plainInv.items.map(item => {
+        const matchedAlt = alterations.find(alt => 
+          alt.invoiceNumber === plainInv.invoiceNo &&
+          (alt.productId === item.productId || alt.productName === item.name) &&
+          (!alt.size || alt.size === item.size) &&
+          (!alt.color || alt.color === item.color)
+        );
+        if (matchedAlt) {
+          item.hasAlteration = true;
+          item.alterationRecord = matchedAlt;
+        }
+        return item;
+      });
+      return plainInv;
+    });
       
-    res.status(200).json({ success: true, count: invoices.length, data: invoices });
+    res.status(200).json({ success: true, count: plainInvoices.length, data: plainInvoices });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -257,13 +297,28 @@ exports.getInvoiceById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
+    const plainInvoice = invoice.toObject();
+    const alterations = await Alteration.find({ invoiceNumber: plainInvoice.invoiceNo, tenantId });
+    plainInvoice.items = plainInvoice.items.map(item => {
+      const matchedAlt = alterations.find(alt => 
+        (alt.productId === item.productId || alt.productName === item.name) &&
+        (!alt.size || alt.size === item.size) &&
+        (!alt.color || alt.color === item.color)
+      );
+      if (matchedAlt) {
+        item.hasAlteration = true;
+        item.alterationRecord = matchedAlt;
+      }
+      return item;
+    });
+
     emitToTenant(tenantId, 'invoice.updated', {
-      invoice,
+      invoice: plainInvoice,
       tenantId,
       event: 'invoice.updated'
     });
 
-    res.status(200).json({ success: true, data: invoice });
+    res.status(200).json({ success: true, data: plainInvoice });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

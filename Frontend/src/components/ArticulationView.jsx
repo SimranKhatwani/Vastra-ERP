@@ -2286,7 +2286,7 @@ export const ArticulationView = ({
                           setSelectedAltItem(item);
                           // Populate default measurements if possible
                           setAltMeasurements({
-                            Chest: item.size || "",
+                            Chest: "",
                             Waist: "",
                             Shoulder: "",
                             Sleeve: "",

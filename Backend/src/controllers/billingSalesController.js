@@ -136,6 +136,24 @@ exports.createSalesInvoice = async (req, res) => {
 
     await newInvoice.save({ session });
 
+    // Update any pre-created alteration tickets with the final invoice number and ID
+    const Alteration = require('../models/alterationModel');
+    if (items && items.length > 0) {
+      for (const item of items) {
+        if (item.alterationRecord && (item.alterationRecord._id || item.alterationRecord.id)) {
+          try {
+            const altId = item.alterationRecord._id || item.alterationRecord.id;
+            await Alteration.findByIdAndUpdate(altId, {
+              invoiceNumber: newInvoice.invoiceNo,
+              invoiceId: newInvoice._id.toString()
+            }).session(session);
+          } catch (altErr) {
+            console.error('Failed to update alteration record invoice number in billingSales:', altErr.message);
+          }
+        }
+      }
+    }
+
     // C. Update Inventory Stocks and log Telemetry Movements
     for (const item of items) {
       if (item.productId && isValidObjectId(item.productId)) {

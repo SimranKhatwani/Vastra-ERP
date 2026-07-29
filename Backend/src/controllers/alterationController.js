@@ -1,4 +1,5 @@
 const Alteration = require('../models/alterationModel');
+const { emitToTenant } = require('../socket/socketServer');
 
 // @desc    Create a new alteration record
 // @route   POST /api/alterations
@@ -15,6 +16,27 @@ exports.createAlteration = async (req, res) => {
         createdBy: item.createdBy || req.user?.name || 'Cashier',
       }));
       const created = await Alteration.insertMany(recordsToCreate);
+
+      // Emit feed events for bulk alterations
+      try {
+        created.forEach(alt => {
+          emitToTenant(tenantId, 'activity.feed', {
+            id: `alt-${alt._id}`,
+            type: 'alteration',
+            action: 'ALTERATION_CREATED',
+            icon: '✂️',
+            color: 'red',
+            title: `Alteration request ${alt.alterationId} created`,
+            detail: `Invoice: ${alt.invoiceNumber} · Customer: ${alt.customerName} · Product: ${alt.productName}`,
+            user: alt.createdBy || req.user?.name || 'Staff',
+            timestamp: new Date().toISOString(),
+            meta: { alterationId: alt.alterationId, customer: alt.customerName, item: alt.productName },
+          });
+        });
+      } catch (err) {
+        console.error('Socket emit failed for bulk alterations:', err);
+      }
+
       return res.status(201).json({ success: true, count: created.length, data: created });
     }
 
@@ -27,6 +49,24 @@ exports.createAlteration = async (req, res) => {
       alterationId: req.body.alterationId || altCode,
       createdBy: req.body.createdBy || req.user?.name || 'Cashier',
     });
+
+    // Emit live feed event
+    try {
+      emitToTenant(tenantId, 'activity.feed', {
+        id: `alt-${alteration._id}`,
+        type: 'alteration',
+        action: 'ALTERATION_CREATED',
+        icon: '✂️',
+        color: 'red',
+        title: `Alteration request ${alteration.alterationId} created`,
+        detail: `Invoice: ${alteration.invoiceNumber} · Customer: ${alteration.customerName} · Product: ${alteration.productName}`,
+        user: alteration.createdBy || req.user?.name || 'Staff',
+        timestamp: new Date().toISOString(),
+        meta: { alterationId: alteration.alterationId, customer: alteration.customerName, item: alteration.productName },
+      });
+    } catch (err) {
+      console.error('Socket emit failed for single alteration:', err);
+    }
 
     res.status(201).json({ success: true, data: alteration });
   } catch (error) {
@@ -197,6 +237,24 @@ exports.updateAlteration = async (req, res) => {
 
     if (!alteration) {
       return res.status(404).json({ success: false, message: 'Alteration record not found' });
+    }
+
+    // Emit live feed event
+    try {
+      emitToTenant(tenantId, 'activity.feed', {
+        id: `alt-upd-${alteration._id}-${Date.now()}`,
+        type: 'alteration',
+        action: 'ALTERATION_UPDATED',
+        icon: '✂️',
+        color: 'indigo',
+        title: `Alteration request ${alteration.alterationId} updated`,
+        detail: `Status: ${alteration.status} · Tailor: ${alteration.tailorName || 'Unassigned'} · Invoice: ${alteration.invoiceNumber}`,
+        user: req.user?.name || 'Staff',
+        timestamp: new Date().toISOString(),
+        meta: { alterationId: alteration.alterationId, status: alteration.status, tailor: alteration.tailorName },
+      });
+    } catch (err) {
+      console.error('Socket emit failed for alteration update:', err);
     }
 
     res.status(200).json({ success: true, data: alteration });
