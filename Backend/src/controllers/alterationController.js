@@ -37,6 +37,39 @@ exports.createAlteration = async (req, res) => {
         console.error('Socket emit failed for bulk alterations:', err);
       }
 
+      // Log activities to DB
+      try {
+        const ActivityLog = require('../models/activityLogModel');
+        const AuditLog = require('../models/auditLogModel');
+        for (const alt of created) {
+          await ActivityLog.create({
+            tenantId,
+            activityId: `ACT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            employeeId: req.user?._id || req.user?.id || 'system',
+            employeeName: req.user?.name || 'Staff User',
+            role: req.user?.role || 'Staff',
+            department: 'Tailoring & Alterations',
+            module: 'Alterations',
+            action: 'CREATE',
+            recordId: alt._id.toString(),
+            recordName: alt.alterationId,
+            newValue: alt.toObject(),
+            status: 'Success'
+          });
+
+          await AuditLog.create({
+            tenantId,
+            timestamp: new Date().toISOString(),
+            user: req.user?.name || 'Staff User',
+            action: 'CREATE',
+            module: 'Alterations',
+            details: `Alteration request ${alt.alterationId} created for customer ${alt.customerName} on item ${alt.productName}`
+          });
+        }
+      } catch (logErr) {
+        console.error('Failed to write bulk activity/audit logs:', logErr.message);
+      }
+
       return res.status(201).json({ success: true, count: created.length, data: created });
     }
 
@@ -66,6 +99,38 @@ exports.createAlteration = async (req, res) => {
       });
     } catch (err) {
       console.error('Socket emit failed for single alteration:', err);
+    }
+
+    // Log activity to DB
+    try {
+      const ActivityLog = require('../models/activityLogModel');
+      const AuditLog = require('../models/auditLogModel');
+
+      await ActivityLog.create({
+        tenantId,
+        activityId: `ACT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        employeeId: req.user?._id || req.user?.id || 'system',
+        employeeName: req.user?.name || 'Staff User',
+        role: req.user?.role || 'Staff',
+        department: 'Tailoring & Alterations',
+        module: 'Alterations',
+        action: 'CREATE',
+        recordId: alteration._id.toString(),
+        recordName: alteration.alterationId,
+        newValue: alteration.toObject(),
+        status: 'Success'
+      });
+
+      await AuditLog.create({
+        tenantId,
+        timestamp: new Date().toISOString(),
+        user: req.user?.name || 'Staff User',
+        action: 'CREATE',
+        module: 'Alterations',
+        details: `Alteration request ${alteration.alterationId} created for customer ${alteration.customerName} on item ${alteration.productName}`
+      });
+    } catch (logErr) {
+      console.error('Failed to write database activity/audit logs:', logErr.message);
     }
 
     res.status(201).json({ success: true, data: alteration });
@@ -257,6 +322,38 @@ exports.updateAlteration = async (req, res) => {
       console.error('Socket emit failed for alteration update:', err);
     }
 
+    // Log activity to DB
+    try {
+      const ActivityLog = require('../models/activityLogModel');
+      const AuditLog = require('../models/auditLogModel');
+
+      await ActivityLog.create({
+        tenantId,
+        activityId: `ACT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        employeeId: req.user?._id || req.user?.id || 'system',
+        employeeName: req.user?.name || 'Staff User',
+        role: req.user?.role || 'Staff',
+        department: 'Tailoring & Alterations',
+        module: 'Alterations',
+        action: 'UPDATE',
+        recordId: alteration._id.toString(),
+        recordName: alteration.alterationId,
+        newValue: alteration.toObject(),
+        status: 'Success'
+      });
+
+      await AuditLog.create({
+        tenantId,
+        timestamp: new Date().toISOString(),
+        user: req.user?.name || 'Staff User',
+        action: 'UPDATE',
+        module: 'Alterations',
+        details: `Alteration request ${alteration.alterationId} updated. Status: ${alteration.status}, Tailor: ${alteration.tailorName || 'Unassigned'}`
+      });
+    } catch (logErr) {
+      console.error('Failed to write update activity/audit logs:', logErr.message);
+    }
+
     res.status(200).json({ success: true, data: alteration });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -275,6 +372,38 @@ exports.deleteAlteration = async (req, res) => {
 
     if (!alteration) {
       return res.status(404).json({ success: false, message: 'Alteration record not found' });
+    }
+
+    // Log activity to DB
+    try {
+      const ActivityLog = require('../models/activityLogModel');
+      const AuditLog = require('../models/auditLogModel');
+
+      await ActivityLog.create({
+        tenantId,
+        activityId: `ACT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        employeeId: req.user?._id || req.user?.id || 'system',
+        employeeName: req.user?.name || 'Staff User',
+        role: req.user?.role || 'Staff',
+        department: 'Tailoring & Alterations',
+        module: 'Alterations',
+        action: 'DELETE',
+        recordId: alteration._id.toString(),
+        recordName: alteration.alterationId,
+        oldValue: alteration.toObject(),
+        status: 'Success'
+      });
+
+      await AuditLog.create({
+        tenantId,
+        timestamp: new Date().toISOString(),
+        user: req.user?.name || 'Staff User',
+        action: 'DELETE',
+        module: 'Alterations',
+        details: `Alteration request ${alteration.alterationId} deleted`
+      });
+    } catch (logErr) {
+      console.error('Failed to write delete activity/audit logs:', logErr.message);
     }
 
     res.status(200).json({ success: true, data: {} });

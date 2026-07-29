@@ -121,6 +121,32 @@ export const BillingPOSView = ({
     });
   }, [employees]);
 
+  const displayedSalespersonList = React.useMemo(() => {
+    const role = String(currentUser?.role || "").toLowerCase();
+    const name = String(currentUser?.name || "").toLowerCase();
+    const isUserAdmin = ["admin", "superadmin", "owner", "businessadmin"].includes(role) || name.includes("dhruv");
+    
+    if (isUserAdmin) return salespersonList;
+    
+    const currentUserName = String(currentUser?.name || "").toLowerCase().trim();
+    const self = salespersonList.find(emp => 
+      String(emp.name || "").toLowerCase().trim() === currentUserName ||
+      String(emp._id || emp.id) === String(currentUser?._id || currentUser?.id)
+    );
+    
+    if (self) return [self];
+    
+    return [
+      {
+        id: currentUser?._id || currentUser?.id || "curr-user",
+        _id: currentUser?._id || currentUser?.id || "curr-user",
+        name: currentUser?.name || "Self",
+        isActive: true,
+        role: currentUser?.role || "Staff"
+      }
+    ];
+  }, [salespersonList, currentUser]);
+
   const workerList = React.useMemo(() => {
     const filtered = (employees || []).filter(e => {
       if (e.isActive === false) return false;
@@ -837,7 +863,7 @@ export const BillingPOSView = ({
       variants: prod.variants || [prod]
     });
     setQtyModalValue(qty);
-    setConfigSalesperson(salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
+    setConfigSalesperson(displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
     setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
   };
 
@@ -1069,7 +1095,7 @@ export const BillingPOSView = ({
       variants: prod.variants || [prod]
     });
     setQtyModalValue(1);
-    setConfigSalesperson(salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
+    setConfigSalesperson(displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
     setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
   };
 
@@ -5468,7 +5494,7 @@ export const BillingPOSView = ({
         const uniqueColors = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
 
         const handleAdd = () => {
-          const sp = configSalesperson || salespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+          const sp = configSalesperson || displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
           const wk = configWorker || workerList[0] || { id: "w-default", name: "In-House Tailor" };
 
           finalizeAddToCart(
@@ -5584,7 +5610,7 @@ export const BillingPOSView = ({
               <div className="mb-5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Assign Salesperson</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {salespersonList.map(emp => (
+                  {displayedSalespersonList.map(emp => (
                     <div 
                       key={emp.id || emp._id}
                       onClick={() => setConfigSalesperson(emp)}
@@ -5593,7 +5619,7 @@ export const BillingPOSView = ({
                       <div className={`text-xs font-bold ${configSalesperson?.id === emp.id || configSalesperson?._id === emp._id ? "text-indigo-700" : "text-slate-700"}`}>{emp.name}</div>
                     </div>
                   ))}
-                  {salespersonList.length === 0 && (
+                  {displayedSalespersonList.length === 0 && (
                     <div className="col-span-3 text-xs text-slate-400 italic">No active salespersons found.</div>
                   )}
                 </div>
