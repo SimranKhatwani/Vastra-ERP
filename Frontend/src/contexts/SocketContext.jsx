@@ -32,9 +32,11 @@ export const SocketProvider = ({ children }) => {
     const newSocket = io('http://localhost:5000', {
       auth: { token: authToken },
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 15,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      timeout: 8000,
+      transports: ['websocket', 'polling'], // websocket first = faster, polling as fallback
     });
 
     socketRef.current = newSocket;

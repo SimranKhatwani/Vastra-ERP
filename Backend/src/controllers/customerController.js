@@ -1,5 +1,6 @@
 const Customer = require('../models/customerModel');
 const LoyaltySettings = require('../models/loyaltySettingsModel');
+const { emitToTenant } = require('../socket/socketServer');
 
 exports.createCustomer = async (req, res) => {
   try {
@@ -14,6 +15,19 @@ exports.createCustomer = async (req, res) => {
     const customer = await Customer.create({
       ...req.body,
       tenantId
+    });
+
+    emitToTenant(tenantId, 'activity.feed', {
+      id: `cust-${customer._id}`,
+      type: 'customer',
+      action: 'CUSTOMER_ADDED',
+      icon: '👥',
+      color: 'indigo',
+      title: `New customer "${customer.name}" registered`,
+      detail: `Phone: ${customer.phone || '-'} · ${customer.tier || 'Bronze'} tier`,
+      user: req.user?.name || 'Staff',
+      timestamp: new Date().toISOString(),
+      meta: { name: customer.name, phone: customer.phone, tier: customer.tier },
     });
 
     res.status(201).json({ success: true, data: customer });

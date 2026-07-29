@@ -1,7 +1,20 @@
 const User = require('../models/userModel');
 const Permission = require('../models/permissionModel');
 const Employee = require('../models/employeeModel');
+const RefreshToken = require('../models/refreshTokenModel');
+const SessionAudit = require('../models/sessionAuditModel');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+
+const generateAccessToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '1h',
+  });
+};
+
+const generateRefreshToken = () => {
+  return crypto.randomBytes(40).toString('hex');
+};
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -110,7 +123,26 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Wrong or invalid credentials' });
     }
 
-    const token = generateToken(user._id);
+    const accessToken = generateAccessToken(user._id);
+    const refreshTokenString = generateRefreshToken();
+
+    // Create Refresh Token in DB
+    const refreshToken = await RefreshToken.create({
+      token: refreshTokenString,
+      userId: user._id,
+      expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      ipAddress: req.ip,
+      browser: req.headers['user-agent'],
+    });
+
+    // Create Session Audit in DB
+    const sessionAudit = await SessionAudit.create({
+      userId: user._id,
+      tenantId: user.tenantId?._id || user.tenantId,
+      ipAddress: req.ip,
+      browser: req.headers['user-agent'],
+      os: req.headers['sec-ch-ua-platform'] || 'Unknown', // Basic OS detection
+    });
 
     try {
       const staffActivityController = require('./staffActivityController');
@@ -131,14 +163,87 @@ exports.login = async (req, res) => {
 
     baseUser = await attachEmployeeDetails(baseUser);
 
+    // Set HTTP-Only Cookies
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    };
+
+    res.cookie('accessToken', accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+
+    res.cookie('refreshToken', refreshTokenString, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.cookie('sessionId', sessionAudit._id.toString(), {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.status(200).json({
       success: true,
-      token,
+      token: accessToken, // Returning for backward compatibility if needed, but cookies are preferred
       user: baseUser,
       permissions
     });
   } catch (error) {
+    console.error('Login error', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    const { refreshToken, sessionId } = req.cookies;
+
+    if (refreshToken) {
+      await RefreshToken.findOneAndDelete({ token: refreshToken });
+    }
+
+    if (sessionId) {
+      const reason = req.body.reason || 'Manual Logout';
+      await SessionAudit.findByIdAndUpdate(sessionId, {
+        logoutTime: new Date(),
+        logoutReason: reason,
+      });
+    } else if (req.user) {
+      // Fallback if sessionId cookie missing
+      await SessionAudit.findOneAndUpdate(
+        { userId: req.user.id, logoutTime: { $exists: false } },
+        { logoutTime: new Date(), logoutReason: req.body.reason || 'Manual Logout' },
+        { sort: { createdAt: -1 } }
+      );
+    }
+
+    // Clear Cookies with same options
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    };
+
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+    res.clearCookie('sessionId', cookieOptions);
+
+    try {
+      if (req.user) {
+        const staffActivityController = require('./staffActivityController');
+        await staffActivityController.recordLoginHistory(req, req.user, 'Offline');
+      }
+    } catch (e) {}
+
+    res.status(200).json({ success: true, message: 'Successfully logged out' });
+  } catch (error) {
+    console.error('Logout Error:', error);
+    res.status(500).json({ success: false, message: 'Server error during logout' });
   }
 };
 

@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   TrendingUp,
   ShoppingBag,
@@ -21,7 +21,12 @@ import {
   Users,
   UserCheck,
   XCircle,
-  CheckCircle2
+  CheckCircle2,
+  Activity,
+  Zap,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -38,7 +43,50 @@ export const DashboardView = ({
   setActiveTab = (_tab) => { },
   openArticulationWithDefaults = () => { },
   currentUser = {},
+  socket = null,
+  socketConnected = false,
 }) => {
+  // ─── LIVE ACTIVITY FEED STATE ──────────────────────────────
+  const [activityFeed, setActivityFeed] = React.useState([]);
+  const [feedLoading, setFeedLoading] = React.useState(true);
+  const feedEndRef = React.useRef(null);
+
+  // Fetch initial activity from API
+  React.useEffect(() => {
+    const fetchFeed = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) { setFeedLoading(false); return; }
+        const res = await fetch('http://localhost:5000/api/activity-feed?limit=20', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          setActivityFeed(data.data);
+        }
+      } catch (e) {
+        // Silently handle
+      } finally {
+        setFeedLoading(false);
+      }
+    };
+    fetchFeed();
+  }, [currentUser]);
+
+  // Real-time socket listener for activity.feed events
+  React.useEffect(() => {
+    if (!socket) return;
+    const handleActivityFeed = (payload) => {
+      if (!payload || !payload.id) return;
+      setActivityFeed((prev) => {
+        // Avoid duplicates
+        if (prev.find((item) => item.id === payload.id)) return prev;
+        return [payload, ...prev].slice(0, 50);
+      });
+    };
+    socket.on('activity.feed', handleActivityFeed);
+    return () => socket.off('activity.feed', handleActivityFeed);
+  }, [socket]);
   const [morningActions, setMorningActions] = React.useState(null);
   const [commStats, setCommStats] = React.useState(null);
   const [attendanceStats, setAttendanceStats] = React.useState(null);
@@ -731,7 +779,7 @@ export const DashboardView = ({
             System Overview & Terminal
           </h1>
           <p className="text-sm text-slate-300">
-            Live operational data and billing pipelines — {monthNames[currentMonth]} {currentYear}.
+            Activity Feed &amp; system telemetry — {monthNames[currentMonth]} {currentYear}.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1600,44 +1648,162 @@ export const DashboardView = ({
           </div>
         </div>
 
-        {/* Recent Audit Timeline / Operations Logs */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-slate-800">
-              Live Operations Feed
-            </h2>
-            <p className="text-xs text-slate-400">
-              Live ledger adjustments & team activity
-            </p>
+        {/* ── LIVE ACTIVITY FEED ───────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden flex flex-col" style={{ maxHeight: '420px' }}>
+          {/* Header */}
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-gradient-to-r from-slate-900 to-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-indigo-500/20 rounded-lg">
+                <Activity className="w-4 h-4 text-indigo-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-extrabold text-white tracking-wider uppercase">
+                  Activity Feed
+                </h2>
+                <p className="text-[10px] text-slate-400 font-mono">
+                  Real-time app events &amp; staff actions
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {socketConnected ? (
+                <span className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  LIVE
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 bg-slate-500/15 border border-slate-500/30 text-slate-400 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono">
+                  <WifiOff className="w-2.5 h-2.5" />
+                  OFFLINE
+                </span>
+              )}
+              <span className="bg-slate-700 text-slate-300 text-[10px] font-mono px-2 py-1 rounded-lg border border-slate-600">
+                {activityFeed.length} events
+              </span>
+            </div>
           </div>
-          <div className="space-y-4">
-            {auditLogs.slice(0, 4).map((log, idx) => (
-              <div key={idx} className="flex gap-3">
-                <div className="relative flex flex-col items-center">
-                  <div className="w-2 h-2 rounded-full bg-indigo-600 ring-4 ring-indigo-100 shrink-0 mt-1" />
-                  {idx !== 3 && (
-                    <div className="w-0.5 h-12 bg-slate-100 absolute top-3" />
-                  )}
+
+          {/* Feed Items - scrollable */}
+          <div className="overflow-y-auto flex-1 divide-y divide-slate-50" style={{ scrollbarWidth: 'thin' }}>
+            {feedLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
+                <p className="text-xs text-slate-400 font-mono">Loading activity feed...</p>
+              </div>
+            ) : activityFeed.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-center px-6">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl">
+                  📡
                 </div>
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold text-slate-800">
-                      {log.employeeName}
-                    </span>
-                    <span className="text-[9px] bg-slate-100 px-1 rounded-sm text-slate-500 uppercase font-mono">
-                      {log.action}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    {log.details}
-                  </p>
-                  <span className="text-[9px] text-slate-400 font-mono block">
-                    {log.timestamp}
-                  </span>
+                <div>
+                  <p className="text-xs font-bold text-slate-600">No activity yet</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Events will appear here as staff perform actions</p>
                 </div>
               </div>
-            ))}
+            ) : (
+              activityFeed.map((item, idx) => {
+                const colorMap = {
+                  emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
+                  blue:    { bg: 'bg-blue-50',    border: 'border-blue-100',    dot: 'bg-blue-500',    badge: 'bg-blue-100 text-blue-700'    },
+                  teal:    { bg: 'bg-teal-50',    border: 'border-teal-100',    dot: 'bg-teal-500',    badge: 'bg-teal-100 text-teal-700'    },
+                  orange:  { bg: 'bg-orange-50',  border: 'border-orange-100',  dot: 'bg-orange-500',  badge: 'bg-orange-100 text-orange-700' },
+                  red:     { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     badge: 'bg-red-100 text-red-700'     },
+                  indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-100',  dot: 'bg-indigo-500',  badge: 'bg-indigo-100 text-indigo-700' },
+                };
+                const clr = colorMap[item.color] || colorMap.indigo;
+                const isNew = idx === 0 && socketConnected;
+                const relTime = (() => {
+                  if (!item.timestamp) return '';
+                  const diff = Date.now() - new Date(item.timestamp).getTime();
+                  const mins = Math.floor(diff / 60000);
+                  if (mins < 1) return 'just now';
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  return new Date(item.timestamp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                })();
+
+                return (
+                  <div
+                    key={item.id || idx}
+                    className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50/80 transition-colors ${isNew ? 'bg-indigo-50/60' : ''}`}
+                  >
+                    {/* Timeline dot */}
+                    <div className="relative flex flex-col items-center shrink-0 mt-1">
+                      <div className={`w-2 h-2 rounded-full ${clr.dot} ring-4 ring-white shrink-0`} />
+                      {idx < activityFeed.length - 1 && (
+                        <div className="w-px h-8 bg-slate-100 absolute top-3" />
+                      )}
+                    </div>
+
+                    {/* Icon */}
+                    <div className={`w-8 h-8 rounded-xl ${clr.bg} border ${clr.border} flex items-center justify-center text-sm shrink-0`}>
+                      {item.icon}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                          {item.title}
+                        </p>
+                        <span className="text-[9px] text-slate-400 font-mono shrink-0 whitespace-nowrap mt-0.5">
+                          {relTime}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono mt-0.5 leading-relaxed">
+                        {item.detail}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${clr.badge}`}>
+                          {(item.action || item.type || '').replace(/_/g, ' ')}
+                        </span>
+                        {item.user && (
+                          <span className="text-[9px] text-slate-400 font-mono">
+                            by {item.user}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={feedEndRef} />
           </div>
+
+          {/* Footer */}
+          {activityFeed.length > 0 && (
+            <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <p className="text-[10px] text-slate-400 font-mono">
+                Showing latest {Math.min(activityFeed.length, 50)} events
+              </p>
+              <button
+                onClick={() => {
+                  const token = localStorage.getItem('token');
+                  if (!token) return;
+                  setFeedLoading(true);
+                  fetch('http://localhost:5000/api/activity-feed?limit=30', { headers: { Authorization: `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(d => { if (d.success) setActivityFeed(d.data); })
+                    .catch(() => {})
+                    .finally(() => setFeedLoading(false));
+                }}
+                className="flex items-center gap-1 text-[10px] text-indigo-600 font-bold hover:text-indigo-800 transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-2.5 h-2.5" />
+                Refresh
+              </button>
+            </div>
+          )}
+
+          {/* CSS for feed pulse on new items */}
+          <style>{`
+            @keyframes feedPulse {
+              0%   { background-color: #eef2ff; }
+              100% { background-color: transparent; }
+            }
+          `}</style>
         </div>
       </div>
     </div>

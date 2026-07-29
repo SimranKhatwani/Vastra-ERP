@@ -62,6 +62,8 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
 import { useSocket } from "./contexts/SocketContext";
+import { useSession } from "./contexts/SessionProvider";
+import { setupFetchInterceptor } from "./utils/apiInterceptor";
 
 // Import mock data generators
 import {
@@ -92,6 +94,11 @@ const demoAuditLogsData = generateAuditLogs();
 
 export default function App() {
   const { socket, connected } = useSocket();
+  const { logoutUser } = useSession();
+
+  React.useEffect(() => {
+    setupFetchInterceptor(logoutUser);
+  }, [logoutUser]);
 
   // Master States - Single Source of Truth from Live MongoDB Backend
   const [products, setProducts] = useState([]);
@@ -216,10 +223,7 @@ export default function App() {
           ]);
           
           if (resProducts.status === 401 || resCustomers.status === 401 || resInvoices.status === 401) {
-            setIsLoggedIn(false);
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            addToastNotification("Auth Service", "Session expired. Please log in again.", "warning");
+            // API interceptor will handle this via logoutUser() callback now
             return;
           }
 
@@ -1129,7 +1133,7 @@ export default function App() {
     { id: "stock-management", label: "Stock Management Module", icon: ClipboardCheck },
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
-    { id: "purchase", label: "Purchase Management", icon: FileText },
+    { id: "purchase", label: "Procurements & POs (Purchase Management)", icon: FileText },
     { id: "vendor-communication", label: "Vendor Communication Card", icon: Building2 },
     { id: "financial-management", label: "Financial Management", icon: BarChart3 },
     { id: "accounts-treasury", label: "Accounts & Treasury", icon: Wallet },
@@ -1149,31 +1153,48 @@ export default function App() {
     { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
   ];
 
-  // Toast Overlay Renderer
+  // Toast Overlay Renderer - Smooth premium notifications
   const renderToasts = () => (
-    <div className="fixed bottom-5 right-5 z-50 space-y-2 max-w-sm w-full pointer-events-none">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`p-4 rounded-xl shadow-xl border flex items-start gap-2.5 animate-scale-up text-xs font-semibold bg-white pointer-events-auto ${t.type === "success"
-            ? "border-emerald-200 text-emerald-800"
-            : t.type === "danger"
-              ? "border-red-200 text-red-800"
-              : t.type === "warning"
-                ? "border-amber-200 text-amber-800"
-                : "border-slate-200 text-slate-700"
-            }`}
-        >
-          <div className="space-y-1">
-            <p className="font-bold uppercase tracking-wide text-[10px]">
-              {t.title}
-            </p>
-            <p className="font-medium text-slate-500 leading-relaxed">
-              {t.msg}
-            </p>
+    <div className="fixed bottom-5 right-5 z-[9999] space-y-2.5 max-w-sm w-full pointer-events-none">
+      {toasts.map((t) => {
+        const isSuccess = t.type === "success";
+        const isDanger = t.type === "danger";
+        const isWarning = t.type === "warning";
+        const accentColor = isSuccess
+          ? "#10b981"
+          : isDanger
+          ? "#ef4444"
+          : isWarning
+          ? "#f59e0b"
+          : "#6366f1";
+        const icon = isSuccess ? "✅" : isDanger ? "❌" : isWarning ? "⚠️" : "ℹ️";
+        return (
+          <div
+            key={t.id}
+            style={{
+              borderLeft: `4px solid ${accentColor}`,
+              animation: "slideInToast 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
+            }}
+            className="p-3.5 rounded-xl shadow-2xl border border-slate-200/70 flex items-start gap-3 bg-white/95 backdrop-blur-md pointer-events-auto"
+          >
+            <span className="text-base shrink-0 mt-0.5">{icon}</span>
+            <div className="space-y-0.5 min-w-0">
+              <p className="font-extrabold uppercase tracking-wider text-[10px] text-slate-700">
+                {t.title}
+              </p>
+              <p className="font-medium text-[11px] text-slate-500 leading-relaxed">
+                {t.msg}
+              </p>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
+      <style>{`
+        @keyframes slideInToast {
+          from { transform: translateX(110%) scale(0.92); opacity: 0; }
+          to   { transform: translateX(0) scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 
@@ -1278,14 +1299,7 @@ export default function App() {
             {!sidebarCollapsed && (
               <button
                 onClick={() => {
-                  setIsLoggedIn(false);
-                  localStorage.removeItem("token");
-                  localStorage.removeItem("user");
-                  addToastNotification(
-                    "Auth Service",
-                    "Multi-tenant session terminated.",
-                    "warning",
-                  );
+                  logoutUser("Manual Logout");
                 }}
                 className="p-1 hover:text-red-600 text-slate-400 hover:bg-red-50 rounded-lg cursor-pointer"
                 title="Sign Out"
@@ -1467,15 +1481,8 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      setIsLoggedIn(false);
-                      localStorage.removeItem("token");
-                      localStorage.removeItem("user");
-                      addToastNotification(
-                        "Auth Service",
-                        "Multi-tenant session terminated successfully.",
-                        "warning",
-                      );
                       setShowProfileDropdown(false);
+                      logoutUser("Manual Logout");
                     }}
                     className="w-full text-left p-2 text-red-600 hover:bg-red-50 rounded-lg font-bold cursor-pointer"
                   >
@@ -1502,6 +1509,8 @@ export default function App() {
               auditLogs={auditLogs}
               setActiveTab={setActiveModule}
               openArticulationWithDefaults={openArticulationWithDefaults}
+              socket={socket}
+              socketConnected={connected}
             />
           )}
 
@@ -1604,8 +1613,14 @@ export default function App() {
               purchaseReports={purchaseReports}
               setPurchaseReports={setPurchaseReports}
               products={products}
+              setProducts={setProducts}
               suppliers={suppliers}
+              setSuppliers={setSuppliers}
               purchaseOrders={purchaseOrders}
+              setPurchaseOrders={setPurchaseOrders}
+              onAddPurchaseOrder={handleAddPurchaseOrder}
+              onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+              onDeletePurchaseOrder={handleDeletePurchaseOrder}
               onAddNotification={addToastNotification}
             />
           )}
@@ -1752,10 +1767,7 @@ export default function App() {
               <SuperAdminLayout
                 currentUser={currentUser}
                 onLogout={() => {
-                  setIsLoggedIn(false);
-                  localStorage.removeItem("token");
-                  localStorage.removeItem("user");
-                  addToastNotification("Auth Service", "Session terminated.", "warning");
+                  logoutUser("Manual Logout");
                 }}
                 tenants={tenants}
               />

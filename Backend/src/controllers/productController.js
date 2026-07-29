@@ -24,6 +24,18 @@ exports.createProduct = async (req, res) => {
       event: 'inventory.updated'
     });
     emitToRole('manager', 'inventory.low', { product, tenantId, event: 'inventory.low' });
+    emitToTenant(tenantId, 'activity.feed', {
+      id: product._id.toString(),
+      type: 'product',
+      action: 'PRODUCT_ADDED',
+      icon: '📦',
+      color: 'blue',
+      title: `Product "${product.name}" added to catalog`,
+      detail: `SKU: ${product.sku || '-'} · Stock: ${product.openingStock || 0} · ₹${(product.sellingPrice || 0).toLocaleString('en-IN')}`,
+      user: req.user?.name || 'Admin',
+      timestamp: new Date().toISOString(),
+      meta: { sku: product.sku, stock: product.openingStock, price: product.sellingPrice },
+    });
 
     res.status(201).json({ success: true, data: product });
   } catch (error) {
@@ -131,6 +143,18 @@ exports.adjustStock = async (req, res) => {
     if (product.status === 'Low Stock') {
       emitToTenant(tenantId, 'inventory.low', { product, tenantId, event: 'inventory.low' });
     }
+    emitToTenant(tenantId, 'activity.feed', {
+      id: `adj-${product._id}-${Date.now()}`,
+      type: 'stock',
+      action: 'STOCK_ADJUSTED',
+      icon: amount >= 0 ? '📥' : '📤',
+      color: amount >= 0 ? 'teal' : 'orange',
+      title: `Stock ${amount >= 0 ? 'added to' : 'removed from'} "${product.name}"`,
+      detail: `Qty: ${amount > 0 ? '+' : ''}${amount} · New stock: ${product.openingStock || 0} · ${activity || 'Adjustment'}`,
+      user: req.user?.name || 'Admin',
+      timestamp: new Date().toISOString(),
+      meta: { product: product.name, amount, newStock: product.openingStock },
+    });
 
     res.status(200).json({ success: true, data: product });
   } catch (error) {

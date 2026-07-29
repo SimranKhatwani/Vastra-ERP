@@ -51,6 +51,18 @@ exports.createEmployee = async (req, res) => {
       tenantId,
       event: 'employee.created'
     });
+    emitToTenant(tenantId, 'activity.feed', {
+      id: `emp-${employee._id}`,
+      type: 'employee',
+      action: 'EMPLOYEE_ADDED',
+      icon: '👤',
+      color: 'blue',
+      title: `${employee.name} joined the team`,
+      detail: `Role: ${employee.role || 'Staff'} · ${employee.department || 'General'}`,
+      user: req.user?.name || 'HR Admin',
+      timestamp: new Date().toISOString(),
+      meta: { name: employee.name, role: employee.role },
+    });
     emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
 
     res.status(201).json({ success: true, data: employee, generatedPassword: plainPassword });

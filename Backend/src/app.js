@@ -2,13 +2,18 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: true, // Allow true origin for credentials
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 app.use(morgan('dev'));
 
 const authRoutes = require('./routes/authRoutes');
@@ -41,6 +46,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const alterationRoutes = require('./routes/alterationRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const staffActivityRoutes = require('./routes/staffActivityRoutes');
+const activityFeedRoutes = require('./routes/activityFeedRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -90,6 +96,7 @@ app.use('/api/employee-alteration-performance', (req, res, next) => {
 });
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/staff-activity', staffActivityRoutes);
+app.use('/api/activity-feed', activityFeedRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

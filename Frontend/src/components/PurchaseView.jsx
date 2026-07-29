@@ -6,8 +6,10 @@ import {
   ChevronDown, ChevronUp, X, Save, RefreshCw, IndianRupee,
   ShoppingBag, Truck, ClipboardList, Users, Star, Phone, Mail,
   MapPin, CreditCard, Calendar, ArrowUpRight, ArrowDownRight,
-  FileSpreadsheet
+  FileSpreadsheet, UploadCloud, FilePlus, PackageCheck
 } from "lucide-react";
+import { PTImporter, InvoiceViewer } from "./PTImporter";
+import { ManualPurchaseEntry } from "./ManualPurchaseEntry";
 
 const API = "http://localhost:5000/api/purchase";
 const getToken = () => localStorage.getItem("token");
@@ -1364,12 +1366,29 @@ export const PurchaseView = ({
   pendingPurchases = [], setPendingPurchases,
   vendorOutstanding = [], setVendorOutstanding,
   purchaseReports, setPurchaseReports,
-  products = [],
+  products = [], setProducts,
+  suppliers = [], setSuppliers,
+  purchaseOrders = [], setPurchaseOrders,
+  onAddPurchaseOrder,
+  onUpdatePurchaseOrder,
+  onDeletePurchaseOrder,
   onAddNotification,
 }) => {
-  const [activeTab, setActiveTab] = useState("grn");
+  const [activeTab, setActiveTab] = useState("pos");
+  const [showImporter, setShowImporter] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [editingPO, setEditingPO] = useState(null);
+  const [viewingPO, setViewingPO] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Quick Draft PO Modal State
+  const [showPOModal, setShowPOModal] = useState(false);
+  const [poSupplierId, setPoSupplierId] = useState("");
+  const [poProductId, setPoProductId] = useState("");
+  const [poQty, setPoQty] = useState(100);
 
   const tabs = [
+    { id: "pos",         label: "Procurement & Purchase Orders (PO)", icon: FileText },
     { id: "grn",         label: "Goods Receipt (GRN)",     icon: ClipboardList },
     { id: "invoice",     label: "Purchase Invoices",       icon: FileText },
     { id: "returns",     label: "Purchase Returns",        icon: RotateCcw },
@@ -1377,16 +1396,134 @@ export const PurchaseView = ({
     { id: "reports",     label: "Purchase Reports",        icon: BarChart3 },
   ];
 
+  const handleCreatePOSubmit = async (e) => {
+    e.preventDefault();
+    if (!poSupplierId || !poProductId) return;
+
+    const matchedSupplier = (suppliers || []).find((s) => (s._id || s.id) === poSupplierId);
+    const matchedProduct = (products || []).find((p) => (p._id || p.id) === poProductId);
+
+    if (!matchedSupplier || !matchedProduct) return;
+
+    const subTotal = (matchedProduct.purchasePrice || 0) * poQty;
+    const gstTotal = Math.floor(subTotal * ((matchedProduct.gstPercent || 12) / 100));
+    const grandTotal = subTotal + gstTotal;
+
+    const newPO = {
+      id: `po-${Date.now()}`,
+      poNo: `PO-${20260000 + (purchaseOrders?.length || 0) + 1}`,
+      date: new Date().toISOString().split("T")[0],
+      supplierId: poSupplierId,
+      supplierName: matchedSupplier.name,
+      items: [
+        {
+          productId: poProductId,
+          name: matchedProduct.name,
+          quantity: poQty,
+          purchasePrice: matchedProduct.purchasePrice || 0,
+          totalPrice: subTotal,
+        },
+      ],
+      subTotal,
+      gstTotal,
+      grandTotal,
+      status: "Pending",
+      outstandingPaid: 0,
+    };
+
+    if (onAddPurchaseOrder) {
+      await onAddPurchaseOrder(newPO);
+    } else if (setPurchaseOrders) {
+      setPurchaseOrders((prev) => [newPO, ...prev]);
+    }
+
+    if (onAddNotification) {
+      onAddNotification(
+        "Supply Chain Ledger",
+        `Created Purchase Order ${newPO.poNo} for ₹${newPO.grandTotal.toLocaleString("en-IN")}`,
+        "success"
+      );
+    }
+    setShowPOModal(false);
+    setPoSupplierId("");
+    setPoProductId("");
+    setPoQty(100);
+  };
+
+  const filteredPOs = useMemo(() => {
+    if (!searchTerm) return purchaseOrders;
+    const term = searchTerm.toLowerCase();
+    return (purchaseOrders || []).filter((po) => {
+      const poNo = (po.poNo || po.invoiceNo || po.id || "").toLowerCase();
+      const sup = (po.supplierName || po.vendorName || "").toLowerCase();
+      const items = (Array.isArray(po.items)
+        ? po.items.map((i) => i.name || i.itemName || "").join(" ")
+        : (po.items || "")
+      ).toLowerCase();
+      return poNo.includes(term) || sup.includes(term) || items.includes(term);
+    });
+  }, [purchaseOrders, searchTerm]);
+
+  if (showImporter) {
+    return (
+      <div className="animate-fade-in pb-12">
+        <PTImporter
+          products={products}
+          setProducts={setProducts}
+          suppliers={suppliers}
+          setSuppliers={setSuppliers}
+          purchaseOrders={purchaseOrders}
+          onAddPurchaseOrder={onAddPurchaseOrder}
+          onAddNotification={onAddNotification}
+          onClose={() => setShowImporter(false)}
+        />
+      </div>
+    );
+  }
+
+  if (showManualEntry || editingPO) {
+    return (
+      <div className="animate-fade-in pb-12">
+        <ManualPurchaseEntry
+          initialPO={editingPO}
+          isEditMode={!!editingPO}
+          onAddPurchaseOrder={onAddPurchaseOrder}
+          onUpdatePurchaseOrder={onUpdatePurchaseOrder}
+          onAddNotification={onAddNotification}
+          onClose={() => {
+            setShowManualEntry(false);
+            setEditingPO(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (viewingPO) {
+    return (
+      <div className="animate-fade-in pb-12">
+        <InvoiceViewer
+          createdVoucher={viewingPO}
+          invoiceRef={viewingPO.poNo || viewingPO.invoiceNo || viewingPO.id}
+          handlePrint={() => window.print()}
+          handleDownloadHTML={() => {}}
+          handleWhatsAppShare={() => {}}
+          onClose={() => setViewingPO(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 animate-fade-in pb-12" id="purchase-management-root">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-800">Purchase Management</h2>
-          <p className="text-xs text-slate-400">End-to-end procurement, goods receipt, purchase invoices and returns.</p>
+          <h2 className="text-lg font-black text-slate-800">Procurement & Purchase Orders (PO)</h2>
+          <p className="text-xs text-slate-400">Import 27-column PT Files, manage POs, GRNs, purchase invoices & returns.</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full font-semibold">
-          <ShoppingBag className="w-3.5 h-3.5" /> {grns.length} GRNs · {purchaseInvoices.length} Invoices
+          <ShoppingBag className="w-3.5 h-3.5" /> {(purchaseOrders || []).length} POs / PT Vouchers · {grns.length} GRNs · {purchaseInvoices.length} Invoices
         </div>
       </div>
 
@@ -1402,6 +1539,243 @@ export const PurchaseView = ({
 
       {/* Tab Content */}
       <div>
+        {activeTab === "pos" && (
+          <div className="space-y-4">
+            {/* Top Action Bar */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">PT File & Purchase Voucher Hub</h3>
+                  <p className="text-xs text-slate-400">Import 27-Column Excel PT Files or create manual purchase entry vouchers</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={() => setShowImporter(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Import PT File (27 Cols)</span>
+                </button>
+
+                <button
+                  onClick={() => setShowManualEntry(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
+                >
+                  <FilePlus className="w-4 h-4" />
+                  <span>Manual Entry</span>
+                </button>
+
+                <button
+                  onClick={() => setShowPOModal(true)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Draft PO</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Filter Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search PO No, Vendor, Item..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                <span>Total Procurement: <strong className="text-slate-800 font-mono">₹{(filteredPOs || []).reduce((acc, p) => acc + (p.grandTotal || p.subTotal || 0), 0).toLocaleString('en-IN')}</strong></span>
+                <span>Records: <strong className="text-indigo-600">{(filteredPOs || []).length}</strong></span>
+              </div>
+            </div>
+
+            {/* PO / PT Vouchers List Table */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-400 uppercase font-black tracking-wider border-b border-slate-100">
+                    <tr>
+                      <th className="p-3.5">PO / Voucher No</th>
+                      <th className="p-3.5">Date</th>
+                      <th className="p-3.5">Wholesaler / Vendor</th>
+                      <th className="p-3.5">Items Summary</th>
+                      <th className="p-3.5 text-right">Qty</th>
+                      <th className="p-3.5 text-right">Grand Total</th>
+                      <th className="p-3.5 text-center">Status</th>
+                      <th className="p-3.5 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                    {filteredPOs.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                          <FileText className="w-10 h-10 mx-auto mb-2 opacity-30 text-indigo-500" />
+                          <p className="font-bold text-sm text-slate-600">No Procurement POs or PT Vouchers found</p>
+                          <p className="text-xs mt-1">Import a 27-column PT File or click "Manual Entry" above to generate a new purchase voucher.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredPOs.map((po, idx) => {
+                        const poNumber = po.poNo || po.invoiceNo || po.id || `PO-${idx + 1}`;
+                        const vendor = po.supplierName || po.vendorName || "Wholesaler";
+                        const itemSummary = Array.isArray(po.items)
+                          ? po.items.map((i) => `${i.name || i.itemName || 'Item'} (${i.quantity || i.qty || 1})`).join(", ")
+                          : (po.items || "Garments");
+                        const totalQty = Array.isArray(po.items)
+                          ? po.items.reduce((acc, i) => acc + (Number(i.quantity || i.qty) || 0), 0)
+                          : (po.quantity || 1);
+                        const amount = po.grandTotal || po.subTotal || 0;
+
+                        return (
+                          <tr key={po.id || po._id || idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="p-3.5 font-mono font-black text-indigo-600">{poNumber}</td>
+                            <td className="p-3.5 font-mono text-slate-500">{fmtDate(po.date || po.createdAt)}</td>
+                            <td className="p-3.5 font-bold text-slate-800">{vendor}</td>
+                            <td className="p-3.5 text-slate-600 max-w-[220px] truncate" title={itemSummary}>{itemSummary}</td>
+                            <td className="p-3.5 text-right font-mono font-bold">{totalQty}</td>
+                            <td className="p-3.5 text-right font-mono font-black text-slate-900">₹{amount.toLocaleString('en-IN')}</td>
+                            <td className="p-3.5 text-center">
+                              <Badge label={po.status || "Compiled"} color={po.status === "Approved" || po.status === "Completed" ? "green" : "indigo"} />
+                            </td>
+                            <td className="p-3.5 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => setViewingPO(po)}
+                                  className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                                  title="View Voucher Invoice"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingPO(po)}
+                                  className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit Purchase Voucher"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm("Are you sure you want to delete this Purchase Voucher?")) {
+                                      if (onDeletePurchaseOrder) onDeletePurchaseOrder(po.id || po._id);
+                                    }
+                                  }}
+                                  className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete Purchase Voucher"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* MODAL: CREATE QUICK DRAFT PO */}
+            {showPOModal && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-100 animate-scale-up">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                      Draft Procurement PO
+                    </h4>
+                    <button
+                      onClick={() => setShowPOModal(false)}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreatePOSubmit} className="space-y-3.5 text-xs">
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Select Wholesaler *
+                      </label>
+                      <select
+                        required
+                        value={poSupplierId}
+                        onChange={(e) => setPoSupplierId(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-700"
+                      >
+                        <option value="">Select Wholesaler...</option>
+                        {(suppliers || vendors || []).map((s) => (
+                          <option key={s._id || s.id} value={s._id || s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Garment SKU Style *
+                      </label>
+                      <select
+                        required
+                        value={poProductId}
+                        onChange={(e) => setPoProductId(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-700"
+                      >
+                        <option value="">Select SKU...</option>
+                        {(products || []).slice(0, 50).map((p) => (
+                          <option key={p._id || p.id} value={p._id || p.id}>
+                            {p.name} (Cost: ₹{p.purchasePrice || 0})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Procurement Quantity (Units)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={poQty}
+                        onChange={(e) => setPoQty(Math.max(1, Number(e.target.value)))}
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 justify-end border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowPOModal(false)}
+                        className="px-4 py-2 bg-slate-100 rounded-xl font-semibold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 cursor-pointer"
+                      >
+                        Submit PO
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === "grn" && <GRNEntry grns={grns} setGrns={setGrns} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
         {activeTab === "invoice" && <PurchaseInvoiceManager purchaseInvoices={purchaseInvoices} setPurchaseInvoices={setPurchaseInvoices} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
         {activeTab === "returns" && <PurchaseReturns purchaseReturns={purchaseReturns} setPurchaseReturns={setPurchaseReturns} vendors={vendors} products={products} purchaseInvoices={purchaseInvoices} onAddNotification={onAddNotification} />}

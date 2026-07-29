@@ -191,6 +191,24 @@ exports.createInvoice = async (req, res) => {
       tenantId,
       event: 'invoice.created'
     });
+    emitToTenant(tenantId, 'activity.feed', {
+      id: invoice._id.toString(),
+      type: 'invoice',
+      action: 'INVOICE_CREATED',
+      icon: '🧾',
+      color: 'emerald',
+      title: `Invoice ${invoice.invoiceNo || '#' + invoice._id.toString().slice(-6)} generated`,
+      detail: `${invoice.customerName || 'Walk-in Customer'} · ₹${(invoice.grandTotal || 0).toLocaleString('en-IN')} · ${invoice.paymentMethod || 'Cash'}`,
+      user: req.user?.name || 'Staff',
+      timestamp: new Date().toISOString(),
+      meta: {
+        amount: invoice.grandTotal,
+        invoiceNo: invoice.invoiceNo,
+        customer: invoice.customerName,
+        paymentMethod: invoice.paymentMethod,
+        itemCount: invoice.items?.length || 0,
+      },
+    });
     emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
     emitToRole('manager', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
 

@@ -20,7 +20,9 @@ const initializeSocket = (server) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
-    transports: ['websocket', 'polling'],
+    transports: ['websocket', 'polling'], // websocket first for better performance
+    pingTimeout: 30000,
+    pingInterval: 10000,
   });
 
   io.use(async (socket, next) => {
@@ -31,8 +33,8 @@ const initializeSocket = (server) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select('_id name email role tenantId businessCode');
-      if (!user || !user.isActive) {
+      const user = await User.findById(decoded.id).select('_id name email role tenantId businessCode isActive');
+      if (!user) {
         return next(new Error('Unauthorized socket connection'));
       }
 
