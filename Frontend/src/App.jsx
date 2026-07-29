@@ -600,9 +600,14 @@ export default function App() {
   };
 
   const addToastNotification = React.useCallback((title, msg, type = "info") => {
-    const id = Date.now().toString();
-    setToasts((prev) => [...prev, { id, title, msg, type }]);
-    // Auto clear toast
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    setToasts((prev) => [...prev, { id, title, msg, type, visible: true }]);
+    
+    // Auto-clear transition timeline
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => t.id === id ? { ...t, visible: false } : t));
+    }, 4000);
+
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4500);
@@ -1175,19 +1180,36 @@ export default function App() {
             key={t.id}
             style={{
               borderLeft: `4px solid ${accentColor}`,
-              animation: "slideInToast 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
+              animation: t.visible !== false
+                ? "slideInToast 0.35s cubic-bezier(0.34,1.56,0.64,1) both"
+                : "slideOutToast 0.4s cubic-bezier(0.36,0.07,0.19,0.97) both",
             }}
-            className="p-3.5 rounded-xl shadow-2xl border border-slate-200/70 flex items-start gap-3 bg-white/95 backdrop-blur-md pointer-events-auto"
+            className="p-3.5 rounded-xl shadow-2xl border border-slate-200/70 flex items-start justify-between gap-3 bg-white/95 backdrop-blur-md pointer-events-auto"
           >
-            <span className="text-base shrink-0 mt-0.5">{icon}</span>
-            <div className="space-y-0.5 min-w-0">
-              <p className="font-extrabold uppercase tracking-wider text-[10px] text-slate-700">
-                {t.title}
-              </p>
-              <p className="font-medium text-[11px] text-slate-500 leading-relaxed">
-                {t.msg}
-              </p>
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="text-base shrink-0 mt-0.5">{icon}</span>
+              <div className="space-y-0.5 min-w-0">
+                <p className="font-extrabold uppercase tracking-wider text-[10px] text-slate-700">
+                  {t.title}
+                </p>
+                <p className="font-medium text-[11px] text-slate-500 leading-relaxed">
+                  {t.msg}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => {
+                // Set visible to false immediately to trigger exit animation
+                setToasts((prev) => prev.map((toast) => toast.id === t.id ? { ...toast, visible: false } : toast));
+                // Remove from state after animation completes
+                setTimeout(() => {
+                  setToasts((prev) => prev.filter((toast) => toast.id !== t.id));
+                }, 400);
+              }}
+              className="text-slate-400 hover:text-slate-600 transition-colors shrink-0 p-0.5 hover:bg-slate-100 rounded cursor-pointer self-start"
+            >
+              ✕
+            </button>
           </div>
         );
       })}
@@ -1195,6 +1217,10 @@ export default function App() {
         @keyframes slideInToast {
           from { transform: translateX(110%) scale(0.92); opacity: 0; }
           to   { transform: translateX(0) scale(1); opacity: 1; }
+        }
+        @keyframes slideOutToast {
+          from { transform: translateX(0) scale(1); opacity: 1; }
+          to   { transform: translateX(120%) scale(0.92); opacity: 0; }
         }
       `}</style>
     </div>
