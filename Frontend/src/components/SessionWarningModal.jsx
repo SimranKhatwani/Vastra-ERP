@@ -11,7 +11,7 @@ const SessionWarningModal = ({ onStayLoggedIn, onLogout }) => {
         </div>
         <h3 className="text-xl font-bold text-center text-gray-900 mb-2">Session Expiring</h3>
         <p className="text-center text-gray-600 mb-6">
-          For your security, your session will expire in 5 minutes due to inactivity.
+          Your session will expire in 1 minute due to inactivity. You will be automatically logged out after 30 minutes of inactivity.
         </p>
         <div className="flex space-x-3">
           <button

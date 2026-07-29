@@ -6,119 +6,132 @@ const SessionContext = createContext();
 export const useSession = () => useContext(SessionContext);
 
 // Configurable timeouts (in milliseconds)
-const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 minutes
-const WARNING_BEFORE_TIMEOUT = 5 * 60 * 1000; // 5 minutes before timeout
-const WARNING_TIME = SESSION_TIMEOUT - WARNING_BEFORE_TIMEOUT; // 55 minutes
+const SESSION_TIMEOUT = 30 * 60 * 1000;       // 30 minutes → auto-logout
+const WARNING_BEFORE_TIMEOUT = 1 * 60 * 1000;  // 1 minute before logout → show warning
+const WARNING_TIME = SESSION_TIMEOUT - WARNING_BEFORE_TIMEOUT; // 29 minutes of inactivity → show warning
 
 export const SessionProvider = ({ children }) => {
   const [showWarning, setShowWarning] = useState(false);
-  const timerRef = useRef(null);
-  const warningTimerRef = useRef(null);
-  const channelRef = useRef(null);
 
+  // Use refs so all callbacks always have fresh values without needing re-creation
+  const timerRef       = useRef(null);
+  const warningRef     = useRef(null);
+  const channelRef     = useRef(null);
+  const showWarningRef = useRef(false); // mirrors showWarning state but accessible in closures
+
+  // Keep the ref in sync with state
+  useEffect(() => {
+    showWarningRef.current = showWarning;
+  }, [showWarning]);
+
+  // ── Clear session storage ──────────────────────────────────────────────────
   const clearSessionState = useCallback(() => {
     localStorage.clear();
     sessionStorage.clear();
-    // Additional frontend state reset logic can be placed here
   }, []);
 
+  // ── Logout ─────────────────────────────────────────────────────────────────
   const logoutUser = useCallback(async (reason = 'Manual Logout') => {
+    // Clear any pending timers first
+    clearTimeout(timerRef.current);
+    clearTimeout(warningRef.current);
+
     try {
       await fetch('http://localhost:5000/api/auth/logout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
-        credentials: 'include', // Ensure cookies are sent
+        credentials: 'include',
       });
     } catch (e) {
       console.error('Logout API failed:', e);
     }
-    
-    clearSessionState();
-    
-    // Notify other tabs
-    if (channelRef.current) {
-      channelRef.current.postMessage({ type: 'LOGOUT', reason });
-    }
 
-    // Force redirect to login to clear all in-memory state and history
+    clearSessionState();
+
+    // Notify other tabs
+    try {
+      if (channelRef.current) {
+        channelRef.current.postMessage({ type: 'LOGOUT', reason });
+      }
+    } catch (_) {}
+
     window.location.replace('/login');
   }, [clearSessionState]);
 
+  // ── Reset timers (uses refs to avoid stale closures) ──────────────────────
   const resetTimers = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    clearTimeout(timerRef.current);
+    clearTimeout(warningRef.current);
 
     setShowWarning(false);
+    showWarningRef.current = false;
 
-    // Set Warning Timer
-    warningTimerRef.current = setTimeout(() => {
+    // Warning fires at WARNING_TIME (1 min of inactivity)
+    warningRef.current = setTimeout(() => {
       setShowWarning(true);
+      showWarningRef.current = true;
     }, WARNING_TIME);
 
-    // Set Final Logout Timer
+    // Auto-logout fires at SESSION_TIMEOUT (2 min of inactivity)
     timerRef.current = setTimeout(() => {
       logoutUser('Session Timeout');
     }, SESSION_TIMEOUT);
   }, [logoutUser]);
 
+  // ── Activity handler — uses ref to check warning state (no stale closure) ─
   const handleActivity = useCallback(() => {
-    // Only reset if user is logged in (assume if there's no token in localStorage but wait, we are moving to cookies)
-    // For now, if we are on a login page, we might not want this, but the provider wraps App, which is fine.
-    // If warning is showing, do not auto-reset (force them to click 'Stay Logged In')
-    if (!showWarning) {
+    // Don't reset if warning is already showing — force user to click "Stay Logged In"
+    if (!showWarningRef.current) {
       resetTimers();
     }
-  }, [showWarning, resetTimers]);
+  }, [resetTimers]);
 
+  // ── Set up activity listeners ONCE on mount ────────────────────────────────
   useEffect(() => {
-    // Setup BroadcastChannel for Multi-Tab Sync
+    // Exclude mousemove — fires constantly and prevents the timer from ever expiring
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    events.forEach(evt => document.addEventListener(evt, handleActivity, { passive: true }));
+
+    // Start timers on mount
+    resetTimers();
+
+    return () => {
+      events.forEach(evt => document.removeEventListener(evt, handleActivity));
+      clearTimeout(timerRef.current);
+      clearTimeout(warningRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← empty deps: only run once on mount
+
+  // ── Multi-tab sync via BroadcastChannel ───────────────────────────────────
+  useEffect(() => {
     channelRef.current = new BroadcastChannel('vastra_erp_session');
-    
+
     channelRef.current.onmessage = (event) => {
       if (event.data.type === 'LOGOUT') {
         clearSessionState();
         window.location.replace('/login');
       } else if (event.data.type === 'ACTIVITY') {
-        if (!showWarning) {
+        if (!showWarningRef.current) {
           resetTimers();
         }
       }
     };
 
     return () => {
-      if (channelRef.current) {
-        channelRef.current.close();
-      }
+      channelRef.current?.close();
     };
-  }, [clearSessionState, resetTimers, showWarning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← empty deps: only run once on mount
 
-  useEffect(() => {
-    // Setup activity listeners
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    
-    const activityHandler = () => {
-      handleActivity();
-      // Optionally notify other tabs of activity (debounce this in a real app to avoid spam)
-    };
-
-    events.forEach(event => document.addEventListener(event, activityHandler, { passive: true }));
-    
-    // Start timers initially
-    resetTimers();
-
-    return () => {
-      events.forEach(event => document.removeEventListener(event, activityHandler));
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
-    };
-  }, [handleActivity, resetTimers]);
-
+  // ── Stay logged in ─────────────────────────────────────────────────────────
   const handleStayLoggedIn = () => {
     resetTimers();
-    if (channelRef.current) {
-      channelRef.current.postMessage({ type: 'ACTIVITY' });
-    }
+    try {
+      channelRef.current?.postMessage({ type: 'ACTIVITY' });
+    } catch (_) {}
   };
 
   return (
