@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import {
   TrendingUp,
   ShoppingBag,
@@ -891,7 +891,10 @@ export const DashboardView = ({
       )}
 
       {/* Quick Actions Panel */}
-      <QuickActionsPanel />
+      <QuickActionsPanel
+        onNavigate={setActiveTab}
+        openArticulationWithDefaults={openArticulationWithDefaults}
+      />
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

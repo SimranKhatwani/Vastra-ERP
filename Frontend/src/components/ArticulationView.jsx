@@ -48,7 +48,9 @@ export const ArticulationView = ({
   onAddCustomToCart,
   onAddNotification,
   initialTab = "dashboard",
-  initialFilterStatus = "All"
+  initialFilterStatus = "All",
+  autoStartAlteration = false,
+  clearAutoStartAlteration = () => {}
 }) => {
   // ─── CORE SYSTEM DATA FALLBACKS ───
   const defaultCustomers = useMemo(() => {
@@ -248,6 +250,131 @@ export const ArticulationView = ({
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
+
+  // --- NEW ALTERATION WIZARD STATE ---
+  const [showCreateAltModal, setShowCreateAltModal] = useState(false);
+  const [altInvoiceSearch, setAltInvoiceSearch] = useState("");
+  const [altInvoices, setAltInvoices] = useState([]);
+  const [searchingAltInvoices, setSearchingAltInvoices] = useState(false);
+  const [selectedAltInvoice, setSelectedAltInvoice] = useState(null);
+  const [selectedAltItem, setSelectedAltItem] = useState(null);
+  const [altTailorName, setAltTailorName] = useState("");
+  const [altPriority, setAltPriority] = useState("Normal");
+  const [altDeliveryDate, setAltDeliveryDate] = useState("");
+  const [altTrialDate, setAltTrialDate] = useState("");
+  const [altDetails, setAltDetails] = useState([]);
+  const [altCustomText, setAltCustomText] = useState("");
+  const [altMeasurements, setAltMeasurements] = useState({});
+
+  const tailorOptions = useMemo(() => {
+    if (employees && employees.length > 0) {
+      const dbTailors = employees.filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
+      if (dbTailors.length > 0) return dbTailors.map(t => t.name);
+    }
+    return defaultTailors.map(t => t.name);
+  }, [employees, defaultTailors]);
+
+  useEffect(() => {
+    if (autoStartAlteration) {
+      setShowCreateAltModal(true);
+      if (clearAutoStartAlteration) clearAutoStartAlteration();
+      // Set default dates
+      const delivery = new Date();
+      delivery.setDate(delivery.getDate() + 3);
+      setAltDeliveryDate(delivery.toISOString().split('T')[0]);
+      
+      const trial = new Date();
+      trial.setDate(trial.getDate() + 2);
+      setAltTrialDate(trial.toISOString().split('T')[0]);
+      
+      // Reset other states
+      setSelectedAltInvoice(null);
+      setSelectedAltItem(null);
+      setAltInvoiceSearch("");
+      setAltInvoices([]);
+      setAltTailorName("");
+      setAltPriority("Normal");
+      setAltDetails([]);
+      setAltCustomText("");
+      setAltMeasurements({});
+    }
+  }, [autoStartAlteration, clearAutoStartAlteration]);
+
+  const handleSearchAltInvoices = async () => {
+    if (!altInvoiceSearch.trim()) return;
+    setSearchingAltInvoices(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5000/api/invoices?search=${altInvoiceSearch}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setAltInvoices(data.data);
+      }
+    } catch (err) {
+      console.error("Failed to search invoices:", err);
+    } finally {
+      setSearchingAltInvoices(false);
+    }
+  };
+
+  const handleSaveAlterationTicket = async (e) => {
+    e.preventDefault();
+    if (!selectedAltInvoice || !selectedAltItem) {
+      if (onAddNotification) onAddNotification("Error", "Please select an invoice and item first.", "danger");
+      return;
+    }
+
+    const payload = {
+      invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice._id,
+      invoiceId: selectedAltInvoice._id,
+      customerName: selectedAltInvoice.customerName,
+      customerPhone: selectedAltInvoice.customerPhone,
+      productId: selectedAltItem.productId,
+      productName: selectedAltItem.productName || selectedAltItem.name,
+      sku: selectedAltItem.sku,
+      size: selectedAltItem.size,
+      color: selectedAltItem.color,
+      tailorName: altTailorName,
+      priority: altPriority,
+      status: "Pending",
+      deliveryDate: altDeliveryDate,
+      trialDate: altTrialDate,
+      alterationDetails: altDetails,
+      customAlterationText: altCustomText,
+      measurements: altMeasurements
+    };
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/alterations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onAddNotification) {
+          onAddNotification("Alteration Created", `Ticket ${data.data.alterationId} added successfully.`, "success");
+        }
+        setShowCreateAltModal(false);
+        fetchAlterations(); // Refresh list
+      } else {
+        if (onAddNotification) {
+          onAddNotification("Error", data.message || "Failed to create alteration ticket.", "danger");
+        }
+      }
+    } catch (err) {
+      console.error("Save alteration error:", err);
+      if (onAddNotification) {
+        onAddNotification("Error", "Network or server failure.", "danger");
+      }
+    }
+  };
 
   useEffect(() => {
     if (initialTab) setActiveStudioTab(initialTab);
@@ -1239,6 +1366,34 @@ export const ArticulationView = ({
 
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => {
+                    // Set default dates
+                    const delivery = new Date();
+                    delivery.setDate(delivery.getDate() + 3);
+                    setAltDeliveryDate(delivery.toISOString().split('T')[0]);
+                    
+                    const trial = new Date();
+                    trial.setDate(trial.getDate() + 2);
+                    setAltTrialDate(trial.toISOString().split('T')[0]);
+                    
+                    // Reset states & show modal
+                    setSelectedAltInvoice(null);
+                    setSelectedAltItem(null);
+                    setAltInvoiceSearch("");
+                    setAltInvoices([]);
+                    setAltTailorName("");
+                    setAltPriority("Normal");
+                    setAltDetails([]);
+                    setAltCustomText("");
+                    setAltMeasurements({});
+                    setShowCreateAltModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>New Alteration Ticket</span>
+                </button>
+                <button
                   onClick={fetchAlterations}
                   className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
                 >
@@ -2025,6 +2180,298 @@ export const ArticulationView = ({
                 <span>Print Job Ticket</span>
               </button>
             </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ─── NEW CREATE ALTERATION MODAL WIZARD ─── */}
+      {showCreateAltModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto text-slate-800 flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Scissors className="w-5 h-5 text-rose-600 animate-pulse" />
+                <h3 className="text-sm font-black uppercase tracking-wide">
+                  New Alteration Request
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowCreateAltModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Step 1: Select Invoice */}
+            {!selectedAltInvoice && (
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Search Target Invoice</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter Invoice Number, Customer Name or Phone..."
+                      value={altInvoiceSearch}
+                      onChange={(e) => setAltInvoiceSearch(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSearchAltInvoices(); }}
+                      className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
+                    <button
+                      onClick={handleSearchAltInvoices}
+                      disabled={searchingAltInvoices}
+                      className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      {searchingAltInvoices ? 'Searching...' : 'Search'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
+                  {altInvoices.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      No invoices searched yet or no results found.
+                    </div>
+                  ) : (
+                    altInvoices.map((inv) => (
+                      <div
+                        key={inv._id}
+                        onClick={() => {
+                          setSelectedAltInvoice(inv);
+                          setSelectedAltItem(null);
+                        }}
+                        className="p-3.5 hover:bg-rose-50/50 cursor-pointer transition-colors flex justify-between items-center text-xs"
+                      >
+                        <div>
+                          <p className="font-extrabold text-slate-800">{inv.invoiceNo}</p>
+                          <p className="text-slate-500">{inv.customerName} · {inv.customerPhone}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-slate-800">₹{(inv.grandTotal || 0).toLocaleString('en-IN')}</p>
+                          <p className="text-[10px] text-slate-400">{new Date(inv.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Select Item from Invoice */}
+            {selectedAltInvoice && !selectedAltItem && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-xs">
+                  <div>
+                    <p className="font-extrabold text-slate-800">Selected Invoice: {selectedAltInvoice.invoiceNo}</p>
+                    <p className="text-slate-500">{selectedAltInvoice.customerName} · {selectedAltInvoice.customerPhone}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAltInvoice(null)}
+                    className="text-xs text-rose-600 font-bold hover:underline"
+                  >
+                    Change Invoice
+                  </button>
+                </div>
+
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Select Garment to Alter</h4>
+                <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto">
+                  {selectedAltInvoice.items && selectedAltInvoice.items.length > 0 ? (
+                    selectedAltInvoice.items.map((item, idx) => (
+                      <div
+                        key={item._id || idx}
+                        onClick={() => {
+                          setSelectedAltItem(item);
+                          // Populate default measurements if possible
+                          setAltMeasurements({
+                            Chest: item.size || "",
+                            Waist: "",
+                            Shoulder: "",
+                            Sleeve: "",
+                            Length: ""
+                          });
+                        }}
+                        className="p-3 border border-slate-200 hover:border-rose-300 hover:bg-rose-50/20 rounded-xl cursor-pointer transition-all flex justify-between items-center text-xs"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-800">{item.name}</p>
+                          <p className="text-[10px] text-slate-400">SKU: {item.sku || '-'} · Qty: {item.quantity}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold">
+                            {item.size || 'N/A'} / {item.color || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-slate-400">No items found in this invoice.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Complete Alteration details */}
+            {selectedAltInvoice && selectedAltItem && (
+              <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                {/* Selected Info Summary Header */}
+                <div className="flex justify-between items-start bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                  <div>
+                    <p className="font-extrabold text-slate-800">{selectedAltItem.name}</p>
+                    <p className="text-[10px] text-slate-500">
+                      Invoice: {selectedAltInvoice.invoiceNo} · Customer: {selectedAltInvoice.customerName}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAltItem(null)}
+                    className="text-xs text-rose-600 font-bold hover:underline"
+                  >
+                    Change Item
+                  </button>
+                </div>
+
+                {/* Alteration Details Selection */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Alteration Details (Select all that apply)</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      "Sleeve Shortening",
+                      "Sleeve Lengthening",
+                      "Waist Fitting",
+                      "Shoulder Fitting",
+                      "Bottom Hemming",
+                      "Length Shortening",
+                      "Chest Fitting",
+                      "Neck Alteration"
+                    ].map((detail) => (
+                      <label
+                        key={detail}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${altDetails.includes(detail) ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={altDetails.includes(detail)}
+                          onChange={() => {
+                            if (altDetails.includes(detail)) {
+                              setAltDetails(altDetails.filter(d => d !== detail));
+                            } else {
+                              setAltDetails([...altDetails, detail]);
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                        {detail}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Note */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Custom Alteration Note / Instructions</label>
+                  <textarea
+                    placeholder="Enter any custom measurements, specifications or instructions..."
+                    value={altCustomText}
+                    onChange={(e) => setAltCustomText(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition-all text-xs"
+                    rows="2"
+                  />
+                </div>
+
+                {/* Grid for Tailor, Priority, Dates */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Assign Master Tailor</label>
+                    <select
+                      value={altTailorName}
+                      onChange={(e) => setAltTailorName(e.target.value)}
+                      required
+                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                    >
+                      <option value="">Select Master Tailor</option>
+                      {tailorOptions.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Ticket Priority</label>
+                    <select
+                      value={altPriority}
+                      onChange={(e) => setAltPriority(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                    >
+                      <option value="Normal">Normal (3 Days)</option>
+                      <option value="Urgent">Urgent (24 Hours)</option>
+                      <option value="Express">Express (Same Day)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Expected Trial Date</label>
+                    <input
+                      type="date"
+                      value={altTrialDate}
+                      onChange={(e) => setAltTrialDate(e.target.value)}
+                      required
+                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Expected Delivery Date</label>
+                    <input
+                      type="date"
+                      value={altDeliveryDate}
+                      onChange={(e) => setAltDeliveryDate(e.target.value)}
+                      required
+                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Measurements Inputs */}
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Alteration Measurements (Inches)</label>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
+                    {["Chest", "Waist", "Shoulder", "Sleeve", "Length", "Neck", "Hip", "Thigh", "Bottom"].map((m) => (
+                      <div key={m} className="space-y-0.5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase">{m}</label>
+                        <input
+                          type="text"
+                          placeholder='-'
+                          value={altMeasurements[m] || ""}
+                          onChange={(e) => setAltMeasurements({ ...altMeasurements, [m]: e.target.value })}
+                          className="w-full border border-slate-200 rounded-lg p-2 text-center text-xs font-bold focus:ring-1 focus:ring-rose-500 outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2.5 border-t border-slate-100 pt-4 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateAltModal(false)}
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save Alteration Ticket</span>
+                  </button>
+                </div>
+              </form>
+            )}
 
           </div>
         </div>

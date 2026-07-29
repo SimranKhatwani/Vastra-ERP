@@ -334,6 +334,7 @@ export default function App() {
 
   const [articulationInitialTab, setArticulationInitialTab] = useState("dashboard");
   const [articulationInitialFilter, setArticulationInitialFilter] = useState("All");
+  const [articulationStartAlteration, setArticulationStartAlteration] = useState(false);
 
   React.useEffect(() => {
     localStorage.setItem("vastraActiveModule", activeModule);
@@ -1100,6 +1101,7 @@ export default function App() {
     } else {
       setArticulationInitialFilter("All");
     }
+    setArticulationStartAlteration(options.startAlteration || false);
     setActiveModule("articulation");
   };
 
@@ -1538,6 +1540,8 @@ export default function App() {
               products={products}
               initialTab={articulationInitialTab}
               initialFilterStatus={articulationInitialFilter}
+              autoStartAlteration={articulationStartAlteration}
+              clearAutoStartAlteration={() => setArticulationStartAlteration(false)}
               onAddCustomToCart={(customItem) => {
                 setQuickArticulateItem(customItem);
                 setActiveModule("billing");

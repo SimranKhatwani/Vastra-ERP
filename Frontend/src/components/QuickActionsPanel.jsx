@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Scissors, Receipt, Scan, Search, ScanLine, Printer, MessageCircle, X, Loader2 } from 'lucide-react';
 
-export const QuickActionsPanel = () => {
+export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) => {
   const [activeModal, setActiveModal] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -65,6 +65,10 @@ export const QuickActionsPanel = () => {
   ];
 
   const handleOpenModal = (actionId) => {
+    if (actionId === 'alteration' && openArticulationWithDefaults) {
+      openArticulationWithDefaults({ tab: "dashboard", startAlteration: true });
+      return;
+    }
     setActiveModal(actionId);
     setInputValue('');
     setResult(null);
