@@ -47,6 +47,7 @@ const alterationRoutes = require('./routes/alterationRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const staffActivityRoutes = require('./routes/staffActivityRoutes');
 const activityFeedRoutes = require('./routes/activityFeedRoutes');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 
 // Basic Route for testing
 app.get('/', (req, res) => {
@@ -97,6 +98,7 @@ app.use('/api/employee-alteration-performance', (req, res, next) => {
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/staff-activity', staffActivityRoutes);
 app.use('/api/activity-feed', activityFeedRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 // Error Handler Middleware
 app.use((err, req, res, next) => {

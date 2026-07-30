@@ -1,9 +1,10 @@
 const express = require('express');
-const { createProduct, getProducts, updateProduct, deleteProduct, adjustStock, scanProduct, getTaxConfig, updateTaxConfig } = require('../controllers/productController');
+const { createProduct, getProducts, updateProduct, deleteProduct, adjustStock, scanProduct, getTaxConfig, updateTaxConfig, searchBilling } = require('../controllers/productController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
+router.get('/search-billing', protect, searchBilling);
 router.get('/scan/:barcode', protect, scanProduct);
 
 router.route('/tax-config')

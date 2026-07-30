@@ -209,3 +209,66 @@ exports.updateTaxConfig = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.searchBilling = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { q, name } = req.query;
+
+    if (!q && !name) {
+      return res.status(400).json({ success: false, message: 'Search query is required' });
+    }
+
+    let products = [];
+
+    if (name) {
+      // Fuzzy search on name
+      products = await Product.find({
+        tenantId,
+        name: { $regex: name, $options: 'i' }
+      }).limit(100);
+    } else if (q) {
+      // Attempt exact barcode match first
+      products = await Product.find({ tenantId, barcode: q });
+
+      // If no exact barcode match, search across sku (Design No) and productCode (Item Code)
+      if (products.length === 0) {
+        products = await Product.find({
+          tenantId,
+          $or: [
+            { sku: q },
+            { productCode: q }
+          ]
+        });
+      }
+    }
+
+    // Format the response with the additional fields needed for the Information Panel
+    const formattedProducts = products.map(p => ({
+      _id: p._id,
+      id: p._id,
+      barcode: p.barcode,
+      name: p.name,
+      subItem: p.subItem || p.category || '',
+      designNo: p.sku || '',
+      itemCode: p.productCode || '',
+      ipn: p.ipn || p.rackLocation || '',
+      uniqueCode: p.uniqueCode || '',
+      hsn: p.hsn || '',
+      company: p.company || p.brand || '',
+      remarks: p.remarks || '',
+      color: p.color || '',
+      size: p.size || '',
+      mrp: p.mrp || p.sellingPrice || 0,
+      sellingRate: p.sellingPrice || 0,
+      availableStock: p.stock || 0,
+      soldQuantity: p.soldQuantity || 0,
+      basePrice: p.basePrice || 0, // Used for Purchase Tab
+      purchasePrice: p.purchasePrice || 0 // Confidential
+    }));
+
+    res.status(200).json({ success: true, count: formattedProducts.length, data: formattedProducts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

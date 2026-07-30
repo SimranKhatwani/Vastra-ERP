@@ -53,6 +53,12 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    subItem: { type: String },
+    company: { type: String },
+    hsn: { type: String },
+    ipn: { type: String },
+    uniqueCode: { type: String, index: true },
+    remarks: { type: String },
     basePrice: {
       type: Number,
     },
