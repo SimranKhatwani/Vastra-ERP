@@ -40,6 +40,9 @@ const purchaseOrderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    invoiceNo: {
+      type: String,  // Original vendor bill number (separate from the unique poNo)
+    },
     date: {
       type: Date,
       default: Date.now,

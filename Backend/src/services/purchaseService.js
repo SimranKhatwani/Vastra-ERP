@@ -78,7 +78,8 @@ exports.processPurchaseVoucher = async (tenantId, voucherData) => {
     const outstandingDebt = (voucherData.grandTotal || 0) - outstandingPaid;
     
     const newPO = await purchaseRepo.createPurchaseOrder(tenantId, {
-      poNo: voucherData.poNo || `PO-${Date.now()}`,
+      // Append timestamp so re-imports of the same bill always get a unique poNo
+      poNo: voucherData.poNo ? `${voucherData.poNo}-${Date.now().toString().slice(-6)}` : `PO-${Date.now()}`,
       invoiceNo: voucherData.invoiceNo || `INV-${Date.now()}`,
       date: voucherData.date || new Date(),
       supplierId: supplierId,

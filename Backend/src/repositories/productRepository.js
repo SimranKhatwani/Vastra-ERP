@@ -7,14 +7,28 @@ exports.upsertProduct = async (tenantId, productData) => {
   
   if (productData.barcode) {
     product = await Product.findOne({ tenantId, barcode: productData.barcode });
-  } else if (productData.sku) {
+  }
+  
+  if (!product && productData.sku) {
     product = await Product.findOne({ tenantId, sku: productData.sku });
+  }
+
+  // Fallback: match by name so re-importing the same PT file updates instead of failing
+  if (!product && productData.name) {
+    product = await Product.findOne({
+      tenantId,
+      name: { $regex: new RegExp(`^${productData.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+    });
   }
 
   if (product) {
     // Update existing product's stock and details
     product.purchasedQuantity = (product.purchasedQuantity || 0) + (productData.stock || 0);
     if (productData.purchasePrice) product.purchasePrice = productData.purchasePrice;
+    if (productData.sellingPrice) product.sellingPrice = productData.sellingPrice;
+    if (productData.mrp) product.mrp = productData.mrp;
+    if (productData.barcode && !product.barcode) product.barcode = productData.barcode;
+    if (productData.sku && !product.sku) product.sku = productData.sku;
     
     // Check if new properties from Manual Entry exist and update them
     if (productData.fabricCode) product.fabricCode = productData.fabricCode;
@@ -38,6 +52,7 @@ exports.upsertProduct = async (tenantId, productData) => {
     return newProduct;
   }
 };
+
 
 exports.addStock = async (tenantId, productId, quantity) => {
   const product = await Product.findOne({ _id: productId, tenantId });

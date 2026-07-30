@@ -1501,16 +1501,41 @@ export const PurchaseView = ({
   }
 
   if (viewingPO) {
-    return (
-      <div className="animate-fade-in pb-12">
+    // Wrapper with a proper ref so InvoiceViewer can access the DOM node for printing/downloading
+    const ViewerWrapper = () => {
+      const ivRef = React.useRef(null);
+      const handleDownload = () => {
+        if (!ivRef.current || !viewingPO) return;
+        const htmlContent = `<!DOCTYPE html><html><head><title>Invoice - ${viewingPO.poNo || viewingPO.invoiceNo}</title><script src="https://cdn.tailwindcss.com"><\/script></head><body class="bg-white p-8">${ivRef.current.outerHTML}</body></html>`;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Invoice-${viewingPO.poNo || viewingPO.invoiceNo}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      };
+      const handleWA = () => {
+        if (!viewingPO) return;
+        const text = `*Purchase Voucher*\n\nVoucher No: ${viewingPO.poNo || viewingPO.invoiceNo}\nDate: ${viewingPO.date}\nVendor: ${viewingPO.supplierName}\nGrand Total: ₹${(viewingPO.grandTotal || 0).toFixed(2)}`;
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+      };
+      return (
         <InvoiceViewer
           createdVoucher={viewingPO}
-          invoiceRef={viewingPO.poNo || viewingPO.invoiceNo || viewingPO.id}
+          invoiceRef={ivRef}
           handlePrint={() => window.print()}
-          handleDownloadHTML={() => {}}
-          handleWhatsAppShare={() => {}}
+          handleDownloadHTML={handleDownload}
+          handleWhatsAppShare={handleWA}
           onClose={() => setViewingPO(null)}
         />
+      );
+    };
+    return (
+      <div className="animate-fade-in pb-12">
+        <ViewerWrapper />
       </div>
     );
   }

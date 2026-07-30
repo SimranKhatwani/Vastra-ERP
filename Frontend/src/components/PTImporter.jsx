@@ -307,7 +307,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
     const newVoucher = {
       id: generateObjectId(),
-      poNo: `${firstRow.billNo}-${Math.floor(Math.random() * 10000)}`,
+      // poNo will be made unique by backend; store original bill no separately as invoiceNo
+      poNo: firstRow.billNo,
       invoiceNo: firstRow.billNo,
       date: firstRow.billDate,
       supplierId: supplierObj ? getValidObjectId(supplierObj._id || supplierObj.id) : generateObjectId(),
@@ -318,18 +319,26 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       grandTotal: subTotal - grandDisc + gstTotal,
       status: "Completed"
     };
-    
-    if (onAddPurchaseOrder) {
-      const success = await onAddPurchaseOrder(newVoucher);
-      if (!success) {
-        alert("Failed to save Purchase Order to the database. Please check the network or refresh the page and try again.");
-        return;
-      }
-    }
-    
+
+    // ✅ Show the invoice IMMEDIATELY — don't wait for the DB save
     setCreatedVoucher(newVoucher);
     setStep("success");
-    if (onAddNotification) onAddNotification("Import Complete", "Successfully parsed 27-column PT File and generated unique barcodes!", "success");
+    if (onAddNotification) onAddNotification("PT File Generated", `Bill ${firstRow.billNo} compiled successfully! You can print or download it now.`, "success");
+
+    // 💾 Save to DB in the background (non-blocking)
+    if (onAddPurchaseOrder) {
+      onAddPurchaseOrder(newVoucher)
+        .then((success) => {
+          if (success) {
+            if (onAddNotification) onAddNotification("Saved to Database", `Bill ${firstRow.billNo} has been saved to the database.`, "success");
+          } else {
+            if (onAddNotification) onAddNotification("Save Failed", "Invoice displayed but could not be saved to DB. Please check your network and try re-importing.", "warning");
+          }
+        })
+        .catch(() => {
+          if (onAddNotification) onAddNotification("Save Error", "Invoice displayed but an error occurred while saving to the database.", "danger");
+        });
+    }
   };
 
   const handleDownloadHTML = () => {
@@ -503,7 +512,16 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
              handlePrint={() => window.print()}
              handleDownloadHTML={handleDownloadHTML}
              handleWhatsAppShare={handleWhatsAppShare}
-             onClose={() => setStep("upload")}
+             onClose={() => {
+               // Full reset so the user can import the same or a new PT file immediately
+               setStep("upload");
+               setRawRows([]);
+               setHeaders([]);
+               setColumnMapping({});
+               setGlobalValues({});
+               setParsedRows([]);
+               setCreatedVoucher(null);
+             }}
           />
       )}
     </div>
