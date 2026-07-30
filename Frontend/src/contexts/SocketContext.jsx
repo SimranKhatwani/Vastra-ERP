@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import api from '../api/axios';
 
 const SocketContext = createContext(null);
 
@@ -29,7 +30,7 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    const newSocket = io('http://localhost:5000', {
+    const newSocket = io(import.meta.env.VITE_API_URL.replace("/api", ""), {
       auth: { token: authToken },
       reconnection: true,
       reconnectionAttempts: 15,

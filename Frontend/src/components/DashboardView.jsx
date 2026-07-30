@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React from "react";
 import {
   TrendingUp,
@@ -57,10 +58,8 @@ export const DashboardView = ({
       try {
         const token = localStorage.getItem('token');
         if (!token) { setFeedLoading(false); return; }
-        const res = await fetch('http://localhost:5000/api/activity-feed?limit=20', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const res = await api.get(`/activity-feed?limit=20`);
+        const data = res.data;
         if (data.success && data.data) {
           setActivityFeed(data.data);
         }
@@ -101,22 +100,22 @@ export const DashboardView = ({
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
-        
+
         const fetchQuietly = async (url) => {
           try {
-            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-              const d = await res.json();
+            const res = await api.get(url);
+            if (res.status >= 200 && res.status < 300) {
+              const d = res.data;
               return d.success && d.data ? d.data : null;
             }
-          } catch (e) {}
+          } catch (e) { }
           return null;
         };
 
         const [staffData, empsData, invsData] = await Promise.all([
-          fetchQuietly("http://localhost:5000/api/staff"),
-          fetchQuietly("http://localhost:5000/api/employees"),
-          fetchQuietly("http://localhost:5000/api/invoices")
+          fetchQuietly("/staff"),
+          fetchQuietly("/employees"),
+          fetchQuietly("/invoices")
         ]);
 
         if (staffData) setDbStaffList(staffData);
@@ -133,10 +132,8 @@ export const DashboardView = ({
     const fetchAttendanceStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:5000/api/attendance/dashboard-stats", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        const data = await res.json();
+        const res = await api.get(`/attendance/dashboard-stats`);
+        const data = res.data;
         if (data && !data.message) {
           setAttendanceStats(data);
         }
@@ -148,10 +145,8 @@ export const DashboardView = ({
     const fetchAlterationStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:5000/api/alteration-reports", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        const data = await res.json();
+        const res = await api.get(`/alteration-reports`);
+        const data = res.data;
         if (data && data.success && data.summary) {
           setAlterationStats(data.summary);
         }
@@ -167,10 +162,8 @@ export const DashboardView = ({
       const fetchMorningActions = async () => {
         try {
           const token = localStorage.getItem("token");
-          const res = await fetch("http://localhost:5000/api/dashboard/morning-actions", {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
+          const res = await api.get(`/dashboard/morning-actions`);
+          const data = res.data;
           if (data.success) {
             setMorningActions(data.data);
           }
@@ -180,15 +173,14 @@ export const DashboardView = ({
       };
       fetchMorningActions();
     }
-    
+
     // Fetch Commission Stats
     const fetchCommStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:5000/api/commissions/staff/stats", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const res = await api.get(`/commissions/staff/stats`);
+        const data = res.data;
+        console.log("Commission stats:", data);
         if (data.success) {
           setCommStats(data.data);
         }
@@ -207,10 +199,8 @@ export const DashboardView = ({
       const fetchStaffSummary = async () => {
         try {
           const token = localStorage.getItem("token");
-          const res = await fetch("http://localhost:5000/api/dashboard/staff-summary", {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
+          const res = await api.get(`/dashboard/staff-summary`);
+          const data = res.data;
           if (data.success && data.data) {
             setStaffApiStats(data.data);
           }
@@ -431,7 +421,7 @@ export const DashboardView = ({
     const myInvoices = allInvoicesRecords.filter(inv => {
       const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId;
       const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || '').toLowerCase().trim();
-      
+
       const idMatch = myEmpId && invEmpId && String(myEmpId) === String(invEmpId);
       const nameMatch = myEmpName && invEmpName && invEmpName === myEmpName;
 
@@ -1707,11 +1697,11 @@ export const DashboardView = ({
               activityFeed.map((item, idx) => {
                 const colorMap = {
                   emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
-                  blue:    { bg: 'bg-blue-50',    border: 'border-blue-100',    dot: 'bg-blue-500',    badge: 'bg-blue-100 text-blue-700'    },
-                  teal:    { bg: 'bg-teal-50',    border: 'border-teal-100',    dot: 'bg-teal-500',    badge: 'bg-teal-100 text-teal-700'    },
-                  orange:  { bg: 'bg-orange-50',  border: 'border-orange-100',  dot: 'bg-orange-500',  badge: 'bg-orange-100 text-orange-700' },
-                  red:     { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     badge: 'bg-red-100 text-red-700'     },
-                  indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-100',  dot: 'bg-indigo-500',  badge: 'bg-indigo-100 text-indigo-700' },
+                  blue: { bg: 'bg-blue-50', border: 'border-blue-100', dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
+                  teal: { bg: 'bg-teal-50', border: 'border-teal-100', dot: 'bg-teal-500', badge: 'bg-teal-100 text-teal-700' },
+                  orange: { bg: 'bg-orange-50', border: 'border-orange-100', dot: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700' },
+                  red: { bg: 'bg-red-50', border: 'border-red-100', dot: 'bg-red-500', badge: 'bg-red-100 text-red-700' },
+                  indigo: { bg: 'bg-indigo-50', border: 'border-indigo-100', dot: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-700' },
                 };
                 const clr = colorMap[item.color] || colorMap.indigo;
                 const isNew = idx === 0 && socketConnected;
@@ -1786,10 +1776,10 @@ export const DashboardView = ({
                   const token = localStorage.getItem('token');
                   if (!token) return;
                   setFeedLoading(true);
-                  fetch('http://localhost:5000/api/activity-feed?limit=30', { headers: { Authorization: `Bearer ${token}` } })
-                    .then(r => r.json())
+                  api.get(`/activity-feed?limit=30`)
+                    .then(r => r.data)
                     .then(d => { if (d.success) setActivityFeed(d.data); })
-                    .catch(() => {})
+                    .catch(() => { })
                     .finally(() => setFeedLoading(false));
                 }}
                 className="flex items-center gap-1 text-[10px] text-indigo-600 font-bold hover:text-indigo-800 transition-colors cursor-pointer"

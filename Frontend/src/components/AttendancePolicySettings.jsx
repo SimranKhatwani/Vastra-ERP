@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import { Settings, Save, Clock, AlertTriangle, ShieldCheck, DollarSign } from 'lucide-react';
 
@@ -11,11 +12,9 @@ export default function AttendancePolicySettings({ token, onAddNotification }) {
 
   const fetchPolicy = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/policy`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get(`/attendance/policy`);
       if (res.ok) {
-        const data = await res.json();
+        const data = res.data;
         setPolicy(data);
       } else {
         setPolicy({
@@ -76,15 +75,11 @@ export default function AttendancePolicySettings({ token, onAddNotification }) {
 
   const handleSave = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/policy`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(policy)
-      });
+      const res = await api.put(`/attendance/policy`, policy);
       if (res.ok) {
         onAddNotification("Success", "Attendance Policy updated successfully", "success");
       } else {
-        const data = await res.json();
+        const data = res.data;
         onAddNotification("Error", data.message, "danger");
       }
     } catch (err) {

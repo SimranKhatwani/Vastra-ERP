@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
@@ -53,10 +54,8 @@ export const BillingPOSView = ({
   const fetchTaxConfig = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/products/tax-config", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/products/tax-config`);
+      const json = res.data;
       if (json.success && json.data) {
         setCgstRate(json.data.cgstRate || 5);
         setSgstRate(json.data.sgstRate || 5);
@@ -70,10 +69,8 @@ export const BillingPOSView = ({
   const fetchActiveRules = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/discounts/rules", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/discounts/rules`);
+      const json = res.data;
       if (json.success) {
         setDiscountRules(json.data.filter(r => r.status === "Active"));
       }
@@ -203,10 +200,8 @@ export const BillingPOSView = ({
     const fetchStaff = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/staff', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const res = await api.get(`/staff`);
+        const data = res.data;
         if (data.success) {
           setStaffList(data.data.map(s => ({ ...s, id: s._id })));
         }
@@ -332,11 +327,7 @@ export const BillingPOSView = ({
         try {
           const token = localStorage.getItem("token");
           const invId = targetInv._id || targetInv.id;
-          await fetch(`http://localhost:5000/api/invoices/${invId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify(updatedInv)
-          });
+          await api.put(`/invoices/${invId}`, updatedInv);
         } catch (e) {
           console.error("Failed to update invoice:", e);
         }
@@ -622,15 +613,8 @@ export const BillingPOSView = ({
     let savedRecord = payload;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/alterations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const res = await api.post(`/alterations`, payload);
+      const data = res.data;
       if (data.success && data.data) {
         savedRecord = data.data;
       }
@@ -1436,11 +1420,7 @@ export const BillingPOSView = ({
       try {
         const token = localStorage.getItem("token");
         const nextPoints = Math.max(0, (activeCustomer.loyaltyPoints || 0) - loyaltyOffer.requiredLoyaltyPoints);
-        await fetch(`http://localhost:5000/api/customers/${selectedCustomerId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ loyaltyPoints: nextPoints })
-        });
+        await api.put(`/customers/${selectedCustomerId}`, { loyaltyPoints: nextPoints });
         onAddNotification(
           "Loyalty Redemed",
           `Redeemed ${loyaltyOffer.requiredLoyaltyPoints} points for discount.`,
@@ -3274,18 +3254,11 @@ export const BillingPOSView = ({
                         try {
                           const token = localStorage.getItem("token");
                           const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          await fetch(`http://localhost:5000/api/invoices/${invId}/return`, {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
+                          await api.post(`/invoices/${invId}/return`, {
                               returnedItemIds,
                               returnReason: finalReason,
                               refundMethod: "Cash"
-                            })
-                          });
+                            });
                         } catch (apiErr) {
                           console.warn("Backend return endpoint call error:", apiErr.message);
                         }
@@ -3528,18 +3501,11 @@ export const BillingPOSView = ({
                         try {
                           const token = localStorage.getItem("token");
                           const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          await fetch(`http://localhost:5000/api/invoices/${invId}/exchange`, {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
+                          await api.post(`/invoices/${invId}/exchange`, {
                               oldItemIdx: exchangeOldItemIdx,
                               exchangeReason,
                               newItem: exchangeSelectedNewProduct
-                            })
-                          });
+                            });
                         } catch (apiErr) {
                           console.warn("Backend exchange endpoint call error:", apiErr.message);
                         }

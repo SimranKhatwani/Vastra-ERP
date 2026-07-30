@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   BarChart3,
@@ -34,7 +35,7 @@ import {
   Lock,
 } from "lucide-react";
 
-const API = "http://localhost:5000/api/financial";
+const API = "/financial";
 const getToken = () => localStorage.getItem("token");
 const authHeaders = () => ({
   "Content-Type": "application/json",
@@ -318,7 +319,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadDashboard = async () => {
     try {
       const res = await fetch(`${API}/dashboard`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setSummary(data);
     } catch (e) {
       console.error(e);
@@ -328,7 +329,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadCustomerLedgers = async () => {
     try {
       const res = await fetch(`${API}/customer-ledger`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setCustomerLedgers(data.data);
     } catch (e) {
       console.error(e);
@@ -338,7 +339,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadVendorLedgers = async () => {
     try {
       const res = await fetch(`${API}/vendor-ledger`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setVendorLedgers(data.data);
     } catch (e) {
       console.error(e);
@@ -348,7 +349,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadCashBook = async () => {
     try {
       const res = await fetch(`${API}/cash-book`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setCashBook(data);
     } catch (e) {
       console.error(e);
@@ -358,7 +359,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadBankBook = async () => {
     try {
       const res = await fetch(`${API}/bank-book`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setBankBook(data);
     } catch (e) {
       console.error(e);
@@ -368,7 +369,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadExpenses = async () => {
     try {
       const res = await fetch(`${API}/expenses`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setExpenses(data.data);
     } catch (e) {
       console.error(e);
@@ -378,7 +379,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadIncomes = async () => {
     try {
       const res = await fetch(`${API}/incomes`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setIncomes(data.data);
     } catch (e) {
       console.error(e);
@@ -388,7 +389,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadPayments = async () => {
     try {
       const res = await fetch(`${API}/payments`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setPayments(data.data);
     } catch (e) {
       console.error(e);
@@ -398,7 +399,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const loadReceipts = async () => {
     try {
       const res = await fetch(`${API}/receipts`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setReceipts(data.data);
     } catch (e) {
       console.error(e);
@@ -412,7 +413,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         query = `?startDate=${plCustomDates.start}&endDate=${plCustomDates.end}`;
       }
       const res = await fetch(`${API}/profit-loss${query}`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) setProfitLoss(data);
     } catch (e) {
       console.error(e);
@@ -506,7 +507,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         onAddNotification?.("Expense Added", `Expense of ₹${fmt(amt)} recorded.`, "success");
         setShowExpenseModal(false);
@@ -545,7 +546,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         onAddNotification?.("Income Logged", `Income of ₹${fmt(amt)} added.`, "success");
         setShowIncomeModal(false);
@@ -580,7 +581,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         onAddNotification?.("Payment Disbursed", `Payment of ₹${fmt(amt)} logged.`, "success");
         setShowPaymentModal(false);
@@ -618,7 +619,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         onAddNotification?.("Receipt Issued", `Receipt ${data.data.receiptNo} created for ₹${fmt(amt)}.`, "success");
         setShowReceiptModal(false);
@@ -655,7 +656,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         onAddNotification?.("Adjustment Saved", `${cashBankForm.type} adjustment of ₹${fmt(amt)} recorded.`, "success");
         setShowCashBankModal(false);

@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState } from "react";
 import {
   Plus,
@@ -222,13 +223,9 @@ export const InventoryView = ({
         productId: movementsFilterProduct
       });
 
-      const res = await fetch(`http://localhost:5000/api/inventory-movements?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const res = await api.get(`/inventory-movements?${params.toString()}`);
 
-      const json = await res.json();
+      const json = res.data;
       if (json.success) {
         setDbMovements(json.data || []);
         setMovementsTotal(json.total || 0);
@@ -263,14 +260,7 @@ export const InventoryView = ({
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      await fetch("http://localhost:5000/api/inventory-movements", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-      });
+      await api.post(`/inventory-movements`, data);
       // Trigger fetch refresh
       fetchMovements();
     } catch (err) {
@@ -300,12 +290,8 @@ export const InventoryView = ({
         search: batchesSearch,
         status: batchesFilterStatus
       });
-      const res = await fetch(`http://localhost:5000/api/batches?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      const json = await res.json();
+      const res = await api.get(`/batches?${params.toString()}`);
+      const json = res.data;
       if (json.success) {
         setDbBatches(json.data || []);
       } else {
@@ -336,15 +322,8 @@ export const InventoryView = ({
     if (!selectedBatchDetail) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/batches/${selectedBatchDetail._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: "QC" })
-      });
-      const json = await res.json();
+      const res = await api.put(`/batches/${selectedBatchDetail._id}`, { status: "QC" });
+      const json = res.data;
       if (json.success) {
         setSelectedBatchDetail(json.data);
         onAddNotification("QC Approved", `Batch ${selectedBatchDetail.batchNo} status updated to QC verification.`, "success");
@@ -365,12 +344,8 @@ export const InventoryView = ({
     try {
       const token = localStorage.getItem("token");
       const prodId = selectedBatchDetail.productId?._id || selectedBatchDetail.productId;
-      const res = await fetch(`http://localhost:5000/api/inventory-movements?productId=${prodId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      const json = await res.json();
+      const res = await api.get(`/inventory-movements?productId=${prodId}`);
+      const json = res.data;
       if (json.success) {
         setBatchHistoryLogs(json.data || []);
       } else {
@@ -402,19 +377,12 @@ export const InventoryView = ({
       const token = localStorage.getItem("token");
       const newAvail = selectedBatchDetail.availableQty - amount;
       const newReserved = (selectedBatchDetail.reservedQty || 0) + amount;
-      const res = await fetch(`http://localhost:5000/api/batches/${selectedBatchDetail._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.put(`/batches/${selectedBatchDetail._id}`, {
           availableQty: newAvail,
           reservedQty: newReserved,
           status: newAvail === 0 ? "Reserved" : selectedBatchDetail.status
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         setSelectedBatchDetail(json.data);
         onAdjustStock(selectedBatchDetail.productId?._id || selectedBatchDetail.productId, -amount, "MATERIAL_ISSUE", "Reserve Allocation", selectedBatchDetail.batchNo, `Reserved ${amount} units from batch`);
@@ -528,10 +496,8 @@ export const InventoryView = ({
     setLocTransfersLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/location-transfers", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/location-transfers`);
+      const json = res.data;
       if (json.success) setLocTransfers(json.data || []);
     } catch (err) {
       console.error("Failed to fetch transfers:", err);
@@ -556,13 +522,7 @@ export const InventoryView = ({
     const dstW = warehouses.find(w => w.id === tfDestId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/location-transfers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/location-transfers`, {
           sourceLocationId: tfSourceId,
           sourceLocationName: srcW?.name || tfSourceId,
           destinationLocationId: tfDestId,
@@ -570,9 +530,8 @@ export const InventoryView = ({
           productId: tfProductId,
           quantity: tfQty,
           remarks: tfRemarks
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Transfer Created", `Transfer ${json.data.transferNo} has been requested.`, "success");
         setShowTransferModal(false);
@@ -589,15 +548,8 @@ export const InventoryView = ({
   const handleUpdateTransferStatus = async (transferId, newStatus) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/location-transfers/${transferId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-      const json = await res.json();
+      const res = await api.put(`/location-transfers/${transferId}/status`, { status: newStatus });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Status Updated", `Transfer updated to "${newStatus}".`, "success");
         fetchLocTransfers();
@@ -787,13 +739,7 @@ export const InventoryView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/batches", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/batches`, {
           batchNo,
           productId: targetProduct._id || targetProduct.id,
           warehouseId: batchWhId,
@@ -804,9 +750,8 @@ export const InventoryView = ({
           mrp: targetProduct.mrp || 0,
           status: "Available",
           remarks: "Manual batch entry registration"
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAdjustStock(targetProduct._id || targetProduct.id, batchQty, "FINISHED_GOODS_RECEIVED", "Batch Registration", batchNo, `Batch registration with ${batchQty} units`);
         onAddNotification(

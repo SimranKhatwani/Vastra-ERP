@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search,
@@ -305,10 +306,8 @@ export const ArticulationView = ({
     setSearchingAltInvoices(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/invoices?search=${altInvoiceSearch}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/invoices?search=${altInvoiceSearch}`);
+      const data = res.data;
       if (data.success && data.data) {
         setAltInvoices(data.data);
       }
@@ -348,15 +347,8 @@ export const ArticulationView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/alterations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const res = await api.post(`/alterations`, payload);
+      const data = res.data;
       if (data.success) {
         if (onAddNotification) {
           onAddNotification("Alteration Created", `Ticket ${data.data.alterationId} added successfully.`, "success");
@@ -406,10 +398,8 @@ export const ArticulationView = ({
       if (filterStatus !== "All") queryParams.append("status", filterStatus);
       if (filterPriority !== "All") queryParams.append("priority", filterPriority);
 
-      const res = await fetch(`http://localhost:5000/api/alteration-reports?${queryParams.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/alteration-reports?${queryParams.toString()}`);
+      const data = res.data;
       if (data.success) {
         setReportsData(data);
       }
@@ -430,10 +420,8 @@ export const ArticulationView = ({
       if (filterStatus !== "All") queryParams.append("status", filterStatus);
       if (filterPriority !== "All") queryParams.append("priority", filterPriority);
 
-      const res = await fetch(`http://localhost:5000/api/employee-alteration-performance?${queryParams.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/employee-alteration-performance?${queryParams.toString()}`);
+      const data = res.data;
       if (data.success) {
         setPerformanceData(data);
       }
@@ -456,15 +444,8 @@ export const ArticulationView = ({
     if (!target) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/alteration/send-whatsapp", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ alterationId: target._id || target.alterationId })
-      });
-      const data = await res.json();
+      const res = await api.post(`/alteration/send-whatsapp`, { alterationId: target._id || target.alterationId });
+      const data = res.data;
       setWhatsappModalTarget(null);
 
       if (data.success) {
@@ -599,10 +580,8 @@ export const ArticulationView = ({
   const fetchAlterations = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/alterations", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/alterations`);
+      const data = res.data;
       if (data.success && data.data && data.data.length > 0) {
         const sorted = data.data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         setAlterationRecords(sorted);
@@ -624,15 +603,8 @@ export const ArticulationView = ({
   const handleUpdateAlterationStatus = async (altId, newStatus) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/alterations/${altId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-      const data = await res.json();
+      const res = await api.patch(`/alterations/${altId}`, { status: newStatus });
+      const data = res.data;
       if (data.success) {
         if (onAddNotification) {
           onAddNotification("Status Updated", `Alteration ticket status set to "${newStatus}".`, "success");
@@ -1054,14 +1026,7 @@ export const ArticulationView = ({
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      await fetch("http://localhost:5000/api/inventory-movements", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-      });
+      await api.post(`/inventory-movements`, data);
     } catch (err) {
       console.error("Failed to log movement to backend:", err.message);
     }

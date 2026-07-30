@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useRef } from "react";
 import {
   Plus,
@@ -166,10 +167,8 @@ export const StockManagementView = ({
     setOpeningLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/opening", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/stock-management/opening`);
+      const json = res.data;
       if (json.success) {
         setOpeningList(json.data || []);
         if (json.stats) setOpeningStats(json.stats);
@@ -186,10 +185,8 @@ export const StockManagementView = ({
     setTransfersLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/location-transfers", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/location-transfers`);
+      const json = res.data;
       if (json.success) {
         setTransfers(json.data || []);
       }
@@ -205,10 +202,8 @@ export const StockManagementView = ({
     setSalesLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/sales-deductions", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/stock-management/sales-deductions`);
+      const json = res.data;
       if (json.success) {
         setSalesList(json.data || []);
       }
@@ -224,10 +219,8 @@ export const StockManagementView = ({
     setReturnsLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/returns", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/stock-management/returns`);
+      const json = res.data;
       if (json.success) {
         setReturnsList(json.data || []);
       }
@@ -243,10 +236,8 @@ export const StockManagementView = ({
     setReportLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/stock-management/reports/${reportType}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/stock-management/reports/${reportType}`);
+      const json = res.data;
       if (json.success) {
         setReportData(json.data || []);
       }
@@ -261,10 +252,8 @@ export const StockManagementView = ({
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/suppliers", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/suppliers`);
+      const json = res.data;
       if (json.success) setSuppliers(json.data || []);
     } catch (err) {
       console.error(err);
@@ -291,8 +280,8 @@ export const StockManagementView = ({
     e.preventDefault();
     const isEdit = !!editOpeningProd;
     const url = isEdit
-      ? `http://localhost:5000/api/stock-management/opening/${editOpeningProd._id}`
-      : "http://localhost:5000/api/stock-management/opening";
+      ? `/stock-management/opening/${editOpeningProd._id}`
+      : "/stock-management/opening";
     const method = isEdit ? "PUT" : "POST";
 
     const wh = warehouses.find(w => w.id === opWhId);
@@ -314,7 +303,7 @@ export const StockManagementView = ({
           remarks: opRemarks
         })
       });
-      const json = await res.json();
+      const json = res.data;
       if (json.success) {
         onAddNotification("Success", isEdit ? "Opening stock corrected" : "Opening stock registered", "success");
         setShowOpeningModal(false);
@@ -338,13 +327,7 @@ export const StockManagementView = ({
     const supp = suppliers.find(s => s._id === peSupplierId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/purchase-entry", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/stock-management/purchase-entry`, {
           supplierId: peSupplierId,
           supplierName: supp ? supp.name : peSupplierName,
           poNo: pePoNo,
@@ -360,9 +343,8 @@ export const StockManagementView = ({
           gst: peGst,
           discount: peDiscount,
           batchNo: peBatchNo
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Voucher Logged", "Purchase stock entry received and batch lot spawned.", "success");
         // Reset purchase form
@@ -385,13 +367,7 @@ export const StockManagementView = ({
     const dstW = warehouses.find(w => w.id === tfDestId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/location-transfers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/location-transfers`, {
           sourceLocationId: tfSourceId,
           sourceLocationName: srcW ? srcW.name : tfSourceId,
           destinationLocationId: tfDestId,
@@ -399,9 +375,8 @@ export const StockManagementView = ({
           productId: tfProductId,
           quantity: tfQty,
           remarks: tfRemarks
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Transfer Initiated", `Requested transfer log ${json.data.transferNo}`, "success");
         setShowTransferModal(false);
@@ -418,15 +393,8 @@ export const StockManagementView = ({
   const handleUpdateTransferStatus = async (tfId, statusVal) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/location-transfers/${tfId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: statusVal })
-      });
-      const json = await res.json();
+      const res = await api.put(`/location-transfers/${tfId}/status`, { status: statusVal });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Status Updated", `Transfer marked ${statusVal}`, "success");
         fetchTransfers();
@@ -446,13 +414,7 @@ export const StockManagementView = ({
     const wh = warehouses.find(w => w.id === adjWhId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/adjustments", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/stock-management/adjustments`, {
           productId: adjProductId,
           warehouseId: adjWhId,
           warehouseName: wh ? wh.name : "Main Warehouse",
@@ -461,9 +423,8 @@ export const StockManagementView = ({
           reason: adjReason,
           remarks: adjRemarks,
           approvedBy: adjApprovedBy
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Stock Reconciled", "Adjustment approved and inventory corrected.", "success");
         setAdjDiff(10);
@@ -484,13 +445,7 @@ export const StockManagementView = ({
     const wh = warehouses.find(w => w.id === retWhId);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/stock-management/returns", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/stock-management/returns`, {
           returnType: retType,
           refInvoice: retInvoice,
           partnerName: retPartner,
@@ -499,9 +454,8 @@ export const StockManagementView = ({
           warehouseId: retWhId,
           warehouseName: wh ? wh.name : "Main Warehouse",
           reason: retReason
-        })
-      });
-      const json = await res.json();
+        });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Return Logged", "Inventory returned and movement generated.", "success");
         setShowReturnModal(false);

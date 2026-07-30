@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ShieldCheck,
@@ -89,10 +90,8 @@ export const PermissionsView = ({
     setLoadingPermissions(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/permissions", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/permissions`);
+      const data = res.data;
       if (data.success && data.data) {
         setPermissionMatrix(data.data);
       }
@@ -200,15 +199,8 @@ export const PermissionsView = ({
         tabPermissions: roleConfig.tabPermissions || {}
       };
 
-      const res = await fetch("http://localhost:5000/api/permissions", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(bodyPayload)
-      });
-      const data = await res.json();
+      const res = await api.put(`/permissions`, bodyPayload);
+      const data = res.data;
 
       if (data.success) {
         await fetchPermissions();
@@ -251,15 +243,8 @@ export const PermissionsView = ({
     if (!window.confirm(`Reset access control form to enterprise default for ${selectedRole.toUpperCase()}?`)) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/permissions/reset", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ role: selectedRole })
-      });
-      const data = await res.json();
+      const res = await api.post(`/permissions/reset`, { role: selectedRole });
+      const data = res.data;
       if (data.success) {
         if (onAddNotification) {
           onAddNotification("Permissions Reset", `Restored enterprise defaults for ${selectedRole.toUpperCase()}.`, "info");

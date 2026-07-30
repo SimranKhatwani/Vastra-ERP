@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState } from "react";
 import {
   CheckCircle,
@@ -299,23 +300,16 @@ export const EmployeeView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/employees", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/employees`, {
           name: formName,
           email: formEmail,
           phone: formPhone || "9876543210",
           role: formRole,
           salary: formSalary,
           shift: "Full-Day"
-        }),
-      });
+        });
 
-      const data = await res.json();
+      const data = res.data;
       
       if (data.success) {
         if (setEmployees) {
@@ -348,20 +342,13 @@ export const EmployeeView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/staff/${editingEmp.id}/payroll`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      const res = await api.put(`/staff/${editingEmp.id}/payroll`, {
           salary: formSalary,
           commissionRate: formCommRate,
           monthlyTarget: formTarget,
-        }),
-      });
+        });
 
-      const data = await res.json();
+      const data = res.data;
       
       if (data.success) {
         const updated = {
@@ -402,16 +389,9 @@ export const EmployeeView = ({
       if (edits.salary !== undefined) bodyPayload.salary = edits.salary;
       if (edits.disbursedDate !== undefined) bodyPayload.disbursedDate = edits.disbursedDate;
 
-      const res = await fetch(`http://localhost:5000/api/employees/${empId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(bodyPayload),
-      });
+      const res = await api.put(`/employees/${empId}`, bodyPayload);
 
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         if (setEmployees) {
           setEmployees((prev) =>
@@ -437,28 +417,17 @@ export const EmployeeView = ({
     setPaidStatus((prev) => ({ ...prev, [empId]: newPaid }));
     try {
       const token = localStorage.getItem("token");
-      await fetch(`http://localhost:5000/api/employees/${empId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ salaryCycle: newPaid ? "Paid" : "Pending" }),
-      });
+      await api.put(`/employees/${empId}`, { salaryCycle: newPaid ? "Paid" : "Pending" });
 
       if (newPaid) {
         const targetEmp = employees.find((e) => (e._id || e.id) === empId);
-        await fetch(`http://localhost:5000/api/financial/payments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
+        await api.post(`/financial/payments`, {
             beneficiaryType: "Employee",
             beneficiaryId: empId,
             beneficiaryName: empName,
             category: "Salary",
-            amount: Number(targetEmp?.salary || 25000),
-            paymentMode: "Bank Transfer",
-            status: "Completed",
-            remarks: `HR Payroll Salary Disbursed to ${empName}`,
-          }),
-        });
+            amount: Number(targetEmp?.salary || 25000)
+          });
       }
     } catch { /* best-effort, state already toggled */ }
     if (newPaid) {

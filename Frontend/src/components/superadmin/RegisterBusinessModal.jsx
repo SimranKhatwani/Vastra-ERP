@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Building2, User, Mail, Phone, Lock, CreditCard, FileText, MapPin, IndianRupee } from "lucide-react";
-import axios from "axios";
+import api from '../../api/axios';
+
 
 export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addToastNotification }) {
   const [formData, setFormData] = useState({
@@ -54,7 +55,7 @@ export function RegisterBusinessModal({ isOpen, onClose, onRegisterSuccess, addT
         }
       };
 
-      const regRes = await axios.post("http://localhost:5000/api/superadmin/register-business", payload, config);
+      const regRes = await api.post(`/superadmin/register-business`, payload, config);
       if (regRes.data.success) {
         addToastNotification("Success", "Business Registered Successfully!", "success");
         setRegisteredTenant(regRes.data.data.tenant);

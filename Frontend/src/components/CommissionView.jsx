@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
-import axios from "axios";
+import api from '../api/axios';
+
 import {
   Sparkles,
   Search,
@@ -238,37 +239,37 @@ export const CommissionView = ({
           auditRes,
           staffRes
         ] = await Promise.all([
-          fetch('http://localhost:5000/api/commissions/marketplace', { headers }),
-          fetch('http://localhost:5000/api/commissions/influencers', { headers }),
-          fetch('http://localhost:5000/api/commissions/staff/settings', { headers }),
-          fetch('http://localhost:5000/api/commissions/settlements', { headers }),
-          fetch('http://localhost:5000/api/commissions/audit', { headers }),
-          fetch('http://localhost:5000/api/staff', { headers })
+          api.get(`/commissions/marketplace`),
+          api.get(`/commissions/influencers`),
+          api.get(`/commissions/staff/settings`),
+          api.get(`/commissions/settlements`),
+          api.get(`/commissions/audit`),
+          api.get(`/staff`)
         ]);
 
         if (staffRes.ok) {
-          const sData = await staffRes.json();
+          const sData = staffRes.data;
           setStaffList(sData.data || []);
         }
 
         if (marketplacesRes.ok) {
-          const mData = await marketplacesRes.json();
+          const mData = marketplacesRes.data;
           setMarketplaceOrders(mData.data || []);
         }
         if (influencersRes.ok) {
-          const iData = await influencersRes.json();
+          const iData = influencersRes.data;
           setInfluencers(iData.data || []);
         }
         if (rulesRes.ok) {
-          const sData = await rulesRes.json();
+          const sData = rulesRes.data;
           if (sData.data) setCommissionSettings(sData.data);
         }
         if (settlementsRes.ok) {
-          const sData = await settlementsRes.json();
+          const sData = settlementsRes.data;
           setSettlementHistory(sData.data || []);
         }
         if (auditRes.ok) {
-          const aData = await auditRes.json();
+          const aData = auditRes.data;
           setAuditLogs(aData.data || []);
         }
       } catch (err) {
@@ -284,7 +285,7 @@ export const CommissionView = ({
     const fetchStaffStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://localhost:5000/api/commissions/staff/stats", {
+        const res = await api.get(`/commissions/staff/stats`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.data.success) {
@@ -1419,11 +1420,7 @@ export const CommissionView = ({
                 e.preventDefault();
                 try {
                   const token = localStorage.getItem("token");
-                  const res = await fetch('http://localhost:5000/api/commissions/staff/settings', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify(commissionSettings)
-                  });
+                  const res = await api.put(`/commissions/staff/settings`, commissionSettings);
                   if (res.ok) {
                     onAddNotification("Settings Saved", "Commission rules updated successfully.", "success");
                   }

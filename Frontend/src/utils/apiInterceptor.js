@@ -7,7 +7,7 @@ export const setupFetchInterceptor = (logoutCallback) => {
     let [resource, config] = args;
     
     // Ensure credentials are included for API calls to backend
-    if (typeof resource === 'string' && resource.includes('localhost:5000/api')) {
+    if (typeof resource === 'string' && resource.includes(import.meta.env.VITE_API_URL)) {
       config = config || {};
       config.credentials = 'include';
     }

@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from "react";
 import { Building, Database, Save, RefreshCw, Lock, Smartphone, Eye, EyeOff, CheckCircle, XCircle, Loader } from "lucide-react";
 
@@ -89,10 +90,8 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
     setWaFetchStatus(null);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/whatsapp-config", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const res = await api.get(`/whatsapp-config`);
+      const data = res.data;
       if (data.success && data.data) {
         setWaConfig({
           phoneNumberId: data.data.phoneNumberId || "",
@@ -119,15 +118,8 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
     setWaSaving(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/whatsapp-config", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(waConfig),
-      });
-      const data = await res.json();
+      const res = await api.post(`/whatsapp-config`, waConfig);
+      const data = res.data;
       if (data.success) {
         if (data.data) {
           setWaConfig((prev) => ({
@@ -155,10 +147,8 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
     setCommLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/commissions/staff/settings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const res = await api.get(`/commissions/staff/settings`);
+      const data = res.data;
       if (data.success && data.data) {
         setCommSettings(data.data);
       }
@@ -175,15 +165,8 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
     setCommSaving(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/commissions/staff/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(commSettings),
-      });
-      const data = await res.json();
+      const res = await api.put(`/commissions/staff/settings`, commSettings);
+      const data = res.data;
       if (data.success) {
         onAddNotification("Commission config saved successfully!", "success");
       } else {

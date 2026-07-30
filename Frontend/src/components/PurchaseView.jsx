@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useCallback, useMemo } from "react";
 import {
   Building2, Package, FileText, RotateCcw, Clock, BarChart3, Wallet,
@@ -11,7 +12,7 @@ import {
 import { PTImporter, InvoiceViewer } from "./PTImporter";
 import { ManualPurchaseEntry } from "./ManualPurchaseEntry";
 
-const API = "http://localhost:5000/api/purchase";
+const API = "/purchase";
 const getToken = () => localStorage.getItem("token");
 const authHeaders = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` });
 
@@ -105,12 +106,12 @@ const VendorManagement = ({ vendors, setVendors, onAddNotification }) => {
     setViewVendor(v);
     try {
       const r = await fetch(`${API}/vendors/${v._id}/ledger`, { headers: authHeaders() });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) setLedger(d.data);
     } catch { setLedger([]); }
     try {
       const r2 = await fetch(`${API}/vendors/${v._id}/history`, { headers: authHeaders() });
-      const d2 = await r2.json();
+      const d2 = r2.data;
       if (d2.success) setHistory(d2);
     } catch { setHistory(null); }
   };
@@ -122,7 +123,7 @@ const VendorManagement = ({ vendors, setVendors, onAddNotification }) => {
       const url = editVendor ? `${API}/vendors/${editVendor._id}` : `${API}/vendors`;
       const method = editVendor ? "PUT" : "POST";
       const r = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(form) });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) {
         if (editVendor) {
           setVendors(prev => prev.map(v => v._id === editVendor._id ? { ...d.data, id: d.data._id } : v));
@@ -143,7 +144,7 @@ const VendorManagement = ({ vendors, setVendors, onAddNotification }) => {
     if (!window.confirm(`Delete vendor "${v.name}"? This cannot be undone.`)) return;
     try {
       const r = await fetch(`${API}/vendors/${v._id}`, { method: "DELETE", headers: authHeaders() });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) { setVendors(prev => prev.filter(x => x._id !== v._id)); onAddNotification("Vendor Deleted", `${v.name} removed.`, "success"); }
       else onAddNotification("Error", d.message, "danger");
     } catch (err) { onAddNotification("Error", err.message, "danger"); }
@@ -367,7 +368,7 @@ const GRNEntry = ({ grns, setGrns, vendors, products, onAddNotification }) => {
     try {
       const payload = { ...form, items: validItems };
       const r = await fetch(`${API}/grn`, { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) {
         setGrns(prev => [{ ...d.data, id: d.data._id }, ...prev]);
         onAddNotification("GRN Created", `Goods Receipt Note ${d.data.grnNo} saved. Stock updated.`, "success");
@@ -539,7 +540,7 @@ const PurchaseInvoiceManager = ({ purchaseInvoices, setPurchaseInvoices, vendors
     try {
       const payload = { ...form, subTotal: sub, grandTotal: grand, items: invItems };
       const r = await fetch(`${API}/invoice`, { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) {
         setPurchaseInvoices(prev => [{ ...d.data, id: d.data._id }, ...prev]);
         onAddNotification("Invoice Created", `Purchase Invoice ${d.data.invoiceNo} saved. Vendor outstanding updated.`, "success");
@@ -757,7 +758,7 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
     setIsLoading(true);
     try {
       const r = await fetch(`${API}/return`, { method: "POST", headers: authHeaders(), body: JSON.stringify(form) });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) {
         setPurchaseReturns(prev => [{ ...d.data, id: d.data._id }, ...prev]);
         onAddNotification("Return Created", `Purchase Return ${d.data.returnNo} dispatched. Inventory updated.`, "success");
@@ -963,7 +964,7 @@ const PendingTracking = ({ pendingPurchases, setPendingPurchases, onAddNotificat
     setIsRefreshing(true);
     try {
       const r = await fetch(`${API}/pending-tracking`, { headers: authHeaders() });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) setPendingPurchases(d.data);
     } catch { }
     setIsRefreshing(false);
@@ -1050,7 +1051,7 @@ const PurchaseReportsTab = ({ purchaseReports, setPurchaseReports, onAddNotifica
     setIsLoading(true);
     try {
       const r = await fetch(`${API}/reports?startDate=${startDate}&endDate=${endDate}`, { headers: authHeaders() });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) { setPurchaseReports(d); onAddNotification("Reports Loaded", "Purchase reports generated successfully.", "success"); }
     } catch (err) { onAddNotification("Error", err.message, "danger"); }
     setIsLoading(false);
@@ -1192,11 +1193,11 @@ const VendorOutstandingReports = ({ vendorOutstanding, setVendorOutstanding, onA
     setIsLoading(true);
     try {
       const r = await fetch(`${API}/payment`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ invoiceId: payModal.purchaseInvoiceId, amount: payForm.amount, paymentMode: payForm.paymentMode, referenceNo: payForm.referenceNo, remarks: payForm.remarks }) });
-      const d = await r.json();
+      const d = r.data;
       if (d.success) {
         // Refresh outstanding list
         const r2 = await fetch(`${API}/outstanding`, { headers: authHeaders() });
-        const d2 = await r2.json();
+        const d2 = r2.data;
         if (d2.success) setVendorOutstanding(d2.data.map(o => ({...o, id: o._id})));
         onAddNotification("Payment Recorded", `₹${fmt(payForm.amount)} paid against ${payModal.invoiceNo}.`, "success");
         setPayModal(null);

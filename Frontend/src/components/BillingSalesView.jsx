@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
@@ -113,10 +114,8 @@ export const BillingSalesView = ({
     setHistoryLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/billing-sales/reports", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/billing-sales/reports`);
+      const json = res.data;
       if (json.success) {
         setInvoicesList(json.data);
         // Automatically populate outstanding list
@@ -139,10 +138,8 @@ export const BillingSalesView = ({
   const fetchTaxConfig = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/products/tax-config", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/products/tax-config`);
+      const json = res.data;
       if (json.success && json.data) {
         setCgstRate(json.data.cgstRate || 5);
         setSgstRate(json.data.sgstRate || 5);
@@ -156,10 +153,8 @@ export const BillingSalesView = ({
   const fetchActiveRules = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/discounts/rules", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/discounts/rules`);
+      const json = res.data;
       if (json.success) {
         setDiscountRules(json.data.filter(r => r.status === "Active"));
       }
@@ -397,16 +392,10 @@ export const BillingSalesView = ({
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/discounts/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          approvalId: new mongoose.Types.ObjectId().toString(),
-          supervisorUsername: overrideUsername,
-          supervisorPassword: overridePassword
-        })
+      const res = await api.post(`/discounts/approve`, {
+          approvalId: new mongoose.Types.ObjectId()
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         setIsOverrideApproved(true);
         setShowCreditOverrideModal(false);
@@ -466,15 +455,8 @@ export const BillingSalesView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/billing-sales/invoice", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(invoicePayload)
-      });
-      const json = await res.json();
+      const res = await api.post(`/billing-sales/invoice`, invoicePayload);
+      const json = res.data;
       if (json.success) {
         onAddNotification("Invoice Generated", `Document number ${json.invoice.invoiceNo} persists in MongoDB.`, "success");
         handleResetInvoice();
@@ -493,21 +475,11 @@ export const BillingSalesView = ({
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/billing-sales/collect-payment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const res = await api.post(`/billing-sales/collect-payment`, {
           invoiceId: collectionInvoice._id,
-          amount: Number(collectAmount),
-          paymentMode: collectMode,
-          remarks: collectRemarks,
-          transactionRef: collectRef
-        })
+          amount: Number(collectAmount)
       });
-      const json = await res.json();
+      const json = res.data;
       if (json.success) {
         onAddNotification("Payment Logged", `Received ₹${collectAmount} for invoice ${collectionInvoice.invoiceNo}`, "success");
         setShowCollectionModal(false);
@@ -525,15 +497,8 @@ export const BillingSalesView = ({
   const handleSendReminder = async (invoiceId, mode) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/billing-sales/send-reminder", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ invoiceId, mode })
-      });
-      const json = await res.json();
+      const res = await api.post(`/billing-sales/send-reminder`, { invoiceId, mode });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Reminder Dispatched", `Manual ${mode} reminder logged on ledger.`, "success");
         fetchInvoicesHistory();

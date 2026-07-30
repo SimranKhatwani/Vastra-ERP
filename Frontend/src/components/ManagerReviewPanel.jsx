@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, UserCheck, AlertTriangle, Clock, CheckCircle, XCircle } from 'lucide-react';
 
@@ -12,11 +13,9 @@ export default function ManagerReviewPanel({ token, onAddNotification }) {
   const fetchPendingRecords = async () => {
     try {
       // Just fetch all for current month for now, and filter on frontend for simplicity
-      const res = await fetch(`http://localhost:5000/api/attendance/records`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get(`/attendance/records`);
       if (res.ok) {
-        const data = await res.json();
+        const data = res.data;
         // Filter those needing review (Expected Half Day) or those with Red Flags
         const pending = data.filter(r => r.managerReviewPending || r.redFlag);
         setRecords(pending);
@@ -30,16 +29,12 @@ export default function ManagerReviewPanel({ token, onAddNotification }) {
 
   const handleAction = async (recordId, decision) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/review`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ recordId, decision, remarks: `Manager decision: ${decision}` })
-      });
+      const res = await api.put(`/attendance/review`, { recordId, decision, remarks: `Manager decision: ${decision}` });
       if (res.ok) {
         onAddNotification("Success", `Decision applied: ${decision}`, "success");
         setRecords(prev => prev.filter(r => r._id !== recordId)); // Remove from list
       } else {
-        const data = await res.json();
+        const data = res.data;
         onAddNotification("Error", data.message, "danger");
       }
     } catch (err) {

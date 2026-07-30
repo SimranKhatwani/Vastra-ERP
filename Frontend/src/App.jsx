@@ -1,3 +1,4 @@
+import api from './api/axios';
 import React, { useState } from "react";
 import {
   LayoutDashboard,
@@ -211,15 +212,15 @@ export default function App() {
           const token = localStorage.getItem("token");
           if (!token) return;
           const [resProducts, resCustomers, resInvoices, resSuppliers, resPurchaseOrders, resEmployees, resExpenses, resTickets, resNotifications] = await Promise.all([
-            fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/customers", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/invoices", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/purchase-orders", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/employees", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/expenses", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/tickets", { headers: { Authorization: `Bearer ${token}` } }),
-            fetch("http://localhost:5000/api/notifications", { headers: { Authorization: `Bearer ${token}` } })
+            api.get(`/products`),
+            api.get(`/customers`),
+            api.get(`/invoices`),
+            api.get(`/suppliers`),
+            api.get(`/purchase-orders`),
+            api.get(`/employees`),
+            api.get(`/expenses`),
+            api.get(`/tickets`),
+            api.get(`/notifications`)
           ]);
           
           if (resProducts.status === 401 || resCustomers.status === 401 || resInvoices.status === 401) {
@@ -227,15 +228,15 @@ export default function App() {
             return;
           }
 
-          const dataProducts = await resProducts.json();
-          const dataCustomers = await resCustomers.json();
-          const dataInvoices = await resInvoices.json();
-          const dataSuppliers = await resSuppliers.json();
-          const dataPurchaseOrders = await resPurchaseOrders.json();
-          const dataEmployees = await resEmployees.json();
-          const dataExpenses = await resExpenses.json();
-          const dataTickets = await resTickets.json();
-          const dataNotifications = await resNotifications.json();
+          const dataProducts = resProducts.data;
+          const dataCustomers = resCustomers.data;
+          const dataInvoices = resInvoices.data;
+          const dataSuppliers = resSuppliers.data;
+          const dataPurchaseOrders = resPurchaseOrders.data;
+          const dataEmployees = resEmployees.data;
+          const dataExpenses = resExpenses.data;
+          const dataTickets = resTickets.data;
+          const dataNotifications = resNotifications.data;
 
           if (dataProducts.success) {
             const arr = dataProducts.data.map(p => ({...p, id: p._id}));
@@ -297,16 +298,16 @@ export default function App() {
           // Fetch purchase management data (non-blocking, best-effort)
           try {
             const [resVendors, resGRNs, resInvoicesP, resReturns, resPending, resOutstanding] = await Promise.all([
-              fetch("http://localhost:5000/api/purchase/vendors", { headers: { Authorization: `Bearer ${token}` } }),
-              fetch("http://localhost:5000/api/purchase/grn", { headers: { Authorization: `Bearer ${token}` } }),
-              fetch("http://localhost:5000/api/purchase/invoice", { headers: { Authorization: `Bearer ${token}` } }),
-              fetch("http://localhost:5000/api/purchase/return", { headers: { Authorization: `Bearer ${token}` } }),
-              fetch("http://localhost:5000/api/purchase/pending-tracking", { headers: { Authorization: `Bearer ${token}` } }),
-              fetch("http://localhost:5000/api/purchase/outstanding", { headers: { Authorization: `Bearer ${token}` } }),
+              api.get(`/purchase/vendors`),
+              api.get(`/purchase/grn`),
+              api.get(`/purchase/invoice`),
+              api.get(`/purchase/return`),
+              api.get(`/purchase/pending-tracking`),
+              api.get(`/purchase/outstanding`),
             ]);
             const [dV, dG, dI, dR, dP, dO] = await Promise.all([
-              resVendors.json(), resGRNs.json(), resInvoicesP.json(),
-              resReturns.json(), resPending.json(), resOutstanding.json()
+              resVendors.data, resGRNs.data, resInvoicesP.data,
+              resReturns.data, resPending.data, resOutstanding.data
             ]);
             if (dV.success) setVendors(dV.data.map(v => ({...v, id: v._id})));
             if (dG.success) setGrns(dG.data.map(g => ({...g, id: g._id})));
@@ -368,11 +369,9 @@ export default function App() {
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
-        const res = await fetch("http://localhost:5000/api/permissions", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get(`/permissions`);
         if (!res.ok) return;
-        const data = await res.json();
+        const data = res.data;
         if (data.success && data.data) {
           setPermissionMatrix(data.data);
         }
@@ -634,12 +633,8 @@ export default function App() {
   const handleAddProduct = async (prod) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(prod)
-      });
-      const data = await res.json();
+      const res = await api.post(`/products`, prod);
+      const data = res.data;
       if (data.success) {
         setProducts((prev) => [{...data.data, id: data.data._id}, ...prev]);
       } else {
@@ -653,12 +648,8 @@ export default function App() {
   const handleUpdateProduct = async (updated) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/products/${updated.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated)
-      });
-      const data = await res.json();
+      const res = await api.put(`/products/${updated.id}`, updated);
+      const data = res.data;
       if (data.success) {
         setProducts((prev) => prev.map((p) => (p.id === updated.id ? {...data.data, id: data.data._id} : p)));
       } else {
@@ -673,10 +664,7 @@ export default function App() {
     try {
       const token = localStorage.getItem("token");
       for (const id of ids) {
-        await fetch(`http://localhost:5000/api/products/${id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await api.delete(`/products/${id}`);
       }
       setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
     } catch (error) {
@@ -687,12 +675,8 @@ export default function App() {
   const handleAdjustStock = async (productId, amount, activity = "ADJUSTMENT", referenceType = "Stock Adjustment", referenceNumber = "", remarks = "") => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/products/${productId}/adjust-stock`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount, activity, referenceType, referenceNumber, remarks })
-      });
-      const data = await res.json();
+      const res = await api.put(`/products/${productId}/adjust-stock`, { amount, activity, referenceType, referenceNumber, remarks });
+      const data = res.data;
       if (data.success) {
         setProducts((prev) =>
           prev.map((p) => (p.id === productId ? {...data.data, id: data.data._id} : p)),
@@ -750,12 +734,8 @@ export default function App() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Offline Mode");
 
-      const res = await fetch("http://localhost:5000/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(inv)
-      });
-      const data = await res.json();
+      const res = await api.post(`/invoices`, inv);
+      const data = res.data;
       
       if (data.success) {
         performLocalStateUpdates({...data.data, id: data.data._id});
@@ -777,18 +757,13 @@ export default function App() {
   const handleRetryWhatsApp = async (invoiceId) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/invoices/${invoiceId}/send-whatsapp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const res = await api.post(`/invoices/${invoiceId}/send-whatsapp`);
+      const data = res.data;
       if (data.success) {
         addToastNotification("WhatsApp", "Invoice dispatched to WhatsApp successfully.", "success");
         // Refresh invoices list so status updates reflect in history
-        const resInvoices = await fetch("http://localhost:5000/api/invoices", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const dataInvoices = await resInvoices.json();
+        const resInvoices = await api.get(`/invoices`);
+        const dataInvoices = resInvoices.data;
         if (dataInvoices.success) {
           setInvoices(dataInvoices.data.map((i) => ({ ...i, id: i._id })));
         }
@@ -807,24 +782,20 @@ export default function App() {
   const handleAddPurchaseOrder = async (po) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/purchase-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(po)
-      });
-      const data = await res.json();
+      const res = await api.post(`/purchase-orders`, po);
+      const data = res.data;
       
       if (data.success) {
         setPurchaseOrders((prev) => [{...data.data, id: data.data._id}, ...prev]);
         
         // Backend handles stock addition and supplier balance updates, so refetch
         const [resProducts, resSuppliers] = await Promise.all([
-          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+          api.get(`/products`),
+          api.get(`/suppliers`)
         ]);
         
-        const dataProducts = await resProducts.json();
-        const dataSuppliers = await resSuppliers.json();
+        const dataProducts = resProducts.data;
+        const dataSuppliers = resSuppliers.data;
         
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
@@ -844,23 +815,19 @@ export default function App() {
   const handleUpdatePurchaseOrder = async (id, po) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/purchase-orders/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(po)
-      });
-      const data = await res.json();
+      const res = await api.put(`/purchase-orders/${id}`, po);
+      const data = res.data;
       
       if (data.success) {
         setPurchaseOrders((prev) => prev.map(p => p.id === id ? {...data.data, id: data.data._id} : p));
         
         const [resProducts, resSuppliers] = await Promise.all([
-          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+          api.get(`/products`),
+          api.get(`/suppliers`)
         ]);
         
-        const dataProducts = await resProducts.json();
-        const dataSuppliers = await resSuppliers.json();
+        const dataProducts = resProducts.data;
+        const dataSuppliers = resSuppliers.data;
         
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
@@ -880,22 +847,19 @@ export default function App() {
   const handleDeletePurchaseOrder = async (id) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/purchase-orders/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const res = await api.delete(`/purchase-orders/${id}`);
+      const data = res.data;
       
       if (data.success) {
         setPurchaseOrders((prev) => prev.filter(p => p.id !== id));
         
         const [resProducts, resSuppliers] = await Promise.all([
-          fetch("http://localhost:5000/api/products", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/suppliers", { headers: { Authorization: `Bearer ${token}` } })
+          api.get(`/products`),
+          api.get(`/suppliers`)
         ]);
         
-        const dataProducts = await resProducts.json();
-        const dataSuppliers = await resSuppliers.json();
+        const dataProducts = resProducts.data;
+        const dataSuppliers = resSuppliers.data;
         
         if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
         if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
@@ -915,12 +879,8 @@ export default function App() {
   const handleSettleSupplierBalance = async (supplierId, amount) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/suppliers/${supplierId}/settle`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount })
-      });
-      const data = await res.json();
+      const res = await api.put(`/suppliers/${supplierId}/settle`, { amount });
+      const data = res.data;
       
       if (data.success) {
         setSuppliers((prev) => prev.map((s) => (s.id === supplierId ? {...data.data, id: data.data._id} : s)));
@@ -936,12 +896,8 @@ export default function App() {
   const handleSettleCustomerBalance = async (customerId, amount) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/customers/${customerId}/settle`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount })
-      });
-      const data = await res.json();
+      const res = await api.put(`/customers/${customerId}/settle`, { amount });
+      const data = res.data;
       if (data.success) {
         setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
         addToastNotification("Success", "Customer balance settled", "success");
@@ -956,12 +912,8 @@ export default function App() {
   const handleDisburseCommission = async (employeeId, amount) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/employees/${employeeId}/disburse`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount })
-      });
-      const data = await res.json();
+      const res = await api.put(`/employees/${employeeId}/disburse`, { amount });
+      const data = res.data;
       
       if (data.success) {
         setEmployees((prev) => prev.map((e) => (e.id === employeeId ? {...data.data, id: data.data._id} : e)));
@@ -977,12 +929,8 @@ export default function App() {
   const handleAddExpense = async (exp) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(exp)
-      });
-      const data = await res.json();
+      const res = await api.post(`/expenses`, exp);
+      const data = res.data;
       if (data.success) {
         setExpenses((prev) => [{...data.data, id: data.data._id}, ...prev]);
         addToastNotification("Success", "Expense logged successfully", "success");
@@ -997,11 +945,8 @@ export default function App() {
   const handleResolveTicket = async (ticketId) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/tickets/${ticketId}/resolve`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const res = await api.put(`/tickets/${ticketId}/resolve`);
+      const data = res.data;
       if (data.success) {
         setSupportTickets((prev) =>
           prev.map((t) => (t.id === ticketId ? { ...data.data, id: data.data._id } : t)),
@@ -1023,10 +968,7 @@ export default function App() {
       
       // In a real app we'd have a bulk endpoint, but for now we map over them
       await Promise.all(unread.map(n => 
-        fetch(`http://localhost:5000/api/notifications/${n.id}/read`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-        })
+        api.put(`/notifications/${n.id}/read`)
       ));
 
       setNotifications((prev) =>
@@ -1045,10 +987,7 @@ export default function App() {
 
     try {
       const token = localStorage.getItem("token");
-      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-      });
+      await api.put(`/notifications/${id}/read`);
     } catch (error) {
       console.error(error);
     }
@@ -1060,12 +999,8 @@ export default function App() {
       const customer = customers.find(c => c.id === customerId);
       if (!customer) return;
       const newBalance = Math.max(0, customer.outstandingBalance + amount);
-      const res = await fetch(`http://localhost:5000/api/customers/${customerId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ outstandingBalance: newBalance })
-      });
-      const data = await res.json();
+      const res = await api.put(`/customers/${customerId}`, { outstandingBalance: newBalance });
+      const data = res.data;
       if (data.success) {
         setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
       } else {
@@ -1079,12 +1014,8 @@ export default function App() {
   const handleAddCustomer = async (newCust) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/customers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newCust)
-      });
-      const data = await res.json();
+      const res = await api.post(`/customers`, newCust);
+      const data = res.data;
       if (data.success) {
         setCustomers((prev) => [{...data.data, id: data.data._id}, ...prev]);
       } else {

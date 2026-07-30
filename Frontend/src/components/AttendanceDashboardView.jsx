@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import { Fingerprint, Clock, Calendar, CheckCircle, AlertTriangle, XCircle, ChevronRight, Activity, DollarSign, Award, Target, UserCheck, ShieldAlert } from 'lucide-react';
 
@@ -31,11 +32,9 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/dashboard-stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get(`/attendance/dashboard-stats`);
       if (res.ok) {
-        const data = await res.json();
+        const data = res.data;
         setStats(data);
       } else {
         setStats({
@@ -60,11 +59,9 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
 
   const fetchMyPunchStatus = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/status?employeeId=${activeEmployeeId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get(`/attendance/status?employeeId=${activeEmployeeId}`);
       if (res.ok) {
-        const data = await res.json();
+        const data = res.data;
         setMyPunch(data);
       } else {
         setMyPunch({ status: 'Not Punched In' });
@@ -78,17 +75,13 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
   const handlePunchIn = async () => {
     if (!activeEmployeeId) return onAddNotification("Error", "Select an employee first", "danger");
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/punch-in`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
+      const res = await api.post(`/attendance/punch-in`, {
           employeeId: activeEmployeeId,
           location: 'HQ Branch',
           device: 'Web Terminal',
           ip: '192.168.1.1'
-        })
-      });
-      const data = await res.json();
+        });
+      const data = res.data;
       if (res.ok) {
         onAddNotification("Success", "Punched In Successfully!", "success");
         fetchMyPunchStatus();
@@ -104,16 +97,12 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
   const handlePunchOut = async () => {
     if (!activeEmployeeId) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/punch-out`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
+      const res = await api.post(`/attendance/punch-out`, {
           employeeId: activeEmployeeId,
           location: 'HQ Branch',
           device: 'Web Terminal'
-        })
-      });
-      const data = await res.json();
+        });
+      const data = res.data;
       if (res.ok) {
         onAddNotification("Success", `Punched Out! Status: ${data.attendanceStatus}`, "success");
         fetchMyPunchStatus();

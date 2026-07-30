@@ -21,7 +21,7 @@ import {
   XCircle,
   Clock
 } from "lucide-react";
-import axios from "axios";
+import api from '../../api/axios';
 
 function KpiCard({ label, value, sub, icon: Icon, color = "indigo", trend, loading }) {
   const colors = {
@@ -91,7 +91,7 @@ export function SuperAdminDashboard({ tenants: propTenants = [] }) {
     setRefreshing(true);
     try {
       const token = localStorage.getItem("token");
-      const { data } = await axios.get("http://localhost:5000/api/superadmin/dashboard-stats", {
+      const { data } = await api.get(`/superadmin/dashboard-stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data.success) {

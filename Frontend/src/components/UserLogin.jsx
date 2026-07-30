@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React from "react";
 
 export function UserLogin({ onLogin, addToastNotification, switchableEmployees, getUserInitials }) {
@@ -34,13 +35,9 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
             const businessId = e.target.businessId.value.trim();
 
             try {
-              const res = await fetch('http://localhost:5000/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ businessId, email, password })
-              });
+              const res = await api.post(`/auth/login`, { businessId, email, password });
               
-              const data = await res.json();
+              const data = res.data;
               
               if (data.success) {
                 onLogin({

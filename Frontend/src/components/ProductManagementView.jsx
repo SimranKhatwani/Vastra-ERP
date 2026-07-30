@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState } from "react";
 import {
   Search,
@@ -33,10 +34,8 @@ export const ProductManagementView = ({
     setTaxLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/products/tax-config", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/products/tax-config`);
+      const json = res.data;
       if (json.success && json.data) {
         setCgstPercent(json.data.cgstRate);
         setSgstPercent(json.data.sgstRate);
@@ -52,15 +51,8 @@ export const ProductManagementView = ({
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/products/tax-config", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ cgstRate: cgstPercent, sgstRate: sgstPercent })
-      });
-      const json = await res.json();
+      const res = await api.put(`/products/tax-config`, { cgstRate: cgstPercent, sgstRate: sgstPercent });
+      const json = res.data;
       if (json.success) {
         onAddNotification("Config Saved", "GST & SGST settings updated successfully.", "success");
       } else {

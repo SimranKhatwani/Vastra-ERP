@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Activity,
@@ -57,10 +58,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
       if (actStartDate) queryParams.append("startDate", actStartDate);
       if (actEndDate) queryParams.append("endDate", actEndDate);
 
-      const res = await fetch(`http://localhost:5000/api/staff-activity/activity-logs?${queryParams.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/staff-activity/activity-logs?${queryParams.toString()}`);
+      const data = res.data;
       if (data.success && data.data) {
         setActivityLogs(data.data);
       }
@@ -81,10 +80,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
       if (logRole !== "All") queryParams.append("role", logRole);
       if (logStatus !== "All") queryParams.append("status", logStatus);
 
-      const res = await fetch(`http://localhost:5000/api/staff-activity/login-history?${queryParams.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
+      const res = await api.get(`/staff-activity/login-history?${queryParams.toString()}`);
+      const data = res.data;
       if (data.success && data.data) {
         setLoginHistory(data.data);
       }
@@ -108,11 +105,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
     if (!window.confirm(`Are you sure you want to force logout ${employeeName}?`)) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/staff-activity/force-logout/${employeeId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const res = await api.post(`/staff-activity/force-logout/${employeeId}`);
+      const data = res.data;
       if (data.success) {
         addToastNotification("Session Terminated", `Force logged out ${employeeName}`, "warning");
         fetchLoginHistory();
@@ -128,11 +122,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
   const handleToggleLock = async (employeeId, employeeName) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/staff-activity/toggle-lock/${employeeId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const res = await api.post(`/staff-activity/toggle-lock/${employeeId}`);
+      const data = res.data;
       if (data.success) {
         addToastNotification("Account Status Updated", data.message, "success");
         fetchLoginHistory();

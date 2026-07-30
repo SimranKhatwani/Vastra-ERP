@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, ShieldBan, CheckCircle, User, Phone, Mail, MapPin } from "lucide-react";
-import axios from "axios";
+import api from '../api/axios';
 import { generateDemoEmployees } from "../data/demoData";
 
 export function StaffManagementView() {
@@ -24,7 +24,7 @@ export function StaffManagementView() {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Offline Mode");
-      const { data } = await axios.get("http://localhost:5000/api/staff", {
+      const { data } = await api.get(`/staff`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data.success) {
@@ -48,7 +48,7 @@ export function StaffManagementView() {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const { data } = await axios.post("http://localhost:5000/api/staff", formData, {
+      const { data } = await api.post(`/staff`, formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data.success) {
@@ -77,7 +77,7 @@ export function StaffManagementView() {
     if (confirm("Are you sure you want to remove this staff member?")) {
       try {
         const token = localStorage.getItem("token");
-        await axios.delete(`http://localhost:5000/api/staff/${id}`, {
+        await api.delete(`/staff/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setStaff(staff.filter(s => s._id !== id));

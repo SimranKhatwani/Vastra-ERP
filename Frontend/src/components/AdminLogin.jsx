@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -29,13 +30,9 @@ export function AdminLogin({ onLogin, addToastNotification }) {
             const secretKey = e.target.secretKey.value;
             
             try {
-              const res = await fetch('http://localhost:5000/api/superadmin/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, secretKey })
-              });
+              const res = await api.post(`/superadmin/login`, { email, secretKey });
               
-              const data = await res.json();
+              const data = res.data;
               
               if (data.success) {
                 const superAdminUser = {

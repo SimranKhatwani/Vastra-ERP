@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import SessionWarningModal from '../components/SessionWarningModal';
 
@@ -37,12 +38,7 @@ export const SessionProvider = ({ children }) => {
     clearTimeout(warningRef.current);
 
     try {
-      await fetch('http://localhost:5000/api/auth/logout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
-        credentials: 'include',
-      });
+      await api.post(`/auth/logout`, { reason });
     } catch (e) {
       console.error('Logout API failed:', e);
     }

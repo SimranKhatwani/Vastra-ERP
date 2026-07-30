@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from '../api/axios';
 import { Search, Filter, DollarSign, Users, CheckCircle, Percent, X, Calendar, FileText, Package } from "lucide-react";
 
 export const StaffCommissionPanel = ({ role, onAddNotification }) => {
@@ -11,7 +11,7 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
   const fetchCommissions = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://localhost:5000/api/commissions/staff/history", {
+      const res = await api.get(`/commissions/staff/history`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {
@@ -28,7 +28,7 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
   const handleViewInvoice = async (invoiceId) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`http://localhost:5000/api/invoices/${invoiceId}`, {
+      const res = await api.get(`/invoices/${invoiceId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {
@@ -132,7 +132,7 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-      const data = await response.json();
+      const data = response.data;
       if (data.success) {
         onAddNotification("Commissions marked as paid", "success");
         fetchCommissions();

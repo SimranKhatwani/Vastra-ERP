@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   BarChart3,
@@ -47,7 +48,7 @@ import {
   Legend,
 } from "recharts";
 
-const API = "http://localhost:5000/api";
+const API = "";
 
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",
@@ -74,7 +75,7 @@ export const ReportsView = ({ onAddNotification }) => {
     setLoading(true);
     try {
       const res = await fetch(`${API}/analytics/dashboard`, { headers: getAuthHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         setDashboardData(data);
       }
@@ -94,7 +95,7 @@ export const ReportsView = ({ onAddNotification }) => {
         endpoint += `&startDate=${dateRange.start}&endDate=${dateRange.end}`;
       }
       const res = await fetch(endpoint, { headers: getAuthHeaders() });
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         setReportData(data);
       }

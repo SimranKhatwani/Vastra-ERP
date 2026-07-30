@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import {
   Building2, Phone, Mail, MessageSquare, FileText, Calendar, DollarSign,
@@ -760,10 +761,8 @@ export default function VendorCommunicationCard({ currentUser }) {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/vendor-communication/list', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const res = await api.get(`/vendor-communication/list`);
+      const data = res.data;
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         setVendorList(data.data);
         setSelectedVendorId(prev => prev || data.data[0]._id);
@@ -787,11 +786,9 @@ export default function VendorCommunicationCard({ currentUser }) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/vendor-communication/${vId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get(`/vendor-communication/${vId}`);
       if (res.ok) {
-        const data = await res.json();
+        const data = res.data;
         if (data.success && data.data) {
           setHubData({
             ...data.data,
@@ -1017,18 +1014,14 @@ export default function VendorCommunicationCard({ currentUser }) {
     // Log activity to MongoDB
     try {
       const token = localStorage.getItem('token');
-      await fetch(`http://localhost:5000/api/vendor-communication/${selectedVendorId}/log-activity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
+      await api.post(`/vendor-communication/${selectedVendorId}/log-activity`, {
           activityType,
           channel,
           remarks,
           documentNumber: docNumber,
           employeeName: currentUser?.name || 'Admin',
           status: 'Completed'
-        })
-      });
+        });
     } catch (e) { }
 
     // Update local Timeline
@@ -1113,15 +1106,8 @@ export default function VendorCommunicationCard({ currentUser }) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/vendor-communication', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const res = await api.post(`/vendor-communication`, payload);
+      const data = res.data;
       if (data.success && data.data) {
         showToast(`✅ Vendor "${data.data.name}" created successfully!`);
         setShowAddVendorModal(false);

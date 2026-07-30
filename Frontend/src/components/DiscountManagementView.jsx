@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import { Percent, Tag, Plus, Check, Trash2, ShieldAlert, Award, FileText, BarChart3, Clock, Play, Copy, Archive, Power, Calendar, Edit3 } from 'lucide-react';
 
@@ -44,10 +45,8 @@ const DiscountManagementView = ({ onAddNotification }) => {
     setRulesLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/discounts/rules', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.get(`/discounts/rules`);
+      const json = res.data;
       if (json.success) {
         setRules(json.data);
       }
@@ -95,8 +94,8 @@ const DiscountManagementView = ({ onAddNotification }) => {
       };
 
       const url = editingRuleId
-        ? `http://localhost:5000/api/discounts/rules/${editingRuleId}`
-        : 'http://localhost:5000/api/discounts/rules';
+        ? `/discounts/rules/${editingRuleId}`
+        : '/discounts/rules';
 
       const method = editingRuleId ? 'PUT' : 'POST';
 
@@ -108,7 +107,7 @@ const DiscountManagementView = ({ onAddNotification }) => {
         },
         body: JSON.stringify(payload)
       });
-      const json = await res.json();
+      const json = res.data;
       if (json.success) {
         if (onAddNotification) {
           onAddNotification(
@@ -184,15 +183,8 @@ const DiscountManagementView = ({ onAddNotification }) => {
     const nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/toggle`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: nextStatus })
-      });
-      const json = await res.json();
+      const res = await api.put(`/discounts/rules/${id}/toggle`, { status: nextStatus });
+      const json = res.data;
       if (json.success) {
         if (onAddNotification) {
           onAddNotification('Status Updated', `Offer status changed to ${nextStatus}.`, 'info');
@@ -208,11 +200,8 @@ const DiscountManagementView = ({ onAddNotification }) => {
   const handleDuplicate = async (id) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/duplicate`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.post(`/discounts/rules/${id}/duplicate`);
+      const json = res.data;
       if (json.success) {
         if (onAddNotification) {
           onAddNotification('Duplicated', 'Discount rule duplicated successfully.', 'success');
@@ -229,11 +218,8 @@ const DiscountManagementView = ({ onAddNotification }) => {
     if (!confirm('Are you sure you want to archive this discount rule?')) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/discounts/rules/${id}/archive`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
+      const res = await api.put(`/discounts/rules/${id}/archive`);
+      const json = res.data;
       if (json.success) {
         if (onAddNotification) {
           onAddNotification('Archived', 'Promotion archived.', 'info');

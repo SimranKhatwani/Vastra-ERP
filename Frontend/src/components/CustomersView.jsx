@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from "react";
 import { Gift, X, FileText, ExternalLink } from "lucide-react";
 
@@ -19,10 +20,8 @@ export const CustomersView = ({
   useEffect(() => {
     const fetchLoyaltySettings = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/customers/loyalty-settings", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-        });
-        const data = await res.json();
+        const res = await api.get(`/customers/loyalty-settings`);
+        const data = res.data;
         if (data.success && data.data) {
           setLoyaltySettings({
             enabled: data.data.enabled,
@@ -40,15 +39,8 @@ export const CustomersView = ({
     e.preventDefault();
     setIsSaving(true);
     try {
-      const res = await fetch("http://localhost:5000/api/customers/loyalty-settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify(loyaltySettings),
-      });
-      const data = await res.json();
+      const res = await api.put(`/customers/loyalty-settings`, loyaltySettings);
+      const data = res.data;
       if (data.success) {
         onAddNotification("Settings Saved", "Loyalty configuration updated successfully.", "success");
       } else {

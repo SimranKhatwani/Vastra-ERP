@@ -11,11 +11,11 @@ const UniversalDashboardService = require('../services/universalDashboardService
 exports.getMorningActions = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    
+
     // Set up today's date boundaries
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    
+
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
@@ -31,7 +31,7 @@ exports.getMorningActions = async (req, res) => {
       tenantId,
       whatsappStatus: 'Failed',
     });
-    
+
     // 3. Overdue Deliveries
     const overdueDeliveries = await Invoice.countDocuments({
       tenantId,
@@ -108,11 +108,12 @@ exports.getStaffDashboardStats = async (req, res) => {
 
     // Step 2: Calculate dashboard using Universal Dashboard Service
     const dashboardData = await UniversalDashboardService.getEmployeeDashboard(resolvedEmployee);
-
+    console.log("dashboardData", dashboardData);
     res.status(200).json({
       success: true,
       data: dashboardData
     });
+    console.log(dashboardData);
   } catch (error) {
     console.error('Error fetching staff dashboard stats:', error);
     res.status(500).json({

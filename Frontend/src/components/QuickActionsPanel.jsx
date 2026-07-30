@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useEffect } from 'react';
 import { Scissors, Receipt, Scan, Search, ScanLine, Printer, MessageCircle, X, Loader2 } from 'lucide-react';
 
@@ -29,15 +30,15 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
       try {
         let res;
         if (activeModal === 'search_customer') {
-          res = await fetch(`http://localhost:5000/api/customers?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/customers?search=${inputValue}`);
         } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
-          res = await fetch(`http://localhost:5000/api/invoices?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/invoices?search=${inputValue}`);
         } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
-          res = await fetch(`http://localhost:5000/api/products?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/products?search=${inputValue}`);
         }
         
         if (res) {
-          const data = await res.json();
+          const data = res.data;
           if (data.success) {
             setSuggestions(data.data || []);
           }
@@ -92,38 +93,31 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
       let res;
       switch (activeModal) {
         case 'scan_bill':
-          res = await fetch(`http://localhost:5000/api/invoices/scan/${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/invoices/scan/${inputValue}`);
           break;
         case 'scan_item':
         case 'search_barcode':
         case 'print_tag':
-          res = await fetch(`http://localhost:5000/api/products/scan/${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/products/scan/${inputValue}`);
           break;
         case 'search_customer':
-          res = await fetch(`http://localhost:5000/api/customers?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/customers?search=${inputValue}`);
           break;
         case 'search_bill':
-          res = await fetch(`http://localhost:5000/api/invoices?search=${inputValue}`, { headers: { Authorization: `Bearer ${token}` } });
+          res = await api.get(`/invoices?search=${inputValue}`);
           break;
         case 'whatsapp':
           // Assume inputValue is invoice ID
-          res = await fetch(`http://localhost:5000/api/invoices/${inputValue}/send-whatsapp`, { 
-            method: 'POST', 
-            headers: { Authorization: `Bearer ${token}` } 
-          });
+          res = await api.post(`/invoices/${inputValue}/send-whatsapp`);
           break;
         case 'alteration':
-          res = await fetch(`http://localhost:5000/api/tickets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ subject: 'Alteration Request', description: inputValue, priority: 'High', status: 'Open' })
-          });
+          res = await api.post(`/tickets`, { subject: 'Alteration Request', description: inputValue, priority: 'High', status: 'Open' });
           break;
         default:
           throw new Error('Unknown action');
       }
 
-      const data = await res.json();
+      const data = res.data;
       if (data.success) {
         setResult(data.data || data);
       } else {

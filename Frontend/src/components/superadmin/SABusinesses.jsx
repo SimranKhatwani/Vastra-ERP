@@ -22,7 +22,7 @@ import {
   Briefcase
 } from "lucide-react";
 import { RegisterBusinessModal } from "./RegisterBusinessModal";
-import axios from "axios";
+import api from '../../api/axios';
 import moment from "moment";
 
 export function SABusinesses({ searchQuery = "" }) {
@@ -53,7 +53,7 @@ export function SABusinesses({ searchQuery = "" }) {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const { data } = await axios.get("http://localhost:5000/api/superadmin/tenants", config);
+      const { data } = await api.get(`/superadmin/tenants`, config);
       if (data.success) {
         setTenants(data.data);
       }
@@ -74,8 +74,7 @@ export function SABusinesses({ searchQuery = "" }) {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const { data } = await axios.put(
-        `http://localhost:5000/api/superadmin/tenants/${tenantId}`,
+      const { data } = await api.put(`/superadmin/tenants/${tenantId}`,
         { status: newStatus },
         config
       );
@@ -130,8 +129,7 @@ export function SABusinesses({ searchQuery = "" }) {
         }
       };
 
-      const { data } = await axios.put(
-        `http://localhost:5000/api/superadmin/tenants/${editModalTenant._id}`,
+      const { data } = await api.put(`/superadmin/tenants/${editModalTenant._id}`,
         payload,
         config
       );
