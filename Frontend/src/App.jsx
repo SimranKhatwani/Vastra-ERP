@@ -27,6 +27,10 @@ import {
   BarChart3,
   Wallet,
   ShieldCheck,
+  AlertCircle,
+  AlertTriangle,
+  Info,
+  X,
 } from "lucide-react";
 
 // Import sub components
@@ -344,6 +348,7 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] =
     useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
   const notificationsRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -961,19 +966,10 @@ export default function App() {
   };
 
   const handleMarkAllNotificationsRead = async () => {
-    // Basic implementation: mark them all via API or just locally and send multiple PUTs
     try {
       const token = localStorage.getItem("token");
-      const unread = notifications.filter(n => !n.read);
-      
-      // In a real app we'd have a bulk endpoint, but for now we map over them
-      await Promise.all(unread.map(n => 
-        api.put(`/notifications/${n.id}/read`)
-      ));
-
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, read: true })),
-      );
+      await api.delete(`/notifications/clear`);
+      setNotifications([]);
     } catch (error) {
       addToastNotification("Error", "Failed to connect to API", "danger");
     }
@@ -1329,45 +1325,88 @@ export default function App() {
                 }}
                 className="p-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 hover:bg-slate-100 cursor-pointer relative"
               >
-                <Bell className="w-4 h-4" />
+                <Bell className="w-5 h-5 text-indigo-600" />
                 {unreadNotificationsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white font-mono font-bold text-[8px] px-1 rounded-full animate-bounce">
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white font-mono font-bold text-[9px] px-1.5 py-0.5 rounded-full animate-pulse border-2 border-white shadow-sm">
                     {unreadNotificationsCount}
                   </span>
                 )}
               </button>
 
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 z-50 text-xs space-y-2 animate-scale-up">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <span className="font-bold text-slate-700 uppercase tracking-wide">
-                      Live Stream Alerts
+                <div className="absolute right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-1 z-[99999] text-xs space-y-1 animate-scale-up origin-top-right overflow-hidden">
+                  <div className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl mb-2">
+                    <span className="font-extrabold text-slate-800 uppercase tracking-widest text-[10px]">
+                      Enterprise Alerts
                     </span>
                     <button
                       onClick={() => handleMarkAllNotificationsRead()}
-                      className="text-[9px] text-indigo-600 hover:underline font-bold"
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold px-2 py-1 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
                     >
-                      Mark All Read
+                      Clear All
                     </button>
                   </div>
-                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                    {notifications.slice(0, 5).map((n) => (
-                      <div
-                        key={n.id}
-                        onDoubleClick={() => { if (!n.read) handleMarkNotificationRead(n.id); }}
-                        className={`p-2.5 rounded-lg border text-[11px] cursor-pointer transition-colors ${n.read ? "bg-slate-50 border-slate-100 text-slate-500" : "bg-indigo-50/50 border-indigo-100 text-black shadow-xs hover:bg-indigo-50"}`}
-                      >
-                        <div className={`flex justify-between text-[10px] ${n.read ? 'font-semibold' : 'font-extrabold'}`}>
-                          <span>{n.title}</span>
-                          <span className={`text-[8px] font-mono ${n.read ? 'text-slate-400 font-normal' : 'text-slate-500 font-bold'}`}>
-                            {n.timestamp}
-                          </span>
-                        </div>
-                        <p className={`mt-0.5 leading-relaxed ${n.read ? 'font-normal text-slate-500' : 'font-bold text-black'}`}>
-                          {n.message}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="space-y-1.5 max-h-[400px] overflow-y-auto px-2 pb-2 custom-scrollbar">
+                    {notifications.length === 0 ? (
+                       <div className="text-center p-6 text-slate-400">
+                         <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                         <p className="font-semibold text-[11px]">No active alerts.</p>
+                       </div>
+                    ) : (
+                      notifications.map((n) => {
+                        let PriorityIcon = Info;
+                        let colorClass = "bg-slate-50 border-slate-100 text-slate-700 hover:bg-slate-100";
+                        let iconColor = "text-slate-400";
+                        let badgeClass = "bg-slate-100 text-slate-500";
+                        
+                        if (n.priority === 'Critical') {
+                          PriorityIcon = AlertCircle;
+                          colorClass = n.read ? "bg-red-50/30 border-red-100/50 text-red-900/60" : "bg-red-50 border-red-200 text-red-900 shadow-sm hover:bg-red-100";
+                          iconColor = "text-red-600";
+                          badgeClass = "bg-red-100 text-red-700 border-red-200";
+                        } else if (n.priority === 'High') {
+                          PriorityIcon = AlertTriangle;
+                          colorClass = n.read ? "bg-orange-50/30 border-orange-100/50 text-orange-900/60" : "bg-orange-50 border-orange-200 text-orange-900 shadow-sm hover:bg-orange-100";
+                          iconColor = "text-orange-500";
+                          badgeClass = "bg-orange-100 text-orange-700 border-orange-200";
+                        } else if (n.priority === 'Normal') {
+                          PriorityIcon = Info;
+                          colorClass = n.read ? "bg-blue-50/30 border-blue-100/50 text-blue-900/60" : "bg-blue-50 border-blue-200 text-blue-900 shadow-sm hover:bg-blue-100";
+                          iconColor = "text-blue-500";
+                          badgeClass = "bg-blue-100 text-blue-700 border-blue-200";
+                        }
+
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              if (!n.read) handleMarkNotificationRead(n.id);
+                              setSelectedNotification(n);
+                            }}
+                            className={`p-3 rounded-2xl border cursor-pointer transition-all ${colorClass} flex gap-3 relative overflow-hidden group`}
+                          >
+                            {!n.read && <div className={`absolute left-0 top-0 bottom-0 w-1 ${badgeClass.split(' ')[0]}`}></div>}
+                            <div className={`mt-0.5 ${n.read ? 'opacity-40' : ''}`}>
+                              <PriorityIcon className={`w-4 h-4 ${iconColor}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-start mb-0.5 gap-2">
+                                <span className={`font-black truncate ${n.read ? 'opacity-60' : ''}`}>{n.title}</span>
+                                <span className={`text-[9px] font-bold whitespace-nowrap px-1.5 py-0.5 rounded-md border ${badgeClass} ${n.read ? 'opacity-50' : ''}`}>
+                                  {n.priority || 'Info'}
+                                </span>
+                              </div>
+                              <p className={`mt-1 leading-snug line-clamp-2 text-[10.5px] ${n.read ? 'opacity-60 font-medium' : 'font-bold'}`}>
+                                {n.message}
+                              </p>
+                              <div className={`text-[8px] mt-1.5 font-mono uppercase tracking-wider ${n.read ? 'text-slate-400' : 'text-slate-500 font-bold'}`}>
+                                {n.timestamp}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}
@@ -1699,6 +1738,51 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* NOTIFICATION MODAL */}
+      {selectedNotification && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999999] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-scale-up border border-slate-100">
+            <button
+              onClick={() => setSelectedNotification(null)}
+              className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedNotification.priority === 'Critical' ? 'bg-red-50 text-red-600' : selectedNotification.priority === 'High' ? 'bg-orange-50 text-orange-600' : selectedNotification.priority === 'Normal' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">
+                  {selectedNotification.title}
+                </h3>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${selectedNotification.priority === 'Critical' ? 'bg-red-100 text-red-700' : selectedNotification.priority === 'High' ? 'bg-orange-100 text-orange-700' : selectedNotification.priority === 'Normal' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {selectedNotification.priority || 'Info'}
+                  </span>
+                  <span className="text-xs font-medium text-slate-400 font-mono">
+                    {selectedNotification.timestamp}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mt-2">
+              <p className="text-sm font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {selectedNotification.message}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="px-6 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-colors cursor-pointer text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

@@ -4,6 +4,7 @@ const http = require('http');
 const app = require('./app');
 const connectDB = require('./config/db');
 const { initializeSocket } = require('./socket/socketServer');
+const { initializeNotificationCron } = require('./services/notificationCronService');
 
 // Connect to database first, then start server
 connectDB().then(() => {
@@ -13,6 +14,9 @@ connectDB().then(() => {
 
   server.listen(PORT, async () => {
     console.log(`backend running on localhost link: http://localhost:${PORT}`);
+    
+    // Initialize Smart Business Notification Cron Job
+    initializeNotificationCron();
 
     // Enterprise Startup Database Integrity Check & Auto-Repair
     try {

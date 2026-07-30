@@ -2394,7 +2394,7 @@ export const BillingPOSView = ({
             </div>
 
             {/* Universal Smart Search & Autocomplete */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 relative z-20 shrink-0">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 relative shrink-0">
               <div className="flex gap-2 items-center">
                 <div className="bg-indigo-50 p-2 rounded-xl text-indigo-600">
                   <Search className="w-5 h-5" />

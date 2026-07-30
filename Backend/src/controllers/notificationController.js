@@ -57,3 +57,13 @@ exports.markAsRead = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.clearNotifications = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    await Notification.deleteMany({ tenantId });
+    res.status(200).json({ success: true, message: 'All notifications cleared' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

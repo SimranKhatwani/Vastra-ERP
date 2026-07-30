@@ -23,6 +23,11 @@ const notificationSchema = new mongoose.Schema(
       enum: ['info', 'warning', 'success', 'danger'],
       default: 'info',
     },
+    priority: {
+      type: String,
+      enum: ['Critical', 'High', 'Normal', 'Information'],
+      default: 'Information',
+    },
     read: {
       type: Boolean,
       default: false,
