@@ -265,6 +265,7 @@ export const BillingPOSView = ({
   const [flatDiscount, setFlatDiscount] = useState(0);
 
   // Payments
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [splitCash, setSplitCash] = useState(0);
@@ -809,11 +810,11 @@ export const BillingPOSView = ({
 
       // F2: Product Search
       if (e.key === "F2") {
-        searchInputRef.current?.focus();
+        setIsItemSearchModalOpen(true);
       }
       // F3: Customer Search
       if (e.key === "F3") {
-        customerSearchRef.current?.focus();
+        document.getElementById("mobileSearchInput")?.focus();
       }
       // F4: Open New Customer Modal
       if (e.key === "F4") {
@@ -825,7 +826,7 @@ export const BillingPOSView = ({
       }
       // F6: Payment / Checkout
       if (e.key === "F6") {
-        payBtnRef.current?.focus();
+        setShowPaymentModal(true);
       }
       // F8: Hold Bill
       if (e.key === "F8") {
@@ -841,10 +842,17 @@ export const BillingPOSView = ({
         setIsProductDropdownOpen(false);
         setIsCustomerDropdownOpen(false);
         setVariantModalProduct(null);
+        setShowPaymentModal(false);
+        setShowAlterationModal(false);
       }
       // F9: Generate Bill
       if (e.key === "F9") {
-        document.getElementById('btn-generate-bill')?.click();
+        handleCheckoutSubmit().then(finalInv => { 
+          if (finalInv) { 
+            handleDownloadReceiptHTML(finalInv); 
+            setTimeout(() => window.print(), 500); 
+          } 
+        });
       }
       // Alt+1 to Alt+6 (Categories)
       if (e.altKey && e.key >= "1" && e.key <= "6") {
@@ -1152,7 +1160,7 @@ export const BillingPOSView = ({
       if (existingIdx > -1) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + customQty;
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.basePrice) || 0;
         const sub = sPrice * newQty;
         const discountAmt = Math.floor(
           sub * (updated[existingIdx].discount / 100),
@@ -1167,7 +1175,7 @@ export const BillingPOSView = ({
         };
         return updated;
       } else {
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || 0;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.basePrice) || 0;
         const sub = sPrice * customQty;
         const itemGst = Math.floor(sub * ((prod.gstPercent || 0) / 100));
         return [
@@ -1183,7 +1191,7 @@ export const BillingPOSView = ({
             workerId: wId,
             workerName: wName,
             quantity: customQty,
-            price: Number(prod.sellingPrice) || Number(prod.price) || 0,
+            price: sPrice,
             discount: 0,
             gstPercent: prod.gstPercent || 0,
             totalPrice: sub + itemGst,
@@ -1304,8 +1312,10 @@ export const BillingPOSView = ({
     let discountTotal = 0;
 
     cart.forEach((item) => {
-      const sub = item.price * item.quantity;
-      const disc = Math.floor(sub * (item.discount / 100));
+      const itemPrice = item.sellingPrice || item.price || 0;
+      const itemDisc = item.customDiscount || item.discount || 0;
+      const sub = itemPrice * item.quantity;
+      const disc = Math.floor(sub * (itemDisc / 100));
 
       subTotal += sub;
       discountTotal += disc;
@@ -1337,7 +1347,8 @@ export const BillingPOSView = ({
               (matchedProd && matchedProd.productCode && p.toLowerCase().trim() === matchedProd.productCode.toLowerCase().trim())
             );
             if (match) {
-              const itemSub = item.price * item.quantity;
+              const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
               disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
             }
           });
@@ -1347,7 +1358,8 @@ export const BillingPOSView = ({
             if (matchedProd && matchedProd.category) {
               const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
               if (match) {
-                const itemSub = item.price * item.quantity;
+                const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
                 disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
               }
             }
@@ -1358,7 +1370,8 @@ export const BillingPOSView = ({
             if (matchedProd && matchedProd.brand) {
               const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
               if (match) {
-                const itemSub = item.price * item.quantity;
+                const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
                 disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
               }
             }
@@ -1540,6 +1553,8 @@ export const BillingPOSView = ({
     } else {
       setWhatsappDispatchState('idle');
     }
+    
+    return mergedInvoice;
   };
 
   // Add new customer local submit
@@ -2117,52 +2132,15 @@ export const BillingPOSView = ({
           </div>
         )}
       </div>
-
       {/* POS TERMINAL INTERFACE */}
             {/* THE NEW ENTERPRISE BILLING GRID */}
             {/* LEGACY POS UI REDESIGN */}
       {activePOSMode === "billing" && (
         <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs relative" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
-          {/* Top Header */}
-          <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[11px] font-semibold border-t-2 border-l-2 border-r-2 border-slate-300">
-             <span>Sale Bill - {new Date().toLocaleDateString()} - NFS-984(26-27/NFS-984) - {activeCustomer?.name || 'CUSTOMER'} - CASH</span>
-             <div className="flex gap-1">
-                <button className="hover:bg-white/20 px-2 rounded">_</button>
-                <button className="hover:bg-white/20 px-2 rounded">[]</button>
-                <button className="hover:bg-red-600 px-2 rounded text-white font-bold">X</button>
-             </div>
-          </div>
           
           <div className="flex flex-1 gap-1 overflow-hidden min-w-0">
              {/* LEFT MAIN (GRID + SUMMARIES) */}
              <div className="flex-[3] flex flex-col bg-white border border-slate-400 min-w-0">
-                {/* Header Details / Item Details Tabs */}
-                <div className="flex border-b border-slate-300 bg-[#e1e1e1]">
-                   <button className="px-4 py-1.5 text-slate-600 border-r border-slate-300 hover:bg-white">Header Details</button>
-                   <button className="px-4 py-1.5 bg-white font-bold border-r border-slate-300">Item Details</button>
-                </div>
-                
-                {/* Search Bar / Input Row */}
-                <div className="p-2 border-b border-slate-300 flex items-center gap-4 bg-white">
-                   <div className="flex items-center gap-2">
-                      <span className="font-semibold text-lg text-slate-700">Quantity</span>
-                      <input 
-                         type="number" 
-                         value={qtyModalValue || ""} 
-                         onChange={(e) => setQtyModalValue(e.target.value)}
-                         className="border border-slate-400 w-16 p-1 text-right text-lg outline-none focus:bg-yellow-100" 
-                      />
-                      <span className="text-xl">⌨️</span>
-                   </div>
-                </div>
-                
-                {/* Icon Ribbon */}
-                <div className="flex gap-1 p-1 border-b border-slate-300 bg-slate-50">
-                   <button className="p-0.5 border border-transparent hover:border-slate-300"><Plus className="w-4 h-4 text-green-600" /></button>
-                   <button className="p-0.5 border border-transparent hover:border-slate-300"><Minus className="w-4 h-4 text-red-600" /></button>
-                   <button className="p-0.5 border border-transparent hover:border-slate-300"><Printer className="w-4 h-4 text-blue-600" /></button>
-                   <button className="p-0.5 border border-transparent hover:border-slate-300"><Trash2 className="w-4 h-4 text-red-600" /></button>
-                </div>
                 
                 {/* THE GRID */}
                 <div className="flex-1 overflow-auto border-b border-slate-400 custom-scrollbar relative">
@@ -2176,13 +2154,12 @@ export const BillingPOSView = ({
                             <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Lot Number</th>
                             <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Lot Code</th>
                             <th className="border-r border-slate-400 font-normal p-1 text-right w-16">Quantity</th>
-                            <th className="border-r border-slate-400 font-normal p-1 text-right w-16">Rate</th>
+                            <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Rate</th>
                             <th className="border-r border-slate-400 font-normal p-1 text-right w-12">CD%</th>
-                            <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Agent</th>
-                            <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Helper</th>
                             <th className="border-r border-slate-400 font-normal p-1 text-right w-20">NET RATE</th>
                             <th className="border-r border-slate-400 font-normal p-1 text-right w-24">NET RATE AMT</th>
-                            <th className="font-normal p-1 text-left w-24">SHADE NAME</th>
+                            <th className="border-r border-slate-400 font-normal p-1 text-left w-24">SHADE NAME</th>
+                            <th className="font-normal p-1 text-center w-12">Action</th>
                          </tr>
                       </thead>
                       <tbody>
@@ -2190,18 +2167,71 @@ export const BillingPOSView = ({
                            <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
                               <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
                               <td className="border-r border-slate-300 p-1">{item.barcode}</td>
-                              <td className="border-r border-slate-300 p-1">{item.name}</td>
+                              <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">
+                                {item.name} 
+                                {(item.size || item.color) && (
+                                  <span className="text-[10px] text-slate-500 ml-1 font-mono">
+                                    ({item.size || 'M'} / {item.color || 'Std'})
+                                  </span>
+                                )}
+                              </td>
                               <td className="border-r border-slate-300 p-1">{item.category}</td>
                               <td className="border-r border-slate-300 p-1">{item.uniqueCode || '0'}</td>
                               <td className="border-r border-slate-300 p-1">{item.sku || '0'}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{item.quantity}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{(item.sellingPrice || item.price || 0).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button onClick={() => {
+                                    const newCart = [...cart];
+                                    if (newCart[idx].quantity > 1) {
+                                      newCart[idx].quantity -= 1;
+                                      setCart(newCart);
+                                    }
+                                  }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">-</button>
+                                  <input 
+                                    type="number" 
+                                    min="1"
+                                    value={item.quantity} 
+                                    onChange={(e) => {
+                                      const newCart = [...cart];
+                                      newCart[idx].quantity = Math.max(1, parseInt(e.target.value) || 1);
+                                      setCart(newCart);
+                                    }}
+                                    className="w-8 text-center font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
+                                  />
+                                  <button onClick={() => {
+                                    const newCart = [...cart];
+                                    newCart[idx].quantity += 1;
+                                    setCart(newCart);
+                                  }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
+                                </div>
+                              </td>
+                              <td className="border-r border-slate-300 p-1 text-right">
+                                  <input 
+                                    type="number" 
+                                    value={item.price} 
+                                    onChange={(e) => {
+                                      const newCart = [...cart];
+                                      const newPrice = parseFloat(e.target.value) || 0;
+                                      newCart[idx].price = newPrice;
+                                      newCart[idx].sellingPrice = newPrice;
+                                      newCart[idx].totalPrice = (newPrice - (item.customDiscount || item.discount || 0)) * item.quantity;
+                                      setCart(newCart);
+                                    }}
+                                    className="w-16 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
+                                  />
+                              </td>
                               <td className="border-r border-slate-300 p-1 text-right">{item.customDiscount || item.discount || 0}</td>
-                              <td className="border-r border-slate-300 p-1">{item.salespersonName || ''}</td>
-                              <td className="border-r border-slate-300 p-1">{item.workerName || ''}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{((item.sellingPrice || item.price || 0) - (item.customDiscount || item.discount || 0)).toFixed(2)}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{(item.totalPrice || ((item.sellingPrice || item.price || 0) * item.quantity) || 0).toFixed(2)}</td>
-                              <td className="p-1">{item.color}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{((item.price || item.sellingPrice || 0) - (item.customDiscount || item.discount || 0)).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{(item.totalPrice || ((item.price || item.sellingPrice || 0) * item.quantity) || 0).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1">{item.color}</td>
+                              <td className="p-1 text-center">
+                                  <button onClick={() => {
+                                    const newCart = cart.filter((_, i) => i !== idx);
+                                    setCart(newCart);
+                                  }} className="text-red-500 hover:text-red-700">
+                                    <Trash2 className="w-4 h-4 mx-auto" />
+                                  </button>
+                                </td>
                            </tr>
                          ))}
                          {/* Input Row */}
@@ -2234,10 +2264,9 @@ export const BillingPOSView = ({
                             <td className="border-r border-slate-300 p-1 text-right text-slate-400"></td>
                             <td className="border-r border-slate-300 p-1 text-right text-slate-400">0.00</td>
                             <td className="border-r border-slate-300 p-1 text-right text-slate-400"></td>
-                            <td className="border-r border-slate-300 p-1"></td>
-                            <td className="border-r border-slate-300 p-1"></td>
                             <td className="border-r border-slate-300 p-1 text-right text-slate-400"></td>
                             <td className="border-r border-slate-300 p-1 text-right text-slate-400">0.00</td>
+                            <td className="p-1"></td>
                             <td className="p-1"></td>
                          </tr>
                       </tbody>
@@ -2282,25 +2311,22 @@ export const BillingPOSView = ({
                    <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                       {[
                          { id: "newBill", label: "New Bill", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
-                         { id: "modify", label: "Modify", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" /> },
-                         { id: "payment", label: "Payment", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
+                         { id: "modify", label: "Alteration", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
+                         { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
                          { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
-                         { id: "print", label: "Print", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { await handleCheckoutSubmit(); setTimeout(() => window.print(), 500); } },
+                         { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { const finalInv = await handleCheckoutSubmit(); if (finalInv) { handleDownloadReceiptHTML(finalInv); setTimeout(() => window.print(), 500); } } },
                          { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
-                         { id: "hold", label: "Hold", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
-                         { id: "customer", label: "Customer", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() },
-                         { id: "agent", label: "Agent", icon: <UserPlus className="w-5 h-5 text-slate-800 mx-auto" /> },
+                         { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
+                         { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
                          { id: "searchItem", label: "Search Item", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
-                         { id: "prevBill", label: "Previous Bill", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" /> },
-                         { id: "nextBill", label: "Next Bill", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" /> },
-                         { id: "enterReturns", label: "Enter Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" /> },
-                         { id: "recvOrder", label: "Receive Order", icon: <Download className="w-5 h-5 text-slate-600 mx-auto" /> },
-                         { id: "config", label: "Configurations...", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" /> },
-                         { id: "recvChallan", label: "Recv Challan...", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" /> },
-                         { id: "otherDetails", label: "Other Details...", icon: <Grid className="w-5 h-5 text-slate-600 mx-auto" /> },
-                         { id: "close", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
-                         { id: "viewHolds", label: "View Holds", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" /> },
-                         { id: "loyaltyCustomer", label: "Loyalty Customer", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
+                         { id: "prevBill", label: "Previous Bill", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
+                         { id: "nextBill", label: "Next Bill", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
+                         { id: "enterReturns", label: "Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                         { id: "config", label: "Discount", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setCouponCode("WINTER20") },
+                         { id: "recvChallan", label: "Exchange", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                         { id: "close", label: "Clear Bill", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
+                         { id: "viewHolds", label: "Resume (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
+                         { id: "loyaltyCustomer", label: "Loyalty", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
                       ].map(btn => (
                          <button key={btn.id} onClick={btn.onClick || (() => {})} className="w-[68px] h-[58px] flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-slate-300 hover:to-white shadow-sm text-[9px] leading-[1.1] text-center p-1 rounded-sm">
                             {btn.icon}
@@ -2327,7 +2353,7 @@ export const BillingPOSView = ({
                    </div>
                    <div className="flex justify-center gap-4 mt-1 bg-[#f0f0f0] p-1 border border-slate-300">
                       <button className="text-green-500"><ChevronsLeft className="w-4 h-4" /></button>
-                      <button className="text-blue-500"><Search className="w-4 h-4" /></button>
+                      <button className="text-blue-500 cursor-pointer" onClick={() => document.getElementById("mobileSearchInput")?.focus()}><Search className="w-4 h-4" /></button>
                       <button className="text-green-500"><ChevronRight className="w-4 h-4" /></button>
                    </div>
                 </div>
@@ -2338,9 +2364,40 @@ export const BillingPOSView = ({
                       Loyalty Customer
                    </div>
                    <div className="p-1 space-y-0.5">
-                      <div className="flex items-center border border-slate-300">
+                      <div className="flex items-center border border-slate-300 relative">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Mobile No</span>
-                         <input type="text" id="mobileSearchInput" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} placeholder="Search Mobile..." />
+                         <input type="text" id="mobileSearchInput" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" 
+                           value={customerSearchQuery || customerForm.phone} 
+                           onChange={(e) => { 
+                             setCustomerSearchQuery(e.target.value); 
+                             setCustomerForm(prev => ({...prev, phone: e.target.value}));
+                             setIsCustomerDropdownOpen(true); 
+                           }} 
+                           onFocus={() => setIsCustomerDropdownOpen(true)}
+                           onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
+                           placeholder="Search Name/Mobile/ID..." 
+                         />
+                         {isCustomerDropdownOpen && customerSearchQuery && (
+                           <div className="absolute top-full left-20 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
+                             {customers.filter(c => 
+                               (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) || 
+                               (c.phone || "").includes(customerSearchQuery) || 
+                               (c.id || "").includes(customerSearchQuery)
+                             ).map((c, idx) => (
+                               <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
+                                 onClick={() => {
+                                   setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', title: c.title || 'Mr.', lf: '2588' });
+                                   setSelectedCustomerId(c.id || c._id);
+                                   setCustomerSearchQuery(c.phone);
+                                   setIsCustomerDropdownOpen(false);
+                                   if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
+                                 }}>
+                                 <div className="font-bold text-slate-800">{c.name}</div>
+                                 <div className="text-slate-500">Phone: {c.phone} | Pts: {c.loyaltyPoints || 0} | Lvl: {c.membershipLevel || 'Standard'}</div>
+                               </div>
+                             ))}
+                           </div>
+                         )}
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">LF</span>
@@ -5137,8 +5194,8 @@ export const BillingPOSView = ({
       {qtyModalProduct && (() => {
         // Compute sizes/colors based on variants array if available, otherwise use a generic Garment sizing standard
         const hasVariants = Array.isArray(qtyModalProduct.variants) && qtyModalProduct.variants.length > 0;
-        const uniqueSizes = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.size).filter(Boolean))] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
-        const uniqueColors = hasVariants ? [...new Set(qtyModalProduct.variants.map(v => v?.color).filter(Boolean))] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
+        const uniqueSizes = hasVariants ? [...new Set([...qtyModalProduct.variants.map(v => v?.size).filter(Boolean), "XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"])] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
+        const uniqueColors = hasVariants ? [...new Set([...qtyModalProduct.variants.map(v => v?.color).filter(Boolean), "Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"])] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
 
         const handleAdd = () => {
           const sp = configSalesperson || displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
