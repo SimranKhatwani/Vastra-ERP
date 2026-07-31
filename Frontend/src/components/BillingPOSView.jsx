@@ -171,6 +171,44 @@ export const BillingPOSView = ({
     });
   }, [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' });
+
+  const handleCustomerPhoneChange = (e) => {
+    const val = e.target.value;
+    const match = customers.find(c => c.phone === val || c.mobile === val);
+    if (match) {
+      setCustomerForm({ phone: val, name: match.name || '', email: match.email || '', dob: match.dob || '', title: match.title || 'Mr.', lf: '2588' });
+      setSelectedCustomerId(match.id);
+    } else {
+      setCustomerForm(prev => ({ ...prev, phone: val }));
+      setSelectedCustomerId("");
+    }
+  };
+
+  const handleCustomerSave = async () => {
+    if (!customerForm.phone) {
+      if (onAddNotification) onAddNotification("Error", "Mobile number required", "danger");
+      return;
+    }
+    if (!selectedCustomerId && onAddCustomer) {
+      try {
+        const newCust = await onAddCustomer({
+          name: customerForm.name,
+          phone: customerForm.phone,
+          email: customerForm.email,
+          dob: customerForm.dob
+        });
+        if (newCust && newCust.id) {
+          setSelectedCustomerId(newCust.id);
+          if (onAddNotification) onAddNotification("Success", "Customer Saved", "success");
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else if (selectedCustomerId) {
+       if (onAddNotification) onAddNotification("Info", "Customer already exists", "info");
+    }
+  };
   const [selectedLoyaltyRuleId, setSelectedLoyaltyRuleId] = useState("");
   const [cancelAutoDiscount, setCancelAutoDiscount] = useState(false);
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
@@ -228,6 +266,7 @@ export const BillingPOSView = ({
 
   // Payments
   const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [splitCash, setSplitCash] = useState(0);
   const [splitCard, setSplitCard] = useState(0);
   const [splitUPI, setSplitUPI] = useState(0);
@@ -2008,9 +2047,8 @@ export const BillingPOSView = ({
   return (
     <div className="space-y-3 animate-fade-in" id="billing-pos-root">
       {/* POS Mode Selectors */}
-      {activePOSMode !== "billing" && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActivePOSMode("billing")}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "billing" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
@@ -2055,35 +2093,36 @@ export const BillingPOSView = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-mono">Cashier:</span>
-          <select
-            value={cashierId}
-            onChange={(e) => setCashierId(e.target.value)}
-            className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            {employees
-              .filter(
-                (e) =>
-                  e.role === "Admin" ||
-                  e.role === "Cashier" ||
-                  e.role === "Manager",
-              )
-              .map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name} ({e.role})
-                </option>
-              ))}
-          </select>
-        </div>
+        {activePOSMode !== "billing" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-mono">Cashier:</span>
+            <select
+              value={cashierId}
+              onChange={(e) => setCashierId(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {employees
+                .filter(
+                  (e) =>
+                    e.role === "Admin" ||
+                    e.role === "Cashier" ||
+                    e.role === "Manager",
+                )
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.role})
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
       </div>
-      )}
 
       {/* POS TERMINAL INTERFACE */}
             {/* THE NEW ENTERPRISE BILLING GRID */}
             {/* LEGACY POS UI REDESIGN */}
       {activePOSMode === "billing" && (
-        <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs absolute inset-0" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+        <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs relative" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
           {/* Top Header */}
           <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[11px] font-semibold border-t-2 border-l-2 border-r-2 border-slate-300">
              <span>Sale Bill - {new Date().toLocaleDateString()} - NFS-984(26-27/NFS-984) - {activeCustomer?.name || 'CUSTOMER'} - CASH</span>
@@ -2156,12 +2195,12 @@ export const BillingPOSView = ({
                               <td className="border-r border-slate-300 p-1">{item.uniqueCode || '0'}</td>
                               <td className="border-r border-slate-300 p-1">{item.sku || '0'}</td>
                               <td className="border-r border-slate-300 p-1 text-right">{item.quantity}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{(item.sellingPrice || 0).toFixed(2)}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{item.customDiscount || 0}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{(item.sellingPrice || item.price || 0).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{item.customDiscount || item.discount || 0}</td>
                               <td className="border-r border-slate-300 p-1">{item.salespersonName || ''}</td>
                               <td className="border-r border-slate-300 p-1">{item.workerName || ''}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{((item.sellingPrice || 0) - (item.customDiscount || 0)).toFixed(2)}</td>
-                              <td className="border-r border-slate-300 p-1 text-right">{(item.totalPrice || 0).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{((item.sellingPrice || item.price || 0) - (item.customDiscount || item.discount || 0)).toFixed(2)}</td>
+                              <td className="border-r border-slate-300 p-1 text-right">{(item.totalPrice || ((item.sellingPrice || item.price || 0) * item.quantity) || 0).toFixed(2)}</td>
                               <td className="p-1">{item.color}</td>
                            </tr>
                          ))}
@@ -2242,16 +2281,16 @@ export const BillingPOSView = ({
                    {/* Action Toolbar */}
                    <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                       {[
-                         { id: "newBill", label: "New Bill", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" /> },
+                         { id: "newBill", label: "New Bill", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
                          { id: "modify", label: "Modify", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" /> },
-                         { id: "payment", label: "Payment", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleCheckoutSubmit },
-                         { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" /> },
-                         { id: "print", label: "Print", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" /> },
-                         { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" /> },
+                         { id: "payment", label: "Payment", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
+                         { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
+                         { id: "print", label: "Print", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { await handleCheckoutSubmit(); setTimeout(() => window.print(), 500); } },
+                         { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                          { id: "hold", label: "Hold", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
-                         { id: "customer", label: "Customer", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => setShowAddCustomerModal(true) },
+                         { id: "customer", label: "Customer", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() },
                          { id: "agent", label: "Agent", icon: <UserPlus className="w-5 h-5 text-slate-800 mx-auto" /> },
-                         { id: "viewTotals", label: "View Totals...", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" /> },
+                         { id: "searchItem", label: "Search Item", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
                          { id: "prevBill", label: "Previous Bill", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" /> },
                          { id: "nextBill", label: "Next Bill", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" /> },
                          { id: "enterReturns", label: "Enter Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" /> },
@@ -2259,9 +2298,9 @@ export const BillingPOSView = ({
                          { id: "config", label: "Configurations...", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" /> },
                          { id: "recvChallan", label: "Recv Challan...", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" /> },
                          { id: "otherDetails", label: "Other Details...", icon: <Grid className="w-5 h-5 text-slate-600 mx-auto" /> },
-                         { id: "close", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" /> },
+                         { id: "close", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
                          { id: "viewHolds", label: "View Holds", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" /> },
-                         { id: "loyaltyCustomer", label: "Loyalty Customer", icon: <User className="w-5 h-5 text-red-500 mx-auto" /> }
+                         { id: "loyaltyCustomer", label: "Loyalty Customer", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
                       ].map(btn => (
                          <button key={btn.id} onClick={btn.onClick || (() => {})} className="w-[68px] h-[58px] flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-slate-300 hover:to-white shadow-sm text-[9px] leading-[1.1] text-center p-1 rounded-sm">
                             {btn.icon}
@@ -2301,47 +2340,70 @@ export const BillingPOSView = ({
                    <div className="p-1 space-y-0.5">
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Mobile No</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value="Search" readOnly />
+                         <input type="text" id="mobileSearchInput" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} placeholder="Search Mobile..." />
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">LF</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value="2588" readOnly />
+                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={customerForm.lf} onChange={e => setCustomerForm(prev => ({...prev, lf: e.target.value}))} />
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Title</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value="Mr." readOnly />
+                         <select className="flex-1 p-0.5 text-[10px] outline-none" value={customerForm.title} onChange={e => setCustomerForm(prev => ({...prev, title: e.target.value}))}>
+                            <option>Mr.</option>
+                            <option>Mrs.</option>
+                            <option>Ms.</option>
+                         </select>
                       </div>
                       <div className="flex relative items-center border border-slate-300">
                          <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4">Name</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={activeCustomer?.name || ''} readOnly />
+                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.name} onChange={e => setCustomerForm(prev => ({...prev, name: e.target.value}))} placeholder="Name" />
                       </div>
                       <div className="flex relative items-center border border-slate-300">
                          <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                         <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4">Mobile</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={activeCustomer?.phone || ''} readOnly />
+                         <span className="w-20 text-[10px] text-blue-800 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4 underline cursor-pointer">Mobile</span>
+                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} />
                       </div>
                       <div className="flex relative items-center border border-slate-300">
                          <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                         <span className="w-20 text-[10px] text-blue-800 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4 underline">Email</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={activeCustomer?.email || ''} readOnly />
+                         <span className="w-20 text-[10px] text-blue-800 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4 underline cursor-pointer">Email</span>
+                         <input type="email" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({...prev, email: e.target.value}))} placeholder="Email" />
                       </div>
                       <div className="flex relative items-center border border-slate-300">
                          <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4">DOB</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" />
+                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({...prev, dob: e.target.value}))} placeholder="DD-MM-YYYY" />
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Total Sale</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value="Click on Total Sale" readOnly />
+                         <div className="flex-1 p-0.5 text-[10px] bg-white cursor-pointer hover:bg-slate-50 border border-slate-300">Click on Total Sale</div>
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Loyalty Points</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={activeCustomer?.loyaltyPoints || 0} readOnly />
+                         <div className="flex-1 bg-white"></div>
                       </div>
                       <div className="flex items-center border border-slate-300">
                          <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Gender</span>
-                         <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value="None" readOnly />
+                         <select className="flex-1 p-0.5 text-[10px] outline-none border-none">
+                            <option>None</option>
+                            <option>Male</option>
+                            <option>Female</option>
+                         </select>
+                      </div>
+                      
+                      <div className="flex justify-center gap-1 mt-2 p-1 bg-[#e1e1e1] border-t border-slate-300">
+                         <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white">
+                            <Search className="w-5 h-5 text-blue-600" />
+                            Search
+                         </button>
+                         <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white" onClick={handleCustomerSave}>
+                            <Save className="w-5 h-5 text-green-600" />
+                            Save
+                         </button>
+                         <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white" onClick={() => setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' })}>
+                            <X className="w-5 h-5 text-red-600" />
+                            New
+                         </button>
                       </div>
                    </div>
                    
@@ -5863,6 +5925,30 @@ export const BillingPOSView = ({
                 <span className="text-blue-800">F5=Stock Details</span>
                 <span className="text-blue-800">F9=Toggle Search Item Name / Item Desc / Model / Part</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Selection Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-up">
+            <div className="bg-indigo-600 text-white px-4 py-3 flex justify-between items-center">
+              <h3 className="font-bold">Select Payment Method</h3>
+              <button onClick={() => setShowPaymentModal(false)} className="hover:bg-white/20 p-1 rounded-md"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {["Cash", "Card", "UPI", "Credit"].map(method => (
+                <label key={method} className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === method ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}>
+                  <input type="radio" name="paymentMethod" className="w-4 h-4 text-indigo-600" checked={paymentMethod === method} onChange={() => setPaymentMethod(method)} />
+                  <span className="font-bold text-slate-700">{method}</span>
+                </label>
+              ))}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-semibold text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-100">Cancel</button>
+              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-bold text-white bg-indigo-600 rounded hover:bg-indigo-700 flex items-center gap-1"><CheckCircle className="w-4 h-4"/> Confirm Method</button>
             </div>
           </div>
         </div>
