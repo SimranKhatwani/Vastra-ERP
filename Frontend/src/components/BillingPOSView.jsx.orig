@@ -210,7 +210,7 @@ export const BillingPOSView = ({
     }
   };
   const [selectedLoyaltyRuleId, setSelectedLoyaltyRuleId] = useState("");
-  const [showHoldBillModal, setShowHoldBillModal] = useState(false);
+  const [cancelAutoDiscount, setCancelAutoDiscount] = useState(false);
   const [cashierId, setCashierId] = useState("e-2"); // default cashier
   const [salespersonId, setSalespersonId] = useState("");
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
@@ -262,8 +262,7 @@ export const BillingPOSView = ({
   const [productSearch, setProductSearch] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [couponCode, setCouponCode] = useState("");
-  const [manualDiscountIds, setManualDiscountIds] = useState([]);
-  const [rejectedAutoDiscountIds, setRejectedAutoDiscountIds] = useState([]);
+  const [flatDiscount, setFlatDiscount] = useState(0);
 
   // Payments
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -305,8 +304,8 @@ export const BillingPOSView = ({
     setSelectedCustomerId("");
     setCustomerSearch("");
     setCouponCode("");
-    setManualDiscountIds([]);
-    setRejectedAutoDiscountIds([]);
+    setFlatDiscount(0);
+    setCancelAutoDiscount(false);
     setSelectedLoyaltyRuleId("");
     setPaymentMethod("Cash");
     if (onAddNotification) onAddNotification("New Bill", "Fresh POS billing session started.", "info");
@@ -887,9 +886,7 @@ export const BillingPOSView = ({
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
   // Variant Selection Modal State
-  const [showVariantModal, setShowVariantModal] = useState(false);
   const [variantModalProduct, setVariantModalProduct] = useState(null);
-  const [showDiscountSelectionModal, setShowDiscountSelectionModal] = useState(false);
   const [variantModalSize, setVariantModalSize] = useState("M");
   const [variantModalColor, setVariantModalColor] = useState("White");
 
@@ -1326,9 +1323,9 @@ export const BillingPOSView = ({
   };
 
   // Calculations
-  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, appliedDiscountsList } = React.useMemo(() => {
+  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, autoOffer, loyaltyOffer } = React.useMemo(() => {
     let subTotal = 0;
-    let discountTotal = 0; // Item level discounts
+    let discountTotal = 0;
 
     cart.forEach((item) => {
       const itemPrice = item.sellingPrice || item.price || 0;
@@ -1340,30 +1337,22 @@ export const BillingPOSView = ({
       discountTotal += disc;
     });
 
+    // Evaluate dynamic active discount rules (Status Active + date validity checks)
     const activeOffers = discountRules.filter(r => {
       if (r.status !== 'Active') return false;
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-      if (new Date(r.endDate) < new Date() && new Date(r.endDate).setHours(23,59,59,999) < new Date()) return false;
+      const now = new Date();
+      if (new Date(r.startDate) > now || new Date(r.endDate) < now) return false;
       return true;
     });
 
-    let totalRuleDiscount = 0;
-    let appliedDiscountsList = [];
+    let autoDiscountAmt = 0;
+    let appliedOffer = null;
 
-    activeOffers.forEach(r => {
-      const rId = r._id || r.id;
-      const isManual = manualDiscountIds.includes(rId);
-      const isAutoType = ['Automatic', 'Product', 'Category', 'Brand'].includes(r.offerType);
-      
-      // If it's manual, or if it's auto and not rejected
-      if (isManual || (isAutoType && !rejectedAutoDiscountIds.includes(rId))) {
+    if (!cancelAutoDiscount) {
+      activeOffers.forEach(r => {
         let disc = 0;
-
-        if (r.offerType === 'Automatic' || r.offerType === 'Coupon' || r.offerType === 'Flat') {
-          if (subTotal >= (r.minBillAmount || 0)) {
-            disc = r.discountType === 'Flat' ? r.discountValue : Math.floor(subTotal * (r.discountValue / 100));
-          }
+        if (r.offerType === 'Automatic' && subTotal >= r.minBillAmount) {
+          disc = r.discountType === 'Flat' ? r.discountValue : subTotal * (r.discountValue / 100);
         } else if (r.offerType === 'Product') {
           cart.forEach(item => {
             const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
@@ -1374,8 +1363,9 @@ export const BillingPOSView = ({
               (matchedProd && matchedProd.productCode && p.toLowerCase().trim() === matchedProd.productCode.toLowerCase().trim())
             );
             if (match) {
-              const itemSub = (item.sellingPrice || item.price || 0) * item.quantity;
-              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : Math.floor(itemSub * (r.discountValue / 100));
+              const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
+              disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
             }
           });
         } else if (r.offerType === 'Category') {
@@ -1384,8 +1374,9 @@ export const BillingPOSView = ({
             if (matchedProd && matchedProd.category) {
               const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
               if (match) {
-                const itemSub = (item.sellingPrice || item.price || 0) * item.quantity;
-                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : Math.floor(itemSub * (r.discountValue / 100));
+                const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
+                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
               }
             }
           });
@@ -1395,39 +1386,41 @@ export const BillingPOSView = ({
             if (matchedProd && matchedProd.brand) {
               const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
               if (match) {
-                const itemSub = (item.sellingPrice || item.price || 0) * item.quantity;
-                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : Math.floor(itemSub * (r.discountValue / 100));
+                const itemPrice = item.sellingPrice || item.price || 0;
+              const itemSub = itemPrice * item.quantity;
+                disc += r.discountType === 'Flat' ? r.discountValue * item.quantity : itemSub * (r.discountValue / 100);
               }
             }
           });
         }
 
-        if (disc > 0) {
-          totalRuleDiscount += disc;
-          appliedDiscountsList.push({ id: rId, name: r.offerName, amount: disc, type: isManual ? 'Manual' : 'Auto' });
+        if (disc > autoDiscountAmt) {
+          autoDiscountAmt = disc;
+          appliedOffer = r;
         }
-      }
-    });
+      });
+    }
 
-    // Loyalty Points Logic
-    if (activeCustomer && activeCustomer.id !== "c-walkin" && !rejectedAutoDiscountIds.includes("loyalty")) {
+    // Evaluate automatic loyalty points rule discount (highest qualified points rule matches)
+    let loyaltyDiscountAmt = 0;
+    let appliedLoyaltyOffer = null;
+    if (activeCustomer && activeCustomer.id !== "c-walkin" && !cancelAutoDiscount) {
       const eligibleLoyaltyRules = discountRules.filter(r => 
-        r.offerType === 'LoyaltyRule' && r.status === 'Active' &&
+        r.offerType === 'LoyaltyRule' && 
+        r.status === 'Active' &&
         (activeCustomer.loyaltyPoints || 0) >= r.requiredLoyaltyPoints
       );
       if (eligibleLoyaltyRules.length > 0) {
         const bestRule = eligibleLoyaltyRules.reduce((best, current) => 
           current.requiredLoyaltyPoints > best.requiredLoyaltyPoints ? current : best
         , eligibleLoyaltyRules[0]);
-        const lDisc = bestRule.discountType === 'Flat' ? bestRule.discountValue : Math.floor(subTotal * (bestRule.discountValue / 100));
-        if (lDisc > 0) {
-          totalRuleDiscount += lDisc;
-          appliedDiscountsList.push({ id: 'loyalty', name: `Loyalty (${bestRule.requiredLoyaltyPoints} pts)`, amount: lDisc, type: 'Auto' });
-        }
+
+        loyaltyDiscountAmt = bestRule.discountType === 'Flat' ? bestRule.discountValue : subTotal * (bestRule.discountValue / 100);
+        appliedLoyaltyOffer = bestRule;
       }
     }
 
-    // Legacy coupon codes
+    // Handle flat discount & coupon code
     let couponDiscount = 0;
     if (couponCode === "WINTER20") {
       couponDiscount = Math.floor(subTotal * 0.2);
@@ -1436,26 +1429,25 @@ export const BillingPOSView = ({
     } else if (couponCode === "FESTIVE15") {
       couponDiscount = Math.floor(subTotal * 0.15);
     }
-    if (couponDiscount > 0) {
-      totalRuleDiscount += couponDiscount;
-      appliedDiscountsList.push({ id: 'legacy', name: couponCode, amount: couponDiscount, type: 'Legacy' });
-    }
 
-    const totalOverallDiscount = discountTotal + totalRuleDiscount;
-    const taxable = Math.max(0, subTotal - totalOverallDiscount);
+    const totalDiscount = discountTotal + flatDiscount + couponDiscount + autoDiscountAmt + loyaltyDiscountAmt;
+    const taxable = Math.max(0, subTotal - totalDiscount);
+
+    // Apply default CGST + SGST config dynamically
     const totalTaxRate = cgstRate + sgstRate;
     const gstTotal = Math.floor(taxable * (totalTaxRate / 100));
     const grandTotal = taxable + gstTotal;
 
     return {
       subTotal,
-      discountTotal: totalOverallDiscount,
+      discountTotal: totalDiscount,
       couponDiscount,
       gstTotal,
       grandTotal,
-      appliedDiscountsList
+      autoOffer: appliedOffer,
+      loyaltyOffer: appliedLoyaltyOffer
     };
-  }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer]);
+  }, [cart, couponCode, flatDiscount, cgstRate, sgstRate, discountRules, products, cancelAutoDiscount, selectedLoyaltyRuleId]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1547,7 +1539,7 @@ export const BillingPOSView = ({
     setCompletedInvoice(mergedInvoice);
     setCart([]);
     setCouponCode("");
-    
+    setFlatDiscount(0);
     setSelectedLoyaltyRuleId("");
     setCancelAutoDiscount(false);
     setPaymentMethod("Cash");
@@ -2332,30 +2324,7 @@ export const BillingPOSView = ({
                             </tr>
                          </tbody>
                       </table>
-                        {/* Applied Discount Block */}
-                   {appliedDiscountsList && appliedDiscountsList.length > 0 && (
-                     <div className="w-[400px] mt-1 space-y-1">
-                       {appliedDiscountsList.map(d => (
-                         <div key={d.id} className="bg-indigo-50 border border-indigo-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-indigo-800">
-                           <span>Applied: {d.name} ({d.amount} OFF)</span>
-                           <button 
-                             onClick={() => {
-                               if (d.type === 'Manual') {
-                                 setManualDiscountIds(prev => prev.filter(id => id !== d.id));
-                               } else if (d.type === 'Legacy') {
-                                 setCouponCode("");
-                               } else {
-                                 setRejectedAutoDiscountIds(prev => [...prev, d.id]);
-                               }
-                             }} 
-                             className="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
-                           >
-                             Remove
-                           </button>
-                         </div>
-                       ))}
-                     </div>
-                   )}              </div>
+                   </div>
                    
                    {/* Action Toolbar */}
                    <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
@@ -2372,7 +2341,7 @@ export const BillingPOSView = ({
                          { id: "prevBill", label: "Previous Bill", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                          { id: "nextBill", label: "Next Bill", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                          { id: "enterReturns", label: "Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
-                         { id: "config", label: "Discount", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
+                         { id: "config", label: "Discount", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setCouponCode("WINTER20") },
                          { id: "recvChallan", label: "Exchange", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
                          { id: "close", label: "Clear Bill", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
                          { id: "viewHolds", label: "Resume (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
@@ -2530,8 +2499,8 @@ export const BillingPOSView = ({
                             New
                          </button>
                          <div className="flex flex-col gap-1 w-[70px]">
-                            <button onClick={() => setShowDiscountSelectionModal(true)} className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">Discount Coupon</button>
-                            <button onClick={() => setActivePOSMode("history")} className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">View History</button>
+                            <button className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">Discount Coupon</button>
+                            <button className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">View History</button>
                          </div>
                       </div>
                    </div>
@@ -6056,80 +6025,6 @@ export const BillingPOSView = ({
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
               <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-semibold text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-100">Cancel</button>
               <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-bold text-white bg-indigo-600 rounded hover:bg-indigo-700 flex items-center gap-1"><CheckCircle className="w-4 h-4"/> Confirm Method</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Discount Selection Modal */}
-      {showDiscountSelectionModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999999] flex justify-center items-center p-4 font-sans animate-fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-2xl border border-slate-100 shadow-2xl relative animate-scale-up flex flex-col overflow-hidden max-h-[85vh]">
-            <div className="px-6 py-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex justify-between items-center">
-              <h2 className="text-xl font-bold tracking-tight">Available Discounts</h2>
-              <button onClick={() => setShowDiscountSelectionModal(false)} className="text-white hover:text-rose-200 transition-colors p-2 rounded-full hover:bg-white/10 cursor-pointer"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-6 overflow-y-auto bg-slate-50 flex-1 space-y-4">
-              {discountRules.filter(r => {
-                if (r.status !== 'Active' || r.offerType === 'LoyaltyRule') return false;
-                const todayEnd = new Date();
-                todayEnd.setHours(23, 59, 59, 999);
-                if (new Date(r.endDate) < new Date() && new Date(r.endDate).setHours(23,59,59,999) < new Date()) return false;
-                return true;
-              }).map(rule => {
-                const rId = rule._id || rule.id;
-                const isEligible = subTotal >= (rule.minBillAmount || 0);
-                return (
-                  <div key={rId} className={`bg-white rounded-2xl p-5 border ${isEligible ? 'border-indigo-100 shadow-md shadow-indigo-100/50' : 'border-slate-200 opacity-60'} flex justify-between items-center transition-all`}>
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                        {rule.offerName}
-                        {rule.offerType === 'Automatic' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Auto</span>}
-                        {rule.offerType === 'Coupon' && <span className="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Coupon</span>}
-                        {rule.offerType === 'Product' && <span className="bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Product</span>}
-                        {rule.offerType === 'Brand' && <span className="bg-cyan-100 text-cyan-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Brand</span>}
-                        {rule.offerType === 'Category' && <span className="bg-pink-100 text-pink-700 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Category</span>}
-                      </h4>
-                      <p className="text-xs font-semibold text-slate-500 mt-1">{rule.description || 'Applies to cart if eligible.'}</p>
-                      <div className="text-[10px] font-bold text-slate-400 mt-2 flex gap-4 uppercase">
-                        {rule.offerType === 'Product' && rule.applicableProducts && rule.applicableProducts.length > 0 ? (
-                          <span>Products: {rule.applicableProducts.join(', ')}</span>
-                        ) : rule.offerType === 'Brand' && rule.applicableBrands && rule.applicableBrands.length > 0 ? (
-                          <span>Brands: {rule.applicableBrands.join(', ')}</span>
-                        ) : rule.offerType === 'Category' && rule.applicableCategories && rule.applicableCategories.length > 0 ? (
-                          <span>Categories: {rule.applicableCategories.join(', ')}</span>
-                        ) : (
-                          <span>Min Bill: ₹{rule.minBillAmount || 0}</span>
-                        )}
-                        <span className="text-indigo-600">Off: {rule.discountType === 'Flat' ? `₹${rule.discountValue}` : `${rule.discountValue}%`}</span>
-                      </div>
-                    </div>
-                    <button
-                      disabled={!isEligible}
-                      onClick={() => {
-                        if (manualDiscountIds.includes(rId)) {
-                          setManualDiscountIds(prev => prev.filter(id => id !== rId));
-                        } else {
-                          setManualDiscountIds(prev => [...prev, rId]);
-                          if (typeof onAddNotification === 'function') onAddNotification("Success", `Applied ${rule.offerName}`, "success");
-                        }
-                      }}
-                      className={`px-5 py-2.5 rounded-xl font-bold whitespace-nowrap transition-colors ${isEligible ? (manualDiscountIds.includes(rId) ? 'bg-emerald-500 text-white shadow-md cursor-pointer' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 cursor-pointer') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                    >
-                      {manualDiscountIds.includes(rId) ? 'Applied (Remove)' : 'Apply Offer'}
-                    </button>
-                  </div>
-                );
-              })}
-              {discountRules.filter(r => {
-                if (r.status !== 'Active' || r.offerType === 'LoyaltyRule') return false;
-                const todayEnd = new Date();
-                todayEnd.setHours(23, 59, 59, 999);
-                if (new Date(r.endDate) < new Date() && new Date(r.endDate).setHours(23,59,59,999) < new Date()) return false;
-                return true;
-              }).length === 0 && (
-                <div className="text-center py-10 text-slate-400 font-semibold">No active discount rules found.</div>
-              )}
             </div>
           </div>
         </div>

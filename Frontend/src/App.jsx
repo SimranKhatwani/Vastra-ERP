@@ -193,7 +193,10 @@ export default function App() {
       }
 
       if (payload?.event === 'invoice.created' && payload.invoice) {
-        setInvoices((prev) => [{ ...payload.invoice, id: payload.invoice._id }, ...prev]);
+        setInvoices((prev) => {
+          if (prev.some(inv => inv._id === payload.invoice._id || inv.invoiceNo === payload.invoice.invoiceNo)) return prev;
+          return [{ ...payload.invoice, id: payload.invoice._id }, ...prev];
+        });
       }
 
       if (payload?.event === 'permissions.updated') {
@@ -1512,7 +1515,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "billing" && (
+          <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
             <BillingPOSView
               currentUser={currentUser}
               products={products}
@@ -1527,7 +1530,7 @@ export default function App() {
               quickArticulateItem={quickArticulateItem}
               clearQuickArticulateItem={() => setQuickArticulateItem(null)}
             />
-          )}
+          </div>
 
           {activeModule === "articulation" && (
             <ArticulationView

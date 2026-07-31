@@ -97,16 +97,9 @@ const DiscountManagementView = ({ onAddNotification }) => {
         ? `/discounts/rules/${editingRuleId}`
         : '/discounts/rules';
 
-      const method = editingRuleId ? 'PUT' : 'POST';
+      const method = editingRuleId ? 'put' : 'post';
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
+      const res = await api[method](url, payload);
       const json = res.data;
       if (json.success) {
         if (onAddNotification) {
