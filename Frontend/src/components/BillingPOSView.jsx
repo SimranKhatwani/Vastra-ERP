@@ -850,9 +850,25 @@ export const BillingPOSView = ({
         handleCheckoutSubmit().then(finalInv => { 
           if (finalInv) { 
             handleDownloadReceiptHTML(finalInv); 
-            setTimeout(() => window.print(), 500); 
           } 
         });
+      }
+      
+      // Payment Modal Navigation
+      if (showPaymentModal) {
+        const methods = ["Cash", "Card", "UPI", "Credit"];
+        const currIdx = methods.indexOf(paymentMethod);
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+          e.preventDefault();
+          setPaymentMethod(methods[Math.min(currIdx + 1, methods.length - 1)]);
+        } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          setPaymentMethod(methods[Math.max(currIdx - 1, 0)]);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          setShowPaymentModal(false);
+        }
+        return;
       }
       // Alt+1 to Alt+6 (Categories)
       if (e.altKey && e.key >= "1" && e.key <= "6") {
@@ -866,7 +882,7 @@ export const BillingPOSView = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [qtyModalProduct, cart, heldBills, selectedCustomerId, completedInvoice]); // Re-bind if these states change so handleHoldBill gets latest state
+  }, [qtyModalProduct, cart, heldBills, selectedCustomerId, completedInvoice, showPaymentModal, paymentMethod]); // Re-bind if these states change so handleHoldBill gets latest state
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
   // Variant Selection Modal State
@@ -1160,7 +1176,7 @@ export const BillingPOSView = ({
       if (existingIdx > -1) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + customQty;
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.basePrice) || 0;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
         const sub = sPrice * newQty;
         const discountAmt = Math.floor(
           sub * (updated[existingIdx].discount / 100),
@@ -1175,7 +1191,7 @@ export const BillingPOSView = ({
         };
         return updated;
       } else {
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.basePrice) || 0;
+        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
         const sub = sPrice * customQty;
         const itemGst = Math.floor(sub * ((prod.gstPercent || 0) / 100));
         return [
@@ -1878,7 +1894,10 @@ export const BillingPOSView = ({
 
     const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    const receiptWin = window.open(url, "_blank");
+    if (receiptWin) {
+      receiptWin.onload = () => receiptWin.print();
+    }
     onAddNotification(
       "File Downloader",
       `HTML Invoice ${invoice.invoiceNo} successfully generated & downloaded.`,
@@ -2314,7 +2333,7 @@ export const BillingPOSView = ({
                          { id: "modify", label: "Alteration", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
                          { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
                          { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
-                         { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { const finalInv = await handleCheckoutSubmit(); if (finalInv) { handleDownloadReceiptHTML(finalInv); setTimeout(() => window.print(), 500); } } },
+                         { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { const finalInv = await handleCheckoutSubmit(); if (finalInv) { handleDownloadReceiptHTML(finalInv); } } },
                          { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                          { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                          { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
