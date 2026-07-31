@@ -29,6 +29,9 @@ import {
   ChevronsLeft,
   RotateCcw,
   ArrowRight,
+  Save,
+  Upload,
+  Copy,
 } from "lucide-react";
 
 export const BillingPOSView = ({
@@ -2005,8 +2008,9 @@ export const BillingPOSView = ({
   return (
     <div className="space-y-3 animate-fade-in" id="billing-pos-root">
       {/* POS Mode Selectors */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+      {activePOSMode !== "billing" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActivePOSMode("billing")}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "billing" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
@@ -2073,15 +2077,16 @@ export const BillingPOSView = ({
           </select>
         </div>
       </div>
+      )}
 
       {/* POS TERMINAL INTERFACE */}
             {/* THE NEW ENTERPRISE BILLING GRID */}
             {/* LEGACY POS UI REDESIGN */}
       {activePOSMode === "billing" && (
-        <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+        <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs absolute inset-0" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
           {/* Top Header */}
           <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[11px] font-semibold border-t-2 border-l-2 border-r-2 border-slate-300">
-             <span>Sale Bill - {new Date().toLocaleDateString()} - NFS-984(26-27/NFS-984) - {activeCustomer.name || 'CUSTOMER'} - CASH</span>
+             <span>Sale Bill - {new Date().toLocaleDateString()} - NFS-984(26-27/NFS-984) - {activeCustomer?.name || 'CUSTOMER'} - CASH</span>
              <div className="flex gap-1">
                 <button className="hover:bg-white/20 px-2 rounded">_</button>
                 <button className="hover:bg-white/20 px-2 rounded">[]</button>
@@ -2089,9 +2094,9 @@ export const BillingPOSView = ({
              </div>
           </div>
           
-          <div className="flex flex-1 gap-1 overflow-hidden">
+          <div className="flex flex-1 gap-1 overflow-hidden min-w-0">
              {/* LEFT MAIN (GRID + SUMMARIES) */}
-             <div className="flex-[3] flex flex-col bg-white border border-slate-400">
+             <div className="flex-[3] flex flex-col bg-white border border-slate-400 min-w-0">
                 {/* Header Details / Item Details Tabs */}
                 <div className="flex border-b border-slate-300 bg-[#e1e1e1]">
                    <button className="px-4 py-1.5 text-slate-600 border-r border-slate-300 hover:bg-white">Header Details</button>
@@ -2104,9 +2109,9 @@ export const BillingPOSView = ({
                       <span className="font-semibold text-lg text-slate-700">Quantity</span>
                       <input 
                          type="number" 
-                         value={qtyModalValue || 0} 
-                         className="border border-slate-400 w-16 p-1 text-right text-lg outline-none" 
-                         readOnly
+                         value={qtyModalValue || ""} 
+                         onChange={(e) => setQtyModalValue(e.target.value)}
+                         className="border border-slate-400 w-16 p-1 text-right text-lg outline-none focus:bg-yellow-100" 
                       />
                       <span className="text-xl">⌨️</span>
                    </div>
@@ -2274,7 +2279,7 @@ export const BillingPOSView = ({
              </div>
              
              {/* RIGHT SIDEBAR (LOYALTY CUSTOMER & IMAGE) */}
-             <div className="w-[280px] flex flex-col bg-[#e1e1e1] border border-slate-400">
+             <div className="w-[280px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400 relative">
                 <div className="text-[10px] text-slate-400 transform -rotate-90 origin-top-left absolute right-[-100px] top-[200px]">Document Windows</div>
                 {/* Image Placeholder */}
                 <div className="bg-white m-1 mt-2 border border-slate-400 h-[220px] flex flex-col p-1 shadow-sm">
