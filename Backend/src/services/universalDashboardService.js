@@ -1,4 +1,5 @@
 const Invoice = require('../models/invoiceModel');
+const SalesReturn = require('../models/salesReturnModel');
 const Employee = require('../models/employeeModel');
 const AttendanceRecord = require('../models/attendanceRecordModel');
 const SupportTicket = require('../models/supportTicketModel');
@@ -51,6 +52,21 @@ class UniversalDashboardService {
       ? empDoc.commissionEarned
       : Math.round(totalSales * (commissionRate / 100) * 100) / 100;
 
+    // [NEW] Query SalesReturn collection for Returns and Exchanges
+    const returnsExchanges = await SalesReturn.find({
+      tenantId
+    }).sort('-date').lean();
+
+    const returnCount = returnsExchanges.length;
+    const exchangeCount = 0; // SalesReturns doesn't strictly segregate exchanges in the same way
+    const totalReturnedAmount = returnsExchanges.reduce((sum, r) => sum + (r.totalReturnAmount || 0), 0);
+    
+    // Net Sales calculation
+    let netSalesTotal = (liveInvoiceCount > 0 ? liveSalesTotal : 0) - totalReturnedAmount;
+    if (netSalesTotal < 0) netSalesTotal = 0;
+
+    const returnPercentage = totalSales > 0 ? Math.round((totalReturnedAmount / totalSales) * 100) : 0;
+
     // 5. Compute Today's Metrics
     const startOfTodayStr = new Date().toISOString().split('T')[0];
     const todayInvoices = assignedInvoices.filter(inv => {
@@ -100,7 +116,12 @@ class UniversalDashboardService {
       },
       metrics: {
         totalSales,
+        netSales: typeof netSalesTotal !== 'undefined' ? netSalesTotal : totalSales,
         invoiceCount,
+        returnCount: typeof returnCount !== 'undefined' ? returnCount : 0,
+        exchangeCount: typeof exchangeCount !== 'undefined' ? exchangeCount : 0,
+        totalReturnedAmount: typeof totalReturnedAmount !== 'undefined' ? totalReturnedAmount : 0,
+        returnPercentage: typeof returnPercentage !== 'undefined' ? returnPercentage : 0,
         commissionRate,
         commissionAmount,
         todaySales,

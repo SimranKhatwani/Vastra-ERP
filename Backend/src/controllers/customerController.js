@@ -1,4 +1,5 @@
 const Customer = require('../models/customerModel');
+const { recordActivityLog } = require('./staffActivityController');
 const LoyaltySettings = require('../models/loyaltySettingsModel');
 const { emitToTenant } = require('../socket/socketServer');
 

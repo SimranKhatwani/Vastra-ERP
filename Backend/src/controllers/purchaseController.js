@@ -1,5 +1,6 @@
 const GRN = require('../models/grnModel');
 const PurchaseInvoice = require('../models/purchaseInvoiceModel');
+const { recordActivityLog } = require('./staffActivityController');
 const PurchaseReturn = require('../models/purchaseReturnModel');
 const Vendor = require('../models/vendorModel');
 const Product = require('../models/productModel');
@@ -216,7 +217,17 @@ exports.createPurchaseInvoice = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({ success: true, data: invoice });
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Purchases',
+        action: 'PURCHASE_CREATED',
+        recordId: invoice.invoiceNumber,
+        recordName: `Purchase Invoice ${invoice.invoiceNumber} created`,
+        newValue: `Vendor: ${invoice.vendorName} | Total: ₹${invoice.netTotal}`,
+        status: 'Success'
+      });
+
+      res.status(201).json({ success: true, data: invoice });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();

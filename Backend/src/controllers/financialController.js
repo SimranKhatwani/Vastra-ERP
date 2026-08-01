@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Expense = require('../models/expenseModel');
 const Income = require('../models/incomeModel');
+const { recordActivityLog } = require('./staffActivityController');
 const Receipt = require('../models/receiptModel');
 const FinancialPayment = require('../models/financialPaymentModel');
 const CashBankEntry = require('../models/cashBankEntryModel');
@@ -1008,7 +1009,17 @@ exports.createIncome = async (req, res) => {
       income._id
     );
 
-    res.status(201).json({ success: true, data: income });
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Finance',
+        action: 'INCOME_RECEIVED',
+        recordId: income._id.toString(),
+        recordName: `Income Received`,
+        newValue: `Source: ${income.source || 'General'} | Amount: ₹${income.amount}`,
+        status: 'Success'
+      });
+
+      res.status(201).json({ success: true, data: income });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1130,7 +1141,17 @@ exports.createPayment = async (req, res) => {
       payment._id
     );
 
-    res.status(201).json({ success: true, data: payment });
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Finance',
+        action: 'PAYMENT_MADE',
+        recordId: payment._id.toString(),
+        recordName: `Payment Made`,
+        newValue: `To: ${payment.beneficiaryName} | Amount: ₹${payment.amount}`,
+        status: 'Success'
+      });
+
+      res.status(201).json({ success: true, data: payment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

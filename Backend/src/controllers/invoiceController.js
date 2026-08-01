@@ -1,4 +1,5 @@
 const Invoice = require('../models/invoiceModel');
+const { recordActivityLog } = require('./staffActivityController');
 const Product = require('../models/productModel');
 const Customer = require('../models/customerModel');
 const Alteration = require('../models/alterationModel');
@@ -230,7 +231,17 @@ exports.createInvoice = async (req, res) => {
     emitToRole('admin', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
     emitToRole('manager', 'dashboard.stats.updated', { tenantId, event: 'dashboard.stats.updated' });
 
-    res.status(201).json({ success: true, data: invoice });
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Billing',
+        action: 'BILL_CREATED',
+        recordId: invoice.invoiceNo,
+        recordName: `Invoice ${invoice.invoiceNo} generated`,
+        newValue: `${invoice.customerName || 'Walk-in'} - ₹${(invoice.grandTotal || 0).toLocaleString('en-IN')}`,
+        status: 'Success'
+      });
+
+      res.status(201).json({ success: true, data: invoice });
   } catch (error) {
     console.error('Invoice creation error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -428,6 +439,7 @@ exports.processSalesReturn = async (req, res) => {
 
     let refundAmt = 0;
     const targetItemIds = returnedItemIds || [];
+    const returnedItemsArray = [];
 
     for (let item of invoice.items) {
       const matchKey = item.productId || item._id?.toString() || item.sku;
@@ -439,6 +451,15 @@ exports.processSalesReturn = async (req, res) => {
 
           const lineVal = item.totalPrice || (item.price * item.quantity);
           refundAmt += lineVal;
+            
+          returnedItemsArray.push({
+             productId: item.productId,
+             name: item.name,
+             sku: item.sku,
+             quantity: item.quantity,
+             price: item.price,
+             total: lineVal
+          });
 
           // Restock product stock in inventory
           if (item.productId && isValidObjectId(item.productId)) {
@@ -475,8 +496,40 @@ exports.processSalesReturn = async (req, res) => {
       }
     }
 
-    invoice.hasReturn = true;
+    if (returnedItemsArray.length > 0) {
+      try {
+        const SalesReturn = require('../models/salesReturnModel');
+        await SalesReturn.create({
+          tenantId,
+          invoiceNo: invoice.invoiceNo,
+          customerId: invoice.customerId,
+          customerName: invoice.customerName,
+          items: returnedItemsArray,
+          totalReturnAmount: refundAmt,
+          reason: returnReason || 'Defective / Customer Choice',
+          refundMethod: refundMethod || 'Cash'
+        });
+        } catch(srErr) {
+          console.warn('SalesReturn creation skipped:', srErr.message);
+          require('fs').appendFileSync('sales_return_error.log', new Date().toISOString() + ' - ' + srErr.message + '\n' + srErr.stack + '\n');
+        }
+    }
+
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Billing',
+        action: 'PRODUCT_RETURNED',
+        recordId: invoice.invoiceNo,
+        recordName: `Return processed for Invoice #${invoice.invoiceNo}`,
+        newValue: `Amount: ₹${refundAmt.toLocaleString('en-IN')} - ${returnReason || 'Customer Choice'}`,
+        status: 'Success'
+      });
+
+      invoice.hasReturn = true;
     invoice.returnedAmount = (invoice.returnedAmount || 0) + refundAmt;
+    
+    // Refresh activity feed in realtime
+    emitToTenant(tenantId, 'activity.feed', { tenantId, event: 'activity.feed.updated' });
 
     const allReturned = invoice.items.every(i => i.isReturned);
     invoice.status = allReturned ? 'Returned' : 'Partially Returned';
@@ -537,6 +590,8 @@ exports.processSalesExchange = async (req, res) => {
     oldItem.isExchanged = true;
     oldItem.exchangedFor = newItem ? newItem.name : 'Exchanged Garment';
     oldItem.exchangeReason = exchangeReason || 'Size / Fit Swap';
+
+    // (Removed per-item exchange return.create)
 
     // Restock old item
     if (oldItem.productId && isValidObjectId(oldItem.productId)) {
@@ -602,7 +657,17 @@ exports.processSalesExchange = async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    invoice.hasExchange = true;
+          // Log Activity
+      await recordActivityLog(req, {
+        module: 'Billing',
+        action: 'PRODUCT_EXCHANGED',
+        recordId: invoice.invoiceNo,
+        recordName: `Exchange processed for Invoice #${invoice.invoiceNo}`,
+        newValue: `Amount: ₹${(oldItem.totalPrice || oldItem.price).toLocaleString('en-IN')} - ${exchangeReason || 'Size / Fit Swap'}`,
+        status: 'Success'
+      });
+
+      invoice.hasExchange = true;
     invoice.exchangeSlip = docket;
     
     const allExchanged = invoice.items.every(i => i.isExchanged);

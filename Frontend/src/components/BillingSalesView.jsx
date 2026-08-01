@@ -580,6 +580,72 @@ export const BillingSalesView = ({
     );
   };
 
+  const renderReturnsDatabase = () => {
+    const returnInvoices = invoices.filter(inv => inv.hasReturn || inv.hasExchange || (inv.items && inv.items.some(i => i.isReturned || i.isExchanged)));
+
+    return (
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="font-extrabold text-xl text-slate-800">Returns & Exchanges Database</h3>
+            <p className="text-slate-500 text-sm font-medium mt-1">Comprehensive audit trail of all items returned or exchanged.</p>
+          </div>
+          <div className="flex gap-2">
+            <input type="text" placeholder="Search Invoice or Item..." className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white" />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="bg-slate-100/70 border-b border-slate-200">
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Date</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Invoice No</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Customer</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Type</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Item Details</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Reason</th>
+                <th className="p-3 font-bold text-slate-600 uppercase tracking-wider text-[10px]">Value</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {returnInvoices.length === 0 ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400 font-semibold italic">No returns or exchanges found in the database.</td></tr>
+              ) : (
+                returnInvoices.map(inv => {
+                  return (inv.items || []).filter(i => i.isReturned || i.isExchanged).map((item, idx) => {
+                    const isReturn = item.isReturned;
+                    return (
+                      <tr key={`${inv._id}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 text-slate-500 font-mono text-xs">{new Date(item.returnedAt || inv.updatedAt).toLocaleDateString('en-IN')}</td>
+                        <td className="p-3 font-bold text-slate-700">{inv.invoiceNo}</td>
+                        <td className="p-3 text-slate-600">{inv.customerName || 'Walk-in'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${isReturn ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>
+                            {isReturn ? 'Return' : 'Exchange'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <p className="font-semibold text-slate-700">{item.name}</p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">Size: {item.size || 'N/A'} | Color: {item.color || 'N/A'}</p>
+                          {item.isExchanged && item.exchangedFor && (
+                            <p className="text-[10px] font-bold text-indigo-600 mt-1">Exchanged For: {item.exchangedFor}</p>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-500 text-xs italic">{item.returnReason || item.exchangeReason || '-'}</td>
+                        <td className="p-3 font-mono font-bold text-slate-700">₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}</td>
+                      </tr>
+                    );
+                  });
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const renderOutstandingReceivables = () => {
     // Math indicators
     let totalOutstandingVal = 0;
@@ -803,7 +869,8 @@ export const BillingSalesView = ({
           { id: "wholesale-billing", label: "Wholesale Bulk Billing" },
           { id: "b2b-invoice", label: "Tax Invoice Generation (B2B)" },
           { id: "invoice-history", label: "Invoice History" },
-          { id: "outstanding-receivables", label: "Outstanding Receivables" }
+          { id: "outstanding-receivables", label: "Outstanding Receivables" },
+          { id: "returns-database", label: "Returns & Exchanges DB" }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -825,8 +892,9 @@ export const BillingSalesView = ({
       {/* MAIN WORKSPACE GRID */}
       {activeTab === "invoice-history" && renderInvoiceHistory()}
       {activeTab === "outstanding-receivables" && renderOutstandingReceivables()}
+      {activeTab === "returns-database" && renderReturnsDatabase()}
 
-      {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && (
+      {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && activeTab !== "returns-database" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
         
           {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}

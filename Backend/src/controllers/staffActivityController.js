@@ -1,6 +1,7 @@
 const ActivityLog = require('../models/activityLogModel');
 const LoginHistory = require('../models/loginHistoryModel');
 const User = require('../models/userModel');
+const { emitToTenant } = require('../socket/socketServer');
 
 // Helper to parse user agent
 const parseUserAgent = (req) => {
@@ -49,6 +50,9 @@ exports.recordActivityLog = async (req, payload) => {
       device,
       browser,
     });
+    
+    // Live update Dashboard
+    emitToTenant(req.user.tenantId, 'activity.feed', { tenantId: req.user.tenantId, event: 'activity.feed.updated' });
   } catch (err) {
     console.error('Failed to auto-record ActivityLog:', err.message);
   }

@@ -1,4 +1,5 @@
 const Product = require('../models/productModel');
+const { recordActivityLog } = require('./staffActivityController');
 const { emitToTenant, emitToRole } = require('../socket/socketServer');
 const { calculateStockStatus } = require('../services/stockCalculationService');
 
