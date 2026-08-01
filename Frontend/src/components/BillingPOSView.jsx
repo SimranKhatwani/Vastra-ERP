@@ -748,7 +748,8 @@ export const BillingPOSView = ({
       const matchItems = (inv.items || []).some(
         (item) =>
           (item.name || "").toLowerCase().includes(q) ||
-          (item.productCode || "").toLowerCase().includes(q)
+          (item.productCode || "").toLowerCase().includes(q) ||
+          (item.uniqueCode || "").toLowerCase().includes(q)
       );
       return matchNo || matchCust || matchPhone || matchPay || matchItems;
     });
@@ -1531,6 +1532,7 @@ export const BillingPOSView = ({
     setCompletedInvoice(mergedInvoice);
     setCart([]);
     setCouponCode("");
+    setSelectedCustomerId("");
 
     setSelectedLoyaltyRuleId("");
     setCancelAutoDiscount(false);
@@ -2761,10 +2763,10 @@ export const BillingPOSView = ({
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Search Invoice # / customer / phone..."
+                  placeholder="Search by Unique Code, Invoice #, customer..."
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="bg-slate-50 pl-9 pr-8 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-64 border border-slate-200/80"
+                  className="bg-slate-50 pl-9 pr-8 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-96 md:w-[450px] border border-slate-200/80"
                 />
                 {historySearch && (
                   <button

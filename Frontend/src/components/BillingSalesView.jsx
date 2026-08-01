@@ -91,6 +91,7 @@ export const BillingSalesView = ({
   // Invoice History States & Fetcher
   const [invoicesList, setInvoicesList] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
 
   // Credit Limit Override Authorization Modal states
   const [showCreditOverrideModal, setShowCreditOverrideModal] = useState(false);
@@ -504,6 +505,16 @@ export const BillingSalesView = ({
   };
 
   const renderInvoiceHistory = () => {
+    const filteredInvoices = invoicesList.filter(inv => {
+      const q = historySearch.toLowerCase().trim();
+      if (!q) return true;
+      const invNoMatch = (inv.invoiceNo || "").toLowerCase().includes(q);
+      const nameMatch = (inv.customerName || "").toLowerCase().includes(q);
+      const phoneMatch = (inv.customerPhone || "").includes(q);
+      const codeMatch = inv.items && inv.items.some(item => (item.uniqueCode || "").toLowerCase().includes(q));
+      return invNoMatch || nameMatch || phoneMatch || codeMatch;
+    });
+
     return (
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">
@@ -511,13 +522,22 @@ export const BillingSalesView = ({
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Invoice History Ledger</h3>
             <p className="text-[10px] text-slate-400">All registered sales transactions for this tenant.</p>
           </div>
-          <button
-            onClick={fetchInvoicesHistory}
-            className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer font-bold"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Refresh Ledger</span>
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Search by Unique Code, Invoice No, Customer..."
+              className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white w-96 md:w-[450px] outline-none font-bold animate-fade-in"
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+            />
+            <button
+              onClick={fetchInvoicesHistory}
+              className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer font-bold"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Refresh Ledger</span>
+            </button>
+          </div>
         </div>
 
         {historyLoading ? (
@@ -538,7 +558,7 @@ export const BillingSalesView = ({
                 </tr>
               </thead>
               <tbody>
-                {invoicesList.map((inv, idx) => (
+                {filteredInvoices.map((inv, idx) => (
                   <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
                     <td className="p-3 font-bold text-slate-800">{inv.invoiceNo}</td>
                     <td className="p-3 font-mono text-[10px]">{new Date(inv.date || inv.createdAt).toLocaleDateString()}</td>
@@ -560,7 +580,7 @@ export const BillingSalesView = ({
                     </td>
                   </tr>
                 ))}
-                {invoicesList.length === 0 && (
+                {filteredInvoices.length === 0 && (
                   <tr>
                     <td colSpan="8" className="p-12 text-center text-slate-400 font-bold">
                       No invoices found. Generate an invoice to see it listed here!

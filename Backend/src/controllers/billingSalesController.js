@@ -292,7 +292,7 @@ exports.getSalesReports = async (req, res) => {
     const tenantId = req.user.tenantId;
     const { reportType } = req.query;
 
-    const invoices = await Invoice.find({ tenantId, isBillingSalesModule: true }).sort('-createdAt');
+    const invoices = await Invoice.find({ tenantId }).sort('-createdAt');
 
     let reportData = [];
 
@@ -373,7 +373,8 @@ exports.getSalesReports = async (req, res) => {
           dueDate: inv.dueDate,
           reminderHistory: inv.reminderHistory || [],
           paymentMethod: inv.paymentMethod,
-          status: inv.status
+          status: inv.status,
+          items: inv.items || []
         }));
         break;
     }
