@@ -103,7 +103,9 @@ exports.createSalesInvoice = async (req, res) => {
           totalPrice: typeof item.totalPrice === 'number' ? item.totalPrice : computedLinePrice,
           isCustom: item.isCustom || false,
           salespersonId: item.salespersonId || salespersonId,
-          salespersonName: item.salespersonName || salespersonName
+          salespersonName: item.salespersonName || salespersonName,
+          uniqueCode: item.uniqueCode,
+          alterationRecord: item.alterationRecord
         };
       }),
       subTotal,

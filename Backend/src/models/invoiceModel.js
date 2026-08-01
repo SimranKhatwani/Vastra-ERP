@@ -42,6 +42,10 @@ const invoiceItemSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  uniqueCode: {
+    type: String,
+    index: true,
+  },
   salespersonId: {
     type: String,
   },
@@ -256,9 +260,45 @@ const invoiceSchema = new mongoose.Schema(
   }
 );
 
-invoiceSchema.pre('validate', function () {
+invoiceSchema.pre('validate', async function () {
   if (!this.invoiceNo) {
     this.invoiceNo = `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`;
+  }
+
+  // Generate / verify uniqueCode for each item
+  if (this.items && this.items.length > 0) {
+    const Invoice = mongoose.model('Invoice');
+    const prefixes = ["TRK", "ITM", "UC"];
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    const generateCode = () => {
+      const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+      let randomPart = "";
+      for (let i = 0; i < 8; i++) {
+        randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return `${prefix}-${randomPart}`;
+    };
+
+    for (const item of this.items) {
+      let code = item.uniqueCode;
+      let isUnique = false;
+
+      while (!isUnique) {
+        if (!code) {
+          code = generateCode();
+        }
+        // Check if this code exists in any invoice items
+        const existing = await Invoice.findOne({ "items.uniqueCode": code });
+        if (existing) {
+          // Duplicate found, regenerate
+          code = generateCode();
+        } else {
+          isUnique = true;
+        }
+      }
+      item.uniqueCode = code;
+    }
   }
   
   const customStatuses = ['Returned', 'Partially Returned', 'Exchanged', 'Partially Exchanged', 'Cancelled', 'Completed'];

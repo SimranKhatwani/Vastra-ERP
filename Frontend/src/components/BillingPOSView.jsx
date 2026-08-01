@@ -1184,48 +1184,28 @@ export const BillingPOSView = ({
   // Action: Finalize product addition from configuration modal
   const finalizeAddToCart = (prod, customQty, customSize, customColor, spId, spName, wId, wName) => {
     setCart((prev) => {
-      const existingIdx = prev.findIndex(
-        (item) => item.productId === (prod._id || prod.id) && item.size === customSize && item.color === customColor && item.salespersonId === spId && item.workerId === wId && !item.isCustom,
-      );
-      if (existingIdx > -1) {
-        const updated = [...prev];
-        const newQty = updated[existingIdx].quantity + customQty;
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
-        const sub = sPrice * newQty;
-        const discountAmt = Math.floor(
-          sub * (updated[existingIdx].discount / 100),
-        );
-        const itemGst = 0;
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          quantity: newQty,
-          totalPrice: sub - discountAmt,
-        };
-        return updated;
-      } else {
-        const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
-        const sub = sPrice * customQty;
-        const itemGst = 0;
-        return [
-          ...prev,
-          {
-            productId: prod._id || prod.id,
-            name: prod.name,
-            sku: prod.sku,
-            size: customSize,
-            color: customColor,
-            salespersonId: spId,
-            salespersonName: spName,
-            workerId: wId,
-            workerName: wName,
-            quantity: customQty,
-            price: sPrice,
-            discount: 0,
-            gstPercent: 0,
-            totalPrice: sub,
-          },
-        ];
+      const newItems = [];
+      const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
+      for (let i = 0; i < customQty; i++) {
+        newItems.push({
+          productId: prod._id || prod.id,
+          name: prod.name,
+          sku: prod.sku,
+          size: customSize,
+          color: customColor,
+          salespersonId: spId,
+          salespersonName: spName,
+          workerId: wId,
+          workerName: wName,
+          quantity: 1,
+          price: sPrice,
+          discount: 0,
+          gstPercent: 0,
+          totalPrice: sPrice,
+          uniqueCode: generateUniqueItemCode()
+        });
       }
+      return [...prev, ...newItems];
     });
   };
 
@@ -1294,24 +1274,21 @@ export const BillingPOSView = ({
 
   // Adjust quantity
   const handleAdjustQty = (idx, delta) => {
-    setCart((prev) => {
-      const updated = [...prev];
-      const item = updated[idx];
-      const newQty = item.quantity + delta;
-      if (newQty <= 0) {
-        return prev.filter((_, i) => i !== idx);
-      }
-      const sub = item.price * newQty;
-      const discountAmt = Math.floor(sub * (item.discount / 100));
-      const itemGst = 0;
-
-      updated[idx] = {
-        ...item,
-        quantity: newQty,
-        totalPrice: sub - discountAmt,
-      };
-      return updated;
-    });
+    if (delta === -1) {
+      setCart((prev) => prev.filter((_, i) => i !== idx));
+    } else if (delta === 1) {
+      setCart((prev) => {
+        const item = prev[idx];
+        const newItem = {
+          ...item,
+          quantity: 1,
+          uniqueCode: generateUniqueItemCode(),
+          alterationRecord: undefined,
+          hasAlteration: false
+        };
+        return [...prev, newItem];
+      });
+    }
   };
 
   // Adjust item discount
@@ -1788,6 +1765,17 @@ export const BillingPOSView = ({
     setActivePOSMode("billing");
   };
 
+  const generateUniqueItemCode = () => {
+    const prefixes = ["TRK", "ITM", "UC"];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let randomPart = "";
+    for (let i = 0; i < 8; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `${prefix}-${randomPart}`;
+  };
+
   const handleOpenDraftPreview = () => {
     if (cart.length === 0) {
       onAddNotification(
@@ -1895,7 +1883,10 @@ export const BillingPOSView = ({
               .map(
                 (item) => `
                 <tr>
-                  <td>${item.name} (${item.size}/${item.color})</td>
+                  <td>
+                    ${item.name} (${item.size}/${item.color})
+                    ${item.uniqueCode ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode}</span>` : ''}
+                  </td>
                   <td class="text-right">${item.quantity}</td>
                   <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
                   <td class="text-right">&#8377;${(Number(item.totalPrice || item.price) || 0).toLocaleString('en-IN')}</td>
@@ -2050,9 +2041,12 @@ export const BillingPOSView = ({
       .map(
         (item) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} (${item.size}/${item.color})</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">
+            ${item.name} (${item.size}/${item.color})
+            ${item.uniqueCode ? `<br/><span style="font-size: 10px; color: #666;">Code: ${item.uniqueCode}</span>` : ''}
+          </td>
           <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">?${item.totalPrice}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${item.totalPrice}</td>
         </tr>`
       )
       .join("");

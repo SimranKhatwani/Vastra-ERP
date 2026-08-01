@@ -8,13 +8,15 @@ const {
   changeDeliveryDate,
   assignTailor,
   processSalesReturn,
-  processSalesExchange
+  processSalesExchange,
+  getUniqueCodeLifecycle
 } = require('../controllers/invoiceController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
 router.get('/scan/:invoiceNo', protect, scanInvoice);
+router.get('/unique-code/:code', protect, getUniqueCodeLifecycle);
 router.put('/:id/delivery-date', protect, changeDeliveryDate);
 router.put('/:id/assign-tailor', protect, assignTailor);
 

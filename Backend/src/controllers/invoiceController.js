@@ -263,7 +263,8 @@ exports.getInvoices = async (req, res) => {
       query.$or = [
         { invoiceNo: { $regex: safeSearch, $options: 'i' } },
         { customerName: { $regex: safeSearch, $options: 'i' } },
-        { customerPhone: { $regex: safeSearch, $options: 'i' } }
+        { customerPhone: { $regex: safeSearch, $options: 'i' } },
+        { "items.uniqueCode": { $regex: safeSearch, $options: 'i' } }
       ];
     }
 
@@ -682,6 +683,134 @@ exports.processSalesExchange = async (req, res) => {
     res.status(200).json({ success: true, message: 'Exchange processed successfully', data: invoice, docket });
   } catch (error) {
     console.error('Process exchange error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getUniqueCodeLifecycle = async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { code } = req.params;
+
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Unique code is required' });
+    }
+
+    // Find the invoice that contains this unique code in items
+    const invoice = await Invoice.findOne({ "items.uniqueCode": code, tenantId });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Item not found with the specified Unique Code' });
+    }
+
+    const item = invoice.items.find(i => i.uniqueCode === code);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found in invoice details' });
+    }
+
+    // Determine current status
+    let currentStatus = 'Sold';
+    if (invoice.status === 'Cancelled') {
+      currentStatus = 'Cancelled';
+    } else if (item.isReturned) {
+      currentStatus = 'Returned';
+    } else if (item.isExchanged) {
+      currentStatus = 'Exchanged';
+    } else if (item.alterationRecord) {
+      const altStatus = item.alterationRecord.status || 'Pending';
+      if (altStatus === 'Delivered') {
+        currentStatus = 'Delivered';
+      } else if (altStatus === 'Completed') {
+        currentStatus = 'Alteration Completed';
+      } else {
+        currentStatus = 'Alteration Pending';
+      }
+    } else if (invoice.fulfillmentStatus === 'Delivered') {
+      currentStatus = 'Delivered';
+    }
+
+    // Build timeline/history
+    const history = [];
+    
+    // 1. Sold event
+    history.push({
+      status: 'Sold',
+      title: 'Product Sold',
+      detail: `Invoice No: ${invoice.invoiceNo} · Customer: ${invoice.customerName}`,
+      date: invoice.date
+    });
+
+    // 2. Alteration event if exists
+    if (item.alterationRecord) {
+      history.push({
+        status: item.alterationRecord.status === 'Completed' ? 'Alteration Completed' : item.alterationRecord.status === 'Delivered' ? 'Delivered' : 'Alteration Pending',
+        title: `Alteration ${item.alterationRecord.status || 'Requested'}`,
+        detail: `Tailor: ${item.alterationRecord.tailorName || 'Master Tailor'} · Details: ${item.alterationRecord.alterationDetails?.join(', ') || 'Fit adjustments'}`,
+        date: item.alterationRecord.updatedAt || item.alterationRecord.createdAt || invoice.date
+      });
+    }
+
+    // 3. Return event
+    if (item.isReturned) {
+      history.push({
+        status: 'Returned',
+        title: 'Product Returned',
+        detail: `Reason: ${item.returnReason || 'N/A'}`,
+        date: item.returnedAt || invoice.updatedAt
+      });
+    }
+
+    // 4. Exchange event
+    if (item.isExchanged) {
+      history.push({
+        status: 'Exchanged',
+        title: 'Product Exchanged',
+        detail: `Exchanged For: ${item.exchangedFor || 'New Garment'} · Reason: ${item.exchangeReason || 'N/A'}`,
+        date: invoice.updatedAt
+      });
+    }
+
+    // 5. Cancelled/Refunded event
+    if (invoice.status === 'Cancelled') {
+      history.push({
+        status: 'Cancelled',
+        title: 'Transaction Cancelled',
+        detail: 'The parent invoice transaction was cancelled',
+        date: invoice.updatedAt
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        uniqueCode: code,
+        invoiceDetails: {
+          invoiceId: invoice._id,
+          invoiceNo: invoice.invoiceNo,
+          date: invoice.date,
+          fulfillmentStatus: invoice.fulfillmentStatus
+        },
+        customer: {
+          customerId: invoice.customerId,
+          customerName: invoice.customerName,
+          customerPhone: invoice.customerPhone
+        },
+        product: {
+          productId: item.productId,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          color: item.color,
+          price: item.price,
+          totalPrice: item.totalPrice,
+          discount: item.discount
+        },
+        salesperson: item.salespersonName || invoice.salespersonName || 'Store Cashier',
+        currentStatus,
+        history
+      }
+    });
+  } catch (error) {
+    console.error('Get unique code lifecycle error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
