@@ -860,11 +860,8 @@ export const BillingPOSView = ({
       }
       // F9: Generate Bill
       if (e.key === "F9") {
-        handleCheckoutSubmit().then(finalInv => {
-          if (finalInv) {
-            handleDownloadReceiptHTML(finalInv);
-          }
-        });
+        e.preventDefault();
+        handleOpenDraftPreview();
       }
 
       // Payment Modal Navigation
@@ -1575,7 +1572,7 @@ export const BillingPOSView = ({
     setSplitCard(0);
     setSplitUPI(0);
     setSalespersonId("");
-    setShowReceiptModal(true);
+    setShowBillPreviewInvoice(mergedInvoice);
 
     onAddNotification(
       "Invoice Compiled Successfully",
@@ -1801,6 +1798,66 @@ export const BillingPOSView = ({
     setActivePOSMode("billing");
   };
 
+  const handleOpenDraftPreview = () => {
+    if (cart.length === 0) {
+      onAddNotification(
+        "POS Preview Failed",
+        "Cannot preview an empty cart.",
+        "danger",
+      );
+      return;
+    }
+    const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
+    const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
+    const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
+
+    const previewInv = {
+      invoiceNo: `INV-TEMP-${Date.now().toString().substring(6)}`,
+      date: new Date().toISOString(),
+      customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
+      customerName: activeCustomer.name,
+      customerPhone: activeCustomer.phone,
+      items: [...cart],
+      subTotal,
+      discountTotal,
+      couponCode: couponCode ? couponCode : undefined,
+      couponDiscount,
+      gstTotal,
+      grandTotal,
+      paymentMethod,
+      splitPayments: paymentMethod === "Split"
+        ? [
+          { method: "Cash", amount: splitCash },
+          { method: "Card", amount: splitCard },
+          { method: "UPI", amount: splitUPI },
+        ].filter((s) => s.amount > 0)
+        : undefined,
+      amountPaid: paymentMethod === "Credit" ? 0 : grandTotal,
+      status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
+      employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
+      employeeName: cashier.name,
+      salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
+      isDraftPreview: true
+    };
+    setShowBillPreviewInvoice(previewInv);
+  };
+
+  const handlePrintConfirm = async () => {
+    const saved = await handleCheckoutSubmit();
+    if (saved) {
+      handleDirectPrint(saved);
+      setShowBillPreviewInvoice(null);
+    }
+  };
+
+  const handleDownloadConfirm = async () => {
+    const saved = await handleCheckoutSubmit();
+    if (saved) {
+      handleDownloadOnly(saved);
+      setShowBillPreviewInvoice(null);
+    }
+  };
+
   // Helper to generate the standardized receipt HTML template
   const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
@@ -1968,130 +2025,7 @@ export const BillingPOSView = ({
 
   // Receipt HTML downloader matching rule - now displays the React modal preview
   const handleDownloadReceiptHTML = (invoice) => {
-    const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Receipt ${invoice.invoiceNo}</title>
-        <style>
-          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
-          .text-center { text-align: center; }
-          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
-          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-          table { width: 100%; font-size: 11px; }
-          th { text-align: left; }
-          .text-right { text-align: right; }
-          .totals { font-weight: bold; }
-          .footer { font-size: 10px; margin-top: 20px; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
-        <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
-        <div class="divider"></div>
-        <div class="details">
-          <b>Receipt No:</b> ${invoice.invoiceNo}<br>
-          <b>Date:</b> ${receiptDate}<br>
-          <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
-        </div>
-        <div class="divider"></div>
-        <table>
-          <thead>
-            <tr>
-              <th>Item Description</th>
-              <th class="text-right">Qty</th>
-              <th class="text-right">Price</th>
-              <th class="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${unrollInvoiceItems(invoice.items)
-        .map(
-          (item) => `
-              <tr>
-                <td>${item.name} (${item.size}/${item.color})</td>
-                <td class="text-right">${item.quantity}</td>
-                <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
-                <td class="text-right">&#8377;${(Number(item.totalPrice || item.price) || 0).toLocaleString('en-IN')}</td>
-              </tr>
-              ${item.isReturned ? `<tr><td colSpan="4" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
-              ${item.isExchanged ? `<tr><td colSpan="4" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
-              ${item.hasAlteration || item.alterationRecord ? `
-                <tr>
-                  <td colSpan="4" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
-                    <b>✂ ALTERATION:</b> ${item.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'} | <b>Tailor:</b> ${item.alterationRecord?.tailorName || 'Master Tailor'}<br/>
-                    <b>Delivery:</b> ${item.alterationRecord?.deliveryDate || 'Scheduled'} ${item.alterationRecord?.deliveryTime || ''} [Trial: ${item.alterationRecord?.trialDate || 'N/A'}, Priority: ${item.alterationRecord?.priority || 'Normal'}]
-                  </td>
-                </tr>
-              ` : ''}
-            `,
-        )
-        .join("")}
-          </tbody>
-        </table>
-        <div class="divider"></div>
-        <table>
-          <tr>
-            <td>Subtotal:</td>
-            <td class="text-right">&#8377;${(Number(invoice.subTotal) || 0).toLocaleString('en-IN')}</td>
-          </tr>
-          ${invoice.discountTotal > 0
-        ? `
-            <tr>
-              <td>Discount:</td>
-              <td class="text-right">-&#8377;${(Number(invoice.discountTotal) || 0).toLocaleString('en-IN')}</td>
-            </tr>
-          `
-        : ""
-      }
-          <tr>
-            <td>GST CGST+SGST:</td>
-            <td class="text-right">&#8377;${(Number(invoice.gstTotal) || 0).toLocaleString('en-IN')}</td>
-          </tr>
-          <tr class="totals">
-            <td>Grand Total:</td>
-            <td class="text-right">&#8377;${(Number(invoice.grandTotal) || 0).toLocaleString('en-IN')}</td>
-          </tr>
-        </table>
-        ${invoice.items.some(i => i.hasAlteration || i.alterationRecord) ? `
-          <div class="divider"></div>
-          <div style="font-size:11px; font-weight:bold; text-align:center; color:#be123c; margin-bottom:4px;">
-            *** ALTERATION & DELIVERY SLIP ***
-          </div>
-          ${invoice.items.filter(i => i.hasAlteration || i.alterationRecord).map(i => `
-            <div style="font-size:10px; line-height:1.4; background:#fff1f2; padding:6px; margin-bottom:4px; border:1px solid #fecdd3; border-radius:4px;">
-              <b>Item:</b> ${i.name} (${i.size}/${i.color})<br/>
-              <b>Tailor:</b> ${i.alterationRecord?.tailorName || 'Master Tailor'}<br/>
-              <b>Alterations:</b> ${i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}<br/>
-              <b>Delivery Date & Time:</b> ${i.alterationRecord?.deliveryDate || 'Scheduled'} ${i.alterationRecord?.deliveryTime || ''}<br/>
-              <b>Trial Date:</b> ${i.alterationRecord?.trialDate || 'N/A'} (Priority: ${i.alterationRecord?.priority || 'Normal'})<br/>
-              ${i.alterationRecord?.specialInstructions ? `<b>Notes:</b> ${i.alterationRecord.specialInstructions}<br/>` : ''}
-            </div>
-          `).join('')}
-        ` : ''}
-        <div class="divider"></div>
-        <div class="details text-center">
-          <b>Payment Mode:</b> ${invoice.paymentMethod}<br>
-          <b>Status:</b> ${invoice.status.toUpperCase()}<br>
-          Thank you for shopping with us!<br>
-          Powered by GarmentFlow SaaS ERP
-        </div>
-      <script>window.onload = function() { setTimeout(function() { window.print(); }, 500); }</script>
-                      </body>
-                      </html>
-                  `;
-    const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const receiptWin = window.open(url, "_blank");
-    onAddNotification(
-      "File Downloader",
-      `HTML Invoice ${invoice.invoiceNo} successfully generated & downloaded.`,
-      "success"
-    );
+    setShowBillPreviewInvoice(invoice);
   };
 
   const handleWhatsAppShare = (invoice) => {
@@ -2303,7 +2237,7 @@ export const BillingPOSView = ({
   };
 
   return (
-    <div className="space-y-3 animate-fade-in" id="billing-pos-root">
+    <div className="animate-fade-in flex flex-col h-[calc(100vh-80px)] min-h-0 space-y-2 pb-1" id="billing-pos-root">
       {/* POS Mode Selectors */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -2381,7 +2315,118 @@ export const BillingPOSView = ({
       {activePOSMode === "billing" && (
         <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs relative" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
 
+          {/* TOP CUSTOMER INFORMATION PANEL */}
+          <div className="bg-[#f0f0f0] border border-slate-400 m-1 flex flex-col shrink-0">
+            <div className="bg-[#c0c0c0] text-center text-[11px] py-1 font-bold border-b border-slate-400 text-slate-700 shadow-inner text-white flex items-center justify-between px-2" style={{ background: 'linear-gradient(to bottom, #999, #777)' }}>
+              <span>Loyalty Customer Information</span>
+              <span className="text-[10px] bg-slate-800 text-white px-2 py-0.2 rounded font-mono">
+                {selectedCustomerId ? `ID: ${selectedCustomerId}` : 'New/Walk-in'}
+              </span>
+            </div>
+            <div className="p-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2 items-center bg-slate-50">
+              
+              {/* Mobile No Search / Dropdown */}
+              <div className="flex items-center border border-slate-300 relative bg-white col-span-1 md:col-span-2">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Search Mobile/Name</span>
+                <input type="text" id="mobileSearchInput" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold"
+                  value={customerSearchQuery || customerForm.phone}
+                  onChange={(e) => {
+                    setCustomerSearchQuery(e.target.value);
+                    setCustomerForm(prev => ({ ...prev, phone: e.target.value }));
+                    setIsCustomerDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsCustomerDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
+                  placeholder="Type to search..."
+                />
+                {isCustomerDropdownOpen && customerSearchQuery && (
+                  <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
+                    {customers.filter(c =>
+                      (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                      (c.phone || "").includes(customerSearchQuery) ||
+                      (c.id || "").includes(customerSearchQuery)
+                    ).map((c, idx) => (
+                      <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
+                        onClick={() => {
+                          setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', title: c.title || 'Mr.', lf: '2588' });
+                          setSelectedCustomerId(c.id || c._id);
+                          setCustomerSearchQuery(c.phone);
+                          setIsCustomerDropdownOpen(false);
+                          if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
+                        }}>
+                        <div className="font-bold text-slate-800">{c.name}</div>
+                        <div className="text-slate-500">Phone: {c.phone} | Pts: {c.loyaltyPoints || 0}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* LF */}
+              <div className="flex items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-mono">LF</span>
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none" value={customerForm.lf} onChange={e => setCustomerForm(prev => ({ ...prev, lf: e.target.value }))} />
+              </div>
+
+              {/* Title */}
+              <div className="flex items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Title</span>
+                <select className="flex-1 p-1 text-[10px] outline-none border-none" value={customerForm.title} onChange={e => setCustomerForm(prev => ({ ...prev, title: e.target.value }))}>
+                  <option>Mr.</option>
+                  <option>Mrs.</option>
+                  <option>Ms.</option>
+                </select>
+              </div>
+
+              {/* Name */}
+              <div className="flex relative items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Name</span>
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
+              </div>
+
+              {/* Mobile Display */}
+              <div className="flex relative items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Mobile</span>
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} />
+              </div>
+
+              {/* Email */}
+              <div className="flex relative items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Email</span>
+                <input type="email" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" />
+              </div>
+
+              {/* DOB */}
+              <div className="flex relative items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">DOB</span>
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} placeholder="DD-MM-YYYY" />
+              </div>
+
+              {/* Loyalty Points */}
+              <div className="flex items-center border border-slate-300 bg-slate-100">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Points</span>
+                <span className="flex-1 p-1 text-[10px] font-bold text-indigo-700">
+                  {customers.find(c => (c.id || c._id) === selectedCustomerId)?.loyaltyPoints || 0} pts
+                </span>
+              </div>
+
+              {/* Customer Actions */}
+              <div className="flex gap-1 justify-end col-span-1 sm:col-span-2 md:col-span-4 lg:col-span-5 xl:col-span-4">
+                <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={handleCustomerSave}>
+                  <Save className="w-3.5 h-3.5 text-green-600" />
+                  <span>Save Profile</span>
+                </button>
+                <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' })}>
+                  <X className="w-3.5 h-3.5 text-red-600" />
+                  <span>New Customer</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
           <div className="flex flex-1 gap-1 overflow-hidden min-w-0">
+
             {/* LEFT MAIN (GRID + SUMMARIES) */}
             <div className="flex-[3] flex flex-col bg-white border border-slate-400 min-w-0">
 
@@ -2630,7 +2675,7 @@ export const BillingPOSView = ({
                     { id: "modify", label: "Alteration", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
                     { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
-                    { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: async () => { const finalInv = await handleCheckoutSubmit(); if (finalInv) { handleDownloadReceiptHTML(finalInv); } } },
+                    { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
                     { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
@@ -2659,150 +2704,65 @@ export const BillingPOSView = ({
               </div>
             </div>
 
-            {/* RIGHT SIDEBAR (LOYALTY CUSTOMER & IMAGE) */}
-            <div className="w-[280px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400 relative">
-              <div className="text-[10px] text-slate-400 transform -rotate-90 origin-top-left absolute right-[-100px] top-[200px]">Document Windows</div>
-              {/* Image Placeholder */}
-              <div className="bg-white m-1 mt-2 border border-slate-400 h-[220px] flex flex-col p-1 shadow-sm">
-                <div className="flex-1 border border-dashed border-slate-300 flex items-center justify-center text-slate-300">
-
-                </div>
-                <div className="flex justify-center gap-4 mt-1 bg-[#f0f0f0] p-1 border border-slate-300">
-                  <button className="text-green-500"><ChevronsLeft className="w-4 h-4" /></button>
-                  <button className="text-blue-500 cursor-pointer" onClick={() => document.getElementById("mobileSearchInput")?.focus()}><Search className="w-4 h-4" /></button>
-                  <button className="text-green-500"><ChevronRight className="w-4 h-4" /></button>
-                </div>
+            {/* RIGHT COLUMN: ALTERATION PANEL */}
+            <div className="w-[200px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400">
+              <div className="bg-[#c0c0c0] text-center text-[10px] py-1 font-bold border-b border-slate-400 text-slate-700 shadow-inner text-white flex items-center justify-center gap-1 uppercase tracking-wider" style={{ background: 'linear-gradient(to bottom, #999, #777)' }}>
+                <Scissors className="w-3.5 h-3.5 text-white" />
+                <span>Alteration Panel</span>
               </div>
-
-              {/* Loyalty Customer Form */}
-              <div className="bg-[#f0f0f0] border border-slate-400 m-1 mt-0">
-                <div className="bg-[#c0c0c0] text-center text-[11px] py-1 font-bold border-b border-slate-400 text-slate-700 shadow-inner text-white" style={{ background: 'linear-gradient(to bottom, #999, #777)' }}>
-                  Loyalty Customer
-                </div>
-                <div className="p-1 space-y-0.5">
-                  <div className="flex items-center border border-slate-300 relative">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Mobile No</span>
-                    <input type="text" id="mobileSearchInput" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100"
-                      value={customerSearchQuery || customerForm.phone}
-                      onChange={(e) => {
-                        setCustomerSearchQuery(e.target.value);
-                        setCustomerForm(prev => ({ ...prev, phone: e.target.value }));
-                        setIsCustomerDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsCustomerDropdownOpen(true)}
-                      onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
-                      placeholder="Search Name/Mobile/ID..."
-                    />
-                    {isCustomerDropdownOpen && customerSearchQuery && (
-                      <div className="absolute top-full left-20 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
-                        {customers.filter(c =>
-                          (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-                          (c.phone || "").includes(customerSearchQuery) ||
-                          (c.id || "").includes(customerSearchQuery)
-                        ).map((c, idx) => (
-                          <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
-                            onClick={() => {
-                              setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', title: c.title || 'Mr.', lf: '2588' });
-                              setSelectedCustomerId(c.id || c._id);
-                              setCustomerSearchQuery(c.phone);
-                              setIsCustomerDropdownOpen(false);
-                              if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
-                            }}>
-                            <div className="font-bold text-slate-800">{c.name}</div>
-                            <div className="text-slate-500">Phone: {c.phone} | Pts: {c.loyaltyPoints || 0} | Lvl: {c.membershipLevel || 'Standard'}</div>
+              <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5 custom-scrollbar bg-slate-50">
+                {cart.length === 0 ? (
+                  <div className="text-center text-slate-400 py-8 text-[10px]">
+                    No items in bill.
+                  </div>
+                ) : (
+                  cart.map((item, idx) => {
+                    const hasAlt = !!(item.hasAlteration || item.alterationRecord);
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-2 rounded border transition-all flex flex-col gap-1 ${hasAlt ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-300 hover:border-slate-400'}`}
+                      >
+                        <div className="flex items-start gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={hasAlt}
+                            onChange={() => {
+                              setSelectedAlterationCartItem(item);
+                              setAltMeasurements(item.alterationRecord?.measurements || {});
+                              setAltOptions(item.alterationRecord?.alterationDetails || []);
+                              setAltCustomText(item.alterationRecord?.customAlterationText || "");
+                              setAltSpecialInstructions(item.alterationRecord?.specialInstructions || "");
+                              setAltDeliveryDate(item.alterationRecord?.deliveryDate || "");
+                              setAltDeliveryTime(item.alterationRecord?.deliveryTime || "05:00 PM");
+                              setAltTrialDate(item.alterationRecord?.trialDate || "");
+                              setAltPriority(item.alterationRecord?.priority || "Normal");
+                              setAltSelectedTailor(tailorEmployeesList.find(t => t.name === item.alterationRecord?.tailorName) || null);
+                              setShowAlterationModal(true);
+                            }}
+                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-slate-800 truncate text-[10px]" title={item.name}>
+                              {item.name}
+                            </div>
+                            <div className="text-[9px] text-slate-500 font-mono">
+                              Sz: {item.size || 'M'} | Col: {item.color || 'Std'} | Qty: {item.quantity}
+                            </div>
+                            {hasAlt && (
+                              <div className="text-[9px] text-emerald-700 font-bold mt-0.5 flex items-center gap-0.5">
+                                <span>✔ Ready</span>
+                              </div>
+                            )}
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="flex items-center border border-slate-300">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">LF</span>
-                    <input type="text" className="flex-1 p-0.5 text-[10px] outline-none" value={customerForm.lf} onChange={e => setCustomerForm(prev => ({ ...prev, lf: e.target.value }))} />
-                  </div>
-                  <div className="flex items-center border border-slate-300">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Title</span>
-                    <select className="flex-1 p-0.5 text-[10px] outline-none" value={customerForm.title} onChange={e => setCustomerForm(prev => ({ ...prev, title: e.target.value }))}>
-                      <option>Mr.</option>
-                      <option>Mrs.</option>
-                      <option>Ms.</option>
-                    </select>
-                  </div>
-                  <div className="flex relative items-center border border-slate-300">
-                    <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4">Name</span>
-                    <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
-                  </div>
-                  <div className="flex relative items-center border border-slate-300">
-                    <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                    <span className="w-20 text-[10px] text-blue-800 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4 underline cursor-pointer">Mobile</span>
-                    <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} />
-                  </div>
-                  <div className="flex relative items-center border border-slate-300">
-                    <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                    <span className="w-20 text-[10px] text-blue-800 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4 underline cursor-pointer">Email</span>
-                    <input type="email" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" />
-                  </div>
-                  <div className="flex relative items-center border border-slate-300">
-                    <Search className="w-3 h-3 text-slate-400 absolute left-1 top-1" />
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1 pl-4">DOB</span>
-                    <input type="text" className="flex-1 p-0.5 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} placeholder="DD-MM-YYYY" />
-                  </div>
-                  <div className="flex items-center border border-slate-300">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Total Sale</span>
-                    <div className="flex-1 p-0.5 text-[10px] bg-white cursor-pointer hover:bg-slate-50 border border-slate-300">Click on Total Sale</div>
-                  </div>
-                  <div className="flex items-center border border-slate-300">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Loyalty Points</span>
-                    <div className="flex-1 bg-white"></div>
-                  </div>
-                  <div className="flex items-center border border-slate-300">
-                    <span className="w-20 text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-0.5 text-right px-1">Gender</span>
-                    <select className="flex-1 p-0.5 text-[10px] outline-none border-none">
-                      <option>None</option>
-                      <option>Male</option>
-                      <option>Female</option>
-                    </select>
-                  </div>
-
-                  <div className="flex justify-center gap-1 mt-2 p-1 bg-[#e1e1e1] border-t border-slate-300">
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white">
-                      <Search className="w-5 h-5 text-blue-600" />
-                      Search
-                    </button>
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white" onClick={handleCustomerSave}>
-                      <Save className="w-5 h-5 text-green-600" />
-                      Save
-                    </button>
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white" onClick={() => setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' })}>
-                      <X className="w-5 h-5 text-red-600" />
-                      New
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sidebar Buttons */}
-                <div className="p-2 flex justify-center pb-2 mt-2 border-t border-slate-300">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white">
-                      <Search className="w-5 h-5 text-yellow-500" />
-                      Search
-                    </button>
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white">
-                      <CheckCircle className="w-5 h-5 text-blue-600" />
-                      Save
-                    </button>
-                    <button className="w-[70px] h-[48px] rounded flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] text-[10px] font-semibold text-slate-700 shadow-sm hover:from-white hover:to-white" onClick={() => setCart([])}>
-                      <X className="w-6 h-6 text-red-600" />
-                      New
-                    </button>
-                    <div className="flex flex-col gap-1 w-[70px]">
-                      <button onClick={() => setShowDiscountSelectionModal(true)} className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">Discount Coupon</button>
-                      <button onClick={() => setActivePOSMode("history")} className="bg-gradient-to-b from-white to-[#e5e5e5] border border-[#a0a0a0] rounded text-[9px] h-6 flex items-center justify-center font-semibold text-slate-700 shadow-sm hover:to-white">View History</button>
-                    </div>
-                  </div>
-                </div>
+                    );
+                  })
+                )}
               </div>
             </div>
+
           </div>
         </div>
       )}
@@ -5315,197 +5275,7 @@ export const BillingPOSView = ({
         })()}
 
       {/* MODAL: COMPLETED RECEIPT VIEW */}
-      {showReceiptModal && completedInvoice && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-1.5 text-emerald-600">
-                <CheckCircle className="w-5 h-5" />
-                <span className="text-sm font-bold uppercase tracking-wide">
-                  Sale Completed Successfully
-                </span>
-              </div>
-              <button
-                onClick={() => setShowReceiptModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Simulated Receipt paper layout */}
-            <div className="border border-slate-100 rounded-xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-96 overflow-y-auto">
-              <div className="text-center font-bold text-slate-900 text-sm">
-                ZIVA FASHION BOUTIQUE
-              </div>
-              <div className="text-center text-[10px] text-slate-500">
-                Bandra, Mumbai - GSTIN 27AABCV1942A1ZX
-              </div>
-              <div className="border-t border-dashed border-slate-300 my-2" />
-
-              <div className="flex justify-between">
-                <span>Receipt: {completedInvoice.invoiceNo}</span>
-                <span>Date: {completedInvoice.date ? new Date(completedInvoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span>Customer: {completedInvoice.customerName}</span>
-              </div>
-
-              <div className="border-t border-dashed border-slate-300 my-2" />
-
-              <div className="space-y-1 text-[11px]">
-                {unrollInvoiceItems(completedInvoice.items).map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between font-bold">
-                      <span>
-                        {item.quantity}x {item.name.substring(0, 28)}...
-                        {item.isReturned && <strong className="text-rose-600 text-[9px] ml-1">[RETURNED]</strong>}
-                        {item.isExchanged && <strong className="text-indigo-600 text-[9px] ml-1">[EXCHANGED]</strong>}
-                      </span>
-                      <span>₹{(Number(item.totalPrice || item.price) || 0).toLocaleString()}</span>
-                    </div>
-                    {!!(item.hasAlteration || item.alterationRecord) && (
-                      <div className="text-[9.5px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 font-sans my-1">
-                        <p className="font-bold flex items-center gap-1">
-                          <Scissors className="w-3 h-3 text-rose-600" />
-                          <span>ALTERATION LOGGED</span>
-                        </p>
-                        <p>Types: {item.alterationRecord?.alterationDetails?.join(", ") || "Custom Fitting"}</p>
-                        <p>Master Tailor: <strong>{item.alterationRecord?.tailorName || "Assigned"}</strong></p>
-                        <p>Delivery: <strong>{item.alterationRecord?.deliveryDate || "Scheduled"} {item.alterationRecord?.deliveryTime || ""}</strong> (Trial: {item.alterationRecord?.trialDate || "N/A"})</p>
-                        {item.alterationRecord?.specialInstructions && <p className="italic">Notes: "{item.alterationRecord.specialInstructions}"</p>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-dashed border-slate-300 my-2" />
-
-              <div className="space-y-1 text-right">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>₹{completedInvoice.subTotal}</span>
-                </div>
-                {completedInvoice.discountTotal > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Discount:</span>
-                    <span>-₹{completedInvoice.discountTotal}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>GST:</span>
-                  <span>₹{completedInvoice.gstTotal}</span>
-                </div>
-                <div className="flex justify-between font-bold text-slate-900 text-sm">
-                  <span>Total Paid:</span>
-                  <span>₹{completedInvoice.grandTotal}</span>
-                </div>
-              </div>
-
-              {completedInvoice.items.some(i => i.hasAlteration || !!i.alterationRecord) && (
-                <div className="space-y-1.5 pt-2 border-t border-dashed border-slate-300 font-sans text-[10px]">
-                  <p className="font-bold text-center text-rose-700 uppercase tracking-wider">
-                    *** ALTERATION & DELIVERY SLIP ***
-                  </p>
-                  {completedInvoice.items.filter(i => i.hasAlteration || i.alterationRecord).map((i, idx) => (
-                    <div key={idx} className="bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 text-rose-900">
-                      <p className="font-bold text-slate-800">{i.name} ({i.size}/{i.color})</p>
-                      <p>Master Tailor: <strong>{i.alterationRecord?.tailorName || 'Master Tailor'}</strong></p>
-                      <p>Alterations: <strong>{i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}</strong></p>
-                      <p>Delivery Date & Time: <strong>{i.alterationRecord?.deliveryDate || 'Scheduled'} {i.alterationRecord?.deliveryTime || ''}</strong></p>
-                      <p>Expected Trial: {i.alterationRecord?.trialDate || 'N/A'} (Priority: {i.alterationRecord?.priority || 'Normal'})</p>
-                      {i.alterationRecord?.specialInstructions && <p className="italic text-slate-600">Notes: "{i.alterationRecord.specialInstructions}"</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="border-t border-dashed border-slate-300 my-2" />
-              <div className="text-center text-[10px] text-slate-400">
-                Powering Retail Commerce via GarmentFlow SaaS
-              </div>
-            </div>
-
-            {/* Actions for receipts */}
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleDownloadReceiptHTML(completedInvoice)}
-                  className="py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download HTML</span>
-                </button>
-                <button
-                  onClick={() => {
-                    onAddNotification(
-                      "Printer Terminal",
-                      "Sending print job TM-T88 thermal stack...",
-                      "info",
-                    );
-                    onAddNotification(
-                      "SMS Gateway",
-                      `WhatsApp receipt sent to ${completedInvoice.customerPhone}`,
-                      "success",
-                    );
-                    setShowReceiptModal(false);
-                  }}
-                  className="py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Send to Thermal</span>
-                </button>
-              </div>
-
-              {/* ── WhatsApp Dispatch Status ───────────────────────────── */}
-              <div className="mt-2 p-3 rounded-xl border text-xs" style={{
-                background: whatsappDispatchState === 'success' ? '#f0fdf4' : whatsappDispatchState === 'failed' ? '#fef2f2' : whatsappDispatchState === 'sending' ? '#eff6ff' : '#f8fafc',
-                borderColor: whatsappDispatchState === 'success' ? '#bbf7d0' : whatsappDispatchState === 'failed' ? '#fecaca' : whatsappDispatchState === 'sending' ? '#bfdbfe' : '#e2e8f0',
-              }}>
-                {whatsappDispatchState === 'sending' && (
-                  <div className="flex items-center gap-2 text-blue-700 font-semibold">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Dispatching invoice via WhatsApp...</span>
-                  </div>
-                )}
-                {whatsappDispatchState === 'success' && (
-                  <div className="flex items-center gap-2 text-emerald-700 font-semibold">
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Invoice sent to customer's WhatsApp successfully!</span>
-                  </div>
-                )}
-                {whatsappDispatchState === 'failed' && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-red-600 font-semibold">
-                      <XCircle className="w-4 h-4" />
-                      <span>WhatsApp dispatch failed. You can retry below.</span>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (whatsappDispatchId && onRetryWhatsApp) {
-                          setWhatsappDispatchState('sending');
-                          const ok = await onRetryWhatsApp(whatsappDispatchId);
-                          setWhatsappDispatchState(ok ? 'success' : 'failed');
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] cursor-pointer"
-                    >
-                      Retry WhatsApp
-                    </button>
-                  </div>
-                )}
-                {whatsappDispatchState === 'idle' && (
-                  <div className="flex items-center gap-2 text-slate-500 font-medium">
-                    <Smartphone className="w-4 h-4" />
-                    <span>WhatsApp auto-dispatch not triggered (no customer number or config).</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Small Alteration Prompt Popup */}
       {alterationPromptItem && (
@@ -5885,6 +5655,63 @@ export const BillingPOSView = ({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: BILL RECEIPT PREVIEW */}
+      {showBillPreviewInvoice && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[120] font-sans animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-1.5 text-rose-600">
+                <Printer className="w-5 h-5 animate-pulse" />
+                <span className="text-sm font-bold uppercase tracking-wide">
+                  Bill Receipt Preview
+                </span>
+              </div>
+              <button
+                onClick={() => setShowBillPreviewInvoice(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Receipt Thermal Scroll Preview Frame */}
+            <div className="flex-1 border border-slate-200 rounded-xl overflow-hidden bg-slate-100 shadow-inner">
+              <iframe
+                title="Invoice Print Preview"
+                srcDoc={generateReceiptHTMLContent(showBillPreviewInvoice, false)}
+                className="w-full h-[58vh] border-none bg-white"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-3 shrink-0 pt-2 font-mono">
+              <button
+                onClick={() => showBillPreviewInvoice.isDraftPreview ? handlePrintConfirm() : handleDirectPrint(showBillPreviewInvoice)}
+                className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span className="text-sm">🖨️</span>
+                <span>PRINT</span>
+              </button>
+              
+              <button
+                onClick={() => showBillPreviewInvoice.isDraftPreview ? handleDownloadConfirm() : handleDownloadOnly(showBillPreviewInvoice)}
+                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span className="text-sm">⬇️</span>
+                <span>DOWNLOAD HTML</span>
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setShowBillPreviewInvoice(null)}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
