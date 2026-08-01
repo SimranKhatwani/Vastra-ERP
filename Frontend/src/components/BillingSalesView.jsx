@@ -34,7 +34,7 @@ export const BillingSalesView = ({
   employees = [],
   onAddNotification
 }) => {
-  const [activeTab, setActiveTab] = useState("gst-billing");
+  const [activeTab, setActiveTab] = useState("wholesale-billing");
 
   // Cart & Invoice states
   const [cart, setCart] = useState([]);
@@ -62,8 +62,8 @@ export const BillingSalesView = ({
   ]);
 
   // Tax rates (CGST & SGST configurations)
-  const [cgstRate, setCgstRate] = useState(5);
-  const [sgstRate, setSgstRate] = useState(5);
+  const [cgstRate, setCgstRate] = useState(0);
+  const [sgstRate, setSgstRate] = useState(0);
 
   // GST overrides states
   const [showOverrideModal, setShowOverrideModal] = useState(false);
@@ -137,13 +137,8 @@ export const BillingSalesView = ({
   // Fetch Default config
   const fetchTaxConfig = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await api.get(`/products/tax-config`);
-      const json = res.data;
-      if (json.success && json.data) {
-        setCgstRate(json.data.cgstRate || 5);
-        setSgstRate(json.data.sgstRate || 5);
-      }
+      setCgstRate(0);
+      setSgstRate(0);
     } catch (err) {
       console.error(err);
     }

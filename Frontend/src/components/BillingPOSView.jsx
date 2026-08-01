@@ -53,18 +53,13 @@ export const BillingPOSView = ({
   const [cart, setCart] = useState([]);
 
   // GST & SGST Configurations
-  const [cgstRate, setCgstRate] = useState(5);
-  const [sgstRate, setSgstRate] = useState(5);
+  const [cgstRate, setCgstRate] = useState(0);
+  const [sgstRate, setSgstRate] = useState(0);
 
   const fetchTaxConfig = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await api.get(`/products/tax-config`);
-      const json = res.data;
-      if (json.success && json.data) {
-        setCgstRate(json.data.cgstRate || 5);
-        setSgstRate(json.data.sgstRate || 5);
-      }
+      setCgstRate(0);
+      setSgstRate(0);
     } catch (err) {
       console.error("Failed to load tax configs in BillingPOS:", err);
     }
@@ -1200,19 +1195,17 @@ export const BillingPOSView = ({
         const discountAmt = Math.floor(
           sub * (updated[existingIdx].discount / 100),
         );
-        const itemGst = Math.floor(
-          (sub - discountAmt) * ((prod.gstPercent || 0) / 100),
-        );
+        const itemGst = 0;
         updated[existingIdx] = {
           ...updated[existingIdx],
           quantity: newQty,
-          totalPrice: sub - discountAmt + itemGst,
+          totalPrice: sub - discountAmt,
         };
         return updated;
       } else {
         const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
         const sub = sPrice * customQty;
-        const itemGst = Math.floor(sub * ((prod.gstPercent || 0) / 100));
+        const itemGst = 0;
         return [
           ...prev,
           {
@@ -1228,8 +1221,8 @@ export const BillingPOSView = ({
             quantity: customQty,
             price: sPrice,
             discount: 0,
-            gstPercent: prod.gstPercent || 0,
-            totalPrice: sub + itemGst,
+            gstPercent: 0,
+            totalPrice: sub,
           },
         ];
       }
@@ -1308,16 +1301,14 @@ export const BillingPOSView = ({
       if (newQty <= 0) {
         return prev.filter((_, i) => i !== idx);
       }
-      const match = products.find((p) => p.id === item.productId);
-      const gstRate = match ? match.gstPercent : 12;
       const sub = item.price * newQty;
       const discountAmt = Math.floor(sub * (item.discount / 100));
-      const itemGst = Math.floor((sub - discountAmt) * (gstRate / 100));
+      const itemGst = 0;
 
       updated[idx] = {
         ...item,
         quantity: newQty,
-        totalPrice: sub - discountAmt + itemGst,
+        totalPrice: sub - discountAmt,
       };
       return updated;
     });
@@ -1330,12 +1321,12 @@ export const BillingPOSView = ({
       const item = updated[idx];
       const sub = item.price * item.quantity;
       const discountAmt = Math.floor(sub * (discountPct / 100));
-      const itemGst = Math.floor((sub - discountAmt) * (item.gstPercent / 100));
+      const itemGst = 0;
 
       updated[idx] = {
         ...item,
         discount: discountPct,
-        totalPrice: sub - discountAmt + itemGst,
+        totalPrice: sub - discountAmt,
       };
       return updated;
     });
@@ -1459,9 +1450,8 @@ export const BillingPOSView = ({
 
     const totalOverallDiscount = discountTotal + totalRuleDiscount;
     const taxable = Math.max(0, subTotal - totalOverallDiscount);
-    const totalTaxRate = cgstRate + sgstRate;
-    const gstTotal = Math.floor(taxable * (totalTaxRate / 100));
-    const grandTotal = taxable + gstTotal;
+    const gstTotal = 0;
+    const grandTotal = taxable;
 
     return {
       subTotal,
@@ -1940,10 +1930,7 @@ export const BillingPOSView = ({
             `
             : ""
           }
-          <tr>
-            <td>GST CGST+SGST:</td>
-            <td class="text-right">&#8377;${(Number(invoice.gstTotal) || 0).toLocaleString('en-IN')}</td>
-          </tr>
+
           <tr class="totals">
             <td>Grand Total:</td>
             <td class="text-right">&#8377;${(Number(invoice.grandTotal) || 0).toLocaleString('en-IN')}</td>
@@ -2045,7 +2032,6 @@ export const BillingPOSView = ({
       `*Apparel Items:*\n${itemsText}\n` +
       `---------------------------\n` +
       `*Subtotal:* ₹${invoice.subTotal}\n` +
-      `*GST (CGST+SGST):* ₹${invoice.gstTotal}\n` +
       `*Grand Total:* ₹${invoice.grandTotal}\n\n` +
       `Thank you for shopping with us!`;
     const encoded = encodeURIComponent(msg);
@@ -2115,7 +2101,6 @@ export const BillingPOSView = ({
       <div class="totals">
         <p>Subtotal: <strong>?${invoice.subTotal}</strong></p>
         <p>Discount: <strong>?${invoice.discountTotal}</strong></p>
-        <p>GST: <strong>?${invoice.gstTotal}</strong></p>
         <p style="font-size: 18px; margin-top: 10px;">Grand Total: <strong>?${invoice.grandTotal}</strong></p>
       </div>
 
@@ -2630,16 +2615,14 @@ export const BillingPOSView = ({
                         <td className="border border-slate-300 p-1 px-2 text-right text-red-600 w-24">{(discountTotal || 0).toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Tax Amt</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-orange-600">{(gstTotal || 0).toFixed(2)}</td>
                         <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Net Amt</td>
                         <td className="border border-slate-300 p-1 px-2 text-right text-blue-600">{(grandTotal || 0).toFixed(2)}</td>
-                      </tr>
-                      <tr>
                         <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Payable</td>
                         <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600">{(grandTotal || 0).toFixed(2)}</td>
+                      </tr>
+                      <tr>
                         <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Quantity</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600">{cart.reduce((a, b) => a + b.quantity, 0)} PCS</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600" colSpan={3}>{cart.reduce((a, b) => a + b.quantity, 0)} PCS</td>
                       </tr>
                     </tbody>
                   </table>
