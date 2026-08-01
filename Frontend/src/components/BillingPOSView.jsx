@@ -32,6 +32,7 @@ import {
   Save,
   Upload,
   Copy,
+  Info,
 } from "lucide-react";
 
 export const BillingPOSView = ({
@@ -259,6 +260,14 @@ export const BillingPOSView = ({
   const [itemNameInput, setItemNameInput] = useState("");
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
+  const [selectedSearchItem, setSelectedSearchItem] = useState(null);
+  const [infoModalItem, setInfoModalItem] = useState(null);
+
+  useEffect(() => {
+    if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
+      setSelectedSearchItem(itemSearchResults[0]);
+    }
+  }, [isItemSearchModalOpen, itemSearchResults, selectedSearchItem]);
   const [productSearch, setProductSearch] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [couponCode, setCouponCode] = useState("");
@@ -811,7 +820,7 @@ export const BillingPOSView = ({
 
       // F2: Product Search
       if (e.key === "F2") {
-        setIsItemSearchModalOpen(true);
+        handleOpenItemSearchModal();
       }
       // F3: Customer Search
       if (e.key === "F3") {
@@ -2046,11 +2055,40 @@ export const BillingPOSView = ({
     }
   };
 
+  const handleOpenItemSearchModal = () => {
+    const formatted = products.map(p => ({
+      _id: p._id || p.id,
+      id: p._id || p.id,
+      barcode: p.barcode,
+      name: p.name,
+      subItem: p.subItem || p.category || '',
+      designNo: p.sku || '',
+      itemCode: p.productCode || '',
+      ipn: p.ipn || p.rackLocation || '',
+      uniqueCode: p.uniqueCode || '',
+      hsn: p.hsn || '',
+      company: p.company || p.brand || '',
+      remarks: p.remarks || '',
+      color: p.color || '',
+      size: p.size || '',
+      mrp: p.mrp || p.sellingPrice || 0,
+      sellingRate: p.sellingPrice || p.price || 0,
+      availableStock: p.stock || 0,
+      soldQuantity: p.soldQuantity || 0
+    }));
+    setItemSearchResults(formatted);
+    setSelectedSearchItem(formatted[0] || null);
+    setIsItemSearchModalOpen(true);
+  };
+
   const handleItemNameKeyDown = async (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const q = itemNameInput.trim();
-      if (!q) return;
+      if (!q) {
+        handleOpenItemSearchModal();
+        return;
+      }
 
       try {
         const token = localStorage.getItem('token');
@@ -2058,6 +2096,7 @@ export const BillingPOSView = ({
         if (res.data.success) {
           const items = res.data.data;
           setItemSearchResults(items);
+          setSelectedSearchItem(items[0] || null);
           setIsItemSearchModalOpen(true);
         }
       } catch (err) {
@@ -2323,7 +2362,7 @@ export const BillingPOSView = ({
                           className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 cursor-pointer shadow-inner placeholder-slate-500"
                           placeholder="Click to Search Item..."
                           readOnly
-                          onClick={() => setIsItemSearchModalOpen(true)}
+                          onClick={handleOpenItemSearchModal}
                         />
                       </td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
@@ -5962,7 +6001,7 @@ export const BillingPOSView = ({
       {/* ITEM SEARCH LIST MODAL */}
       {isItemSearchModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-          <div className="bg-[#f0f0f0] w-[800px] max-h-[90vh] flex flex-col shadow-2xl font-sans" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+          <div className="bg-[#f0f0f0] w-[950px] max-h-[92vh] flex flex-col shadow-2xl font-sans" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
             {/* Window Title Bar */}
             <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold border-t-2 border-l-2 border-r-2 border-slate-300 cursor-move">
               <div className="flex items-center gap-1">
@@ -5981,12 +6020,22 @@ export const BillingPOSView = ({
               <span className="font-semibold text-slate-700">Item Name</span>
               <input
                 type="text"
-                className="border border-slate-400 p-1 flex-1 outline-none focus:border-blue-500 focus:bg-yellow-50"
+                className="border border-slate-400 p-1 flex-1 outline-none focus:border-blue-500 focus:bg-yellow-50 text-slate-800 font-bold"
                 value={itemNameInput}
                 onChange={(e) => setItemNameInput(e.target.value)}
                 onKeyDown={handleItemNameKeyDown}
+                placeholder="Type name here and click Search or press Enter..."
                 autoFocus
               />
+              <button
+                onClick={() => {
+                  const fakeEvent = { key: "Enter", preventDefault: () => {} };
+                  handleItemNameKeyDown(fakeEvent);
+                }}
+                className="px-4 py-1 bg-[#005fb8] hover:bg-blue-700 text-white rounded font-bold cursor-pointer text-xs"
+              >
+                Search
+              </button>
               <span className="font-semibold text-slate-700 ml-4">Records Limit</span>
               <input type="number" className="border border-slate-400 p-1 w-16 outline-none text-right" defaultValue={100} />
             </div>
@@ -6003,43 +6052,111 @@ export const BillingPOSView = ({
               <button className="p-1 hover:border-slate-300 border border-transparent"><Grid className="w-5 h-5 text-slate-500" /></button>
             </div>
 
+            {/* Top Cards/Summary Panel */}
+            {(() => {
+              const activeItem = selectedSearchItem || itemSearchResults[0] || {};
+              const available = activeItem.availableStock || 0;
+              const sold = activeItem.soldQuantity || 0;
+              const total = available + sold;
+              return (
+                <div className="bg-slate-100 p-2 border-b border-slate-300 grid grid-cols-5 gap-2 text-xs font-semibold">
+                  <div className="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Design No.</div>
+                    <div className="font-bold text-slate-800 mt-0.5">{activeItem.designNo || activeItem.sku || '(NIL)'}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Item Name</div>
+                    <div className="font-bold text-slate-800 mt-0.5">{activeItem.name || '(NIL)'}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Total Pieces</div>
+                    <div className="font-mono font-bold text-indigo-600 mt-0.5">{total}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Available</div>
+                    <div className="font-mono font-bold text-emerald-600 mt-0.5">{available}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Sold</div>
+                    <div className="font-mono font-bold text-amber-600 mt-0.5">{sold}</div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Data Grid */}
             <div className="flex-1 overflow-auto bg-white border-b border-slate-400 min-h-[300px]">
               <table className="w-full text-[11px] whitespace-nowrap border-collapse">
                 <thead className="bg-[#f0f0f0] sticky top-0 shadow-sm border-b border-slate-400">
                   <tr>
-                    <th className="border-r border-slate-300 p-1 text-left w-10">SNO.</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-40">ITEM NAME</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-32">GROUP NAME-2</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-24">GROUP NAME-3</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-24">GROUP NAME-4</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-32">COMPANY NAME</th>
-                    <th className="p-1 text-left">HSN CODE</th>
+                    <th className="border-r border-slate-300 p-1 text-center w-10">SNO.</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-24">DESIGN NO.</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-36">ITEM NAME</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-32">BARCODE</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-24">COLOUR</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-20">SIZE</th>
+                    <th className="border-r border-slate-300 p-1 text-right w-24">MRP</th>
+                    <th className="border-r border-slate-300 p-1 text-right w-24">RATE</th>
+                    <th className="border-r border-slate-300 p-1 text-center w-28">TOTAL PIECES</th>
+                    <th className="border-r border-slate-300 p-1 text-center w-28">AVAILABLE STOCK</th>
+                    <th className="border-r border-slate-300 p-1 text-left w-28">SOLD STATUS</th>
+                    <th className="p-1 text-center w-10">INFO</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {itemSearchResults.map((item, idx) => (
-                    <tr
-                      key={item._id}
-                      className="border-b border-slate-200 hover:bg-blue-100 cursor-pointer"
-                      onDoubleClick={() => {
-                        handleAddProductToCart(item);
-                        setItemNameInput("");
-                        setIsItemSearchModalOpen(false);
-                      }}
-                    >
-                      <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
-                      <td className="border-r border-slate-300 p-1">{item.name}</td>
-                      <td className="border-r border-slate-300 p-1">{item.subItem || '(NIL)'}</td>
-                      <td className="border-r border-slate-300 p-1 text-slate-500">MALE</td>
-                      <td className="border-r border-slate-300 p-1">{item.barcode}</td>
-                      <td className="border-r border-slate-300 p-1">{item.company || 'SAGAR'}</td>
-                      <td className="p-1">{item.hsn || '52085'}</td>
-                    </tr>
-                  ))}
+                  {itemSearchResults.map((item, idx) => {
+                    const isSelected = selectedSearchItem && (selectedSearchItem._id === item._id || selectedSearchItem.id === item._id);
+                    const piecesTotal = (item.availableStock || 0) + (item.soldQuantity || 0);
+                    return (
+                      <tr
+                        key={item._id || item.id || idx}
+                        className={`border-b border-slate-200 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-blue-100 font-bold' : 'hover:bg-blue-50'
+                        }`}
+                        onClick={() => setSelectedSearchItem(item)}
+                        onDoubleClick={() => {
+                          handleAddProductToCart(item);
+                          setItemNameInput("");
+                          setIsItemSearchModalOpen(false);
+                        }}
+                      >
+                        <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
+                        <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || 'N/A'}</td>
+                        <td className="border-r border-slate-300 p-1">{item.name}</td>
+                        <td className="border-r border-slate-300 p-1 font-mono">{item.barcode}</td>
+                        <td className="border-r border-slate-300 p-1">{item.color || 'N/A'}</td>
+                        <td className="border-r border-slate-300 p-1 text-center">{item.size || 'N/A'}</td>
+                        <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.mrp?.toLocaleString()}</td>
+                        <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.sellingRate?.toLocaleString() || item.sellingPrice?.toLocaleString()}</td>
+                        <td className="border-r border-slate-300 p-1 text-center font-mono text-indigo-600">{piecesTotal}</td>
+                        <td className="border-r border-slate-300 p-1 text-center font-mono text-emerald-600">{item.availableStock}</td>
+                        <td className="border-r border-slate-300 p-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                            item.availableStock > 0 ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-red-50 text-red-700 font-bold'
+                          }`}>
+                            {item.availableStock > 0 ? 'Available' : 'Sold Out'}
+                            {item.soldQuantity > 0 ? ` (${item.soldQuantity} Sold)` : ''}
+                          </span>
+                        </td>
+                        <td className="p-1 text-center border-l border-slate-200">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInfoModalItem(item);
+                            }}
+                            className="p-1 hover:bg-slate-200 rounded text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center justify-center cursor-pointer"
+                            title="Show Item Details"
+                          >
+                            <Info className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {itemSearchResults.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center p-4 text-slate-500">No items found matching "{itemNameInput}"</td>
+                      <td colSpan={12} className="text-center p-8 text-slate-500 font-semibold italic">No items found matching "{itemNameInput}"</td>
                     </tr>
                   )}
                 </tbody>
@@ -6079,6 +6196,97 @@ export const BillingPOSView = ({
                 <span className="text-blue-800">F5=Stock Details</span>
                 <span className="text-blue-800">F9=Toggle Search Item Name / Item Desc / Model / Part</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ITEM DETAIL INFO MODAL */}
+      {infoModalItem && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-[450px] rounded-xl shadow-2xl border border-slate-200 overflow-hidden font-sans">
+            <div className="bg-blue-600 text-white px-4 py-3 flex justify-between items-center text-sm font-bold">
+              <span className="flex items-center gap-1.5">
+                <Info className="w-4 h-4" />
+                Product Specification Sheet
+              </span>
+              <button 
+                onClick={() => setInfoModalItem(null)} 
+                className="hover:bg-white/20 p-1 rounded-md transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-xs text-slate-700">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Item Name</div>
+                  <div className="font-bold text-slate-800 mt-0.5">{infoModalItem.name}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Design No (SKU)</div>
+                  <div className="font-bold text-slate-800 mt-0.5">{infoModalItem.designNo || infoModalItem.sku || 'N/A'}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Barcode</div>
+                  <div className="font-mono font-bold text-slate-800 mt-0.5">{infoModalItem.barcode}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">HSN Code</div>
+                  <div className="font-bold text-slate-800 mt-0.5">{infoModalItem.hsn || 'N/A'}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Colour</div>
+                  <div className="font-bold text-slate-800 mt-0.5">{infoModalItem.color || 'N/A'}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Size</div>
+                  <div className="font-bold text-slate-800 mt-0.5">{infoModalItem.size || 'N/A'}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">MRP</div>
+                  <div className="font-mono font-bold text-slate-800 mt-0.5">₹{infoModalItem.mrp?.toLocaleString()}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Selling Rate</div>
+                  <div className="font-mono font-bold text-slate-800 mt-0.5">₹{infoModalItem.sellingRate?.toLocaleString() || infoModalItem.sellingPrice?.toLocaleString()}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Available Stock</div>
+                  <div className="font-mono font-bold text-emerald-600 mt-0.5">{infoModalItem.availableStock} PCS</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Sold Quantity</div>
+                  <div className="font-mono font-bold text-amber-600 mt-0.5">{infoModalItem.soldQuantity} PCS</div>
+                </div>
+              </div>
+              <div className="bg-slate-50 p-2 rounded space-y-1">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Additional Attributes</div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Category (Sub Item):</span>
+                  <span className="font-semibold">{infoModalItem.subItem || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Company (Brand):</span>
+                  <span className="font-semibold">{infoModalItem.company || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Rack / Location (IPN):</span>
+                  <span className="font-semibold">{infoModalItem.ipn || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Unique Code:</span>
+                  <span className="font-semibold">{infoModalItem.uniqueCode || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setInfoModalItem(null)} 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                Close Spec Sheet
+              </button>
             </div>
           </div>
         </div>
