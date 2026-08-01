@@ -820,8 +820,113 @@ export const BillingPOSView = ({
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Prevent browser default actions (like F5 refresh) for our POS shortcuts
-      if (["F2", "F3", "F4", "F5", "F6", "F8", "F9"].includes(e.key)) {
+      if (["F1", "F2", "F3", "F4", "F5", "F6", "F8", "F9"].includes(e.key)) {
         e.preventDefault();
+      }
+
+      // If alteration prompt is open, F1 cancels, F2 proceeds
+      if (alterationPromptItem) {
+        if (e.key === "F1") {
+          e.preventDefault();
+          setAlterationPromptItem(null);
+          return;
+        }
+        if (e.key === "F2") {
+          e.preventDefault();
+          setSelectedAlterationCartItem(alterationPromptItem);
+          setAltMeasurements({});
+          setAltOptions([]);
+          setAltCustomText("");
+          setAltSpecialInstructions("");
+          setAlterationPromptItem(null);
+          setShowAlterationModal(true);
+          return;
+        }
+      }
+
+      // Space key shortcut to open search modal when not inside an input/textarea/button, and no other modal is open
+      const isAnyModalOpen =
+        isItemSearchModalOpen ||
+        qtyModalProduct ||
+        showAddCustomerModal ||
+        showPaymentModal ||
+        showReceiptModal ||
+        showHoldBillModal ||
+        showExchangeSlipModal ||
+        showAlterationModal ||
+        isPurchaseAuthModalOpen ||
+        alterationPromptItem;
+
+      if (
+        e.key === " " &&
+        !isAnyModalOpen &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA" &&
+        document.activeElement?.tagName !== "BUTTON"
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setItemNameInput("");
+        handleOpenItemSearchModal();
+        return;
+      }
+
+      // If item search modal is open
+      if (isItemSearchModalOpen) {
+        if (e.key === "F1") {
+          e.preventDefault();
+          const inputEl = document.getElementById("modalItemNameInput");
+          if (inputEl) {
+            inputEl.focus();
+            inputEl.select();
+          }
+          if (itemSearchResults.length === 0) {
+            handleOpenItemSearchModal();
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setIsItemSearchModalOpen(false);
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const currentIndex = itemSearchResults.findIndex(
+            (item) => (selectedSearchItem && (selectedSearchItem._id === item._id || selectedSearchItem.id === item._id))
+          );
+          const nextIndex = (currentIndex + 1) % itemSearchResults.length;
+          if (itemSearchResults[nextIndex]) {
+            setSelectedSearchItem(itemSearchResults[nextIndex]);
+            document.getElementById(`search-row-${nextIndex}`)?.scrollIntoView({ block: 'nearest' });
+          }
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const currentIndex = itemSearchResults.findIndex(
+            (item) => (selectedSearchItem && (selectedSearchItem._id === item._id || selectedSearchItem.id === item._id))
+          );
+          const prevIndex = (currentIndex - 1 + itemSearchResults.length) % itemSearchResults.length;
+          if (itemSearchResults[prevIndex]) {
+            setSelectedSearchItem(itemSearchResults[prevIndex]);
+            document.getElementById(`search-row-${prevIndex}`)?.scrollIntoView({ block: 'nearest' });
+          }
+          return;
+        }
+        if (e.key === "Enter") {
+          if (document.activeElement?.id === "modalItemNameInput") {
+            return;
+          }
+          e.preventDefault();
+          const activeItem = selectedSearchItem || itemSearchResults[0];
+          if (activeItem) {
+            handleAddProductToCart(activeItem);
+            setItemNameInput("");
+            setIsItemSearchModalOpen(false);
+          }
+          return;
+        }
       }
 
       // If the receipt modal is open, close it on Escape
@@ -920,7 +1025,21 @@ export const BillingPOSView = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [qtyModalProduct, cart, heldBills, selectedCustomerId, completedInvoice, showPaymentModal, paymentMethod]); // Re-bind if these states change so handleHoldBill gets latest state
+  }, [
+    qtyModalProduct,
+    cart,
+    heldBills,
+    selectedCustomerId,
+    completedInvoice,
+    showPaymentModal,
+    paymentMethod,
+    isItemSearchModalOpen,
+    itemSearchResults,
+    selectedSearchItem,
+    products,
+    activeModule,
+    alterationPromptItem
+  ]); // Re-bind if these states change so handleHoldBill gets latest state
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
   // Variant Selection Modal State
@@ -5307,7 +5426,7 @@ export const BillingPOSView = ({
                 className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer text-xs flex items-center gap-1 text-slate-650"
               >
                 <X className="w-3.5 h-3.5 text-red-500" />
-                <span>Cancel</span>
+                <span>Cancel (F1)</span>
               </button>
               {/* Tick (Confirm) Button */}
               <button
@@ -5324,7 +5443,7 @@ export const BillingPOSView = ({
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer text-xs flex items-center gap-1"
               >
                 <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Tick</span>
+                <span>Yes (F2)</span>
               </button>
             </div>
           </div>
