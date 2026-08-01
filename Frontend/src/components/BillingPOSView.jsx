@@ -35,7 +35,19 @@ import {
   Info,
 } from "lucide-react";
 
+const generateUniqueItemCode = () => {
+  const prefixes = ["TRK", "ITM", "UC"];
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let randomPart = "";
+  for (let i = 0; i < 8; i++) {
+    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${randomPart}`;
+};
+
 export const BillingPOSView = ({
+  activeModule,
   currentUser,
   products = [],
   customers = [],
@@ -213,22 +225,42 @@ export const BillingPOSView = ({
   const [showAllCatalogItems, setShowAllCatalogItems] = useState(false);
 
   useEffect(() => {
-    const pendingItem = localStorage.getItem("pending_pos_cart_item");
-    if (pendingItem) {
-      try {
-        const p = JSON.parse(pendingItem);
-        localStorage.removeItem("pending_pos_cart_item");
-        setQtyModalProduct({
-          ...p,
-          ...(p.variants ? p.variants[0] : {}),
-          variants: p.variants || [p]
-        });
-        setQtyModalValue(1);
-      } catch (e) {
-        console.error("Failed to parse pending cart item", e);
+    if (activeModule === "billing") {
+      const pendingItem = localStorage.getItem("pending_pos_cart_item");
+      if (pendingItem) {
+        try {
+          const p = JSON.parse(pendingItem);
+          localStorage.removeItem("pending_pos_cart_item");
+          const sPrice = Number(p.sellingPrice) || Number(p.price) || Number(p.mrp) || Number(p.basePrice) || 0;
+          setCart(prev => [
+            ...prev,
+            {
+              productId: p._id || p.id,
+              name: p.name,
+              sku: p.sku,
+              size: p.size || 'M',
+              color: p.color || 'Std',
+              salespersonId: "",
+              salespersonName: "",
+              workerId: "",
+              workerName: "",
+              quantity: 1,
+              price: sPrice,
+              discount: 0,
+              gstPercent: 0,
+              totalPrice: sPrice,
+              uniqueCode: generateUniqueItemCode()
+            }
+          ]);
+          if (onAddNotification) {
+            onAddNotification("POS Cart", `${p.name} added directly to cart.`, "success");
+          }
+        } catch (e) {
+          console.error("Failed to parse pending cart item", e);
+        }
       }
     }
-  }, []);
+  }, [activeModule]);
 
   // Customer selection is optional — defaults to Walk-in Customer if unselected
   const [staffList, setStaffList] = useState([]);

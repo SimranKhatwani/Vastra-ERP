@@ -139,6 +139,7 @@ export const ProductManagementView = ({
     const matchesSearch =
       (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (p.productCode && p.productCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.barcode && p.barcode.includes(searchQuery));
     const matchesCat =
       selectedCategory === "All" || p.category?.toLowerCase() === selectedCategory.toLowerCase();
@@ -465,11 +466,11 @@ export const ProductManagementView = ({
           </div>
           {/* Filters Bar */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center justify-between text-xs font-semibold">
-            <div className="relative w-full md:w-72">
+            <div className="relative w-full md:w-96 lg:w-[450px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Search catalog by name, sku, barcode..."
+                placeholder="Search catalog by name, sku, product code, barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 pl-9 pr-3 py-2 rounded-xl border border-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-700"

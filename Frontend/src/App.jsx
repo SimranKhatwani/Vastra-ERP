@@ -1517,6 +1517,7 @@ export default function App() {
 
           <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
             <BillingPOSView
+              activeModule={activeModule}
               currentUser={currentUser}
               products={products}
               customers={customers}
