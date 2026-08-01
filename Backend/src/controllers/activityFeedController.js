@@ -51,6 +51,19 @@ exports.getActivityFeed = async (req, res) => {
         color = 'blue';
       }
 
+      let detailStr = `Module: ${log.module}`;
+      if (log.newValue) {
+        if (typeof log.newValue === 'object') {
+          if (log.module.toLowerCase().includes('alteration')) {
+            detailStr = `Alteration: ${log.newValue.productName || 'Garment'} (${log.newValue.size || 'M'}/${log.newValue.color || 'Std'}) - ${Array.isArray(log.newValue.alterationDetails) ? log.newValue.alterationDetails.join(', ') : 'Custom fit'}`;
+          } else {
+            detailStr = log.newValue.name || log.newValue.title || log.newValue.description || `Record ID: ${log.recordId || log._id}`;
+          }
+        } else {
+          detailStr = String(log.newValue);
+        }
+      }
+
       return {
         id: log.activityId || log._id.toString(),
         type: log.module.toLowerCase(),
@@ -58,7 +71,7 @@ exports.getActivityFeed = async (req, res) => {
         icon,
         color,
         title: log.recordName || `${log.action} performed`,
-        detail: log.newValue || `Module: ${log.module}`,
+        detail: detailStr,
         user: log.employeeName || 'System',
         timestamp: log.createdAt,
         meta: {

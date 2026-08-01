@@ -263,6 +263,8 @@ export const BillingPOSView = ({
   const [selectedSearchItem, setSelectedSearchItem] = useState(null);
   const [infoModalItem, setInfoModalItem] = useState(null);
   const [showSearchItemDetailsPanel, setShowSearchItemDetailsPanel] = useState(false);
+  const [alterationPromptItem, setAlterationPromptItem] = useState(null);
+  const [showBillPreviewInvoice, setShowBillPreviewInvoice] = useState(null);
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -938,14 +940,36 @@ export const BillingPOSView = ({
       );
     }
 
-    setQtyModalProduct({
-      ...prod,
-      ...(prod.variants ? prod.variants[0] : {}),
-      variants: prod.variants || [prod]
-    });
-    setQtyModalValue(qty);
-    setConfigSalesperson(displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
-    setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
+    const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+    const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
+    const customSize = prod.size || "M";
+    const customColor = prod.color || "Standard";
+
+    finalizeAddToCart(
+      prod,
+      qty,
+      customSize,
+      customColor,
+      sp.id || sp._id || "sp-default",
+      sp.name || "Store Salesperson",
+      wk.id || wk._id || "w-default",
+      wk.name || "In-House Tailor"
+    );
+
+    // Show the Alteration prompt popup
+    const cartItemRef = {
+      productId: prod._id || prod.id,
+      name: prod.name,
+      sku: prod.sku,
+      size: customSize,
+      color: customColor,
+      salespersonId: sp.id || sp._id || "sp-default",
+      salespersonName: sp.name || "Store Salesperson",
+      workerId: wk.id || wk._id || "w-default",
+      workerName: wk.name || "In-House Tailor",
+      quantity: qty
+    };
+    setAlterationPromptItem(cartItemRef);
   };
 
   // Handle articulated items forwarded from Customizer
@@ -1162,22 +1186,7 @@ export const BillingPOSView = ({
 
   // Action: Add product to cart (opens configuration modal)
   const handleAddProductToCart = (prod) => {
-    if (prod.stock <= 0) {
-      onAddNotification(
-        "POS Warning",
-        `${prod.name} is currently out of stock.`,
-        "warning",
-      );
-    }
-
-    setQtyModalProduct({
-      ...prod,
-      ...(prod.variants ? prod.variants[0] : {}),
-      variants: prod.variants || [prod]
-    });
-    setQtyModalValue(1);
-    setConfigSalesperson(displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" }));
-    setConfigWorker(workerList[0] || { id: "w-default", name: "In-House Tailor" });
+    handleAddProductToCartWithQty(prod, 1);
   };
 
   // Action: Finalize product addition from configuration modal
@@ -1792,7 +1801,172 @@ export const BillingPOSView = ({
     setActivePOSMode("billing");
   };
 
-  // Receipt HTML downloader matching rule
+  // Helper to generate the standardized receipt HTML template
+  const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
+    const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>Receipt ${invoice.invoiceNo || 'DRAFT'}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
+          .text-center { text-align: center; }
+          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; font-size: 11px; }
+          th { text-align: left; }
+          .text-right { text-align: right; }
+          .totals { font-weight: bold; }
+          .footer { font-size: 10px; margin-top: 20px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
+        <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Receipt No:</b> ${invoice.invoiceNo || 'DRAFT'}<br>
+          <b>Date:</b> ${receiptDate}<br>
+          <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
+        </div>
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Item Description</th>
+              <th class="text-right">Qty</th>
+              <th class="text-right">Price</th>
+              <th class="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${unrollInvoiceItems(invoice.items)
+              .map(
+                (item) => `
+                <tr>
+                  <td>${item.name} (${item.size}/${item.color})</td>
+                  <td class="text-right">${item.quantity}</td>
+                  <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
+                  <td class="text-right">&#8377;${(Number(item.totalPrice || item.price) || 0).toLocaleString('en-IN')}</td>
+                </tr>
+                ${item.isReturned ? `<tr><td colSpan="4" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
+                ${item.isExchanged ? `<tr><td colSpan="4" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
+                ${!!(item.hasAlteration || item.alterationRecord) ? `
+                  <tr>
+                    <td colSpan="4" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
+                      <b>✂ ALTERATION:</b> ${item.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'} | <b>Tailor:</b> ${item.alterationRecord?.tailorName || 'Master Tailor'}<br/>
+                      <b>Delivery:</b> ${item.alterationRecord?.deliveryDate || 'Scheduled'} ${item.alterationRecord?.deliveryTime || ''} [Trial: ${item.alterationRecord?.trialDate || 'N/A'}, Priority: ${item.alterationRecord?.priority || 'Normal'}]
+                    </td>
+                  </tr>
+                ` : ''}
+              `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+        <table>
+          <tr>
+            <td>Subtotal:</td>
+            <td class="text-right">&#8377;${(Number(invoice.subTotal) || 0).toLocaleString('en-IN')}</td>
+          </tr>
+          ${invoice.discountTotal > 0
+            ? `
+              <tr>
+                <td>Discount:</td>
+                <td class="text-right">-&#8377;${(Number(invoice.discountTotal) || 0).toLocaleString('en-IN')}</td>
+              </tr>
+            `
+            : ""
+          }
+          <tr>
+            <td>GST CGST+SGST:</td>
+            <td class="text-right">&#8377;${(Number(invoice.gstTotal) || 0).toLocaleString('en-IN')}</td>
+          </tr>
+          <tr class="totals">
+            <td>Grand Total:</td>
+            <td class="text-right">&#8377;${(Number(invoice.grandTotal) || 0).toLocaleString('en-IN')}</td>
+          </tr>
+        </table>
+        ${invoice.items.some(i => i.hasAlteration || !!i.alterationRecord) ? `
+          <div class="divider"></div>
+          <div style="font-size:11px; font-weight:bold; text-align:center; color:#be123c; margin-bottom:4px;">
+            *** ALTERATION & DELIVERY SLIP ***
+          </div>
+          ${invoice.items.filter(i => i.hasAlteration || !!i.alterationRecord).map(i => `
+            <div style="font-size:10px; line-height:1.4; background:#fff1f2; padding:6px; margin-bottom:4px; border:1px solid #fecdd3; border-radius:4px;">
+              <b>Item:</b> ${i.name} (${i.size}/${i.color})<br/>
+              <b>Tailor:</b> ${i.alterationRecord?.tailorName || 'Master Tailor'}<br/>
+              <b>Alterations:</b> ${i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}<br/>
+              <b>Delivery Date & Time:</b> ${i.alterationRecord?.deliveryDate || 'Scheduled'} ${i.alterationRecord?.deliveryTime || ''}<br/>
+              <b>Trial Date:</b> ${i.alterationRecord?.trialDate || 'N/A'} (Priority: ${i.alterationRecord?.priority || 'Normal'})<br/>
+              ${i.alterationRecord?.specialInstructions ? `<b>Notes:</b> ${i.alterationRecord.specialInstructions}<br/>` : ''}
+            </div>
+          `).join('')}
+        ` : ''}
+        <div class="divider"></div>
+        <div class="details text-center">
+          <b>Payment Mode:</b> ${invoice.paymentMethod}<br>
+          <b>Status:</b> ${invoice.status.toUpperCase()}<br>
+          Thank you for shopping with us!<br>
+          Powered by GarmentFlow SaaS ERP
+        </div>
+        ${autoPrint ? `
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          }
+        </script>
+        ` : ''}
+      </body>
+      </html>
+    `;
+  };
+
+  // Direct print trigger using a hidden iframe to prevent blank browser tabs
+  const handleDirectPrint = (invoice) => {
+    const htmlContent = generateReceiptHTMLContent(invoice, true);
+    let iframe = document.getElementById("print-iframe");
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "print-iframe";
+      iframe.style.position = "absolute";
+      iframe.style.width = "0px";
+      iframe.style.height = "0px";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+    }
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+  };
+
+  // Direct download trigger as HTML file
+  const handleDownloadOnly = (invoice) => {
+    const htmlContent = generateReceiptHTMLContent(invoice, false);
+    const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Invoice-${invoice.invoiceNo || 'DRAFT'}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onAddNotification(
+      "File Downloader",
+      `Invoice ${invoice.invoiceNo || 'DRAFT'} downloaded in HTML format.`,
+      "success"
+    );
+  };
+
+  // Receipt HTML downloader matching rule - now displays the React modal preview
   const handleDownloadReceiptHTML = (invoice) => {
     const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
     const htmlContent = `
@@ -2075,7 +2249,9 @@ export const BillingPOSView = ({
       mrp: p.mrp || p.sellingPrice || 0,
       sellingRate: p.sellingPrice || p.price || 0,
       availableStock: p.stock || 0,
-      soldQuantity: p.soldQuantity || 0
+      soldQuantity: p.soldQuantity || 0,
+      basePrice: p.basePrice || 0,
+      purchasePrice: p.purchasePrice || 0
     }));
     setItemSearchResults(formatted);
     setSelectedSearchItem(formatted[0] || null);
@@ -3067,7 +3243,7 @@ export const BillingPOSView = ({
                                   <p className="text-[10px] text-slate-400 font-mono">
                                     Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity}
                                   </p>
-                                  {(item.hasAlteration || item.alterationRecord) && (
+                                  {!!(item.hasAlteration || item.alterationRecord) && (
                                     <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
                                       <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                                       <span>
@@ -5188,7 +5364,7 @@ export const BillingPOSView = ({
                       </span>
                       <span>₹{(Number(item.totalPrice || item.price) || 0).toLocaleString()}</span>
                     </div>
-                    {(item.hasAlteration || item.alterationRecord) && (
+                    {!!(item.hasAlteration || item.alterationRecord) && (
                       <div className="text-[9.5px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200 space-y-0.5 font-sans my-1">
                         <p className="font-bold flex items-center gap-1">
                           <Scissors className="w-3 h-3 text-rose-600" />
@@ -5227,7 +5403,7 @@ export const BillingPOSView = ({
                 </div>
               </div>
 
-              {completedInvoice.items.some(i => i.hasAlteration || i.alterationRecord) && (
+              {completedInvoice.items.some(i => i.hasAlteration || !!i.alterationRecord) && (
                 <div className="space-y-1.5 pt-2 border-t border-dashed border-slate-300 font-sans text-[10px]">
                   <p className="font-bold text-center text-rose-700 uppercase tracking-wider">
                     *** ALTERATION & DELIVERY SLIP ***
@@ -5326,191 +5502,53 @@ export const BillingPOSView = ({
                   </div>
                 )}
               </div>
-
-
             </div>
           </div>
         </div>
       )}
 
-      {/* Quick Add Quantity & Configuration Modal */}
-      {qtyModalProduct && (() => {
-        // Compute sizes/colors based on variants array if available, otherwise use a generic Garment sizing standard
-        const hasVariants = Array.isArray(qtyModalProduct.variants) && qtyModalProduct.variants.length > 0;
-        const uniqueSizes = hasVariants ? [...new Set([...qtyModalProduct.variants.map(v => v?.size).filter(Boolean), "XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"])] : ["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"];
-        const uniqueColors = hasVariants ? [...new Set([...qtyModalProduct.variants.map(v => v?.color).filter(Boolean), "Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"])] : ["Red", "Blue", "Black", "White", "Grey", "Navy", "Olive", "Maroon", "Pink", "Yellow"];
-
-        const handleAdd = () => {
-          const sp = configSalesperson || displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
-          const wk = configWorker || workerList[0] || { id: "w-default", name: "In-House Tailor" };
-
-          finalizeAddToCart(
-            qtyModalProduct,
-            qtyModalValue,
-            qtyModalProduct.size || (uniqueSizes.length > 0 ? uniqueSizes[0] : "M"),
-            qtyModalProduct.color || (uniqueColors.length > 0 ? uniqueColors[0] : "Standard"),
-            sp.id || sp._id || "sp-default",
-            sp.name || "Store Salesperson",
-            wk.id || wk._id || "w-default",
-            wk.name || "In-House Tailor"
-          );
-
-          onAddNotification("POS Billing", `Added ${qtyModalValue}x ${qtyModalProduct.name} to cart.`, "success");
-          setQtyModalProduct(null);
-          setTimeout(() => { searchInputRef.current?.focus(); }, 100);
-        };
-
-        return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-scale-up my-auto">
-
-              <div className="mb-5 pb-4 border-b border-slate-100 flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800 leading-tight mb-1">{qtyModalProduct.name}</h3>
-                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">{qtyModalProduct.sku}</span>
-                    <span>{qtyModalProduct.brand}</span>
-                    <span className="text-indigo-600 font-bold">₹{qtyModalProduct.sellingPrice || qtyModalProduct.price}</span>
-                    <span className="text-emerald-600">Stock: {qtyModalProduct.stock}</span>
-                  </div>
-                </div>
-                <button onClick={() => setQtyModalProduct(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
-                    <span>Size</span>
-                  </label>
-                  <select
-                    value={qtyModalProduct.size || ""}
-                    onChange={(e) => {
-                      const newSize = e.target.value;
-                      const matching = qtyModalProduct.variants?.find(v => v.size === newSize && v.color === qtyModalProduct.color) || qtyModalProduct.variants?.find(v => v.size === newSize);
-                      setQtyModalProduct({
-                        ...qtyModalProduct,
-                        ...(matching || {}),
-                        size: newSize,
-                        variants: qtyModalProduct.variants
-                      });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    <option value="">Default Size</option>
-                    {uniqueSizes.map(s => {
-                      const variant = qtyModalProduct.variants?.find(v => v.size === s && v.color === qtyModalProduct.color) || qtyModalProduct.variants?.find(v => v.size === s);
-                      let emoji = "";
-                      if (variant) {
-                        if (variant.stock <= 0) emoji = "🔴 ";
-                        else if (variant.stock <= (variant.minStockAlert || 5)) emoji = "🟡 ";
-                        else emoji = "🟢 ";
-                      }
-                      return <option key={s} value={s}>{emoji}{s}</option>;
-                    })}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Color</label>
-                  <select
-                    value={qtyModalProduct.color || ""}
-                    onChange={(e) => {
-                      const newColor = e.target.value;
-                      const matching = qtyModalProduct.variants?.find(v => v.color === newColor && v.size === qtyModalProduct.size) || qtyModalProduct.variants?.find(v => v.color === newColor);
-                      setQtyModalProduct({
-                        ...qtyModalProduct,
-                        ...(matching || {}),
-                        color: newColor,
-                        variants: qtyModalProduct.variants
-                      });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    <option value="">Default Color</option>
-                    {uniqueColors.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
-                <span className="text-sm text-slate-600 font-bold uppercase tracking-wider">Quantity</span>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setQtyModalValue(prev => Math.max(1, prev - 1))}
-                    className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
-                  >
-                    <Minus className="w-5 h-5" />
-                  </button>
-                  <span className="text-2xl font-black font-mono text-slate-800 min-w-[30px] text-center">
-                    {qtyModalValue}
-                  </span>
-                  <button
-                    onClick={() => setQtyModalValue(prev => prev + 1)}
-                    className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mb-5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Assign Salesperson</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {displayedSalespersonList.map(emp => (
-                    <div
-                      key={emp.id || emp._id}
-                      onClick={() => setConfigSalesperson(emp)}
-                      className={`p-2 rounded-lg border text-center cursor-pointer transition-all ${configSalesperson?.id === emp.id || configSalesperson?._id === emp._id ? "bg-indigo-50 border-indigo-500 shadow-sm" : "bg-white border-slate-200 hover:border-indigo-300"}`}
-                    >
-                      <div className={`text-xs font-bold ${configSalesperson?.id === emp.id || configSalesperson?._id === emp._id ? "text-indigo-700" : "text-slate-700"}`}>{emp.name}</div>
-                    </div>
-                  ))}
-                  {displayedSalespersonList.length === 0 && (
-                    <div className="col-span-3 text-xs text-slate-400 italic">No active salespersons found.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Assign Worker</label>
-                <div className="grid grid-cols-3 gap-2 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
-                  {workerList.map(emp => (
-                    <div
-                      key={emp.id || emp._id}
-                      onClick={() => setConfigWorker(emp)}
-                      className={`p-2 rounded-lg border text-center cursor-pointer transition-all ${configWorker?.id === emp.id || configWorker?._id === emp._id ? "bg-emerald-50 border-emerald-500 shadow-sm" : "bg-white border-slate-200 hover:border-emerald-300"}`}
-                    >
-                      <div className={`text-xs font-bold ${configWorker?.id === emp.id || configWorker?._id === emp._id ? "text-emerald-700" : "text-slate-700"}`}>{emp.name}</div>
-                    </div>
-                  ))}
-                  {workerList.length === 0 && (
-                    <div className="col-span-3 text-xs text-slate-400 italic">No active workers found.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setQtyModalProduct(null)}
-                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors cursor-pointer"
-                >
-                  Cancel (Esc)
-                </button>
-                <button
-                  ref={qtyInputRef}
-                  onClick={handleAdd}
-                  className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold rounded-xl text-sm transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <span>Add Items (Enter)</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
+      {/* Small Alteration Prompt Popup */}
+      {alterationPromptItem && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 backdrop-blur-xs animate-fade-in text-slate-800">
+          <div className="bg-white rounded-2xl p-5 max-w-xs w-full shadow-2xl border border-slate-200 space-y-4 text-center font-sans">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center justify-center gap-1.5 text-indigo-600">
+              <Scissors className="w-4 h-4" />
+              <span>Alteration?</span>
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Would you like to configure bespoke fit alterations for <strong>{alterationPromptItem.name}</strong>?
+            </p>
+            <div className="flex gap-4 justify-center pt-1">
+              {/* Cancel Button */}
+              <button
+                type="button"
+                onClick={() => setAlterationPromptItem(null)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer text-xs flex items-center gap-1 text-slate-650"
+              >
+                <X className="w-3.5 h-3.5 text-red-500" />
+                <span>Cancel</span>
+              </button>
+              {/* Tick (Confirm) Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAlterationCartItem(alterationPromptItem);
+                  setAltMeasurements({});
+                  setAltOptions([]);
+                  setAltCustomText("");
+                  setAltSpecialInstructions("");
+                  setAlterationPromptItem(null);
+                  setShowAlterationModal(true);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer text-xs flex items-center gap-1"
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Tick</span>
+              </button>
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* MODAL: ALTERATION WINDOW */}
       {showAlterationModal && (
