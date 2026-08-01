@@ -129,6 +129,35 @@ const productSchema = new mongoose.Schema(
       enum: ['In Stock', 'Low Stock', 'Out of Stock'],
       default: 'In Stock',
     },
+    // New Stock Tab fields
+    alterationQuantity: { type: Number, default: 0 },
+    transitQuantity: { type: Number, default: 0 },
+    transit: { type: Number, default: 0 },
+    godown: { type: String },
+    stockAge: { type: Number, default: 0 },
+
+    // New Purchase Tab fields
+    vendorName: { type: String },
+    vendorCode: { type: String },
+    avgPurchaseRate: { type: Number, default: 0 },
+    lastPurchaseRate: { type: Number, default: 0 },
+    purchaseDate: { type: String },
+    lastPurchaseDate: { type: String },
+    purchaseInvoice: { type: String },
+    goodsReturnDetails: { type: String },
+    landedCost: { type: Number, default: 0 },
+
+    // New Sales Tab fields
+    sellingRate: { type: Number, default: 0 },
+    lastSellingRate: { type: Number, default: 0 },
+    lastSaleDate: { type: String },
+    discountHistory: { type: String },
+    avgDiscount: { type: Number, default: 0 },
+    returnPercent: { type: Number, default: 0 },
+    exchangePercent: { type: Number, default: 0 },
+    itemCode: { type: String },
+    gstPercent: { type: Number, default: 0 },
+
     variants: [variantSchema],
   },
   {

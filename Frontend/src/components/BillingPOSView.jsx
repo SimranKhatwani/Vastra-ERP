@@ -6080,24 +6080,33 @@ export const BillingPOSView = ({
                         {infoPanelTab === 'General' && (
                           <div className="space-y-2 text-slate-700">
                             <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛈 General Details</div>
-                            <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name}</span></div>
-                            <div><span className="text-slate-400 font-bold">Design No:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Barcode:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.barcode}</span></div>
-                            <div><span className="text-slate-400 font-bold">HSN Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.hsn || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Category:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Sub Item:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Design No.:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Ipn:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Barcode:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.barcode || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Item Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.itemCode || activeItem.sku || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Unique product Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.uniqueCode || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">HSN:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.hsn || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Brand:</span> <span className="text-slate-800 font-semibold">{activeItem.brand || 'N/A'}</span></div>
                             <div><span className="text-slate-400 font-bold">Company:</span> <span className="text-slate-800 font-semibold">{activeItem.company || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Colour:</span> <span className="text-slate-800 font-semibold">{activeItem.color || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Size:</span> <span className="text-slate-800 font-semibold">{activeItem.size || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Category:</span> <span className="text-slate-800 font-semibold">{activeItem.category || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Remarks:</span> <span className="text-slate-800 font-semibold">{activeItem.remarks || activeItem.description || 'N/A'}</span></div>
                           </div>
                         )}
 
                         {infoPanelTab === 'Stock' && (
                           <div className="space-y-2 text-slate-700">
                             <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📦 Stock Metrics</div>
-                            <div><span className="text-slate-400 font-bold">Available Stock:</span> <span className="text-emerald-600 font-bold font-mono">{activeItem.availableStock} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Total Pieces:</span> <span className="text-slate-800 font-bold font-mono">{(activeItem.availableStock || 0) + (activeItem.soldQuantity || 0)} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Available Stock:</span> <span className="text-emerald-600 font-bold font-mono">{activeItem.availableStock || activeItem.stock || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Sold Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Reserved Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.reservedQuantity || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Alteration Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.alterationQuantity || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Transit:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.transitQuantity || 0} PCS</span></div>
                             <div><span className="text-slate-400 font-bold">Rack Location:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Unique Code:</span> <span className="text-slate-800 font-semibold">{activeItem.uniqueCode || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Godown:</span> <span className="text-slate-800 font-semibold">{activeItem.godown || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Stock Age:</span> <span className="text-slate-800 font-semibold">{activeItem.stockAge || 'N/A'} Days</span></div>
+                            <div><span className="text-slate-400 font-bold">Last Stock Update:</span> <span className="text-slate-800 font-semibold">{activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleDateString() : 'N/A'}</span></div>
                           </div>
                         )}
 
@@ -6106,10 +6115,18 @@ export const BillingPOSView = ({
                             <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛒 Confidential Purchase Details</div>
                             {isPurchaseTabUnlocked ? (
                               <>
-                                <div><span className="text-slate-400 font-bold">Purchase Price:</span> <span className="text-red-600 font-bold font-mono">₹{activeItem.purchasePrice?.toLocaleString() || '0'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Base Price:</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.basePrice?.toLocaleString() || '0'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Vendor Name:</span> <span className="text-slate-800 font-semibold">{activeItem.vendorName || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Vendor Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.vendorCode || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Purchase Rate:</span> <span className="text-red-600 font-bold font-mono">₹{(activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                <div><span className="text-slate-400 font-bold">Average Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.avgPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                <div><span className="text-slate-400 font-bold">Last Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                <div><span className="text-slate-400 font-bold">Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseDate || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Last Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastPurchaseDate || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Purchase Invoice:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseInvoice || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Goods Return Details:</span> <span className="text-slate-800 font-semibold">{activeItem.goodsReturnDetails || 'N/A'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Landed Cost:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.landedCost || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
                                 <div>
-                                  <span className="text-slate-400 font-bold">Estimated Margin:</span>{' '}
+                                  <span className="text-slate-400 font-bold">Margin:</span>{' '}
                                   <span className="text-emerald-600 font-bold font-mono">
                                     ₹{((activeItem.sellingRate || activeItem.mrp || 0) - (activeItem.purchasePrice || 0)).toLocaleString()}
                                   </span>
@@ -6138,9 +6155,15 @@ export const BillingPOSView = ({
                         {infoPanelTab === 'Sales' && (
                           <div className="space-y-2 text-slate-700">
                             <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📈 Sales Metrics</div>
-                            <div><span className="text-slate-400 font-bold">Sold Pieces:</span> <span className="text-amber-600 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Rate (Selling):</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.sellingRate?.toLocaleString() || activeItem.sellingPrice?.toLocaleString()}</span></div>
-                            <div><span className="text-slate-400 font-bold">MRP Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.mrp?.toLocaleString()}</span></div>
+                            <div><span className="text-slate-400 font-bold">MRP:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.mrp || 0).toLocaleString()}</span></div>
+                            <div><span className="text-slate-400 font-bold">Current Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
+                            <div><span className="text-slate-400 font-bold">Last Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastSellingRate || activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
+                            <div><span className="text-slate-400 font-bold">Last Sale Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastSaleDate || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Total Sold:</span> <span className="text-amber-600 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Discount History:</span> <span className="text-slate-800 font-semibold">{activeItem.discountHistory || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Average Discount:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.avgDiscount || '0'}%</span></div>
+                            <div><span className="text-slate-400 font-bold">Return %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.returnPercent || '0'}%</span></div>
+                            <div><span className="text-slate-400 font-bold">Exchange %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.exchangePercent || '0'}%</span></div>
                           </div>
                         )}
                       </div>
