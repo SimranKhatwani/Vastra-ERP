@@ -262,6 +262,7 @@ export const BillingPOSView = ({
   const [itemSearchResults, setItemSearchResults] = useState([]);
   const [selectedSearchItem, setSelectedSearchItem] = useState(null);
   const [infoModalItem, setInfoModalItem] = useState(null);
+  const [showSearchItemDetailsPanel, setShowSearchItemDetailsPanel] = useState(false);
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -2078,6 +2079,7 @@ export const BillingPOSView = ({
     }));
     setItemSearchResults(formatted);
     setSelectedSearchItem(formatted[0] || null);
+    setShowSearchItemDetailsPanel(false);
     setIsItemSearchModalOpen(true);
   };
 
@@ -2097,6 +2099,7 @@ export const BillingPOSView = ({
           const items = res.data.data;
           setItemSearchResults(items);
           setSelectedSearchItem(items[0] || null);
+          setShowSearchItemDetailsPanel(false);
           setIsItemSearchModalOpen(true);
         }
       } catch (err) {
@@ -2115,6 +2118,7 @@ export const BillingPOSView = ({
           device: navigator.userAgent
         });
         setIsPurchaseTabUnlocked(true);
+        setInfoPanelTab('Purchase');
         setIsPurchaseAuthModalOpen(false);
       } catch (err) {
         if (onAddNotification) onAddNotification("Auth Failed", "Invalid owner credentials", "danger");
@@ -6001,7 +6005,7 @@ export const BillingPOSView = ({
       {/* ITEM SEARCH LIST MODAL */}
       {isItemSearchModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-          <div className="bg-[#f0f0f0] w-[950px] max-h-[92vh] flex flex-col shadow-2xl font-sans" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+          <div className="bg-[#f0f0f0] w-[1250px] max-h-[92vh] flex flex-col shadow-2xl font-sans" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
             {/* Window Title Bar */}
             <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold border-t-2 border-l-2 border-r-2 border-slate-300 cursor-move">
               <div className="flex items-center gap-1">
@@ -6084,84 +6088,224 @@ export const BillingPOSView = ({
               );
             })()}
 
-            {/* Data Grid */}
-            <div className="flex-1 overflow-auto bg-white border-b border-slate-400 min-h-[300px]">
-              <table className="w-full text-[11px] whitespace-nowrap border-collapse">
-                <thead className="bg-[#f0f0f0] sticky top-0 shadow-sm border-b border-slate-400">
-                  <tr>
-                    <th className="border-r border-slate-300 p-1 text-center w-10">SNO.</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-24">DESIGN NO.</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-36">ITEM NAME</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-32">BARCODE</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-24">COLOUR</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-20">SIZE</th>
-                    <th className="border-r border-slate-300 p-1 text-right w-24">MRP</th>
-                    <th className="border-r border-slate-300 p-1 text-right w-24">RATE</th>
-                    <th className="border-r border-slate-300 p-1 text-center w-28">TOTAL PIECES</th>
-                    <th className="border-r border-slate-300 p-1 text-center w-28">AVAILABLE STOCK</th>
-                    <th className="border-r border-slate-300 p-1 text-left w-28">SOLD STATUS</th>
-                    <th className="p-1 text-center w-10">INFO</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itemSearchResults.map((item, idx) => {
-                    const isSelected = selectedSearchItem && (selectedSearchItem._id === item._id || selectedSearchItem.id === item._id);
-                    const piecesTotal = (item.availableStock || 0) + (item.soldQuantity || 0);
-                    return (
-                      <tr
-                        key={item._id || item.id || idx}
-                        className={`border-b border-slate-200 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-100 font-bold' : 'hover:bg-blue-50'
-                        }`}
-                        onClick={() => setSelectedSearchItem(item)}
-                        onDoubleClick={() => {
-                          handleAddProductToCart(item);
-                          setItemNameInput("");
-                          setIsItemSearchModalOpen(false);
-                        }}
-                      >
-                        <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
-                        <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || 'N/A'}</td>
-                        <td className="border-r border-slate-300 p-1">{item.name}</td>
-                        <td className="border-r border-slate-300 p-1 font-mono">{item.barcode}</td>
-                        <td className="border-r border-slate-300 p-1">{item.color || 'N/A'}</td>
-                        <td className="border-r border-slate-300 p-1 text-center">{item.size || 'N/A'}</td>
-                        <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.mrp?.toLocaleString()}</td>
-                        <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.sellingRate?.toLocaleString() || item.sellingPrice?.toLocaleString()}</td>
-                        <td className="border-r border-slate-300 p-1 text-center font-mono text-indigo-600">{piecesTotal}</td>
-                        <td className="border-r border-slate-300 p-1 text-center font-mono text-emerald-600">{item.availableStock}</td>
-                        <td className="border-r border-slate-300 p-1">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            item.availableStock > 0 ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-red-50 text-red-700 font-bold'
-                          }`}>
-                            {item.availableStock > 0 ? 'Available' : 'Sold Out'}
-                            {item.soldQuantity > 0 ? ` (${item.soldQuantity} Sold)` : ''}
-                          </span>
-                        </td>
-                        <td className="p-1 text-center border-l border-slate-200">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setInfoModalItem(item);
-                            }}
-                            className="p-1 hover:bg-slate-200 rounded text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center justify-center cursor-pointer"
-                            title="Show Item Details"
-                          >
-                            <Info className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {itemSearchResults.length === 0 && (
+            {/* Split Grid & Info Panel View */}
+            <div className="flex-1 flex overflow-hidden min-h-[350px]">
+              {/* Left Side: Data Grid */}
+              <div className="flex-1 overflow-auto bg-white border-r border-slate-300">
+                <table className="w-full text-[11px] whitespace-nowrap border-collapse">
+                  <thead className="bg-[#f0f0f0] sticky top-0 shadow-sm border-b border-slate-400">
                     <tr>
-                      <td colSpan={12} className="text-center p-8 text-slate-500 font-semibold italic">No items found matching "{itemNameInput}"</td>
+                      <th className="border-r border-slate-300 p-1 text-center w-10">SNO.</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-24">DESIGN NO.</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-36">ITEM NAME</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-32">BARCODE</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-24">COLOUR</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-20">SIZE</th>
+                      <th className="border-r border-slate-300 p-1 text-right w-24">MRP</th>
+                      <th className="border-r border-slate-300 p-1 text-right w-24">RATE</th>
+                      <th className="border-r border-slate-300 p-1 text-center w-28">TOTAL PIECES</th>
+                      <th className="border-r border-slate-300 p-1 text-center w-28">AVAILABLE STOCK</th>
+                      <th className="border-r border-slate-300 p-1 text-left w-28">SOLD STATUS</th>
+                      <th className="p-1 text-center w-10">INFO</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {itemSearchResults.map((item, idx) => {
+                      const isSelected = selectedSearchItem && (selectedSearchItem._id === item._id || selectedSearchItem.id === item._id);
+                      const piecesTotal = (item.availableStock || 0) + (item.soldQuantity || 0);
+                      return (
+                        <tr
+                          key={item._id || item.id || idx}
+                          className={`border-b border-slate-200 cursor-pointer transition-colors ${
+                            isSelected ? 'bg-blue-100 font-bold' : 'hover:bg-blue-50'
+                          }`}
+                          onClick={() => setSelectedSearchItem(item)}
+                          onDoubleClick={() => {
+                            handleAddProductToCart(item);
+                            setItemNameInput("");
+                            setIsItemSearchModalOpen(false);
+                          }}
+                        >
+                          <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
+                          <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || 'N/A'}</td>
+                          <td className="border-r border-slate-300 p-1">{item.name}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono">{item.barcode}</td>
+                          <td className="border-r border-slate-300 p-1">{item.color || 'N/A'}</td>
+                          <td className="border-r border-slate-300 p-1 text-center">{item.size || 'N/A'}</td>
+                          <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.mrp?.toLocaleString()}</td>
+                          <td className="border-r border-slate-300 p-1 text-right font-mono">₹{item.sellingRate?.toLocaleString() || item.sellingPrice?.toLocaleString()}</td>
+                          <td className="border-r border-slate-300 p-1 text-center font-mono text-indigo-600">{piecesTotal}</td>
+                          <td className="border-r border-slate-300 p-1 text-center font-mono text-emerald-600">{item.availableStock}</td>
+                          <td className="border-r border-slate-300 p-1">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                              item.availableStock > 0 ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-red-50 text-red-700 font-bold'
+                            }`}>
+                              {item.availableStock > 0 ? 'Available' : 'Sold Out'}
+                              {item.soldQuantity > 0 ? ` (${item.soldQuantity} Sold)` : ''}
+                            </span>
+                          </td>
+                          <td className="p-1 text-center border-l border-slate-200">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedSearchItem(item);
+                                setInfoPanelTab('General');
+                                setShowSearchItemDetailsPanel(true);
+                              }}
+                              className="p-1 hover:bg-slate-200 rounded text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center justify-center cursor-pointer"
+                              title="View details in Right Panel"
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {itemSearchResults.length === 0 && (
+                      <tr>
+                        <td colSpan={12} className="text-center p-8 text-slate-500 font-semibold italic">No items found matching "{itemNameInput}"</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Right Side: Information Panel */}
+              {showSearchItemDetailsPanel && (
+                <div className="w-[320px] bg-slate-50 flex flex-col border-l border-slate-200 overflow-y-auto p-3">
+                  <div className="flex justify-between items-center mb-2 border-b border-slate-200 pb-1">
+                    <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[10px] text-slate-400">
+                      Item Detail Options
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowSearchItemDetailsPanel(false)}
+                      className="p-1 hover:bg-slate-100 hover:text-red-600 rounded text-slate-400 transition-colors cursor-pointer"
+                      title="Hide Panel"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                
+                {(() => {
+                  const activeItem = selectedSearchItem || itemSearchResults[0];
+                  if (!activeItem) {
+                    return (
+                      <div className="text-slate-400 italic text-center py-8">
+                        Select an item to view options
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Tab buttons */}
+                      <div className="grid grid-cols-4 gap-1 bg-slate-200 p-0.5 rounded-lg">
+                        {[
+                          { id: 'General', label: '🛈 General' },
+                          { id: 'Stock', label: '📦 Stock' },
+                          { id: 'Purchase', label: '🛒 Purchase' },
+                          { id: 'Sales', label: '📈 Sales' }
+                        ].map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => {
+                              if (t.id === 'Purchase' && !isPurchaseTabUnlocked) {
+                                setInfoPanelItem(activeItem);
+                                setPurchaseAuthOwnerId('');
+                                setPurchaseAuthPassword('');
+                                setIsPurchaseAuthModalOpen(true);
+                              } else {
+                                setInfoPanelTab(t.id);
+                              }
+                            }}
+                            className={`py-1.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
+                              infoPanelTab === t.id
+                                ? 'bg-white text-slate-800 shadow-xs'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Tab Content */}
+                      <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5 shadow-2xs">
+                        {infoPanelTab === 'General' && (
+                          <div className="space-y-2 text-slate-700">
+                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛈 General Details</div>
+                            <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name}</span></div>
+                            <div><span className="text-slate-400 font-bold">Design No:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Barcode:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.barcode}</span></div>
+                            <div><span className="text-slate-400 font-bold">HSN Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.hsn || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Category:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Company:</span> <span className="text-slate-800 font-semibold">{activeItem.company || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Colour:</span> <span className="text-slate-800 font-semibold">{activeItem.color || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Size:</span> <span className="text-slate-800 font-semibold">{activeItem.size || 'N/A'}</span></div>
+                          </div>
+                        )}
+
+                        {infoPanelTab === 'Stock' && (
+                          <div className="space-y-2 text-slate-700">
+                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📦 Stock Metrics</div>
+                            <div><span className="text-slate-400 font-bold">Available Stock:</span> <span className="text-emerald-600 font-bold font-mono">{activeItem.availableStock} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Total Pieces:</span> <span className="text-slate-800 font-bold font-mono">{(activeItem.availableStock || 0) + (activeItem.soldQuantity || 0)} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Rack Location:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
+                            <div><span className="text-slate-400 font-bold">Unique Code:</span> <span className="text-slate-800 font-semibold">{activeItem.uniqueCode || 'N/A'}</span></div>
+                          </div>
+                        )}
+
+                        {infoPanelTab === 'Purchase' && (
+                          <div className="space-y-2 text-slate-700 animate-fade-in">
+                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛒 Confidential Purchase Details</div>
+                            {isPurchaseTabUnlocked ? (
+                              <>
+                                <div><span className="text-slate-400 font-bold">Purchase Price:</span> <span className="text-red-600 font-bold font-mono">₹{activeItem.purchasePrice?.toLocaleString() || '0'}</span></div>
+                                <div><span className="text-slate-400 font-bold">Base Price:</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.basePrice?.toLocaleString() || '0'}</span></div>
+                                <div>
+                                  <span className="text-slate-400 font-bold">Estimated Margin:</span>{' '}
+                                  <span className="text-emerald-600 font-bold font-mono">
+                                    ₹{((activeItem.sellingRate || activeItem.mrp || 0) - (activeItem.purchasePrice || 0)).toLocaleString()}
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-center py-4 space-y-2">
+                                <span className="text-slate-400 italic block text-[10px]">Purchase details are locked</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setInfoPanelItem(activeItem);
+                                    setPurchaseAuthOwnerId('');
+                                    setPurchaseAuthPassword('');
+                                    setIsPurchaseAuthModalOpen(true);
+                                  }}
+                                  className="px-3 py-1 bg-[#005fb8] text-white rounded font-bold text-[10px] cursor-pointer"
+                                >
+                                  Authorize Access
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {infoPanelTab === 'Sales' && (
+                          <div className="space-y-2 text-slate-700">
+                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📈 Sales Metrics</div>
+                            <div><span className="text-slate-400 font-bold">Sold Pieces:</span> <span className="text-amber-600 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
+                            <div><span className="text-slate-400 font-bold">Rate (Selling):</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.sellingRate?.toLocaleString() || activeItem.sellingPrice?.toLocaleString()}</span></div>
+                            <div><span className="text-slate-400 font-bold">MRP Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{activeItem.mrp?.toLocaleString()}</span></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
 
             {/* Bottom Options */}
             <div className="bg-[#f0f0f0] p-2 text-[10px] text-slate-700">
@@ -6385,6 +6529,59 @@ export const BillingPOSView = ({
               }).length === 0 && (
                   <div className="text-center py-10 text-slate-400 font-semibold">No active discount rules found.</div>
                 )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Supervisor Auth Modal for Purchase Tab */}
+      {isPurchaseAuthModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[260] animate-fade-in text-slate-600 font-semibold">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-100 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 text-indigo-600">
+              <Info className="w-4 h-4" />
+              <span>Supervisor Purchase Unlock</span>
+            </h3>
+            <p className="text-[10px] text-slate-400">Please enter credentials to unlock confidential purchase details.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Supervisor Username</label>
+                <input
+                  type="text"
+                  required
+                  value={purchaseAuthOwnerId}
+                  onChange={(e) => setPurchaseAuthOwnerId(e.target.value)}
+                  autoComplete="off"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-450 font-bold mb-1">Supervisor Password / PIN</label>
+                <input
+                  type="password"
+                  required
+                  value={purchaseAuthPassword}
+                  onChange={(e) => setPurchaseAuthPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPurchaseAuthModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePurchaseAuth}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer text-xs"
+                >
+                  Unlock
+                </button>
+              </div>
             </div>
           </div>
         </div>
