@@ -323,6 +323,8 @@ export const BillingPOSView = ({
     reason: '',
     isApproved: false
   });
+  const [showOwnerApprovalModal, setShowOwnerApprovalModal] = useState(false);
+  const [ownerPin, setOwnerPin] = useState("");
   const [activePOSMode, setActivePOSMode] = useState("billing");
   const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] =
     useState(null);
@@ -6105,8 +6107,38 @@ export const BillingPOSView = ({
       )}
 
       {/* BILL ADJUSTMENT MODAL */}
-      {showAdjustmentModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+      {showAdjustmentModal && (() => {
+        const MAX_MANUAL_DISCOUNT_LIMIT = 500;
+        
+        const handleApply = () => {
+          if (billAdjustment.operation === 'Discount' && billAdjustment.amount > (subTotal || 0)) {
+            if (onAddNotification) onAddNotification("Adjustment Error", "Negative adjustment cannot exceed the bill amount.", "danger");
+            return;
+          }
+          if (billAdjustment.operation === 'Discount' && billAdjustment.amount > MAX_MANUAL_DISCOUNT_LIMIT && !billAdjustment.isApproved) {
+            setShowOwnerApprovalModal(true);
+            return;
+          }
+          setShowAdjustmentModal(false);
+        };
+
+        return (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+          onKeyDown={(e) => {
+            if (showOwnerApprovalModal) return; // Let inner modal handle
+            if (e.key === 'Escape') {
+              setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+              setShowAdjustmentModal(false);
+            } else if (e.key === 'Enter') {
+              // Only apply if the target isn't a textarea (to allow multiline reasons)
+              if (e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                handleApply();
+              }
+            }
+          }}
+        >
           <div className="bg-[#f0f0f0] w-[450px] flex flex-col shadow-2xl font-sans border-2 border-slate-400">
             {/* Window Title Bar */}
             <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold">
@@ -6150,6 +6182,7 @@ export const BillingPOSView = ({
                 <label>Adjustment Value {billAdjustment.type === 'Percentage' ? '(%)' : '(₹)'}</label>
                 <input 
                   type="number"
+                  autoFocus
                   placeholder="Enter value..."
                   className="border border-slate-400 p-2 text-lg font-mono outline-none focus:border-blue-500"
                   value={billAdjustment.value}
@@ -6163,8 +6196,9 @@ export const BillingPOSView = ({
                     }
                     if (billAdjustment.operation === 'Discount' && amt > (subTotal || 0)) {
                       amt = (subTotal || 0); // Cap discount
+                      if (onAddNotification) onAddNotification("Adjustment Capped", "Negative adjustment cannot exceed the bill amount.", "warning");
                     }
-                    setBillAdjustment({...billAdjustment, value: e.target.value, amount: amt});
+                    setBillAdjustment({...billAdjustment, value: e.target.value, amount: amt, isApproved: false}); // Reset approval if changed
                   }}
                 />
               </div>
@@ -6201,17 +6235,66 @@ export const BillingPOSView = ({
                     setShowAdjustmentModal(false);
                   }}
                 >
-                  Cancel
+                  Cancel (Esc)
                 </button>
                 <button 
                   className="px-4 py-2 border border-[#005fb8] bg-[#005fb8] hover:bg-blue-700 text-white shadow-sm font-bold"
-                  onClick={() => setShowAdjustmentModal(false)}
+                  onClick={handleApply}
                 >
-                  Apply ✔
+                  Apply (Enter)
                 </button>
               </div>
             </div>
           </div>
+        </div>
+        );
+      })()}
+
+      {/* OWNER APPROVAL MODAL */}
+      {showOwnerApprovalModal && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60">
+           <div className="bg-white p-6 shadow-2xl border-t-4 border-rose-600 w-[350px]">
+              <h3 className="text-lg font-bold text-rose-700 mb-2">Owner Approval Required</h3>
+              <p className="text-xs text-slate-600 mb-4">The manual discount exceeds the allowed store limit (₹500). Enter Owner PIN to authorize.</p>
+              <input 
+                 type="password"
+                 autoFocus
+                 placeholder="Enter PIN (e.g., 1234)"
+                 value={ownerPin}
+                 onChange={(e) => setOwnerPin(e.target.value)}
+                 className="w-full border p-2 text-center text-xl tracking-widest outline-none focus:border-rose-500 mb-4 bg-slate-50"
+                 onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                       if (ownerPin === '1234') { // Mock PIN
+                          setBillAdjustment({...billAdjustment, isApproved: true});
+                          setShowOwnerApprovalModal(false);
+                          setShowAdjustmentModal(false); 
+                          setOwnerPin("");
+                          if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
+                       } else {
+                          if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
+                       }
+                    } else if (e.key === 'Escape') {
+                       setShowOwnerApprovalModal(false);
+                       setOwnerPin("");
+                    }
+                 }}
+              />
+              <div className="flex gap-2 justify-end">
+                <button className="px-3 py-1.5 border border-slate-300 bg-slate-100 hover:bg-slate-200 text-sm font-semibold text-slate-700" onClick={() => setShowOwnerApprovalModal(false)}>Cancel (Esc)</button>
+                <button className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow flex items-center gap-1" onClick={() => {
+                       if (ownerPin === '1234') { // Mock PIN
+                          setBillAdjustment({...billAdjustment, isApproved: true});
+                          setShowOwnerApprovalModal(false);
+                          setShowAdjustmentModal(false);
+                          setOwnerPin("");
+                          if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
+                       } else {
+                          if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
+                       }
+                }}>Authorize (Enter)</button>
+              </div>
+           </div>
         </div>
       )}
 
