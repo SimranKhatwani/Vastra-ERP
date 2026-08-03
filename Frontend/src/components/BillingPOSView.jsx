@@ -33,6 +33,8 @@ import {
   Upload,
   Copy,
   Info,
+  Banknote,
+  Wallet
 } from "lucide-react";
 
 const generateUniqueItemCode = () => {
@@ -347,7 +349,30 @@ export const BillingPOSView = ({
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
   const [returnWarning, setReturnWarning] = useState({ show: false, title: "", message: "" });
-
+  
+  // Cash Denomination UI
+  const [showCashDenominationModal, setShowCashDenominationModal] = useState(false);
+  const [paymentType, setPaymentType] = useState('Full Payment'); // 'Full Payment' | 'Part Payment'
+  const [cashDenominations, setCashDenominations] = useState({
+    500: '', 200: '', 100: '', 50: '', 20: '', 10: ''
+  });
+  const [activeDenomination, setActiveDenomination] = useState(500);
+  const [partPaymentAmounts, setPartPaymentAmounts] = useState({
+    Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+  });
+  const [paymentWarning, setPaymentWarning] = useState("");
+  
+  // Clear denominations when payment modal opens
+  useEffect(() => {
+    if (showPaymentModal) {
+      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '' });
+      setPaymentType('Full Payment');
+      setActiveDenomination(500);
+      setPartPaymentAmounts({
+        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+      });
+    }
+  }, [showPaymentModal]);
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
   const [historyViewIndex, setHistoryViewIndex] = useState(-1); // -1 = Active New Bill
@@ -1645,13 +1670,12 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal,
       grandTotal,
-      paymentMethod,
-      splitPayments: paymentMethod === "Split"
+      paymentMethod: paymentType === "Part Payment" ? "Split" : paymentMethod,
+      splitPayments: paymentType === "Part Payment"
         ? [
-          { method: "Cash", amount: splitCash },
-          { method: "Card", amount: splitCard },
-          { method: "UPI", amount: splitUPI },
-        ].filter((s) => s.amount > 0)
+            { method: "Cash", amount: [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0) },
+            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
+          ].filter((s) => s.amount > 0)
         : undefined,
       amountPaid: paymentMethod === "Credit" ? 0 : grandTotal,
       status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
@@ -2144,7 +2168,10 @@ export const BillingPOSView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="details text-center">
-          <b>Payment Mode:</b> ${invoice.paymentMethod}<br>
+          ${invoice.splitPayments && invoice.splitPayments.length > 0 ? 
+             `<b>Payment Methods:</b><br>` + invoice.splitPayments.map(sp => `${sp.method}: &#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}`).join('<br>') + '<br>'
+           : `<b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}<br>`
+          }
           <b>Status:</b> ${invoice.status.toUpperCase()}<br>
           Thank you for shopping with us!<br>
           Powered by GarmentFlow SaaS ERP
@@ -6807,25 +6834,312 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* Payment Selection Modal */}
+      {/* Enhanced Payment Selection & Cash Denomination Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-up">
-            <div className="bg-indigo-600 text-white px-4 py-3 flex justify-between items-center">
-              <h3 className="font-bold">Select Payment Method</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="hover:bg-white/20 p-1 rounded-md"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-4 space-y-3">
-              {["Cash", "Card", "UPI", "Credit"].map(method => (
-                <label key={method} className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === method ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}>
-                  <input type="radio" name="paymentMethod" className="w-4 h-4 text-indigo-600" checked={paymentMethod === method} onChange={() => setPaymentMethod(method)} />
-                  <span className="font-bold text-slate-700">{method}</span>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-slate-50 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up flex flex-col border border-slate-200 h-[650px] relative">
+            
+            {/* Custom Payment Warning Overlay */}
+            {paymentWarning && (
+              <div className="absolute inset-0 z-[130] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] animate-fade-in">
+                <div className="bg-white rounded-xl shadow-2xl w-96 p-6 border-t-4 border-t-rose-500 flex flex-col items-center text-center animate-scale-up">
+                   <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4 text-rose-500">
+                      <AlertCircle className="w-8 h-8" />
+                   </div>
+                   <h3 className="text-xl font-black text-slate-800 mb-2">Payment Incomplete</h3>
+                   <p className="text-slate-600 mb-6 font-medium leading-relaxed whitespace-pre-line">{paymentWarning}</p>
+                   <button onClick={() => setPaymentWarning("")} className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg transition-colors cursor-pointer">
+                      Understood
+                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Top Bar: Tabs & Type */}
+            <div className="bg-white border-b border-slate-200 px-2 pt-2 flex justify-between items-end">
+              <div className="flex gap-1">
+                <button className="px-6 py-3 font-bold text-indigo-700 bg-indigo-50 border-b-2 border-indigo-600 rounded-t-lg">Payment</button>
+              </div>
+              <div className="flex gap-4 pb-3 pr-4 items-center">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="paymentType" checked={paymentType === 'Full Payment'} onChange={() => setPaymentType('Full Payment')} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="font-bold text-slate-700 text-sm">Full Payment</span>
                 </label>
-              ))}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="paymentType" checked={paymentType === 'Part Payment'} onChange={() => setPaymentType('Part Payment')} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="font-bold text-slate-700 text-sm">Part Payment</span>
+                </label>
+                <button onClick={() => setShowPaymentModal(false)} className="ml-4 text-slate-400 hover:text-rose-500 cursor-pointer"><X className="w-6 h-6" /></button>
+              </div>
             </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-semibold text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-100">Cancel</button>
-              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 font-bold text-white bg-indigo-600 rounded hover:bg-indigo-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Confirm Method</button>
+            
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left Column: Payment Methods */}
+              <div className="w-48 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
+                {["Cash", "Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(method => (
+                  <button
+                    key={method}
+                    onClick={() => {
+                       setPaymentMethod(method);
+                       if (paymentType === 'Part Payment' && method !== 'Cash') {
+                          const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                          const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                          const left = Math.max(0, grandTotal - cashTot - otherTot);
+                          if (left > 0 && !partPaymentAmounts[method]) {
+                              setPartPaymentAmounts(p => ({...p, [method]: left.toString()}));
+                          }
+                       }
+                    }}
+                    className={`flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-left transition-all font-bold cursor-pointer ${paymentMethod === method ? "bg-indigo-50 text-indigo-700 border-l-4 border-l-indigo-600 shadow-sm z-10" : "text-slate-600 hover:bg-slate-50 border-l-4 border-l-transparent"}`}
+                  >
+                    <span className="flex-1 text-sm">{method}</span>
+                    {paymentMethod === method && <CheckCircle className="w-4 h-4 text-indigo-600" />}
+                  </button>
+                ))}
+              </div>
+
+              {/* Middle Column: Cash Denominations & Numpad */}
+              <div className="flex-1 flex bg-slate-50 relative">
+                {paymentMethod === "Cash" ? (
+                  <>
+                    <div className="flex-1 p-4 overflow-y-auto border-r border-slate-200">
+                      <div className="flex flex-col gap-3">
+                        {[
+                          { val: 500 },
+                          { val: 200 },
+                          { val: 100 },
+                          { val: 50 },
+                          { val: 20 },
+                          { val: 10 }
+                        ].map(note => (
+                          <div 
+                            key={note.val} 
+                            onClick={() => setActiveDenomination(note.val)}
+                            className={`flex items-center gap-1.5 px-1 py-1.5 rounded-lg border-2 cursor-pointer transition-all ${activeDenomination === note.val ? 'border-indigo-500 bg-indigo-50/50 shadow-md' : 'border-slate-200 bg-white hover:border-indigo-300'}`}
+                          >
+                            <img 
+                               src={`/photos/${note.val}.jpg`}
+                               alt={"₹" + note.val}
+                               className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
+                            />
+                            
+                            <input 
+                              type="number" min="0" 
+                              className="w-12 h-8 border border-slate-300 rounded text-center font-bold text-slate-800 outline-none focus:border-indigo-500 bg-white text-sm" 
+                              value={cashDenominations[note.val] || ''}
+                              onChange={(e) => {
+                                setActiveDenomination(note.val);
+                                setCashDenominations(prev => ({...prev, [note.val]: e.target.value}));
+                              }}
+                              placeholder="0"
+                            />
+                            <span className="font-mono font-bold text-slate-800 text-right ml-auto text-sm shrink-0 pr-1">
+                              ₹{((Number(cashDenominations[note.val]) || 0) * note.val).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Virtual Numpad for Cash */}
+                    <div className="w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0">
+                      {/* LCD Display */}
+                      <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
+                         <span className="text-xs font-bold text-slate-400">₹{activeDenomination} Notes</span>
+                         <span className="text-2xl font-black font-mono text-slate-800">{cashDenominations[activeDenomination] || '0'}</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-4 gap-2 w-full flex-1">
+                        {/* Row 1 */}
+                        <button onClick={() => setCashDenominations(p => ({...p, [activeDenomination]: ''}))} className="col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">CLR</button>
+                        <button onClick={() => setCashDenominations(p => ({...p, [activeDenomination]: (p[activeDenomination]?.toString() || '').slice(0, -1)}))} className="col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">BCK</button>
+                        
+                        {/* Numbers */}
+                        {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
+                           <button 
+                             key={i} 
+                             onClick={() => {
+                               if (btn === 'Pay') {
+                                 const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                 if (paymentType === 'Full Payment' && cashTot < grandTotal) {
+                                   setPaymentWarning(`Paid amount (₹${cashTot}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to add Due amount or select multiple methods.`);
+                                   return;
+                                 }
+                                 setShowPaymentModal(false);
+                                 handlePrintConfirm();
+                               } else if (['0','1','2','3','4','5','6','7','8','9','00'].includes(btn)) {
+                                 setCashDenominations(p => ({...p, [activeDenomination]: (p[activeDenomination]?.toString() || '') + btn}));
+                               }
+                             }}
+                             className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${
+                               btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' : 
+                               ['+','-','='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
+                             }`}
+                           >
+                             {btn}
+                           </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center p-4 relative">
+                     {paymentType === 'Full Payment' && (
+                        <div className="absolute top-8 bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg font-bold shadow-sm animate-fade-in z-10 flex items-center gap-2">
+                           <Info className="w-5 h-5" /> 
+                           Full Payment Mode: Entire bill is allocated to {paymentMethod}.
+                        </div>
+                     )}
+                     <div className={`w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0 rounded shadow-md border border-slate-200 transition-opacity ${paymentType === 'Full Payment' ? 'opacity-90' : ''}`}>
+                        {/* LCD Display */}
+                        <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
+                           <span className="text-xs font-bold text-slate-400">{paymentMethod} Amount</span>
+                           <div className="flex items-center w-full justify-end">
+                             <span className="text-2xl font-black font-mono text-slate-800 mr-1">₹</span>
+                             {paymentType === 'Full Payment' ? (
+                               <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
+                             ) : (
+                               <input 
+                                 type="number" min="0"
+                                 autoFocus
+                                 value={partPaymentAmounts[paymentMethod] || ''}
+                                 onChange={(e) => setPartPaymentAmounts(p => ({...p, [paymentMethod]: e.target.value}))}
+                                 className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
+                                 placeholder="0"
+                               />
+                             )}
+                           </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-4 gap-2 w-full">
+                          {/* Row 1 */}
+                          <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({...p, [paymentMethod]: ''})) }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
+                          <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1)})) }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
+                          
+                          {/* Numbers */}
+                          {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
+                             <button 
+                               key={i} 
+                               onClick={() => {
+                                 if (btn === 'Pay') {
+                                   if (paymentType === 'Full Payment') {
+                                      setShowPaymentModal(false);
+                                      handlePrintConfirm();
+                                      return;
+                                   }
+                                   const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                   const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                                   if (partTot < grandTotal) {
+                                      setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
+                                      return;
+                                   }
+                                   setShowPaymentModal(false);
+                                   handlePrintConfirm();
+                                 } else if (paymentType === 'Part Payment' && ['0','1','2','3','4','5','6','7','8','9','00','.'].includes(btn)) {
+                                   setPartPaymentAmounts(p => ({...p, [paymentMethod]: (p[paymentMethod]?.toString() || '') + btn}));
+                                 }
+                               }}
+                               className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${
+                                 btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' : 
+                                 paymentType === 'Part Payment' ? 'hover:bg-slate-50 active:scale-95 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                               } ${['+','-','='].includes(btn) && paymentType === 'Part Payment' ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''}`}
+                             >
+                               {btn}
+                             </button>
+                          ))}
+                        </div>
+                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Billing Break-up */}
+              <div className="w-72 bg-white flex flex-col text-sm border-l border-slate-200 shrink-0">
+                <div className="bg-slate-100 font-bold p-3 border-b border-slate-200 text-slate-700 text-center uppercase tracking-wider text-xs">Payment Break-up</div>
+                
+                <div className="p-4 space-y-3 font-mono flex-1 overflow-y-auto">
+                  {(() => {
+                    const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                    return [
+                      { label: "Net Amount", val: grandTotal, isTotal: true },
+                      { label: "Cash", val: paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : 0) : cashTotal },
+                      { label: "Card", val: paymentType === 'Full Payment' ? (paymentMethod === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
+                      { label: "UPI", val: paymentType === 'Full Payment' ? (paymentMethod === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
+                      { label: "Advance", val: paymentType === 'Full Payment' ? (paymentMethod === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
+                      { label: "Due", val: paymentType === 'Full Payment' ? (paymentMethod === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
+                    ].map((row, idx) => (
+                      <div key={idx} className={`flex justify-between items-center ${row.isTotal ? 'border-b-2 border-slate-800 pb-2 mb-2 font-black text-lg text-slate-800' : 'text-slate-600'}`}>
+                        <span>{row.label}</span>
+                        <span className={row.val > 0 && !row.isTotal ? 'text-emerald-600 font-bold' : ''}>₹{row.val.toLocaleString()}</span>
+                      </div>
+                    ));
+                  })()}
+                  
+                  <div className="pt-4 mt-4 border-t border-slate-200">
+                    {(() => {
+                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                       const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
+                       return (
+                          <>
+                            <div className="flex justify-between items-center text-slate-800 mb-2">
+                              <span className="font-bold">Total Paid</span>
+                              <span className="font-black text-emerald-600 text-lg">
+                                ₹{totalPaidDisplay.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200">
+                              <span className="font-bold">Balance (Return)</span>
+                              <span className="font-black text-rose-600 text-lg">
+                                ₹{Math.max(0, totalPaidDisplay - grandTotal).toLocaleString()}
+                              </span>
+                            </div>
+                          </>
+                       );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
+                  <button 
+                    onClick={() => {
+                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
+                          setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
+                          return;
+                       }
+                       if (paymentType === 'Part Payment' && partTotal < grandTotal) {
+                          setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
+                          return;
+                       }
+                       setShowPaymentModal(false);
+                    }}
+                    className="w-full py-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded font-bold uppercase text-xs shadow-sm cursor-pointer transition-colors"
+                  >
+                    <Save className="w-4 h-4 inline mr-2" /> Save Payment
+                  </button>
+                  <button 
+                    onClick={() => {
+                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
+                          setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
+                          return;
+                       }
+                       if (paymentType === 'Part Payment' && partTotal < grandTotal) {
+                          setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
+                          return;
+                       }
+                       setShowPaymentModal(false);
+                       handlePrintConfirm();
+                    }}
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-black uppercase text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Printer className="w-5 h-5" /> Save & Print Bill
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
