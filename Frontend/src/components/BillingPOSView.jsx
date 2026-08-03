@@ -612,6 +612,10 @@ export const BillingPOSView = ({
   const [newCustEmail, setNewCustEmail] = useState("");
   const [newCustWhatsApp, setNewCustWhatsApp] = useState("");
 
+  const [showDueCustomerModal, setShowDueCustomerModal] = useState(false);
+  const [dueCustName, setDueCustName] = useState("");
+  const [dueCustPhone, setDueCustPhone] = useState("");
+
   // WhatsApp dispatch state (for receipt modal)
   // 'idle' | 'sending' | 'success' | 'failed' | 'no_number'
   const [whatsappDispatchState, setWhatsappDispatchState] = useState('idle');
@@ -888,6 +892,7 @@ export const BillingPOSView = ({
         isItemSearchModalOpen ||
         qtyModalProduct ||
         showAddCustomerModal ||
+        showDueCustomerModal ||
         showPaymentModal ||
         showReceiptModal ||
         showHoldBillModal ||
@@ -1029,6 +1034,7 @@ export const BillingPOSView = ({
         setVariantModalProduct(null);
         setShowPaymentModal(false);
         setShowAlterationModal(false);
+        setShowDueCustomerModal(false);
       }
       // F9: Generate Bill
       if (e.key === "F9") {
@@ -1641,14 +1647,24 @@ export const BillingPOSView = ({
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer, billAdjustment]);
 
   // Handle checkout
-  const handleCheckoutSubmit = async () => {
+  const handleCheckoutSubmit = async (overrideCustomerDue = false) => {
     if (cart.length === 0) {
       onAddNotification(
         "POS Checkout Failed",
         "Cannot compile an empty cart.",
         "danger",
       );
-      return;
+      return false;
+    }
+
+    const computedDueAmount = paymentType === "Full Payment" 
+      ? (paymentMethod === "Due" ? grandTotal : 0) 
+      : (Number(partPaymentAmounts["Due"]) || 0);
+
+    const isCustomerMissing = !selectedCustomerId || activeCustomer.id === "c-walkin" || !activeCustomer.name;
+    if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
+      setShowDueCustomerModal(true);
+      return false;
     }
 
     const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
@@ -1767,6 +1783,65 @@ export const BillingPOSView = ({
   };
 
   // Add new customer local submit
+  const [showDueCustNameSuggestions, setShowDueCustNameSuggestions] = useState(false);
+  const [showDueCustPhoneSuggestions, setShowDueCustPhoneSuggestions] = useState(false);
+
+  const filteredDueCustomersByName = (customers || []).filter(c => c.name?.toLowerCase().includes(dueCustName.toLowerCase()) && dueCustName.trim() !== "");
+  const filteredDueCustomersByPhone = (customers || []).filter(c => c.phone?.includes(dueCustPhone) && dueCustPhone.trim() !== "");
+
+  const handleSelectDueCustomer = (cust) => {
+    setDueCustName(cust.name);
+    setDueCustPhone(cust.phone);
+    setShowDueCustNameSuggestions(false);
+    setShowDueCustPhoneSuggestions(false);
+  };
+
+  const handleDueCustomerSubmit = async (e) => {
+    e.preventDefault();
+    if (!dueCustName || !dueCustPhone) return;
+
+    // Check if customer already exists by phone
+    const existingCustomer = (customers || []).find(c => c.phone === dueCustPhone);
+    let targetId;
+
+    if (existingCustomer) {
+      targetId = existingCustomer.id || existingCustomer._id;
+    } else {
+      targetId = `c-${(customers || []).length + 1}`;
+      const newCust = {
+        id: targetId,
+        name: dueCustName,
+        phone: dueCustPhone,
+        email: `${dueCustName.toLowerCase().replace(/\s+/g, "")}@example.com`,
+        whatsappNumber: dueCustPhone,
+        outstandingBalance: 0,
+        membership: "Bronze",
+        walletBalance: 0,
+        loyaltyPoints: 10,
+        birthday: "1995-01-01",
+        createdAt: new Date().toISOString().split('T')[0],
+        totalInvoices: 0,
+        totalSpent: 0,
+      };
+
+      if (onAddCustomer) {
+        onAddCustomer(newCust);
+      } else {
+        (customers || []).push(newCust);
+      }
+    }
+
+    setSelectedCustomerId(targetId);
+    setDueCustName("");
+    setDueCustPhone("");
+    setShowDueCustomerModal(false);
+    
+    // Slight delay to allow state to settle before checking out
+    setTimeout(() => {
+      handleCheckoutSubmit(true);
+    }, 100);
+  };
+
   const handleCreateCustomer = (e) => {
     e.preventDefault();
     if (!newCustName || !newCustPhone) return;
@@ -4638,6 +4713,115 @@ export const BillingPOSView = ({
             >
               Add to Cart
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DUE CUSTOMER MANDATORY */}
+      {showDueCustomerModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[130]">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl border border-slate-100 animate-scale-up">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                Customer Details Required
+              </h4>
+              <button
+                onClick={() => setShowDueCustomerModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-100">
+              Customer details are mandatory for bills with a Due Amount.
+            </p>
+
+              <form onSubmit={handleDueCustomerSubmit} className="space-y-3 text-xs">
+              <div className="relative">
+                <label className="block text-slate-500 mb-1 font-semibold">
+                  Customer Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Shashi Kapoor"
+                  value={dueCustName}
+                  onChange={(e) => {
+                    setDueCustName(e.target.value);
+                    setShowDueCustNameSuggestions(true);
+                  }}
+                  onFocus={() => setShowDueCustNameSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowDueCustNameSuggestions(false), 200)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                />
+                {showDueCustNameSuggestions && filteredDueCustomersByName.length > 0 && (
+                  <ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 shadow-lg max-h-40 overflow-y-auto">
+                    {filteredDueCustomersByName.map((cust) => (
+                      <li
+                        key={cust.id || cust._id}
+                        className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-slate-700"
+                        onClick={() => handleSelectDueCustomer(cust)}
+                      >
+                        {cust.name} ({cust.phone})
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="relative">
+                <label className="block text-slate-500 mb-1 font-semibold">
+                  Mobile Number *
+                </label>
+                <input
+                  required
+                  type="text"
+                  pattern="\d{10}"
+                  title="Phone number must be exactly 10 digits"
+                  maxLength="10"
+                  placeholder="e.g. 9876543210"
+                  value={dueCustPhone}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setDueCustPhone(val);
+                    setShowDueCustPhoneSuggestions(true);
+                  }}
+                  onFocus={() => setShowDueCustPhoneSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowDueCustPhoneSuggestions(false), 200)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-800 tracking-wider font-mono"
+                />
+                {showDueCustPhoneSuggestions && filteredDueCustomersByPhone.length > 0 && (
+                  <ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 shadow-lg max-h-40 overflow-y-auto">
+                    {filteredDueCustomersByPhone.map((cust) => (
+                      <li
+                        key={cust.id || cust._id}
+                        className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-slate-700 font-mono"
+                        onClick={() => handleSelectDueCustomer(cust)}
+                      >
+                        {cust.phone} <span className="text-slate-400 font-sans ml-1">- {cust.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDueCustomerModal(false)}
+                  className="px-4 py-2 text-slate-500 font-semibold bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-md shadow-indigo-200 flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" /> Save & Continue
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
