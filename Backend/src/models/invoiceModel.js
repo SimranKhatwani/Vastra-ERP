@@ -213,6 +213,14 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    advanceApplied: {
+      type: Number,
+      default: 0,
+    },
+    loyaltyPointsUsed: {
+      type: Number,
+      default: 0,
+    },
     outstandingAmount: {
       type: Number,
       default: 0,
@@ -342,16 +350,19 @@ invoiceSchema.pre('validate', async function () {
   }
   
   const customStatuses = ['Returned', 'Partially Returned', 'Exchanged', 'Partially Exchanged', 'Cancelled', 'Completed'];
+  
+  const effectivePaid = (this.amountPaid || 0) + (this.advanceApplied || 0) + (this.loyaltyPointsUsed || 0);
+
   if (!customStatuses.includes(this.status)) {
-    if (this.amountPaid < this.grandTotal) {
-      this.status = this.amountPaid > 0 ? 'Partial' : 'Unpaid';
+    if (effectivePaid < this.grandTotal) {
+      this.status = effectivePaid > 0 ? 'Partial' : 'Unpaid';
     } else {
       this.status = 'Paid';
     }
   }
 
   // Automatically compute outstanding amount
-  this.outstandingAmount = Math.max(0, this.grandTotal - this.amountPaid);
+  this.outstandingAmount = Math.max(0, this.grandTotal - effectivePaid);
 
   // Set default dueDate (30 days from invoice date) if not present
   if (!this.dueDate) {

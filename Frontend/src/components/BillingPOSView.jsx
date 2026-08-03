@@ -311,6 +311,7 @@ export const BillingPOSView = ({
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showAdvancePromptModal, setShowAdvancePromptModal] = useState(false);
   const [splitCash, setSplitCash] = useState(0);
   const [splitCard, setSplitCard] = useState(0);
   const [splitUPI, setSplitUPI] = useState(0);
@@ -340,6 +341,8 @@ export const BillingPOSView = ({
   const [returnReason, setReturnReason] = useState("");
   const [returnCustomReason, setReturnCustomReason] = useState("");
   const [returnApprovedCheckbox, setReturnApprovedCheckbox] = useState(false);
+  const [returnRefundTotalAmount, setReturnRefundTotalAmount] = useState(true);
+  const [returnAdvanceAmount, setReturnAdvanceAmount] = useState("");
 
   const [exchangeReason, setExchangeReason] = useState("");
   const [exchangeCustomReason, setExchangeCustomReason] = useState("");
@@ -349,7 +352,7 @@ export const BillingPOSView = ({
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
   const [returnWarning, setReturnWarning] = useState({ show: false, title: "", message: "" });
-  
+
   // Cash Denomination UI
   const [showCashDenominationModal, setShowCashDenominationModal] = useState(false);
   const [paymentType, setPaymentType] = useState('Full Payment'); // 'Full Payment' | 'Part Payment'
@@ -361,7 +364,7 @@ export const BillingPOSView = ({
     Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
   });
   const [paymentWarning, setPaymentWarning] = useState("");
-  
+
   // Clear denominations when payment modal opens
   useEffect(() => {
     if (showPaymentModal) {
@@ -1016,7 +1019,7 @@ export const BillingPOSView = ({
       }
       // F6: Payment / Checkout
       if (e.key === "F6") {
-        setShowPaymentModal(true);
+        handleOpenPaymentFlow();
       }
       // F8: Hold Bill
       if (e.key === "F8") {
@@ -1202,7 +1205,7 @@ export const BillingPOSView = ({
     email: "",
     outstandingBalance: 0,
     membership: "Bronze",
-    walletBalance: 0,
+    walletAdvance: 0,
     loyaltyPoints: 0,
     birthday: "",
     createdAt: "",
@@ -1646,6 +1649,44 @@ export const BillingPOSView = ({
     };
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer, billAdjustment]);
 
+  const handleOpenPaymentFlow = () => {
+    if (cart.length === 0) {
+      onAddNotification(
+        "POS Checkout Failed",
+        "Cannot open payment for an empty cart.",
+        "danger"
+      );
+      return;
+    }
+    const totalAdvance = (activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0);
+    if (activeCustomer && activeCustomer.id !== "c-walkin" && totalAdvance > 0) {
+      setShowAdvancePromptModal(true);
+    } else {
+      setShowPaymentModal(true);
+    }
+  };
+
+  const handleAcceptAdvance = (accept) => {
+    setShowAdvancePromptModal(false);
+    if (accept) {
+      const wallet = activeCustomer?.walletAdvance || 0;
+      const loyalty = activeCustomer?.loyaltyPoints || 0;
+      const totalAdvance = wallet + loyalty;
+      const applyAmount = Math.min(totalAdvance, grandTotal);
+      
+      const advanceUse = Math.min(wallet, applyAmount);
+      const loyaltyUse = applyAmount - advanceUse;
+
+      setPaymentType("Part Payment");
+      setPartPaymentAmounts((p) => ({ 
+        ...p, 
+        Advance: advanceUse > 0 ? advanceUse.toString() : "",
+        "Points Redeem": loyaltyUse > 0 ? loyaltyUse.toString() : ""
+      }));
+    }
+    setShowPaymentModal(true);
+  };
+
   // Handle checkout
   const handleCheckoutSubmit = async (overrideCustomerDue = false) => {
     if (cart.length === 0) {
@@ -1657,13 +1698,47 @@ export const BillingPOSView = ({
       return false;
     }
 
-    const computedDueAmount = paymentType === "Full Payment" 
-      ? (paymentMethod === "Due" ? grandTotal : 0) 
+    const computedDueAmount = paymentType === "Full Payment"
+      ? (paymentMethod === "Due" ? grandTotal : 0)
       : (Number(partPaymentAmounts["Due"]) || 0);
 
     const isCustomerMissing = !selectedCustomerId || activeCustomer.id === "c-walkin" || !activeCustomer.name;
     if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
       setShowDueCustomerModal(true);
+      return false;
+    }
+
+    // Overpayment Logic
+    const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+    let computedAmountPaid = grandTotal;
+    let advanceApplied = 0;
+    let loyaltyPointsUsed = 0;
+
+    if (paymentType === "Part Payment") {
+      computedAmountPaid = cashTotal + ["Card", "UPI"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+      advanceApplied = Number(partPaymentAmounts["Advance"]) || 0;
+      loyaltyPointsUsed = Number(partPaymentAmounts["Points Redeem"]) || 0;
+    } else if (paymentMethod === "Cash") {
+      computedAmountPaid = cashTotal > 0 ? cashTotal : grandTotal;
+    } else if (paymentMethod === "Credit" || paymentMethod === "Due") {
+      computedAmountPaid = 0;
+    } else if (paymentMethod === "Advance") {
+      computedAmountPaid = 0;
+      advanceApplied = grandTotal;
+    } else if (paymentMethod === "Points Redeem") {
+      computedAmountPaid = 0;
+      loyaltyPointsUsed = grandTotal;
+    }
+
+    const effectiveTotalPaid = computedAmountPaid + advanceApplied + loyaltyPointsUsed;
+    if (effectiveTotalPaid > grandTotal && isCustomerMissing && overrideCustomerDue !== true) {
+      // Just reuse the due modal for overpayment customer requirements
+      setShowDueCustomerModal(true);
+      onAddNotification(
+        "Customer Details Required",
+        "Customer details are required to save the overpaid advance amount to their wallet.",
+        "warning"
+      );
       return false;
     }
 
@@ -1689,12 +1764,14 @@ export const BillingPOSView = ({
       paymentMethod: paymentType === "Part Payment" ? "Split" : paymentMethod,
       splitPayments: paymentType === "Part Payment"
         ? [
-            { method: "Cash", amount: [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0) },
-            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
-          ].filter((s) => s.amount > 0)
+          { method: "Cash", amount: cashTotal },
+          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
+        ].filter((s) => s.amount > 0)
         : undefined,
-      amountPaid: paymentMethod === "Credit" ? 0 : grandTotal,
-      status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
+      amountPaid: computedAmountPaid,
+      advanceApplied,
+      loyaltyPointsUsed,
+      status: paymentMethod === "Credit" || computedDueAmount >= grandTotal ? "Unpaid" : "Paid",
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
       salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
@@ -1816,7 +1893,7 @@ export const BillingPOSView = ({
         whatsappNumber: dueCustPhone,
         outstandingBalance: 0,
         membership: "Bronze",
-        walletBalance: 0,
+        walletAdvance: 0,
         loyaltyPoints: 10,
         birthday: "1995-01-01",
         createdAt: new Date().toISOString().split('T')[0],
@@ -1835,7 +1912,7 @@ export const BillingPOSView = ({
     setDueCustName("");
     setDueCustPhone("");
     setShowDueCustomerModal(false);
-    
+
     // Slight delay to allow state to settle before checking out
     setTimeout(() => {
       handleCheckoutSubmit(true);
@@ -1857,7 +1934,7 @@ export const BillingPOSView = ({
       whatsappNumber: newCustWhatsApp || newCustPhone,
       outstandingBalance: 0,
       membership: "Bronze",
-      walletBalance: 0,
+      walletAdvance: 0,
       loyaltyPoints: 10,
       birthday: "1995-01-01",
       createdAt: "2026-06-28",
@@ -2023,7 +2100,7 @@ export const BillingPOSView = ({
       const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || 0), 0) || 1;
       const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
       const proportionalAdjustment = refundTotal * adjustmentRatio;
-      
+
       if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
         refundTotal -= proportionalAdjustment;
       } else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
@@ -2169,8 +2246,8 @@ export const BillingPOSView = ({
           </thead>
           <tbody>
             ${unrollInvoiceItems(invoice.items)
-              .map(
-                (item) => `
+        .map(
+          (item) => `
                 <tr>
                   <td>
                     ${item.name} (${item.size}/${item.color})
@@ -2191,8 +2268,8 @@ export const BillingPOSView = ({
                   </tr>
                 ` : ''}
               `,
-              )
-              .join("")}
+        )
+        .join("")}
           </tbody>
         </table>
         <div class="divider"></div>
@@ -2202,23 +2279,23 @@ export const BillingPOSView = ({
             <td class="text-right">&#8377;${(Number(invoice.subTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
           ${invoice.discountTotal > 0
-            ? `
+        ? `
               <tr>
                 <td>Discount:</td>
                 <td class="text-right">-&#8377;${(Number(invoice.discountTotal) || 0).toLocaleString('en-IN')}</td>
               </tr>
             `
-            : ""
-          }
+        : ""
+      }
           ${invoice.billAdjustment && invoice.billAdjustment.amount > 0
-            ? `
+        ? `
               <tr>
                 <td>Adj (${invoice.billAdjustment.operation === 'Charge' ? '+' : '-'}) ${invoice.billAdjustment.reason ? `[${invoice.billAdjustment.reason}]` : ''}:</td>
                 <td class="text-right">${invoice.billAdjustment.operation === 'Charge' ? '+' : '-'}&#8377;${(Number(invoice.billAdjustment.amount) || 0).toLocaleString('en-IN')}</td>
               </tr>
             `
-            : ""
-          }
+        : ""
+      }
 
           <tr class="totals">
             <td>Grand Total:</td>
@@ -2243,10 +2320,10 @@ export const BillingPOSView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="details text-center">
-          ${invoice.splitPayments && invoice.splitPayments.length > 0 ? 
-             `<b>Payment Methods:</b><br>` + invoice.splitPayments.map(sp => `${sp.method}: &#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}`).join('<br>') + '<br>'
-           : `<b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}<br>`
-          }
+          ${invoice.splitPayments && invoice.splitPayments.length > 0 ?
+        `<b>Payment Methods:</b><br>` + invoice.splitPayments.map(sp => `${sp.method}: &#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}`).join('<br>') + '<br>'
+        : `<b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}<br>`
+      }
           <b>Status:</b> ${invoice.status.toUpperCase()}<br>
           Thank you for shopping with us!<br>
           Powered by GarmentFlow SaaS ERP
@@ -2477,7 +2554,7 @@ export const BillingPOSView = ({
     if (e.key === "Enter") {
       e.preventDefault();
       const q = itemNameInput.trim();
-      
+
       if (!q) {
         if (isItemSearchModalOpen) {
           const activeItem = selectedSearchItem || itemSearchResults[0];
@@ -2627,7 +2704,7 @@ export const BillingPOSView = ({
               </span>
             </div>
             <div className="p-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2 items-center bg-slate-50">
-              
+
               {/* Mobile No Search / Dropdown */}
               <div className="flex items-center border border-slate-300 relative bg-white col-span-1 md:col-span-2">
                 <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Search Mobile/Name</span>
@@ -2665,11 +2742,7 @@ export const BillingPOSView = ({
                 )}
               </div>
 
-              {/* LF */}
-              <div className="flex items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-mono">LF</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none" value={customerForm.lf} onChange={e => setCustomerForm(prev => ({ ...prev, lf: e.target.value }))} />
-              </div>
+
 
               {/* Title */}
               <div className="flex items-center border border-slate-300 bg-white">
@@ -2767,115 +2840,115 @@ export const BillingPOSView = ({
                       const disc = item.customDiscount || item.discount || 0;
                       const rate = item.sellingPrice || (mrp - disc) || 0;
                       const amt = qty * rate;
-                      
+
                       return (
-                      <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
-                        <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
-                        <td className="border-r border-slate-300 p-1">{item.barcode}</td>
-                        <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{item.name}</td>
-                        <td className="border-r border-slate-300 p-1">{item.subItem || item.category || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.itemCode || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.ipn || ''}</td>
-                        <td className="border-r border-slate-300 p-1 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => {
-                              const newCart = [...cart];
-                              if (newCart[idx].quantity > 1) {
-                                newCart[idx].quantity -= 1;
+                        <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
+                          <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
+                          <td className="border-r border-slate-300 p-1">{item.barcode}</td>
+                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{item.name}</td>
+                          <td className="border-r border-slate-300 p-1">{item.subItem || item.category || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.itemCode || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.ipn || ''}</td>
+                          <td className="border-r border-slate-300 p-1 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={() => {
+                                const newCart = [...cart];
+                                if (newCart[idx].quantity > 1) {
+                                  newCart[idx].quantity -= 1;
+                                  newCart[idx].totalPrice = newCart[idx].quantity * rate;
+                                  setCart(newCart);
+                                }
+                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">-</button>
+                              <input
+                                type="number"
+                                min="1"
+                                value={qty}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].quantity = Math.max(1, parseInt(e.target.value) || 1);
+                                  newCart[idx].totalPrice = newCart[idx].quantity * rate;
+                                  setCart(newCart);
+                                }}
+                                className="w-10 text-center font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
+                              />
+                              <button onClick={() => {
+                                const newCart = [...cart];
+                                newCart[idx].quantity += 1;
                                 newCart[idx].totalPrice = newCart[idx].quantity * rate;
                                 setCart(newCart);
-                              }
-                            }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">-</button>
+                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
+                            </div>
+                          </td>
+                          <td className="border-r border-slate-300 p-1">{item.color || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.secondaryColor || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.size || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{item.hsn || ''}</td>
+                          <td className="border-r border-slate-300 p-1 text-right">
                             <input
                               type="number"
-                              min="1"
-                              value={qty}
+                              value={mrp}
                               onChange={(e) => {
                                 const newCart = [...cart];
-                                newCart[idx].quantity = Math.max(1, parseInt(e.target.value) || 1);
-                                newCart[idx].totalPrice = newCart[idx].quantity * rate;
+                                const newPrice = parseFloat(e.target.value) || 0;
+                                newCart[idx].price = newPrice;
+                                newCart[idx].mrp = newPrice;
+                                const newRate = newPrice - (newCart[idx].customDiscount || newCart[idx].discount || 0);
+                                newCart[idx].sellingPrice = newRate;
+                                newCart[idx].totalPrice = newCart[idx].quantity * newRate;
                                 setCart(newCart);
                               }}
-                              className="w-10 text-center font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
+                              className="w-14 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
                             />
+                          </td>
+                          <td className="border-r border-slate-300 p-1 text-right">{disc.toFixed(2)}</td>
+                          <td className="border-r border-slate-300 p-1 text-right">{rate.toFixed(2)}</td>
+                          <td className="border-r border-slate-300 p-1 text-right">{amt.toFixed(2)}</td>
+                          <td className="border-r border-slate-300 p-1">
+                            <select
+                              className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
+                              value={item.salesman1 || ''}
+                              onChange={(e) => {
+                                const newCart = [...cart];
+                                newCart[idx].salesman1 = e.target.value;
+                                setCart(newCart);
+                              }}
+                            >
+                              <option value="">-</option>
+                              {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="border-r border-slate-300 p-1">
+                            <select
+                              className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
+                              value={item.salesman2 || ''}
+                              onChange={(e) => {
+                                const newCart = [...cart];
+                                newCart[idx].salesman2 = e.target.value;
+                                setCart(newCart);
+                              }}
+                            >
+                              <option value="">-</option>
+                              {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="border-r border-slate-300 p-1">{item.uniqueCode || ''}</td>
+                          <td className="p-1 text-center">
                             <button onClick={() => {
-                              const newCart = [...cart];
-                              newCart[idx].quantity += 1;
-                              newCart[idx].totalPrice = newCart[idx].quantity * rate;
+                              const newCart = cart.filter((_, i) => i !== idx);
                               setCart(newCart);
-                            }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
-                          </div>
-                        </td>
-                        <td className="border-r border-slate-300 p-1">{item.color || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.secondaryColor || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.size || ''}</td>
-                        <td className="border-r border-slate-300 p-1">{item.hsn || ''}</td>
-                        <td className="border-r border-slate-300 p-1 text-right">
-                          <input
-                            type="number"
-                            value={mrp}
-                            onChange={(e) => {
-                              const newCart = [...cart];
-                              const newPrice = parseFloat(e.target.value) || 0;
-                              newCart[idx].price = newPrice;
-                              newCart[idx].mrp = newPrice;
-                              const newRate = newPrice - (newCart[idx].customDiscount || newCart[idx].discount || 0);
-                              newCart[idx].sellingPrice = newRate;
-                              newCart[idx].totalPrice = newCart[idx].quantity * newRate;
-                              setCart(newCart);
-                            }}
-                            className="w-14 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
-                          />
-                        </td>
-                        <td className="border-r border-slate-300 p-1 text-right">{disc.toFixed(2)}</td>
-                        <td className="border-r border-slate-300 p-1 text-right">{rate.toFixed(2)}</td>
-                        <td className="border-r border-slate-300 p-1 text-right">{amt.toFixed(2)}</td>
-                        <td className="border-r border-slate-300 p-1">
-                          <select 
-                            className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
-                            value={item.salesman1 || ''}
-                            onChange={(e) => {
-                               const newCart = [...cart];
-                               newCart[idx].salesman1 = e.target.value;
-                               setCart(newCart);
-                            }}
-                          >
-                            <option value="">-</option>
-                            {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="border-r border-slate-300 p-1">
-                          <select 
-                            className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
-                            value={item.salesman2 || ''}
-                            onChange={(e) => {
-                               const newCart = [...cart];
-                               newCart[idx].salesman2 = e.target.value;
-                               setCart(newCart);
-                            }}
-                          >
-                            <option value="">-</option>
-                            {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="border-r border-slate-300 p-1">{item.uniqueCode || ''}</td>
-                        <td className="p-1 text-center">
-                          <button onClick={() => {
-                            const newCart = cart.filter((_, i) => i !== idx);
-                            setCart(newCart);
-                          }} className="text-red-500 hover:text-red-700">
-                            <Trash2 className="w-4 h-4 mx-auto" />
-                          </button>
-                        </td>
-                      </tr>
+                            }} className="text-red-500 hover:text-red-700">
+                              <Trash2 className="w-4 h-4 mx-auto" />
+                            </button>
+                          </td>
+                        </tr>
                       );
                     })}
                     {/* Empty Entry Row */}
                     <tr className="border-b border-slate-300 bg-[#e8f4ff]">
                       <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
                       <td className="border-r border-slate-300 p-0.5">
-                        <input 
+                        <input
                           type="text"
                           className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase shadow-inner"
                           placeholder="Barcode / Code"
@@ -2996,7 +3069,7 @@ export const BillingPOSView = ({
                   {[
                     { id: "newBill", label: "New Bill", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
                     { id: "modify", label: "Alteration", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
-                    { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: () => setShowPaymentModal(true) },
+                    { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
                     { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
                     { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
                     { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
@@ -3328,7 +3401,7 @@ export const BillingPOSView = ({
                         const invDate = new Date(inv.date || inv.createdAt);
                         const today = new Date();
                         const diffTime = Math.abs(today - invDate);
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                         if (diffDays > 7) {
                           setReturnWarning({
                             show: true,
@@ -3589,6 +3662,33 @@ export const BillingPOSView = ({
                       </span>
                     </div>
 
+                    {/* Advance / Wallet Logic */}
+                    <label className="flex items-center gap-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-slate-800 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={returnRefundTotalAmount}
+                        onChange={(e) => {
+                          setReturnRefundTotalAmount(e.target.checked);
+                          if (e.target.checked) setReturnAdvanceAmount("");
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0"
+                      />
+                      <span>Refund total amount? (Untick to save partially to Customer Advance/Wallet)</span>
+                    </label>
+
+                    {!returnRefundTotalAmount && (
+                      <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex items-center justify-between animate-fade-in">
+                        <span className="text-xs font-bold text-indigo-900">Advance Amount (Save to Wallet)</span>
+                        <input
+                          type="number"
+                          value={returnAdvanceAmount}
+                          onChange={(e) => setReturnAdvanceAmount(e.target.value)}
+                          placeholder="0"
+                          className="w-32 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 text-right font-mono font-bold text-indigo-700 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+
                     {/* Mandatory Approval Checkbox */}
                     <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer">
                       <input
@@ -3607,7 +3707,7 @@ export const BillingPOSView = ({
                         const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
                         const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
                         let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
-                        
+
                         if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
                           const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || i.price * i.quantity), 0) || 1;
                           const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
@@ -3645,7 +3745,8 @@ export const BillingPOSView = ({
                           await api.post(`/invoices/${invId}/return`, {
                             returnedItemIds,
                             returnReason: finalReason,
-                            refundMethod: "Cash"
+                            refundMethod: "Cash",
+                            advanceAmount: !returnRefundTotalAmount ? (Number(returnAdvanceAmount) || 0) : 0
                           });
                         } catch (apiErr) {
                           console.warn("Backend return endpoint call error:", apiErr.message);
@@ -4112,8 +4213,8 @@ export const BillingPOSView = ({
                       <td className="p-3.5">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${so.status === "Dispatched"
-                              ? "bg-emerald-50 text-emerald-600"
-                              : "bg-amber-50 text-amber-600"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-amber-50 text-amber-600"
                             }`}
                         >
                           {so.status}
@@ -4732,12 +4833,12 @@ export const BillingPOSView = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-100">
               Customer details are mandatory for bills with a Due Amount.
             </p>
 
-              <form onSubmit={handleDueCustomerSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleDueCustomerSubmit} className="space-y-3 text-xs">
               <div className="relative">
                 <label className="block text-slate-500 mb-1 font-semibold">
                   Customer Name *
@@ -5215,8 +5316,8 @@ export const BillingPOSView = ({
                               const renderCellBorderClass = (colName) => {
                                 const isSel = checkCellSelected(colName);
                                 return `border-r border-slate-200 p-1.5 truncate relative ${isSel
-                                    ? "ring-2 ring-emerald-500 ring-inset bg-emerald-50/10 z-10"
-                                    : "hover:bg-slate-50/50 cursor-cell"
+                                  ? "ring-2 ring-emerald-500 ring-inset bg-emerald-50/10 z-10"
+                                  : "hover:bg-slate-50/50 cursor-cell"
                                   }`;
                               };
 
@@ -5313,10 +5414,10 @@ export const BillingPOSView = ({
                                   >
                                     <span
                                       className={`px-1.5 py-0.5 rounded-md font-bold text-[10px] ${isOut
-                                          ? "bg-red-50 text-red-600 border border-red-200"
-                                          : isLow
-                                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        ? "bg-red-50 text-red-600 border border-red-200"
+                                        : isLow
+                                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                          : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                         }`}
                                     >
                                       {item.stock} Qty
@@ -5411,8 +5512,8 @@ export const BillingPOSView = ({
                                         );
                                       }}
                                       className={`px-2 py-0.5 rounded text-[9px] font-sans font-bold uppercase transition-all tracking-wider cursor-pointer ${isOut
-                                          ? "bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200"
-                                          : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs hover:shadow-sm"
+                                        ? "bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200"
+                                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs hover:shadow-sm"
                                         }`}
                                     >
                                       Buy 1
@@ -5446,8 +5547,8 @@ export const BillingPOSView = ({
                                         );
                                       }}
                                       className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase transition-all tracking-wider cursor-pointer ${isOut
-                                          ? "bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200"
-                                          : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                        ? "bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200"
+                                        : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                                         }`}
                                     >
                                       Buy Qty
@@ -5736,8 +5837,8 @@ export const BillingPOSView = ({
                           }
                         }}
                         className={`w-full py-2.5 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all ${selectedVariant && selectedVariant.stock > 0
-                            ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-emerald-950/40"
-                            : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                          ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-emerald-950/40"
+                          : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
                           }`}
                       >
                         <span>Inject Row Into POS</span>
@@ -6196,7 +6297,7 @@ export const BillingPOSView = ({
                   <span className="text-sm">🖨️</span>
                   <span>PRINT</span>
                 </button>
-                
+
                 <button
                   onClick={() => showBillPreviewInvoice.isDraftPreview ? handleDownloadConfirm() : handleDownloadOnly(showBillPreviewInvoice)}
                   className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
@@ -6206,7 +6307,7 @@ export const BillingPOSView = ({
                 </button>
               </div>
             </div>
-            
+
             <button
               onClick={() => setShowBillPreviewInvoice(null)}
               className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
@@ -6371,7 +6472,7 @@ export const BillingPOSView = ({
       {/* BILL ADJUSTMENT MODAL */}
       {showAdjustmentModal && (() => {
         const MAX_MANUAL_DISCOUNT_LIMIT = 500;
-        
+
         const handleApply = () => {
           if (billAdjustment.operation === 'Discount' && billAdjustment.amount > (subTotal || 0)) {
             if (onAddNotification) onAddNotification("Adjustment Error", "Negative adjustment cannot exceed the bill amount.", "danger");
@@ -6385,178 +6486,178 @@ export const BillingPOSView = ({
         };
 
         return (
-        <div 
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
-          onKeyDown={(e) => {
-            if (showOwnerApprovalModal) return; // Let inner modal handle
-            if (e.key === 'Escape') {
-              setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
-              setShowAdjustmentModal(false);
-            } else if (e.key === 'Enter') {
-              // Only apply if the target isn't a textarea (to allow multiline reasons)
-              if (e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                handleApply();
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+            onKeyDown={(e) => {
+              if (showOwnerApprovalModal) return; // Let inner modal handle
+              if (e.key === 'Escape') {
+                setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+                setShowAdjustmentModal(false);
+              } else if (e.key === 'Enter') {
+                // Only apply if the target isn't a textarea (to allow multiline reasons)
+                if (e.target.tagName !== 'TEXTAREA') {
+                  e.preventDefault();
+                  handleApply();
+                }
               }
-            }
-          }}
-        >
-          <div className="bg-[#f0f0f0] w-[450px] flex flex-col shadow-2xl font-sans border-2 border-slate-400">
-            {/* Window Title Bar */}
-            <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold">
-              <span>Bill Adjustment</span>
-              <button className="hover:bg-red-600 px-2 rounded text-white font-bold" onClick={() => setShowAdjustmentModal(false)}>X</button>
-            </div>
-            
-            <div className="p-4 flex flex-col gap-4 text-sm font-bold text-slate-700">
-              
-              <div className="flex justify-between items-center gap-2 border-b border-slate-300 pb-2">
-                <span className="text-slate-500">Original Amount:</span>
-                <span className="text-blue-600 text-lg">₹{(subTotal || 0).toLocaleString()}</span>
+            }}
+          >
+            <div className="bg-[#f0f0f0] w-[450px] flex flex-col shadow-2xl font-sans border-2 border-slate-400">
+              {/* Window Title Bar */}
+              <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold">
+                <span>Bill Adjustment</span>
+                <button className="hover:bg-red-600 px-2 rounded text-white font-bold" onClick={() => setShowAdjustmentModal(false)}>X</button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <label>Type</label>
-                  <select 
-                    className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
-                    value={billAdjustment.type}
-                    onChange={(e) => setBillAdjustment({...billAdjustment, type: e.target.value, amount: 0, value: ''})}
-                  >
-                    <option value="Amount">Amount (₹)</option>
-                    <option value="Percentage">Percentage (%)</option>
-                  </select>
+              <div className="p-4 flex flex-col gap-4 text-sm font-bold text-slate-700">
+
+                <div className="flex justify-between items-center gap-2 border-b border-slate-300 pb-2">
+                  <span className="text-slate-500">Original Amount:</span>
+                  <span className="text-blue-600 text-lg">₹{(subTotal || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label>Operation</label>
-                  <select 
-                    className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
-                    value={billAdjustment.operation}
-                    onChange={(e) => setBillAdjustment({...billAdjustment, operation: e.target.value, amount: 0, value: ''})}
-                  >
-                    <option value="Discount">Discount (-)</option>
-                    <option value="Charge">Charge (+)</option>
-                  </select>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label>Type</label>
+                    <select
+                      className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                      value={billAdjustment.type}
+                      onChange={(e) => setBillAdjustment({ ...billAdjustment, type: e.target.value, amount: 0, value: '' })}
+                    >
+                      <option value="Amount">Amount (₹)</option>
+                      <option value="Percentage">Percentage (%)</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label>Operation</label>
+                    <select
+                      className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                      value={billAdjustment.operation}
+                      onChange={(e) => setBillAdjustment({ ...billAdjustment, operation: e.target.value, amount: 0, value: '' })}
+                    >
+                      <option value="Discount">Discount (-)</option>
+                      <option value="Charge">Charge (+)</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-1">
-                <label>Adjustment Value {billAdjustment.type === 'Percentage' ? '(%)' : '(₹)'}</label>
-                <input 
-                  type="number"
-                  autoFocus
-                  placeholder="Enter value..."
-                  className="border border-slate-400 p-2 text-lg font-mono outline-none focus:border-blue-500"
-                  value={billAdjustment.value}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0;
-                    let amt = 0;
-                    if (billAdjustment.type === 'Percentage') {
-                      amt = Math.floor((subTotal || 0) * (val / 100));
-                    } else {
-                      amt = val;
-                    }
-                    if (billAdjustment.operation === 'Discount' && amt > (subTotal || 0)) {
-                      amt = (subTotal || 0); // Cap discount
-                      if (onAddNotification) onAddNotification("Adjustment Capped", "Negative adjustment cannot exceed the bill amount.", "warning");
-                    }
-                    setBillAdjustment({...billAdjustment, value: e.target.value, amount: amt, isApproved: false}); // Reset approval if changed
-                  }}
-                />
-              </div>
+                <div className="flex flex-col gap-1">
+                  <label>Adjustment Value {billAdjustment.type === 'Percentage' ? '(%)' : '(₹)'}</label>
+                  <input
+                    type="number"
+                    autoFocus
+                    placeholder="Enter value..."
+                    className="border border-slate-400 p-2 text-lg font-mono outline-none focus:border-blue-500"
+                    value={billAdjustment.value}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      let amt = 0;
+                      if (billAdjustment.type === 'Percentage') {
+                        amt = Math.floor((subTotal || 0) * (val / 100));
+                      } else {
+                        amt = val;
+                      }
+                      if (billAdjustment.operation === 'Discount' && amt > (subTotal || 0)) {
+                        amt = (subTotal || 0); // Cap discount
+                        if (onAddNotification) onAddNotification("Adjustment Capped", "Negative adjustment cannot exceed the bill amount.", "warning");
+                      }
+                      setBillAdjustment({ ...billAdjustment, value: e.target.value, amount: amt, isApproved: false }); // Reset approval if changed
+                    }}
+                  />
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <label>Reason (Optional)</label>
-                <textarea 
-                  rows="2"
-                  className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
-                  value={billAdjustment.reason}
-                  onChange={(e) => setBillAdjustment({...billAdjustment, reason: e.target.value})}
-                ></textarea>
-              </div>
+                <div className="flex flex-col gap-1">
+                  <label>Reason (Optional)</label>
+                  <textarea
+                    rows="2"
+                    className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                    value={billAdjustment.reason}
+                    onChange={(e) => setBillAdjustment({ ...billAdjustment, reason: e.target.value })}
+                  ></textarea>
+                </div>
 
-              <div className="flex justify-between items-center gap-2 bg-slate-200 p-2 border border-slate-300">
-                <span className="text-slate-600">Adjustment Amount:</span>
-                <span className={billAdjustment.operation === 'Discount' ? "text-red-600 text-lg" : "text-emerald-600 text-lg"}>
-                  {billAdjustment.operation === 'Discount' ? '-' : '+'}₹{(billAdjustment.amount || 0).toLocaleString()}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center gap-2 bg-yellow-100 p-2 border border-yellow-300 shadow-inner">
-                <span className="text-slate-800 text-lg">Final Bill Amount:</span>
-                <span className="text-indigo-700 text-2xl font-black">
-                  ₹{Math.max(0, (subTotal || 0) + (billAdjustment.operation === 'Charge' ? billAdjustment.amount : -billAdjustment.amount)).toLocaleString()}
-                </span>
-              </div>
+                <div className="flex justify-between items-center gap-2 bg-slate-200 p-2 border border-slate-300">
+                  <span className="text-slate-600">Adjustment Amount:</span>
+                  <span className={billAdjustment.operation === 'Discount' ? "text-red-600 text-lg" : "text-emerald-600 text-lg"}>
+                    {billAdjustment.operation === 'Discount' ? '-' : '+'}₹{(billAdjustment.amount || 0).toLocaleString()}
+                  </span>
+                </div>
 
-              <div className="flex justify-end gap-2 mt-2">
-                <button 
-                  className="px-4 py-2 border border-slate-400 bg-[#e1e1e1] hover:bg-white text-slate-800 shadow-sm"
-                  onClick={() => {
-                    setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
-                    setShowAdjustmentModal(false);
-                  }}
-                >
-                  Cancel (Esc)
-                </button>
-                <button 
-                  className="px-4 py-2 border border-[#005fb8] bg-[#005fb8] hover:bg-blue-700 text-white shadow-sm font-bold"
-                  onClick={handleApply}
-                >
-                  Apply (Enter)
-                </button>
+                <div className="flex justify-between items-center gap-2 bg-yellow-100 p-2 border border-yellow-300 shadow-inner">
+                  <span className="text-slate-800 text-lg">Final Bill Amount:</span>
+                  <span className="text-indigo-700 text-2xl font-black">
+                    ₹{Math.max(0, (subTotal || 0) + (billAdjustment.operation === 'Charge' ? billAdjustment.amount : -billAdjustment.amount)).toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-2">
+                  <button
+                    className="px-4 py-2 border border-slate-400 bg-[#e1e1e1] hover:bg-white text-slate-800 shadow-sm"
+                    onClick={() => {
+                      setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+                      setShowAdjustmentModal(false);
+                    }}
+                  >
+                    Cancel (Esc)
+                  </button>
+                  <button
+                    className="px-4 py-2 border border-[#005fb8] bg-[#005fb8] hover:bg-blue-700 text-white shadow-sm font-bold"
+                    onClick={handleApply}
+                  >
+                    Apply (Enter)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         );
       })()}
 
       {/* OWNER APPROVAL MODAL */}
       {showOwnerApprovalModal && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60">
-           <div className="bg-white p-6 shadow-2xl border-t-4 border-rose-600 w-[350px]">
-              <h3 className="text-lg font-bold text-rose-700 mb-2">Owner Approval Required</h3>
-              <p className="text-xs text-slate-600 mb-4">The manual discount exceeds the allowed store limit (₹500). Enter Owner PIN to authorize.</p>
-              <input 
-                 type="password"
-                 autoFocus
-                 placeholder="Enter PIN (e.g., 1234)"
-                 value={ownerPin}
-                 onChange={(e) => setOwnerPin(e.target.value)}
-                 className="w-full border p-2 text-center text-xl tracking-widest outline-none focus:border-rose-500 mb-4 bg-slate-50"
-                 onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                       if (ownerPin === '1234') { // Mock PIN
-                          setBillAdjustment({...billAdjustment, isApproved: true});
-                          setShowOwnerApprovalModal(false);
-                          setShowAdjustmentModal(false); 
-                          setOwnerPin("");
-                          if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
-                       } else {
-                          if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
-                       }
-                    } else if (e.key === 'Escape') {
-                       setShowOwnerApprovalModal(false);
-                       setOwnerPin("");
-                    }
-                 }}
-              />
-              <div className="flex gap-2 justify-end">
-                <button className="px-3 py-1.5 border border-slate-300 bg-slate-100 hover:bg-slate-200 text-sm font-semibold text-slate-700" onClick={() => setShowOwnerApprovalModal(false)}>Cancel (Esc)</button>
-                <button className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow flex items-center gap-1" onClick={() => {
-                       if (ownerPin === '1234') { // Mock PIN
-                          setBillAdjustment({...billAdjustment, isApproved: true});
-                          setShowOwnerApprovalModal(false);
-                          setShowAdjustmentModal(false);
-                          setOwnerPin("");
-                          if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
-                       } else {
-                          if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
-                       }
-                }}>Authorize (Enter)</button>
-              </div>
-           </div>
+          <div className="bg-white p-6 shadow-2xl border-t-4 border-rose-600 w-[350px]">
+            <h3 className="text-lg font-bold text-rose-700 mb-2">Owner Approval Required</h3>
+            <p className="text-xs text-slate-600 mb-4">The manual discount exceeds the allowed store limit (₹500). Enter Owner PIN to authorize.</p>
+            <input
+              type="password"
+              autoFocus
+              placeholder="Enter PIN (e.g., 1234)"
+              value={ownerPin}
+              onChange={(e) => setOwnerPin(e.target.value)}
+              className="w-full border p-2 text-center text-xl tracking-widest outline-none focus:border-rose-500 mb-4 bg-slate-50"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (ownerPin === '1234') { // Mock PIN
+                    setBillAdjustment({ ...billAdjustment, isApproved: true });
+                    setShowOwnerApprovalModal(false);
+                    setShowAdjustmentModal(false);
+                    setOwnerPin("");
+                    if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
+                  } else {
+                    if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
+                  }
+                } else if (e.key === 'Escape') {
+                  setShowOwnerApprovalModal(false);
+                  setOwnerPin("");
+                }
+              }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button className="px-3 py-1.5 border border-slate-300 bg-slate-100 hover:bg-slate-200 text-sm font-semibold text-slate-700" onClick={() => setShowOwnerApprovalModal(false)}>Cancel (Esc)</button>
+              <button className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow flex items-center gap-1" onClick={() => {
+                if (ownerPin === '1234') { // Mock PIN
+                  setBillAdjustment({ ...billAdjustment, isApproved: true });
+                  setShowOwnerApprovalModal(false);
+                  setShowAdjustmentModal(false);
+                  setOwnerPin("");
+                  if (onAddNotification) onAddNotification("Approval Granted", "Discount approved by Owner.", "success");
+                } else {
+                  if (onAddNotification) onAddNotification("Approval Denied", "Incorrect Owner PIN.", "danger");
+                }
+              }}>Authorize (Enter)</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -6592,7 +6693,7 @@ export const BillingPOSView = ({
               />
               <button
                 onClick={() => {
-                  const fakeEvent = { key: "Enter", preventDefault: () => {} };
+                  const fakeEvent = { key: "Enter", preventDefault: () => { } };
                   handleItemNameKeyDown(fakeEvent);
                 }}
                 className="px-4 py-1 bg-[#005fb8] hover:bg-blue-700 text-white rounded font-bold cursor-pointer text-xs"
@@ -6675,9 +6776,8 @@ export const BillingPOSView = ({
                       return (
                         <tr
                           key={item._id || item.id || idx}
-                          className={`border-b border-slate-200 cursor-pointer transition-colors ${
-                            isSelected ? 'bg-blue-100 font-bold' : 'hover:bg-blue-50'
-                          }`}
+                          className={`border-b border-slate-200 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 font-bold' : 'hover:bg-blue-50'
+                            }`}
                           onClick={() => setSelectedSearchItem(item)}
                           onDoubleClick={() => {
                             handleAddProductToCart(item);
@@ -6696,9 +6796,8 @@ export const BillingPOSView = ({
                           <td className="border-r border-slate-300 p-1 text-center font-mono text-indigo-600">{piecesTotal}</td>
                           <td className="border-r border-slate-300 p-1 text-center font-mono text-emerald-600">{item.availableStock}</td>
                           <td className="border-r border-slate-300 p-1">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                              item.availableStock > 0 ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-red-50 text-red-700 font-bold'
-                            }`}>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${item.availableStock > 0 ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-red-50 text-red-700 font-bold'
+                              }`}>
                               {item.availableStock > 0 ? 'Available' : 'Sold Out'}
                               {item.soldQuantity > 0 ? ` (${item.soldQuantity} Sold)` : ''}
                             </span>
@@ -6746,148 +6845,147 @@ export const BillingPOSView = ({
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                
-                {(() => {
-                  const activeItem = selectedSearchItem || itemSearchResults[0];
-                  if (!activeItem) {
+
+                  {(() => {
+                    const activeItem = selectedSearchItem || itemSearchResults[0];
+                    if (!activeItem) {
+                      return (
+                        <div className="text-slate-400 italic text-center py-8">
+                          Select an item to view options
+                        </div>
+                      );
+                    }
+
                     return (
-                      <div className="text-slate-400 italic text-center py-8">
-                        Select an item to view options
+                      <div className="space-y-4">
+                        {/* Tab buttons */}
+                        <div className="grid grid-cols-4 gap-1 bg-slate-200 p-0.5 rounded-lg">
+                          {[
+                            { id: 'General', label: '🛈 General' },
+                            { id: 'Stock', label: '📦 Stock' },
+                            { id: 'Purchase', label: '🛒 Purchase' },
+                            { id: 'Sales', label: '📈 Sales' }
+                          ].map(t => (
+                            <button
+                              key={t.id}
+                              onClick={() => {
+                                if (t.id === 'Purchase' && !isPurchaseTabUnlocked) {
+                                  setInfoPanelItem(activeItem);
+                                  setPurchaseAuthOwnerId('');
+                                  setPurchaseAuthPassword('');
+                                  setIsPurchaseAuthModalOpen(true);
+                                } else {
+                                  setInfoPanelTab(t.id);
+                                }
+                              }}
+                              className={`py-1.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${infoPanelTab === t.id
+                                  ? 'bg-white text-slate-800 shadow-xs'
+                                  : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Tab Content */}
+                        <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5 shadow-2xs">
+                          {infoPanelTab === 'General' && (
+                            <div className="space-y-2 text-slate-700">
+                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛈 General Details</div>
+                              <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Sub Item:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Design No.:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Ipn:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Barcode:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.barcode || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Item Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.itemCode || activeItem.sku || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Unique product Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.uniqueCode || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">HSN:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.hsn || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Brand:</span> <span className="text-slate-800 font-semibold">{activeItem.brand || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Company:</span> <span className="text-slate-800 font-semibold">{activeItem.company || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Category:</span> <span className="text-slate-800 font-semibold">{activeItem.category || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Remarks:</span> <span className="text-slate-800 font-semibold">{activeItem.remarks || activeItem.description || 'N/A'}</span></div>
+                            </div>
+                          )}
+
+                          {infoPanelTab === 'Stock' && (
+                            <div className="space-y-2 text-slate-700">
+                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📦 Stock Metrics</div>
+                              <div><span className="text-slate-400 font-bold">Available Stock:</span> <span className="text-emerald-600 font-bold font-mono">{activeItem.availableStock || activeItem.stock || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Sold Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Reserved Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.reservedQuantity || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Alteration Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.alterationQuantity || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Transit:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.transitQuantity || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Rack Location:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Godown:</span> <span className="text-slate-800 font-semibold">{activeItem.godown || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Stock Age:</span> <span className="text-slate-800 font-semibold">{activeItem.stockAge || 'N/A'} Days</span></div>
+                              <div><span className="text-slate-400 font-bold">Last Stock Update:</span> <span className="text-slate-800 font-semibold">{activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleDateString() : 'N/A'}</span></div>
+                            </div>
+                          )}
+
+                          {infoPanelTab === 'Purchase' && (
+                            <div className="space-y-2 text-slate-700 animate-fade-in">
+                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛒 Confidential Purchase Details</div>
+                              {isPurchaseTabUnlocked ? (
+                                <>
+                                  <div><span className="text-slate-400 font-bold">Vendor Name:</span> <span className="text-slate-800 font-semibold">{activeItem.vendorName || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Vendor Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.vendorCode || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Purchase Rate:</span> <span className="text-red-600 font-bold font-mono">₹{(activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Average Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.avgPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Last Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseDate || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Last Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastPurchaseDate || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Purchase Invoice:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseInvoice || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Goods Return Details:</span> <span className="text-slate-800 font-semibold">{activeItem.goodsReturnDetails || 'N/A'}</span></div>
+                                  <div><span className="text-slate-400 font-bold">Landed Cost:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.landedCost || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
+                                  <div>
+                                    <span className="text-slate-400 font-bold">Margin:</span>{' '}
+                                    <span className="text-emerald-600 font-bold font-mono">
+                                      ₹{((activeItem.sellingRate || activeItem.mrp || 0) - (activeItem.purchasePrice || 0)).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-center py-4 space-y-2">
+                                  <span className="text-slate-400 italic block text-[10px]">Purchase details are locked</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInfoPanelItem(activeItem);
+                                      setPurchaseAuthOwnerId('');
+                                      setPurchaseAuthPassword('');
+                                      setIsPurchaseAuthModalOpen(true);
+                                    }}
+                                    className="px-3 py-1 bg-[#005fb8] text-white rounded font-bold text-[10px] cursor-pointer"
+                                  >
+                                    Authorize Access
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {infoPanelTab === 'Sales' && (
+                            <div className="space-y-2 text-slate-700">
+                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📈 Sales Metrics</div>
+                              <div><span className="text-slate-400 font-bold">MRP:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.mrp || 0).toLocaleString()}</span></div>
+                              <div><span className="text-slate-400 font-bold">Current Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
+                              <div><span className="text-slate-400 font-bold">Last Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastSellingRate || activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
+                              <div><span className="text-slate-400 font-bold">Last Sale Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastSaleDate || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Total Sold:</span> <span className="text-amber-600 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
+                              <div><span className="text-slate-400 font-bold">Discount History:</span> <span className="text-slate-800 font-semibold">{activeItem.discountHistory || 'N/A'}</span></div>
+                              <div><span className="text-slate-400 font-bold">Average Discount:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.avgDiscount || '0'}%</span></div>
+                              <div><span className="text-slate-400 font-bold">Return %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.returnPercent || '0'}%</span></div>
+                              <div><span className="text-slate-400 font-bold">Exchange %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.exchangePercent || '0'}%</span></div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      {/* Tab buttons */}
-                      <div className="grid grid-cols-4 gap-1 bg-slate-200 p-0.5 rounded-lg">
-                        {[
-                          { id: 'General', label: '🛈 General' },
-                          { id: 'Stock', label: '📦 Stock' },
-                          { id: 'Purchase', label: '🛒 Purchase' },
-                          { id: 'Sales', label: '📈 Sales' }
-                        ].map(t => (
-                          <button
-                            key={t.id}
-                            onClick={() => {
-                              if (t.id === 'Purchase' && !isPurchaseTabUnlocked) {
-                                setInfoPanelItem(activeItem);
-                                setPurchaseAuthOwnerId('');
-                                setPurchaseAuthPassword('');
-                                setIsPurchaseAuthModalOpen(true);
-                              } else {
-                                setInfoPanelTab(t.id);
-                              }
-                            }}
-                            className={`py-1.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
-                              infoPanelTab === t.id
-                                ? 'bg-white text-slate-800 shadow-xs'
-                                : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                          >
-                            {t.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Tab Content */}
-                      <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5 shadow-2xs">
-                        {infoPanelTab === 'General' && (
-                          <div className="space-y-2 text-slate-700">
-                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛈 General Details</div>
-                            <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Sub Item:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Design No.:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Ipn:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Barcode:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.barcode || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Item Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.itemCode || activeItem.sku || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Unique product Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.uniqueCode || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">HSN:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.hsn || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Brand:</span> <span className="text-slate-800 font-semibold">{activeItem.brand || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Company:</span> <span className="text-slate-800 font-semibold">{activeItem.company || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Category:</span> <span className="text-slate-800 font-semibold">{activeItem.category || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Remarks:</span> <span className="text-slate-800 font-semibold">{activeItem.remarks || activeItem.description || 'N/A'}</span></div>
-                          </div>
-                        )}
-
-                        {infoPanelTab === 'Stock' && (
-                          <div className="space-y-2 text-slate-700">
-                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📦 Stock Metrics</div>
-                            <div><span className="text-slate-400 font-bold">Available Stock:</span> <span className="text-emerald-600 font-bold font-mono">{activeItem.availableStock || activeItem.stock || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Sold Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Reserved Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.reservedQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Alteration Quantity:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.alterationQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Transit:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.transitQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Rack Location:</span> <span className="text-slate-800 font-semibold">{activeItem.ipn || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Godown:</span> <span className="text-slate-800 font-semibold">{activeItem.godown || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Stock Age:</span> <span className="text-slate-800 font-semibold">{activeItem.stockAge || 'N/A'} Days</span></div>
-                            <div><span className="text-slate-400 font-bold">Last Stock Update:</span> <span className="text-slate-800 font-semibold">{activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleDateString() : 'N/A'}</span></div>
-                          </div>
-                        )}
-
-                        {infoPanelTab === 'Purchase' && (
-                          <div className="space-y-2 text-slate-700 animate-fade-in">
-                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛒 Confidential Purchase Details</div>
-                            {isPurchaseTabUnlocked ? (
-                              <>
-                                <div><span className="text-slate-400 font-bold">Vendor Name:</span> <span className="text-slate-800 font-semibold">{activeItem.vendorName || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Vendor Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.vendorCode || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Purchase Rate:</span> <span className="text-red-600 font-bold font-mono">₹{(activeItem.purchasePrice || 0).toLocaleString()}</span></div>
-                                <div><span className="text-slate-400 font-bold">Average Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.avgPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
-                                <div><span className="text-slate-400 font-bold">Last Purchase Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastPurchaseRate || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
-                                <div><span className="text-slate-400 font-bold">Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseDate || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Last Purchase Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastPurchaseDate || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Purchase Invoice:</span> <span className="text-slate-800 font-semibold">{activeItem.purchaseInvoice || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Goods Return Details:</span> <span className="text-slate-800 font-semibold">{activeItem.goodsReturnDetails || 'N/A'}</span></div>
-                                <div><span className="text-slate-400 font-bold">Landed Cost:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.landedCost || activeItem.purchasePrice || 0).toLocaleString()}</span></div>
-                                <div>
-                                  <span className="text-slate-400 font-bold">Margin:</span>{' '}
-                                  <span className="text-emerald-600 font-bold font-mono">
-                                    ₹{((activeItem.sellingRate || activeItem.mrp || 0) - (activeItem.purchasePrice || 0)).toLocaleString()}
-                                  </span>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-center py-4 space-y-2">
-                                <span className="text-slate-400 italic block text-[10px]">Purchase details are locked</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setInfoPanelItem(activeItem);
-                                    setPurchaseAuthOwnerId('');
-                                    setPurchaseAuthPassword('');
-                                    setIsPurchaseAuthModalOpen(true);
-                                  }}
-                                  className="px-3 py-1 bg-[#005fb8] text-white rounded font-bold text-[10px] cursor-pointer"
-                                >
-                                  Authorize Access
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {infoPanelTab === 'Sales' && (
-                          <div className="space-y-2 text-slate-700">
-                            <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">📈 Sales Metrics</div>
-                            <div><span className="text-slate-400 font-bold">MRP:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.mrp || 0).toLocaleString()}</span></div>
-                            <div><span className="text-slate-400 font-bold">Current Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
-                            <div><span className="text-slate-400 font-bold">Last Selling Rate:</span> <span className="text-slate-800 font-bold font-mono">₹{(activeItem.lastSellingRate || activeItem.sellingRate || activeItem.sellingPrice || 0).toLocaleString()}</span></div>
-                            <div><span className="text-slate-400 font-bold">Last Sale Date:</span> <span className="text-slate-800 font-semibold">{activeItem.lastSaleDate || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Total Sold:</span> <span className="text-amber-600 font-bold font-mono">{activeItem.soldQuantity || 0} PCS</span></div>
-                            <div><span className="text-slate-400 font-bold">Discount History:</span> <span className="text-slate-800 font-semibold">{activeItem.discountHistory || 'N/A'}</span></div>
-                            <div><span className="text-slate-400 font-bold">Average Discount:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.avgDiscount || '0'}%</span></div>
-                            <div><span className="text-slate-400 font-bold">Return %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.returnPercent || '0'}%</span></div>
-                            <div><span className="text-slate-400 font-bold">Exchange %:</span> <span className="text-slate-800 font-bold font-mono">{activeItem.exchangePercent || '0'}%</span></div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
+                  })()}
+                </div>
+              )}
+            </div>
 
             {/* Bottom Options */}
             <div className="bg-[#f0f0f0] p-2 text-[10px] text-slate-700">
@@ -6936,8 +7034,8 @@ export const BillingPOSView = ({
                 <Info className="w-4 h-4" />
                 Product Specification Sheet
               </span>
-              <button 
-                onClick={() => setInfoModalItem(null)} 
+              <button
+                onClick={() => setInfoModalItem(null)}
                 className="hover:bg-white/20 p-1 rounded-md transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -7007,11 +7105,46 @@ export const BillingPOSView = ({
               </div>
             </div>
             <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setInfoModalItem(null)} 
+              <button
+                onClick={() => setInfoModalItem(null)}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-sm transition-colors cursor-pointer"
               >
                 Close Spec Sheet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Advance Prompt Modal */}
+      {showAdvancePromptModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-scale-up text-center border-t-4 border-indigo-500">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CreditCard className="w-8 h-8 text-indigo-600" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Available Advance</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Customer <span className="font-bold">{activeCustomer?.name}</span> has an available balance of:
+            </p>
+            <div className="text-3xl font-black font-mono text-indigo-700 mb-6 bg-indigo-50 py-3 rounded-xl border border-indigo-100">
+              ₹{((activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0)).toLocaleString('en-IN')}
+            </div>
+            <p className="text-xs text-slate-500 mb-6 px-4">
+              Would you like to apply this advance towards the current bill of <span className="font-bold">₹{grandTotal}</span>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleAcceptAdvance(false)}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                No, Skip
+              </button>
+              <button
+                onClick={() => handleAcceptAdvance(true)}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-colors"
+              >
+                Yes, Apply
               </button>
             </div>
           </div>
@@ -7022,19 +7155,19 @@ export const BillingPOSView = ({
       {showPaymentModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-slate-50 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up flex flex-col border border-slate-200 h-[650px] relative">
-            
+
             {/* Custom Payment Warning Overlay */}
             {paymentWarning && (
               <div className="absolute inset-0 z-[130] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] animate-fade-in">
                 <div className="bg-white rounded-xl shadow-2xl w-96 p-6 border-t-4 border-t-rose-500 flex flex-col items-center text-center animate-scale-up">
-                   <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4 text-rose-500">
-                      <AlertCircle className="w-8 h-8" />
-                   </div>
-                   <h3 className="text-xl font-black text-slate-800 mb-2">Payment Incomplete</h3>
-                   <p className="text-slate-600 mb-6 font-medium leading-relaxed whitespace-pre-line">{paymentWarning}</p>
-                   <button onClick={() => setPaymentWarning("")} className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg transition-colors cursor-pointer">
-                      Understood
-                   </button>
+                  <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4 text-rose-500">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-800 mb-2">Payment Incomplete</h3>
+                  <p className="text-slate-600 mb-6 font-medium leading-relaxed whitespace-pre-line">{paymentWarning}</p>
+                  <button onClick={() => setPaymentWarning("")} className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg transition-colors cursor-pointer">
+                    Understood
+                  </button>
                 </div>
               </div>
             )}
@@ -7056,7 +7189,7 @@ export const BillingPOSView = ({
                 <button onClick={() => setShowPaymentModal(false)} className="ml-4 text-slate-400 hover:text-rose-500 cursor-pointer"><X className="w-6 h-6" /></button>
               </div>
             </div>
-            
+
             <div className="flex flex-1 overflow-hidden">
               {/* Left Column: Payment Methods */}
               <div className="w-48 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
@@ -7064,15 +7197,15 @@ export const BillingPOSView = ({
                   <button
                     key={method}
                     onClick={() => {
-                       setPaymentMethod(method);
-                       if (paymentType === 'Part Payment' && method !== 'Cash') {
-                          const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                          const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                          const left = Math.max(0, grandTotal - cashTot - otherTot);
-                          if (left > 0 && !partPaymentAmounts[method]) {
-                              setPartPaymentAmounts(p => ({...p, [method]: left.toString()}));
-                          }
-                       }
+                      setPaymentMethod(method);
+                      if (paymentType === 'Part Payment' && method !== 'Cash') {
+                        const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        const left = Math.max(0, grandTotal - cashTot - otherTot);
+                        if (left > 0 && !partPaymentAmounts[method]) {
+                          setPartPaymentAmounts(p => ({ ...p, [method]: left.toString() }));
+                        }
+                      }
                     }}
                     className={`flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-left transition-all font-bold cursor-pointer ${paymentMethod === method ? "bg-indigo-50 text-indigo-700 border-l-4 border-l-indigo-600 shadow-sm z-10" : "text-slate-600 hover:bg-slate-50 border-l-4 border-l-transparent"}`}
                   >
@@ -7096,24 +7229,24 @@ export const BillingPOSView = ({
                           { val: 20 },
                           { val: 10 }
                         ].map(note => (
-                          <div 
-                            key={note.val} 
+                          <div
+                            key={note.val}
                             onClick={() => setActiveDenomination(note.val)}
                             className={`flex items-center gap-1.5 px-1 py-1.5 rounded-lg border-2 cursor-pointer transition-all ${activeDenomination === note.val ? 'border-indigo-500 bg-indigo-50/50 shadow-md' : 'border-slate-200 bg-white hover:border-indigo-300'}`}
                           >
-                            <img 
-                               src={`/photos/${note.val}.jpg`}
-                               alt={"₹" + note.val}
-                               className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
+                            <img
+                              src={`/photos/${note.val}.jpg`}
+                              alt={"₹" + note.val}
+                              className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
                             />
-                            
-                            <input 
-                              type="number" min="0" 
-                              className="w-12 h-8 border border-slate-300 rounded text-center font-bold text-slate-800 outline-none focus:border-indigo-500 bg-white text-sm" 
+
+                            <input
+                              type="number" min="0"
+                              className="w-12 h-8 border border-slate-300 rounded text-center font-bold text-slate-800 outline-none focus:border-indigo-500 bg-white text-sm"
                               value={cashDenominations[note.val] || ''}
                               onChange={(e) => {
                                 setActiveDenomination(note.val);
-                                setCashDenominations(prev => ({...prev, [note.val]: e.target.value}));
+                                setCashDenominations(prev => ({ ...prev, [note.val]: e.target.value }));
                               }}
                               placeholder="0"
                             />
@@ -7124,115 +7257,113 @@ export const BillingPOSView = ({
                         ))}
                       </div>
                     </div>
-                    
+
                     {/* Virtual Numpad for Cash */}
                     <div className="w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0">
                       {/* LCD Display */}
                       <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
-                         <span className="text-xs font-bold text-slate-400">₹{activeDenomination} Notes</span>
-                         <span className="text-2xl font-black font-mono text-slate-800">{cashDenominations[activeDenomination] || '0'}</span>
+                        <span className="text-xs font-bold text-slate-400">₹{activeDenomination} Notes</span>
+                        <span className="text-2xl font-black font-mono text-slate-800">{cashDenominations[activeDenomination] || '0'}</span>
                       </div>
-                      
+
                       <div className="grid grid-cols-4 gap-2 w-full flex-1">
                         {/* Row 1 */}
-                        <button onClick={() => setCashDenominations(p => ({...p, [activeDenomination]: ''}))} className="col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">CLR</button>
-                        <button onClick={() => setCashDenominations(p => ({...p, [activeDenomination]: (p[activeDenomination]?.toString() || '').slice(0, -1)}))} className="col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">BCK</button>
-                        
+                        <button onClick={() => setCashDenominations(p => ({ ...p, [activeDenomination]: '' }))} className="col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">CLR</button>
+                        <button onClick={() => setCashDenominations(p => ({ ...p, [activeDenomination]: (p[activeDenomination]?.toString() || '').slice(0, -1) }))} className="col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">BCK</button>
+
                         {/* Numbers */}
                         {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
-                           <button 
-                             key={i} 
-                             onClick={() => {
-                               if (btn === 'Pay') {
-                                 const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                 if (paymentType === 'Full Payment' && cashTot < grandTotal) {
-                                   setPaymentWarning(`Paid amount (₹${cashTot}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to add Due amount or select multiple methods.`);
-                                   return;
-                                 }
-                                 setShowPaymentModal(false);
-                                 handlePrintConfirm();
-                               } else if (['0','1','2','3','4','5','6','7','8','9','00'].includes(btn)) {
-                                 setCashDenominations(p => ({...p, [activeDenomination]: (p[activeDenomination]?.toString() || '') + btn}));
-                               }
-                             }}
-                             className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${
-                               btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' : 
-                               ['+','-','='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
-                             }`}
-                           >
-                             {btn}
-                           </button>
+                          <button
+                            key={i}
+                            onClick={() => {
+                              if (btn === 'Pay') {
+                                const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                if (paymentType === 'Full Payment' && cashTot < grandTotal) {
+                                  setPaymentWarning(`Paid amount (₹${cashTot}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to add Due amount or select multiple methods.`);
+                                  return;
+                                }
+                                setShowPaymentModal(false);
+                                handlePrintConfirm();
+                              } else if (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00'].includes(btn)) {
+                                setCashDenominations(p => ({ ...p, [activeDenomination]: (p[activeDenomination]?.toString() || '') + btn }));
+                              }
+                            }}
+                            className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' :
+                                ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
+                              }`}
+                          >
+                            {btn}
+                          </button>
                         ))}
                       </div>
                     </div>
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-center p-4 relative">
-                     {paymentType === 'Full Payment' && (
-                        <div className="absolute top-8 bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg font-bold shadow-sm animate-fade-in z-10 flex items-center gap-2">
-                           <Info className="w-5 h-5" /> 
-                           Full Payment Mode: Entire bill is allocated to {paymentMethod}.
+                    {paymentType === 'Full Payment' && (
+                      <div className="absolute top-8 bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg font-bold shadow-sm animate-fade-in z-10 flex items-center gap-2">
+                        <Info className="w-5 h-5" />
+                        Full Payment Mode: Entire bill is allocated to {paymentMethod}.
+                      </div>
+                    )}
+                    <div className={`w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0 rounded shadow-md border border-slate-200 transition-opacity ${paymentType === 'Full Payment' ? 'opacity-90' : ''}`}>
+                      {/* LCD Display */}
+                      <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
+                        <span className="text-xs font-bold text-slate-400">{paymentMethod} Amount</span>
+                        <div className="flex items-center w-full justify-end">
+                          <span className="text-2xl font-black font-mono text-slate-800 mr-1">₹</span>
+                          {paymentType === 'Full Payment' ? (
+                            <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
+                          ) : (
+                            <input
+                              type="number" min="0"
+                              autoFocus
+                              value={partPaymentAmounts[paymentMethod] || ''}
+                              onChange={(e) => setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: e.target.value }))}
+                              className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
+                              placeholder="0"
+                            />
+                          )}
                         </div>
-                     )}
-                     <div className={`w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0 rounded shadow-md border border-slate-200 transition-opacity ${paymentType === 'Full Payment' ? 'opacity-90' : ''}`}>
-                        {/* LCD Display */}
-                        <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
-                           <span className="text-xs font-bold text-slate-400">{paymentMethod} Amount</span>
-                           <div className="flex items-center w-full justify-end">
-                             <span className="text-2xl font-black font-mono text-slate-800 mr-1">₹</span>
-                             {paymentType === 'Full Payment' ? (
-                               <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
-                             ) : (
-                               <input 
-                                 type="number" min="0"
-                                 autoFocus
-                                 value={partPaymentAmounts[paymentMethod] || ''}
-                                 onChange={(e) => setPartPaymentAmounts(p => ({...p, [paymentMethod]: e.target.value}))}
-                                 className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
-                                 placeholder="0"
-                               />
-                             )}
-                           </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-4 gap-2 w-full">
-                          {/* Row 1 */}
-                          <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({...p, [paymentMethod]: ''})) }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
-                          <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1)})) }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
-                          
-                          {/* Numbers */}
-                          {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
-                             <button 
-                               key={i} 
-                               onClick={() => {
-                                 if (btn === 'Pay') {
-                                   if (paymentType === 'Full Payment') {
-                                      setShowPaymentModal(false);
-                                      handlePrintConfirm();
-                                      return;
-                                   }
-                                   const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                   const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                                   if (partTot < grandTotal) {
-                                      setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
-                                      return;
-                                   }
-                                   setShowPaymentModal(false);
-                                   handlePrintConfirm();
-                                 } else if (paymentType === 'Part Payment' && ['0','1','2','3','4','5','6','7','8','9','00','.'].includes(btn)) {
-                                   setPartPaymentAmounts(p => ({...p, [paymentMethod]: (p[paymentMethod]?.toString() || '') + btn}));
-                                 }
-                               }}
-                               className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${
-                                 btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' : 
-                                 paymentType === 'Part Payment' ? 'hover:bg-slate-50 active:scale-95 cursor-pointer' : 'opacity-60 cursor-not-allowed'
-                               } ${['+','-','='].includes(btn) && paymentType === 'Part Payment' ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''}`}
-                             >
-                               {btn}
-                             </button>
-                          ))}
-                        </div>
-                     </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 w-full">
+                        {/* Row 1 */}
+                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' })) }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
+                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1) })) }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
+
+                        {/* Numbers */}
+                        {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              if (btn === 'Pay') {
+                                if (paymentType === 'Full Payment') {
+                                  setShowPaymentModal(false);
+                                  handlePrintConfirm();
+                                  return;
+                                }
+                                const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                                if (partTot < grandTotal) {
+                                  setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
+                                  return;
+                                }
+                                setShowPaymentModal(false);
+                                handlePrintConfirm();
+                              } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
+                                setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '') + btn }));
+                              }
+                            }}
+                            className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' :
+                                paymentType === 'Part Payment' ? 'hover:bg-slate-50 active:scale-95 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                              } ${['+', '-', '='].includes(btn) && paymentType === 'Part Payment' ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''}`}
+                          >
+                            {btn}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -7240,7 +7371,7 @@ export const BillingPOSView = ({
               {/* Right Column: Billing Break-up */}
               <div className="w-72 bg-white flex flex-col text-sm border-l border-slate-200 shrink-0">
                 <div className="bg-slate-100 font-bold p-3 border-b border-slate-200 text-slate-700 text-center uppercase tracking-wider text-xs">Payment Break-up</div>
-                
+
                 <div className="p-4 space-y-3 font-mono flex-1 overflow-y-auto">
                   {(() => {
                     const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -7258,65 +7389,65 @@ export const BillingPOSView = ({
                       </div>
                     ));
                   })()}
-                  
+
                   <div className="pt-4 mt-4 border-t border-slate-200">
                     {(() => {
-                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                       const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
-                       return (
-                          <>
-                            <div className="flex justify-between items-center text-slate-800 mb-2">
-                              <span className="font-bold">Total Paid</span>
-                              <span className="font-black text-emerald-600 text-lg">
-                                ₹{totalPaidDisplay.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200">
-                              <span className="font-bold">Balance (Return)</span>
-                              <span className="font-black text-rose-600 text-lg">
-                                ₹{Math.max(0, totalPaidDisplay - grandTotal).toLocaleString()}
-                              </span>
-                            </div>
-                          </>
-                       );
+                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
+                      return (
+                        <>
+                          <div className="flex justify-between items-center text-slate-800 mb-2">
+                            <span className="font-bold">Total Paid</span>
+                            <span className="font-black text-emerald-600 text-lg">
+                              ₹{totalPaidDisplay.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200">
+                            <span className="font-bold">Balance (Return)</span>
+                            <span className="font-black text-rose-600 text-lg">
+                              ₹{Math.max(0, totalPaidDisplay - grandTotal).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      );
                     })()}
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
-                  <button 
+                  <button
                     onClick={() => {
-                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
-                          setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
-                          return;
-                       }
-                       if (paymentType === 'Part Payment' && partTotal < grandTotal) {
-                          setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
-                          return;
-                       }
-                       setShowPaymentModal(false);
+                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
+                        setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
+                        return;
+                      }
+                      if (paymentType === 'Part Payment' && partTotal < grandTotal) {
+                        setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
+                        return;
+                      }
+                      setShowPaymentModal(false);
                     }}
                     className="w-full py-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded font-bold uppercase text-xs shadow-sm cursor-pointer transition-colors"
                   >
                     <Save className="w-4 h-4 inline mr-2" /> Save Payment
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
-                       const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
-                          setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
-                          return;
-                       }
-                       if (paymentType === 'Part Payment' && partTotal < grandTotal) {
-                          setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
-                          return;
-                       }
-                       setShowPaymentModal(false);
-                       handlePrintConfirm();
+                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
+                        setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
+                        return;
+                      }
+                      if (paymentType === 'Part Payment' && partTotal < grandTotal) {
+                        setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
+                        return;
+                      }
+                      setShowPaymentModal(false);
+                      handlePrintConfirm();
                     }}
                     className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-black uppercase text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
                   >

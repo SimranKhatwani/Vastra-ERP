@@ -103,13 +103,31 @@ exports.createInvoice = async (req, res) => {
           
           if (loyaltySettings.enabled && loyaltySettings.rupeesPerPoint > 0) {
             const pointsEarned = Math.floor(grandTotal / loyaltySettings.rupeesPerPoint);
-            customer.loyaltyPoints += pointsEarned;
+            if (pointsEarned > 0) {
+              customer.loyaltyPoints += pointsEarned;
+            }
+          }
+
+          // Deduct used loyalty points
+          if (loyaltyPointsUsed > 0) {
+            customer.loyaltyPoints = Math.max(0, customer.loyaltyPoints - loyaltyPointsUsed);
+          }
+
+          // Deduct used advance
+          if (advanceApplied > 0) {
+            customer.walletAdvance = Math.max(0, customer.walletAdvance - advanceApplied);
+          }
+
+          // Handle Overpayment
+          const effectivePaid = amountPaid + (advanceApplied || 0) + (loyaltyPointsUsed || 0);
+          if (status === 'Paid' && effectivePaid > grandTotal) {
+             customer.walletAdvance = (customer.walletAdvance || 0) + (effectivePaid - grandTotal);
           }
 
           if (paymentMethod === 'Credit') {
             customer.outstandingBalance += grandTotal;
-          } else if (amountPaid < grandTotal) {
-            customer.outstandingBalance += (grandTotal - amountPaid);
+          } else if (effectivePaid < grandTotal && status === 'Unpaid') {
+            customer.outstandingBalance += (grandTotal - effectivePaid);
           }
 
           await customer.save();
@@ -427,7 +445,7 @@ exports.processSalesReturn = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const { id } = req.params;
-    const { returnedItemIds, returnReason, refundMethod } = req.body;
+    const { returnedItemIds, returnReason, refundMethod, advanceAmount } = req.body;
 
     const query = isValidObjectId(id)
       ? { _id: id, tenantId }
@@ -508,7 +526,8 @@ exports.processSalesReturn = async (req, res) => {
           items: returnedItemsArray,
           totalReturnAmount: refundAmt,
           reason: returnReason || 'Defective / Customer Choice',
-          refundMethod: refundMethod || 'Cash'
+          refundMethod: advanceAmount > 0 ? 'Wallet Advance' : (refundMethod || 'Cash'),
+          advanceAmount: advanceAmount || 0
         });
         } catch(srErr) {
           console.warn('SalesReturn creation skipped:', srErr.message);
@@ -543,6 +562,11 @@ exports.processSalesReturn = async (req, res) => {
         const customer = await Customer.findOne({ _id: invoice.customerId, tenantId });
         if (customer) {
           customer.totalSpent = Math.max(0, (customer.totalSpent || 0) - refundAmt);
+          
+          if (advanceAmount > 0) {
+            customer.walletAdvance = (customer.walletAdvance || 0) + advanceAmount;
+          }
+          
           if (refundMethod === 'Credit' || invoice.paymentMethod === 'Credit') {
             customer.outstandingBalance = Math.max(0, (customer.outstandingBalance || 0) - refundAmt);
           }

@@ -153,6 +153,7 @@ export const CustomersView = ({
                     <th className="p-3.5">Customer Name</th>
                     <th className="p-3.5">Contact Detail</th>
                     <th className="p-3.5 text-center font-mono">Loyalty Points</th>
+                    <th className="p-3.5 text-right font-mono">Total Advance</th>
                     <th className="p-3.5 text-right">Outstanding Balance</th>
                     <th className="p-3.5 text-right">Cumulative Spending</th>
                   </tr>
@@ -185,6 +186,9 @@ export const CustomersView = ({
                         </td>
                         <td className="p-3.5 text-center font-bold font-mono text-violet-600">
                           {cust.loyaltyPoints || 0} LP
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
+                          ₹{((cust.walletAdvance || 0) + (cust.loyaltyPoints || 0)).toLocaleString()}
                         </td>
                         <td className={`p-3.5 text-right font-mono font-bold ${(cust.outstandingBalance || 0) > 0 ? "text-red-500" : "text-slate-400"}`}>
                           ₹{(cust.outstandingBalance || 0).toLocaleString()}
@@ -292,10 +296,14 @@ export const CustomersView = ({
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-3 gap-3 p-5 border-b border-slate-100">
+            <div className="grid grid-cols-4 gap-3 p-5 border-b border-slate-100">
               <div className="text-center">
                 <p className="text-lg font-extrabold text-indigo-600">{selectedCustomerModal.cust.loyaltyPoints || 0}</p>
                 <p className="text-[10px] text-slate-400 font-semibold uppercase">Loyalty Points</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-extrabold text-emerald-600">₹{((selectedCustomerModal.cust.walletAdvance || 0) + (selectedCustomerModal.cust.loyaltyPoints || 0)).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase">Total Advance</p>
               </div>
               <div className="text-center">
                 <p className="text-lg font-extrabold text-slate-800">₹{(selectedCustomerModal.cust.totalSpent || 0).toLocaleString()}</p>

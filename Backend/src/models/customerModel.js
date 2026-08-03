@@ -42,11 +42,15 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    walletBalance: {
+    walletAdvance: {
       type: Number,
       default: 0,
     },
     loyaltyPoints: {
+      type: Number,
+      default: 0,
+    },
+    totalAdvanceAmount: {
       type: Number,
       default: 0,
     },
@@ -64,8 +68,10 @@ const customerSchema = new mongoose.Schema(
 // Ensure phone is unique per tenant
 customerSchema.index({ tenantId: 1, phone: 1 }, { unique: true });
 
-// Pre-save hook to calculate tier based on totalSpent
+// Pre-save hook to calculate tier based on totalSpent and sync totalAdvanceAmount
 customerSchema.pre('save', function () {
+  this.totalAdvanceAmount = (this.walletAdvance || 0) + (this.loyaltyPoints || 0);
+  
   if (this.totalSpent > 50000) {
     this.tier = 'Platinum';
   } else if (this.totalSpent > 25000) {

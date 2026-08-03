@@ -41,8 +41,12 @@ const salesReturnSchema = new mongoose.Schema(
     reason: { type: String },
     refundMethod: {
       type: String,
-      enum: ['Cash', 'UPI', 'Bank Transfer', 'Store Credit'],
+      enum: ['Cash', 'UPI', 'Bank Transfer', 'Store Credit', 'Wallet Advance'],
       default: 'Cash',
+    },
+    advanceAmount: {
+      type: Number,
+      default: 0
     },
     status: {
       type: String,
