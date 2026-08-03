@@ -189,7 +189,14 @@ export default function App() {
       }
 
       if (payload?.event === 'inventory.updated' && payload.product) {
-        setProducts((prev) => prev.map((p) => (p.id === payload.product._id || p.id === payload.product.id ? { ...p, ...payload.product, id: payload.product._id || payload.product.id } : p)));
+        setProducts((prev) => prev.map((p) => {
+          const isMatch = (p.id && (p.id === payload.product._id || p.id === payload.product.id)) || 
+                          (p._id && (p._id === payload.product._id || p._id === payload.product.id));
+          if (isMatch) {
+            return { ...p, ...payload.product, id: payload.product._id || payload.product.id, _id: payload.product._id || payload.product.id };
+          }
+          return p;
+        }));
       }
 
       if (payload?.event === 'invoice.created' && payload.invoice) {
