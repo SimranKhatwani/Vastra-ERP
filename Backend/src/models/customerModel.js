@@ -54,6 +54,13 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    advanceHistory: [
+      {
+        amount: Number,
+        reason: String,
+        date: { type: Date, default: Date.now },
+      }
+    ],
     tier: {
       type: String,
       enum: ['Bronze', 'Silver', 'Gold', 'Platinum'],

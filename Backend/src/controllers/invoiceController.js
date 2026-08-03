@@ -116,12 +116,23 @@ exports.createInvoice = async (req, res) => {
           // Deduct used advance
           if (advanceApplied > 0) {
             customer.walletAdvance = Math.max(0, customer.walletAdvance - advanceApplied);
+            if (!customer.advanceHistory) customer.advanceHistory = [];
+            customer.advanceHistory.push({
+              amount: -advanceApplied,
+              reason: `Applied on Invoice #${invoiceNo}`
+            });
           }
 
           // Handle Overpayment
           const effectivePaid = amountPaid + (advanceApplied || 0) + (loyaltyPointsUsed || 0);
           if (status === 'Paid' && effectivePaid > grandTotal) {
-             customer.walletAdvance = (customer.walletAdvance || 0) + (effectivePaid - grandTotal);
+             const overpayment = effectivePaid - grandTotal;
+             customer.walletAdvance = (customer.walletAdvance || 0) + overpayment;
+             if (!customer.advanceHistory) customer.advanceHistory = [];
+             customer.advanceHistory.push({
+               amount: overpayment,
+               reason: `Overpayment on Invoice #${invoiceNo}`
+             });
           }
 
           if (paymentMethod === 'Credit') {
@@ -565,6 +576,11 @@ exports.processSalesReturn = async (req, res) => {
           
           if (advanceAmount > 0) {
             customer.walletAdvance = (customer.walletAdvance || 0) + advanceAmount;
+            if (!customer.advanceHistory) customer.advanceHistory = [];
+            customer.advanceHistory.push({
+              amount: advanceAmount,
+              reason: `Sales Return on Invoice #${invoice.invoiceNo}`
+            });
           }
           
           if (refundMethod === 'Credit' || invoice.paymentMethod === 'Credit') {

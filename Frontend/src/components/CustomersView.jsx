@@ -172,12 +172,12 @@ export const CustomersView = ({
                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
                               {cust.name.split(" ").map((n) => n[0]).join("")}
                             </div>
-                            <p
-                              className="font-bold text-indigo-600 leading-tight cursor-pointer hover:underline"
-                              onClick={() => setSelectedCustomerModal({ cust, customerInvoices })}
-                            >
-                              {cust.name}
-                            </p>
+                              <p
+                                className="font-bold text-indigo-600 leading-tight cursor-pointer hover:underline"
+                                onClick={() => setSelectedCustomerModal({ cust, customerInvoices, tab: 'invoices' })}
+                              >
+                                {cust.name}
+                              </p>
                           </div>
                         </td>
                         <td className="p-3.5">
@@ -317,15 +317,32 @@ export const CustomersView = ({
               </div>
             </div>
 
-            {/* Invoice list */}
+            {/* Modal Tabs */}
+            <div className="flex border-b border-slate-100 bg-slate-50/50">
+              <button
+                className={`flex-1 py-3 text-xs font-bold uppercase transition-colors ${selectedCustomerModal.tab === 'invoices' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                onClick={() => setSelectedCustomerModal({ ...selectedCustomerModal, tab: 'invoices' })}
+              >
+                Invoices
+              </button>
+              <button
+                className={`flex-1 py-3 text-xs font-bold uppercase transition-colors ${selectedCustomerModal.tab === 'advance' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                onClick={() => setSelectedCustomerModal({ ...selectedCustomerModal, tab: 'advance' })}
+              >
+                Advance History
+              </button>
+            </div>
+
+            {/* Tab Content */}
             <div className="overflow-y-auto flex-1">
-              {selectedCustomerModal.customerInvoices.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                  <FileText className="w-10 h-10 mb-3 opacity-30" />
-                  <p className="text-sm font-semibold">No invoices found for this customer</p>
-                </div>
-              ) : (
-                <table className="w-full text-xs text-left">
+              {selectedCustomerModal.tab === 'invoices' ? (
+                selectedCustomerModal.customerInvoices.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                    <FileText className="w-10 h-10 mb-3 opacity-30" />
+                    <p className="text-sm font-semibold">No invoices found for this customer</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-xs text-left">
                   <thead>
                     <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
                       <th className="p-3.5">Invoice No</th>
@@ -366,6 +383,65 @@ export const CustomersView = ({
                     ))}
                   </tbody>
                 </table>
+              )) : (
+                <div className="p-5 space-y-4">
+                  {/* 3 Categories Summary Breakdown */}
+                  {(() => {
+                    const cust = selectedCustomerModal.cust;
+                    const history = cust.advanceHistory || [];
+                    const returnAmount = history
+                      .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
+                      .reduce((acc, h) => acc + (h.amount || 0), 0);
+                    const overpaidAmount = history
+                      .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+                      .reduce((acc, h) => acc + (h.amount || 0), 0);
+                    const fallbackOverpaid = overpaidAmount > 0 ? overpaidAmount : (history.length === 0 ? (cust.walletAdvance || 0) : 0);
+                    const loyaltyPoints = cust.loyaltyPoints || 0;
+
+                    return (
+                      <>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl text-center">
+                            <p className="text-[10px] font-extrabold uppercase text-blue-500">Return</p>
+                            <p className="text-base font-black text-blue-700 font-mono mt-0.5">&#8377;{returnAmount.toLocaleString('en-IN')}</p>
+                          </div>
+                          <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl text-center">
+                            <p className="text-[10px] font-extrabold uppercase text-emerald-500">Overpaid</p>
+                            <p className="text-base font-black text-emerald-700 font-mono mt-0.5">&#8377;{fallbackOverpaid.toLocaleString('en-IN')}</p>
+                          </div>
+                          <div className="bg-purple-50 border border-purple-100 p-3 rounded-xl text-center">
+                            <p className="text-[10px] font-extrabold uppercase text-purple-500">Loyalty Points</p>
+                            <p className="text-base font-black text-purple-700 font-mono mt-0.5">{loyaltyPoints.toLocaleString('en-IN')} LP</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Detailed Advance Ledger</h4>
+                          {history.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                              <FileText className="w-8 h-8 mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">No transactions recorded yet.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                              {history.slice().reverse().map((entry, i) => (
+                                <div key={i} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-700">{entry.reason}</p>
+                                    <p className="text-[10px] text-slate-400">{new Date(entry.date).toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div className={`font-mono font-bold text-xs ${entry.amount > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {entry.amount > 0 ? '+' : ''}&#8377;{Math.abs(entry.amount)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
               )}
             </div>
           </div>

@@ -365,17 +365,8 @@ export const BillingPOSView = ({
   });
   const [paymentWarning, setPaymentWarning] = useState("");
 
-  // Clear denominations when payment modal opens
-  useEffect(() => {
-    if (showPaymentModal) {
-      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '' });
-      setPaymentType('Full Payment');
-      setActiveDenomination(500);
-      setPartPaymentAmounts({
-        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
-      });
-    }
-  }, [showPaymentModal]);
+  // Payment modal state is cleared manually in handleOpenPaymentFlow
+
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
   const [historyViewIndex, setHistoryViewIndex] = useState(-1); // -1 = Active New Bill
@@ -1649,7 +1640,7 @@ export const BillingPOSView = ({
     };
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer, billAdjustment]);
 
-  const handleOpenPaymentFlow = () => {
+  const handleOpenPaymentFlow = async () => {
     if (cart.length === 0) {
       onAddNotification(
         "POS Checkout Failed",
@@ -1658,10 +1649,19 @@ export const BillingPOSView = ({
       );
       return;
     }
+    
+    // Refresh discounts to ensure inactive discounts are dropped before checkout
+    await fetchActiveRules();
+
     const totalAdvance = (activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0);
     if (activeCustomer && activeCustomer.id !== "c-walkin" && totalAdvance > 0) {
       setShowAdvancePromptModal(true);
     } else {
+      setPaymentType('Full Payment');
+      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '' });
+      setPartPaymentAmounts({
+        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+      });
       setShowPaymentModal(true);
     }
   };
@@ -2319,14 +2319,30 @@ export const BillingPOSView = ({
           `).join('')}
         ` : ''}
         <div class="divider"></div>
-        <div class="details text-center">
+        <div class="details">
+          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => s.method === 'Advance' && s.amount > 0))) ?
+            `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
+              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => s.method === 'Advance')?.amount || 0)).toLocaleString('en-IN')}
+            </div>`
+            : ''
+          }
           ${invoice.splitPayments && invoice.splitPayments.length > 0 ?
-        `<b>Payment Methods:</b><br>` + invoice.splitPayments.map(sp => `${sp.method}: &#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}`).join('<br>') + '<br>'
-        : `<b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}<br>`
-      }
-          <b>Status:</b> ${invoice.status.toUpperCase()}<br>
-          Thank you for shopping with us!<br>
-          Powered by GarmentFlow SaaS ERP
+            `<div style="background:#f8fafc; padding:6px; border:1px solid #e2e8f0; border-radius:4px; font-size:11px; margin-bottom:8px;">
+              <div style="font-weight:bold; text-align:center; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">PAYMENT BREAKDOWN</div>
+              ${invoice.splitPayments.map(sp => `
+                <div style="display:flex; justify-content:space-between; padding:2px 0;">
+                  <span>${sp.method}:</span>
+                  <b>&#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}</b>
+                </div>
+              `).join('')}
+            </div>`
+            : `<div class="text-center"><b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}</div>`
+          }
+          <div class="text-center">
+            <b>Status:</b> ${invoice.status.toUpperCase()}<br>
+            Thank you for shopping with us!<br>
+            Powered by GarmentFlow SaaS ERP
+          </div>
         </div>
         ${autoPrint ? `
         <script>
