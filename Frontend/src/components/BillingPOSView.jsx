@@ -335,16 +335,18 @@ export const BillingPOSView = ({
   // Returns & Exchange Subsystem States
   const [returnSearchQuery, setReturnSearchQuery] = useState("");
   const [returnActionType, setReturnActionType] = useState("return"); // 'return' | 'exchange'
-  const [returnReason, setReturnReason] = useState("Defective / Damaged");
+  const [returnReason, setReturnReason] = useState("");
   const [returnCustomReason, setReturnCustomReason] = useState("");
   const [returnApprovedCheckbox, setReturnApprovedCheckbox] = useState(false);
 
-  const [exchangeReason, setExchangeReason] = useState("Size / Fit Swap");
+  const [exchangeReason, setExchangeReason] = useState("");
+  const [exchangeCustomReason, setExchangeCustomReason] = useState("");
   const [exchangeOldItemIdx, setExchangeOldItemIdx] = useState(0);
   const [exchangeNewSearchQuery, setExchangeNewSearchQuery] = useState("");
   const [exchangeSelectedNewProduct, setExchangeSelectedNewProduct] = useState(null);
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
+  const [returnWarning, setReturnWarning] = useState({ show: false, title: "", message: "" });
 
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
@@ -3192,7 +3194,7 @@ export const BillingPOSView = ({
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
-                placeholder="Search invoice # (e.g. INV-98347457), customer name, or phone number..."
+                placeholder="Search invoice # (e.g. INV-98347457), customer name, phone number, or unique code..."
                 value={returnSearchQuery}
                 onChange={(e) => setReturnSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-2xs"
@@ -3214,12 +3216,25 @@ export const BillingPOSView = ({
                   .filter((inv) =>
                     (inv.invoiceNo || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
                     (inv.customerName || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
-                    (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim())
+                    (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                    (inv.items || []).some(item => (item.uniqueCode || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()))
                   )
                   .map((inv) => (
                     <div
                       key={inv._id || inv.id || inv.invoiceNo}
                       onClick={() => {
+                        const invDate = new Date(inv.date || inv.createdAt);
+                        const today = new Date();
+                        const diffTime = Math.abs(today - invDate);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                        if (diffDays > 7) {
+                          setReturnWarning({
+                            show: true,
+                            title: "Return Policy Exceeded",
+                            message: `This invoice was generated ${diffDays} days ago. The standard return period is 7 days.\nIt has exceeded the return period by ${diffDays - 7} days.\nOwner approval may be required.`
+                          });
+                        }
+
                         const unrolledInv = {
                           ...inv,
                           items: unrollInvoiceItems(inv.items)
@@ -3250,7 +3265,8 @@ export const BillingPOSView = ({
                 {invoices.filter((inv) =>
                   (inv.invoiceNo || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
                   (inv.customerName || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
-                  (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim())
+                  (inv.customerPhone || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()) ||
+                  (inv.items || []).some(item => (item.uniqueCode || "").toLowerCase().includes(returnSearchQuery.toLowerCase().trim()))
                 ).length === 0 && (
                     <div className="p-4 text-center text-slate-400 font-medium">
                       No matching invoices found for "{returnSearchQuery}".
@@ -3367,6 +3383,7 @@ export const BillingPOSView = ({
                         onChange={(e) => setReturnReason(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
                       >
+                        <option value="">None / Optional (Fast Checkout)</option>
                         <option value="Defective / Damaged">Defective / Damaged Garment</option>
                         <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
                         <option value="Customer Changed Mind">Customer Changed Mind</option>
@@ -3399,6 +3416,13 @@ export const BillingPOSView = ({
                                   type="checkbox"
                                   checked={isChecked}
                                   onChange={() => {
+                                    if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                      setReturnWarning({
+                                        show: true,
+                                        title: "Alteration Detected",
+                                        message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
+                                      });
+                                    }
                                     const targetId = item.productId || item.id;
                                     setReturnedItemIds((prev) =>
                                       isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
@@ -3591,7 +3615,18 @@ export const BillingPOSView = ({
                       </label>
                       <select
                         value={exchangeOldItemIdx}
-                        onChange={(e) => setExchangeOldItemIdx(Number(e.target.value))}
+                        onChange={(e) => {
+                          const idx = Number(e.target.value);
+                          const item = selectedInvoiceForReturn.items[idx];
+                          if (item && (item.hasAlteration || !!item.alterationRecord)) {
+                            setReturnWarning({
+                              show: true,
+                              title: "Alteration Detected",
+                              message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                            });
+                          }
+                          setExchangeOldItemIdx(idx);
+                        }}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         {selectedInvoiceForReturn.items.map((item, idx) => (
@@ -5927,22 +5962,38 @@ export const BillingPOSView = ({
             </div>
 
             {/* Modal Actions */}
-            <div className="flex gap-3 shrink-0 pt-2 font-mono">
-              <button
-                onClick={() => showBillPreviewInvoice.isDraftPreview ? handlePrintConfirm() : handleDirectPrint(showBillPreviewInvoice)}
-                className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span className="text-sm">🖨️</span>
-                <span>PRINT</span>
-              </button>
-              
-              <button
-                onClick={() => showBillPreviewInvoice.isDraftPreview ? handleDownloadConfirm() : handleDownloadOnly(showBillPreviewInvoice)}
-                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span className="text-sm">⬇️</span>
-                <span>DOWNLOAD HTML</span>
-              </button>
+            <div className="flex gap-3 shrink-0 pt-2 font-mono flex-wrap">
+              {showBillPreviewInvoice.isDraftPreview && (
+                <button
+                  onClick={async () => {
+                    const saved = await handleCheckoutSubmit();
+                    if (saved) {
+                      setShowBillPreviewInvoice(null);
+                    }
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mb-1"
+                >
+                  <span className="text-sm">✅</span>
+                  <span>GENERATE BILL (NO PRINT)</span>
+                </button>
+              )}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => showBillPreviewInvoice.isDraftPreview ? handlePrintConfirm() : handleDirectPrint(showBillPreviewInvoice)}
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span className="text-sm">🖨️</span>
+                  <span>PRINT</span>
+                </button>
+                
+                <button
+                  onClick={() => showBillPreviewInvoice.isDraftPreview ? handleDownloadConfirm() : handleDownloadOnly(showBillPreviewInvoice)}
+                  className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span className="text-sm">⬇️</span>
+                  <span>DOWNLOAD HTML</span>
+                </button>
+              </div>
             </div>
             
             <button
@@ -6849,6 +6900,30 @@ export const BillingPOSView = ({
               }).length === 0 && (
                   <div className="text-center py-10 text-slate-400 font-semibold">No active discount rules found.</div>
                 )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Return & Exchange Alert Warning Modal */}
+      {returnWarning.show && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl w-[400px] shadow-2xl overflow-hidden border border-red-200">
+            <div className="bg-red-600 text-white p-4 flex items-center gap-3">
+              <div className="bg-white/20 p-2 rounded-full">
+                <Info className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-lg">{returnWarning.title}</h3>
+            </div>
+            <div className="p-6 text-slate-800 font-bold text-sm whitespace-pre-wrap">
+              {returnWarning.message}
+            </div>
+            <div className="bg-red-50 p-4 border-t border-red-100 flex justify-end">
+              <button
+                onClick={() => setReturnWarning({ show: false, title: "", message: "" })}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-black tracking-wider rounded-xl transition-colors shadow-md border-2 border-red-600 hover:border-red-700"
+              >
+                APPROVE
+              </button>
             </div>
           </div>
         </div>
