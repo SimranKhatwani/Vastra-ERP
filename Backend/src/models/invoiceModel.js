@@ -176,6 +176,20 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    billAdjustment: {
+      type: {
+        type: String,
+        enum: ['Amount', 'Percentage']
+      },
+      operation: {
+        type: String,
+        enum: ['Discount', 'Charge']
+      },
+      value: Number,
+      amount: Number,
+      reason: String,
+      isApproved: Boolean
+    },
     paymentMethod: {
       type: String,
       enum: ['Cash', 'Card', 'UPI', 'Wallet', 'Credit', 'Split'],
@@ -253,6 +267,32 @@ const invoiceSchema = new mongoose.Schema(
     },
     messageId: {
       type: String,
+    },
+    adjustmentType: {
+      type: String,
+      enum: ['Amount', 'Percentage', 'None'],
+      default: 'None',
+    },
+    adjustmentOperation: {
+      type: String,
+      enum: ['Discount', 'Charge', 'None'],
+      default: 'None',
+    },
+    adjustmentValue: {
+      type: Number,
+      default: 0,
+    },
+    adjustmentAmount: {
+      type: Number,
+      default: 0,
+    },
+    adjustmentReason: {
+      type: String,
+    },
+    adjustmentApprovalStatus: {
+      type: String,
+      enum: ['None', 'Approved', 'Pending'],
+      default: 'None',
     },
   },
   {

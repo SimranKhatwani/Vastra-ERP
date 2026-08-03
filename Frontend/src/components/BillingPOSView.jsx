@@ -285,6 +285,7 @@ export const BillingPOSView = ({
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemNameInput, setItemNameInput] = useState("");
+  const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
   const [selectedSearchItem, setSelectedSearchItem] = useState(null);
@@ -313,6 +314,15 @@ export const BillingPOSView = ({
   const [splitUPI, setSplitUPI] = useState(0);
 
   // Active view states
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [billAdjustment, setBillAdjustment] = useState({
+    type: 'Amount', // Amount or Percentage
+    operation: 'Discount', // Discount or Charge
+    value: '',
+    amount: 0,
+    reason: '',
+    isApproved: false
+  });
   const [activePOSMode, setActivePOSMode] = useState("billing");
   const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] =
     useState(null);
@@ -1578,7 +1588,16 @@ export const BillingPOSView = ({
     }
 
     const totalOverallDiscount = discountTotal + totalRuleDiscount;
-    const taxable = Math.max(0, subTotal - totalOverallDiscount);
+    let taxable = Math.max(0, subTotal - totalOverallDiscount);
+
+    if (billAdjustment && billAdjustment.amount > 0) {
+      if (billAdjustment.operation === 'Charge') {
+        taxable += billAdjustment.amount;
+      } else if (billAdjustment.operation === 'Discount') {
+        taxable = Math.max(0, taxable - billAdjustment.amount);
+      }
+    }
+
     const gstTotal = 0;
     const grandTotal = taxable;
 
@@ -1590,7 +1609,7 @@ export const BillingPOSView = ({
       grandTotal,
       appliedDiscountsList
     };
-  }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer]);
+  }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer, billAdjustment]);
 
   // Handle checkout
   const handleCheckoutSubmit = async () => {
@@ -1635,6 +1654,7 @@ export const BillingPOSView = ({
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
       salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
+      billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
     };
 
     // If Credit, add outstanding balance to Customer's profile
@@ -1892,9 +1912,22 @@ export const BillingPOSView = ({
     }
 
     // Process return
-    const refundTotal = selectedInvoiceForReturn.items
+    let refundTotal = selectedInvoiceForReturn.items
       .filter((item) => returnedItemIds.includes(item.productId))
       .reduce((sum, item) => sum + item.totalPrice, 0);
+
+    if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
+      const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || 0), 0) || 1;
+      const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+      const proportionalAdjustment = refundTotal * adjustmentRatio;
+      
+      if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+        refundTotal -= proportionalAdjustment;
+      } else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+        refundTotal += proportionalAdjustment;
+      }
+      refundTotal = Math.floor(refundTotal);
+    }
 
     // Apply refund as wallet balance or POS exchange credit
     onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundTotal);
@@ -2070,6 +2103,15 @@ export const BillingPOSView = ({
               <tr>
                 <td>Discount:</td>
                 <td class="text-right">-&#8377;${(Number(invoice.discountTotal) || 0).toLocaleString('en-IN')}</td>
+              </tr>
+            `
+            : ""
+          }
+          ${invoice.billAdjustment && invoice.billAdjustment.amount > 0
+            ? `
+              <tr>
+                <td>Adj (${invoice.billAdjustment.operation === 'Charge' ? '+' : '-'}) ${invoice.billAdjustment.reason ? `[${invoice.billAdjustment.reason}]` : ''}:</td>
+                <td class="text-right">${invoice.billAdjustment.operation === 'Charge' ? '+' : '-'}&#8377;${(Number(invoice.billAdjustment.amount) || 0).toLocaleString('en-IN')}</td>
               </tr>
             `
             : ""
@@ -2329,8 +2371,30 @@ export const BillingPOSView = ({
     if (e.key === "Enter") {
       e.preventDefault();
       const q = itemNameInput.trim();
+      
       if (!q) {
-        handleOpenItemSearchModal();
+        if (isItemSearchModalOpen) {
+          const activeItem = selectedSearchItem || itemSearchResults[0];
+          if (activeItem) {
+            handleAddProductToCart(activeItem);
+            setItemNameInput("");
+            setLastSearchedQuery(null);
+            setIsItemSearchModalOpen(false);
+          }
+        } else {
+          handleOpenItemSearchModal();
+        }
+        return;
+      }
+
+      if (lastSearchedQuery === q && isItemSearchModalOpen) {
+        const activeItem = selectedSearchItem || itemSearchResults[0];
+        if (activeItem) {
+          handleAddProductToCart(activeItem);
+          setItemNameInput("");
+          setLastSearchedQuery(null);
+          setIsItemSearchModalOpen(false);
+        }
         return;
       }
 
@@ -2343,6 +2407,7 @@ export const BillingPOSView = ({
           setSelectedSearchItem(items[0] || null);
           setShowSearchItemDetailsPanel(false);
           setIsItemSearchModalOpen(true);
+          setLastSearchedQuery(q);
         }
       } catch (err) {
         console.error("Item name search failed:", err);
@@ -2796,7 +2861,29 @@ export const BillingPOSView = ({
                         </div>
                       ))}
                     </div>
-                  )}              </div>
+                  )}
+                  {/* Bill Adjustment Block */}
+                  {billAdjustment && billAdjustment.amount > 0 && (
+                    <div className="w-[400px] mt-1 space-y-1">
+                      <div className="bg-yellow-50 border border-yellow-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-slate-800">
+                        <span>Bill Adjustment ({billAdjustment.operation === 'Charge' ? 'Service Charge' : 'Discount'})</span>
+                        <div className="flex items-center gap-2">
+                          <span className={billAdjustment.operation === 'Charge' ? "text-emerald-600" : "text-red-600"}>
+                            {billAdjustment.operation === 'Charge' ? '+' : '-'}₹{(billAdjustment.amount || 0).toLocaleString()}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+                            }}
+                            className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Action Toolbar */}
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
@@ -2815,6 +2902,7 @@ export const BillingPOSView = ({
                     { id: "enterReturns", label: "Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
                     { id: "config", label: "Discount", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
                     { id: "recvChallan", label: "Exchange", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                    { id: "adjustments", label: "Adjustments", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
                     { id: "close", label: "Clear Bill", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
                     { id: "viewHolds", label: "Resume (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
                     { id: "loyaltyCustomer", label: "Loyalty", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
@@ -3356,10 +3444,20 @@ export const BillingPOSView = ({
                     <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
                       <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
                       <span className="font-mono font-black text-rose-600 text-base">
-                        ₹{selectedInvoiceForReturn.items
-                          .filter((item) => returnedItemIds.includes(item.productId || item.id))
-                          .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0)
-                          .toLocaleString()}
+                        ₹{(() => {
+                          let rAmt = selectedInvoiceForReturn.items
+                            .filter((item) => returnedItemIds.includes(item.productId || item.id))
+                            .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                          if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || i.price * i.quantity), 0) || 1;
+                            const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                            const proportionalAdjustment = rAmt * adjustmentRatio;
+                            if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') rAmt -= proportionalAdjustment;
+                            else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') rAmt += proportionalAdjustment;
+                            rAmt = Math.floor(rAmt);
+                          }
+                          return rAmt.toLocaleString();
+                        })()}
                       </span>
                     </div>
 
@@ -3380,7 +3478,16 @@ export const BillingPOSView = ({
                       onClick={async () => {
                         const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
                         const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
-                        const refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                        let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                        
+                        if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
+                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || i.price * i.quantity), 0) || 1;
+                          const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                          const proportionalAdjustment = refundAmt * adjustmentRatio;
+                          if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') refundAmt -= proportionalAdjustment;
+                          else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') refundAmt += proportionalAdjustment;
+                          refundAmt = Math.floor(refundAmt);
+                        }
 
                         const updatedItems = selectedInvoiceForReturn.items.map(item => {
                           if (returnedItemIds.includes(item.productId || item.id)) {
@@ -5997,6 +6104,117 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* BILL ADJUSTMENT MODAL */}
+      {showAdjustmentModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="bg-[#f0f0f0] w-[450px] flex flex-col shadow-2xl font-sans border-2 border-slate-400">
+            {/* Window Title Bar */}
+            <div className="bg-[#005fb8] text-white px-2 py-1 flex justify-between items-center text-[12px] font-bold">
+              <span>Bill Adjustment</span>
+              <button className="hover:bg-red-600 px-2 rounded text-white font-bold" onClick={() => setShowAdjustmentModal(false)}>X</button>
+            </div>
+            
+            <div className="p-4 flex flex-col gap-4 text-sm font-bold text-slate-700">
+              
+              <div className="flex justify-between items-center gap-2 border-b border-slate-300 pb-2">
+                <span className="text-slate-500">Original Amount:</span>
+                <span className="text-blue-600 text-lg">₹{(subTotal || 0).toLocaleString()}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label>Type</label>
+                  <select 
+                    className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                    value={billAdjustment.type}
+                    onChange={(e) => setBillAdjustment({...billAdjustment, type: e.target.value, amount: 0, value: ''})}
+                  >
+                    <option value="Amount">Amount (₹)</option>
+                    <option value="Percentage">Percentage (%)</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label>Operation</label>
+                  <select 
+                    className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                    value={billAdjustment.operation}
+                    onChange={(e) => setBillAdjustment({...billAdjustment, operation: e.target.value, amount: 0, value: ''})}
+                  >
+                    <option value="Discount">Discount (-)</option>
+                    <option value="Charge">Charge (+)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label>Adjustment Value {billAdjustment.type === 'Percentage' ? '(%)' : '(₹)'}</label>
+                <input 
+                  type="number"
+                  placeholder="Enter value..."
+                  className="border border-slate-400 p-2 text-lg font-mono outline-none focus:border-blue-500"
+                  value={billAdjustment.value}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    let amt = 0;
+                    if (billAdjustment.type === 'Percentage') {
+                      amt = Math.floor((subTotal || 0) * (val / 100));
+                    } else {
+                      amt = val;
+                    }
+                    if (billAdjustment.operation === 'Discount' && amt > (subTotal || 0)) {
+                      amt = (subTotal || 0); // Cap discount
+                    }
+                    setBillAdjustment({...billAdjustment, value: e.target.value, amount: amt});
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label>Reason (Optional)</label>
+                <textarea 
+                  rows="2"
+                  className="border border-slate-400 p-1 bg-white outline-none focus:border-blue-500"
+                  value={billAdjustment.reason}
+                  onChange={(e) => setBillAdjustment({...billAdjustment, reason: e.target.value})}
+                ></textarea>
+              </div>
+
+              <div className="flex justify-between items-center gap-2 bg-slate-200 p-2 border border-slate-300">
+                <span className="text-slate-600">Adjustment Amount:</span>
+                <span className={billAdjustment.operation === 'Discount' ? "text-red-600 text-lg" : "text-emerald-600 text-lg"}>
+                  {billAdjustment.operation === 'Discount' ? '-' : '+'}₹{(billAdjustment.amount || 0).toLocaleString()}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center gap-2 bg-yellow-100 p-2 border border-yellow-300 shadow-inner">
+                <span className="text-slate-800 text-lg">Final Bill Amount:</span>
+                <span className="text-indigo-700 text-2xl font-black">
+                  ₹{Math.max(0, (subTotal || 0) + (billAdjustment.operation === 'Charge' ? billAdjustment.amount : -billAdjustment.amount)).toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button 
+                  className="px-4 py-2 border border-slate-400 bg-[#e1e1e1] hover:bg-white text-slate-800 shadow-sm"
+                  onClick={() => {
+                    setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+                    setShowAdjustmentModal(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="px-4 py-2 border border-[#005fb8] bg-[#005fb8] hover:bg-blue-700 text-white shadow-sm font-bold"
+                  onClick={() => setShowAdjustmentModal(false)}
+                >
+                  Apply ✔
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ITEM SEARCH LIST MODAL */}
       {isItemSearchModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
@@ -6018,6 +6236,7 @@ export const BillingPOSView = ({
             <div className="p-2 border-b border-slate-300 bg-[#e1e1e1] flex items-center gap-2 text-xs">
               <span className="font-semibold text-slate-700">Item Name</span>
               <input
+                id="modalItemNameInput"
                 type="text"
                 className="border border-slate-400 p-1 flex-1 outline-none focus:border-blue-500 focus:bg-yellow-50 text-slate-800 font-bold"
                 value={itemNameInput}

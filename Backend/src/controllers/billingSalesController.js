@@ -7,6 +7,8 @@ const CommissionHistory = require('../models/commissionHistoryModel');
 const CommissionSettings = require('../models/commissionSettingsModel');
 const GstAuditLog = require('../models/gstAuditLogModel');
 const LoyaltySettings = require('../models/loyaltySettingsModel');
+const BillAdjustment = require('../models/billAdjustmentModel');
+const AuditLog = require('../models/auditLogModel');
 const inventoryMovementService = require('../services/inventoryMovementService');
 const { calculateStockStatus } = require('../services/stockCalculationService');
 const mongoose = require('mongoose');
@@ -50,7 +52,8 @@ exports.createSalesInvoice = async (req, res) => {
       paymentTerms,
       salespersonId,
       salespersonName,
-      gstModifications // Array of { productId, originalGst, modifiedGst, reason }
+      gstModifications, // Array of { productId, originalGst, modifiedGst, reason }
+      billAdjustment
     } = req.body;
 
     if (!items || items.length === 0) {
@@ -137,6 +140,37 @@ exports.createSalesInvoice = async (req, res) => {
     newInvoice.set('paymentTerms', paymentTerms);
 
     await newInvoice.save({ session });
+
+    // Handle Bill Adjustment Logging
+    if (billAdjustment && billAdjustment.amount > 0) {
+      const adjustmentRecord = new BillAdjustment({
+        tenantId,
+        billNumber: newInvoice.invoiceNo,
+        invoiceId: newInvoice._id,
+        originalAmount: subTotal,
+        adjustmentType: billAdjustment.type,
+        operation: billAdjustment.operation,
+        adjustmentValue: parseFloat(billAdjustment.value) || 0,
+        calculatedAdjustmentAmount: billAdjustment.amount,
+        finalAmount: newInvoice.grandTotal,
+        reason: billAdjustment.reason || '',
+        employeeId: req.user._id || req.user.id || 'N/A',
+        employeeName: req.user.name || 'Admin',
+        branchId: 'HQ',
+        ownerApprovalStatus: billAdjustment.isApproved ? 'Approved' : 'None'
+      });
+      await adjustmentRecord.save({ session });
+
+      await AuditLog.create([{
+        tenantId,
+        action: 'BILL_ADJUSTMENT',
+        entityId: newInvoice._id,
+        entityType: 'Invoice',
+        details: `Manual Bill Adjustment: ${billAdjustment.operation === 'Charge' ? '+' : '-'}₹${billAdjustment.amount} applied to ${newInvoice.invoiceNo}. Reason: ${billAdjustment.reason || 'N/A'}`,
+        performedBy: req.user.name || 'Admin',
+        ipAddress: req.ip
+      }], { session });
+    }
 
     // Update any pre-created alteration tickets with the final invoice number and ID
     const Alteration = require('../models/alterationModel');
