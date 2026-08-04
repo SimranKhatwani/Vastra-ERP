@@ -91,17 +91,13 @@ exports.createInvoice = async (req, res) => {
       try {
         const LoyaltySettings = require('../models/loyaltySettingsModel');
         const customer = await Customer.findOne({ _id: customerId, tenantId });
-        if (customer) {
-          customer.totalInvoices += 1;
-          customer.totalSpent += grandTotal;
-          
-          // Loyalty Points Calculation
-          let loyaltySettings = await LoyaltySettings.findOne({ tenantId });
-          if (!loyaltySettings) {
-            loyaltySettings = { enabled: true, rupeesPerPoint: 20 };
-          }
-          
-          if (loyaltySettings.enabled && loyaltySettings.rupeesPerPoint > 0) {
+        if (!customer) {
+          // No customer found, skip financial updates
+          console.warn(`Customer ${customerId} not found for invoice ${invoiceNo}`);
+        } else {
+          // Load loyalty settings for this tenant
+          const loyaltySettings = await LoyaltySettings.findOne({ tenantId });
+          if (loyaltySettings && loyaltySettings.enabled && loyaltySettings.rupeesPerPoint > 0) {
             const pointsEarned = Math.floor(grandTotal / loyaltySettings.rupeesPerPoint);
             if (pointsEarned > 0) {
               customer.loyaltyPoints += pointsEarned;

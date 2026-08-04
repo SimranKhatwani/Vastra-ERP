@@ -728,7 +728,7 @@ export default function App() {
       // Update customer balance/points locally if applicable
       if (invoiceToSave.customerId) {
         setCustomers(prev => prev.map(c => {
-          if (c.id === invoiceToSave.customerId) {
+          if (c.id === invoiceToSave.customerId || c._id === invoiceToSave.customerId) {
             let balanceInc = 0;
             if (invoiceToSave.paymentMethod === 'Credit') balanceInc = invoiceToSave.grandTotal;
             else if ((invoiceToSave.amountPaid || 0) < invoiceToSave.grandTotal) balanceInc = invoiceToSave.grandTotal - (invoiceToSave.amountPaid || 0);
@@ -736,7 +736,8 @@ export default function App() {
               ...c,
               totalInvoices: (c.totalInvoices || 0) + 1,
               totalSpent: (c.totalSpent || 0) + invoiceToSave.grandTotal,
-              loyaltyPoints: (c.loyaltyPoints || 0) + Math.floor(invoiceToSave.grandTotal * 0.05),
+              walletAdvance: Math.max(0, (c.walletAdvance || 0) - (invoiceToSave.advanceApplied || 0)),
+              loyaltyPoints: Math.max(0, (c.loyaltyPoints || 0) - (invoiceToSave.loyaltyPointsUsed || 0)),
               outstandingBalance: (c.outstandingBalance || 0) + balanceInc
             };
           }
@@ -755,6 +756,17 @@ export default function App() {
       if (data.success) {
         performLocalStateUpdates({...data.data, id: data.data._id});
         addToastNotification("Success", "Invoice saved to database", "success");
+
+        // Sync updated customer data directly from database
+        try {
+          const custRes = await api.get(`/customers`);
+          if (custRes.data && custRes.data.success) {
+            setCustomers(custRes.data.data.map(c => ({ ...c, id: c._id })));
+          }
+        } catch (cErr) {
+          console.warn("Could not sync fresh customers post-invoice", cErr);
+        }
+
         return data.data;
       } else {
         throw new Error(data.message || "Failed to save invoice");

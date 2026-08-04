@@ -357,7 +357,7 @@ export const BillingPOSView = ({
   const [showCashDenominationModal, setShowCashDenominationModal] = useState(false);
   const [paymentType, setPaymentType] = useState('Full Payment'); // 'Full Payment' | 'Part Payment'
   const [cashDenominations, setCashDenominations] = useState({
-    500: '', 200: '', 100: '', 50: '', 20: '', 10: ''
+    500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: ''
   });
   const [activeDenomination, setActiveDenomination] = useState(500);
   const [partPaymentAmounts, setPartPaymentAmounts] = useState({
@@ -1658,7 +1658,7 @@ export const BillingPOSView = ({
       setShowAdvancePromptModal(true);
     } else {
       setPaymentType('Full Payment');
-      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '' });
+      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
       setPartPaymentAmounts({
         Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
       });
@@ -1666,25 +1666,62 @@ export const BillingPOSView = ({
     }
   };
 
-  const handleAcceptAdvance = (accept) => {
+  const handleApplyCategoryAdvance = (category) => {
     setShowAdvancePromptModal(false);
-    if (accept) {
-      const wallet = activeCustomer?.walletAdvance || 0;
-      const loyalty = activeCustomer?.loyaltyPoints || 0;
+    const wallet = activeCustomer?.walletAdvance || 0;
+    const loyalty = activeCustomer?.loyaltyPoints || 0;
+    const history = activeCustomer?.advanceHistory || [];
+
+    const returnAmt = history
+      .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
+      .reduce((acc, h) => acc + (h.amount || 0), 0);
+    const overpaidAmt = history
+      .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+      .reduce((acc, h) => acc + (h.amount || 0), 0);
+    const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
+
+    setPaymentType("Part Payment");
+
+    if (category === "loyalty") {
+      const applyLoyalty = Math.min(loyalty, grandTotal);
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        "Points Redeem": applyLoyalty > 0 ? applyLoyalty.toString() : ""
+      }));
+    } else if (category === "overpaid") {
+      const applyOverpaid = Math.min(fallbackOverpaid, grandTotal);
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        Advance: applyOverpaid > 0 ? applyOverpaid.toString() : ""
+      }));
+    } else if (category === "return") {
+      const applyReturn = Math.min(returnAmt, grandTotal);
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        Advance: applyReturn > 0 ? applyReturn.toString() : ""
+      }));
+    } else if (category === "all") {
       const totalAdvance = wallet + loyalty;
       const applyAmount = Math.min(totalAdvance, grandTotal);
-      
       const advanceUse = Math.min(wallet, applyAmount);
       const loyaltyUse = applyAmount - advanceUse;
-
-      setPaymentType("Part Payment");
-      setPartPaymentAmounts((p) => ({ 
-        ...p, 
+      setPartPaymentAmounts((p) => ({
+        ...p,
         Advance: advanceUse > 0 ? advanceUse.toString() : "",
         "Points Redeem": loyaltyUse > 0 ? loyaltyUse.toString() : ""
       }));
     }
+
     setShowPaymentModal(true);
+  };
+
+  const handleAcceptAdvance = (accept) => {
+    if (accept) {
+      handleApplyCategoryAdvance("all");
+    } else {
+      setShowAdvancePromptModal(false);
+      setShowPaymentModal(true);
+    }
   };
 
   // Handle checkout
@@ -1709,7 +1746,7 @@ export const BillingPOSView = ({
     }
 
     // Overpayment Logic
-    const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+    const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
     let computedAmountPaid = grandTotal;
     let advanceApplied = 0;
     let loyaltyPointsUsed = 0;
@@ -7135,32 +7172,97 @@ export const BillingPOSView = ({
       {/* Advance Prompt Modal */}
       {showAdvancePromptModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-scale-up text-center border-t-4 border-indigo-500">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CreditCard className="w-8 h-8 text-indigo-600" />
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up border-t-4 border-indigo-500">
+            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Available Advance & Loyalty</h3>
+                  <p className="text-xs text-slate-500">Customer: <span className="font-bold text-slate-700">{activeCustomer?.name}</span></p>
+                </div>
+              </div>
+              <button onClick={() => setShowAdvancePromptModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Available Advance</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Customer <span className="font-bold">{activeCustomer?.name}</span> has an available balance of:
-            </p>
-            <div className="text-3xl font-black font-mono text-indigo-700 mb-6 bg-indigo-50 py-3 rounded-xl border border-indigo-100">
-              ₹{((activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0)).toLocaleString('en-IN')}
-            </div>
-            <p className="text-xs text-slate-500 mb-6 px-4">
-              Would you like to apply this advance towards the current bill of <span className="font-bold">₹{grandTotal}</span>?
-            </p>
+
+            {(() => {
+              const wallet = activeCustomer?.walletAdvance || 0;
+              const loyalty = activeCustomer?.loyaltyPoints || 0;
+              const history = activeCustomer?.advanceHistory || [];
+
+              const returnAmt = history
+                .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
+                .reduce((acc, h) => acc + (h.amount || 0), 0);
+              const overpaidAmt = history
+                .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+                .reduce((acc, h) => acc + (h.amount || 0), 0);
+              const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
+
+              return (
+                <div className="space-y-3 mb-6">
+                  {/* Category 1: Loyalty Points */}
+                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-xl border border-purple-100">
+                    <div>
+                      <p className="text-xs font-bold text-purple-900">Loyalty Point Amount</p>
+                      <p className="text-sm font-black text-purple-700 font-mono">&#8377;{loyalty.toLocaleString('en-IN')}</p>
+                    </div>
+                    <button
+                      onClick={() => handleApplyCategoryAdvance('loyalty')}
+                      disabled={loyalty <= 0}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  {/* Category 2: Overpaid Amount */}
+                  <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <div>
+                      <p className="text-xs font-bold text-emerald-900">Overpaid Amount</p>
+                      <p className="text-sm font-black text-emerald-700 font-mono">&#8377;{fallbackOverpaid.toLocaleString('en-IN')}</p>
+                    </div>
+                    <button
+                      onClick={() => handleApplyCategoryAdvance('overpaid')}
+                      disabled={fallbackOverpaid <= 0}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  {/* Category 3: Return Amount */}
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
+                    <div>
+                      <p className="text-xs font-bold text-blue-900">Return Amount</p>
+                      <p className="text-sm font-black text-blue-700 font-mono">&#8377;{returnAmt.toLocaleString('en-IN')}</p>
+                    </div>
+                    <button
+                      onClick={() => handleApplyCategoryAdvance('return')}
+                      disabled={returnAmt <= 0}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="flex gap-3">
               <button
                 onClick={() => handleAcceptAdvance(false)}
-                className="flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
               >
-                No, Skip
+                Skip
               </button>
               <button
-                onClick={() => handleAcceptAdvance(true)}
-                className="flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-colors"
+                onClick={() => handleApplyCategoryAdvance('all')}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-xs bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-colors"
               >
-                Yes, Apply
+                Apply All
               </button>
             </div>
           </div>
@@ -7215,7 +7317,7 @@ export const BillingPOSView = ({
                     onClick={() => {
                       setPaymentMethod(method);
                       if (paymentType === 'Part Payment' && method !== 'Cash') {
-                        const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                        const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                         const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                         const left = Math.max(0, grandTotal - cashTot - otherTot);
                         if (left > 0 && !partPaymentAmounts[method]) {
@@ -7243,18 +7345,27 @@ export const BillingPOSView = ({
                           { val: 100 },
                           { val: 50 },
                           { val: 20 },
-                          { val: 10 }
+                          { val: 10 },
+                          { val: 5, isCoin: true },
+                          { val: 2, isCoin: true },
+                          { val: 1, isCoin: true }
                         ].map(note => (
                           <div
                             key={note.val}
                             onClick={() => setActiveDenomination(note.val)}
                             className={`flex items-center gap-1.5 px-1 py-1.5 rounded-lg border-2 cursor-pointer transition-all ${activeDenomination === note.val ? 'border-indigo-500 bg-indigo-50/50 shadow-md' : 'border-slate-200 bg-white hover:border-indigo-300'}`}
                           >
-                            <img
-                              src={`/photos/${note.val}.jpg`}
-                              alt={"₹" + note.val}
-                              className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
-                            />
+                            {note.isCoin ? (
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-xs shadow border-2 border-amber-400 shrink-0" style={{ background: 'linear-gradient(145deg, #f5d98e, #d4a843)', color: '#6b4c00' }}>
+                                ₹{note.val}
+                              </div>
+                            ) : (
+                              <img
+                                src={`/photos/${note.val}.jpg`}
+                                alt={"₹" + note.val}
+                                className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
+                              />
+                            )}
 
                             <input
                               type="number" min="0"
@@ -7278,7 +7389,7 @@ export const BillingPOSView = ({
                     <div className="w-[300px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0">
                       {/* LCD Display */}
                       <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
-                        <span className="text-xs font-bold text-slate-400">₹{activeDenomination} Notes</span>
+                        <span className="text-xs font-bold text-slate-400">₹{activeDenomination} {activeDenomination <= 5 ? 'Coins' : 'Notes'}</span>
                         <span className="text-2xl font-black font-mono text-slate-800">{cashDenominations[activeDenomination] || '0'}</span>
                       </div>
 
@@ -7293,7 +7404,7 @@ export const BillingPOSView = ({
                             key={i}
                             onClick={() => {
                               if (btn === 'Pay') {
-                                const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                                 if (paymentType === 'Full Payment' && cashTot < grandTotal) {
                                   setPaymentWarning(`Paid amount (₹${cashTot}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to add Due amount or select multiple methods.`);
                                   return;
@@ -7359,7 +7470,7 @@ export const BillingPOSView = ({
                                   handlePrintConfirm();
                                   return;
                                 }
-                                const cashTot = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                                 const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                                 if (partTot < grandTotal) {
                                   setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
@@ -7390,7 +7501,7 @@ export const BillingPOSView = ({
 
                 <div className="p-4 space-y-3 font-mono flex-1 overflow-y-auto">
                   {(() => {
-                    const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                    const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                     return [
                       { label: "Net Amount", val: grandTotal, isTotal: true },
                       { label: "Cash", val: paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : 0) : cashTotal },
@@ -7408,7 +7519,7 @@ export const BillingPOSView = ({
 
                   <div className="pt-4 mt-4 border-t border-slate-200">
                     {(() => {
-                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
                       return (
@@ -7434,7 +7545,7 @@ export const BillingPOSView = ({
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
                   <button
                     onClick={() => {
-                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
                         setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
@@ -7452,7 +7563,7 @@ export const BillingPOSView = ({
                   </button>
                   <button
                     onClick={() => {
-                      const cashTotal = [500, 200, 100, 50, 20, 10].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
                         setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
