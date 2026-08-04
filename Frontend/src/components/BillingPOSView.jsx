@@ -2894,6 +2894,18 @@ export const BillingPOSView = ({
                       const rate = item.sellingPrice || (mrp - disc) || 0;
                       const amt = qty * rate;
 
+                      // Proportional Bill Adjustment per item: (ItemPrice / TotalPrice) × AdjustmentAmount
+                      const cartSubTotal = cart.reduce((acc, ci) => acc + ((ci.sellingPrice || (ci.mrp || ci.price || 0) - (ci.customDiscount || ci.discount || 0)) * (ci.quantity || 1)), 0);
+                      let billAdjShare = 0;
+                      if (billAdjustment && billAdjustment.amount > 0 && cartSubTotal > 0) {
+                        billAdjShare = (amt / cartSubTotal) * billAdjustment.amount;
+                        billAdjShare = Math.round(billAdjShare * 100) / 100; // round to 2 decimals
+                      }
+                      const isCharge = billAdjustment && billAdjustment.operation === 'Charge';
+                      const totalDiscDisplay = billAdjShare > 0
+                        ? (isCharge ? disc : disc + billAdjShare)
+                        : disc;
+
                       return (
                         <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
                           <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
@@ -2954,9 +2966,16 @@ export const BillingPOSView = ({
                               className="w-14 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
                             />
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-right">{disc.toFixed(2)}</td>
+                          <td className={`border-r border-slate-300 p-1 text-right ${billAdjShare > 0 ? (isCharge ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold') : ''}`} title={billAdjShare > 0 ? `Item Disc: ₹${disc.toFixed(2)} | Bill Adj (${isCharge ? '+Charge' : '-Disc'}): ₹${billAdjShare.toFixed(2)}` : ''}>
+                            {totalDiscDisplay.toFixed(2)}
+                            {billAdjShare > 0 && (
+                              <div className={`text-[8px] leading-tight ${isCharge ? 'text-emerald-500' : 'text-red-400'}`}>
+                                ({isCharge ? '+' : '-'}₹{billAdjShare.toFixed(2)})
+                              </div>
+                            )}
+                          </td>
                           <td className="border-r border-slate-300 p-1 text-right">{rate.toFixed(2)}</td>
-                          <td className="border-r border-slate-300 p-1 text-right">{amt.toFixed(2)}</td>
+                          <td className={`border-r border-slate-300 p-1 text-right ${billAdjShare > 0 ? 'font-bold' : ''}`}>{(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}</td>
                           <td className="border-r border-slate-300 p-1">
                             <select
                               className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
