@@ -8,7 +8,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  
+
   // Suggestion states
   const [suggestions, setSuggestions] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -19,24 +19,22 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
         setSuggestions([]);
         return;
       }
-      
-      // Only auto-suggest for search-based modals
+
       if (!['search_customer', 'search_bill', 'scan_bill', 'scan_item', 'search_barcode'].includes(activeModal)) {
         return;
       }
 
       setIsSearching(true);
-      const token = localStorage.getItem('token');
       try {
         let res;
         if (activeModal === 'search_customer') {
           res = await api.get(`/customers?search=${inputValue}`);
         } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
-          res = await api.get(`/invoices?search=${inputValue}`);
+          res = await api.get(`/billing?search=${inputValue}`);
         } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
           res = await api.get(`/products?search=${inputValue}`);
         }
-        
+
         if (res) {
           const data = res.data;
           if (data.success) {
@@ -93,7 +91,8 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
       let res;
       switch (activeModal) {
         case 'scan_bill':
-          res = await api.get(`/invoices/scan/${inputValue}`);
+        case 'search_bill':
+          res = await api.get(`/billing?search=${inputValue}`);
           break;
         case 'scan_item':
         case 'search_barcode':
@@ -103,12 +102,8 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
         case 'search_customer':
           res = await api.get(`/customers?search=${inputValue}`);
           break;
-        case 'search_bill':
-          res = await api.get(`/invoices?search=${inputValue}`);
-          break;
         case 'whatsapp':
-          // Assume inputValue is invoice ID
-          res = await api.post(`/invoices/${inputValue}/send-whatsapp`);
+          res = await api.post(`/billing/${inputValue}/send-whatsapp`);
           break;
         case 'alteration':
           res = await api.post(`/tickets`, { subject: 'Alteration Request', description: inputValue, priority: 'High', status: 'Open' });
@@ -180,7 +175,6 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
                   />
                 )}
                 
-                {/* Suggestions Dropdown */}
                 {suggestions.length > 0 && !result && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-10">
                     {suggestions.map((item, idx) => (
@@ -190,7 +184,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
                           if (activeModal === 'search_customer') {
                             setInputValue(item.phone || item.name);
                           } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
-                            setInputValue(item.invoiceNo);
+                            setInputValue(item.invoiceNo || item.billNo);
                           } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
                             setInputValue(item.barcode || item.sku);
                           }
@@ -202,7 +196,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults }) 
                           <div className="text-sm font-medium text-slate-700">{item.name} <span className="text-slate-400 text-xs ml-2">{item.phone}</span></div>
                         )}
                         {(activeModal === 'search_bill' || activeModal === 'scan_bill') && (
-                          <div className="text-sm font-medium text-slate-700">{item.invoiceNo} <span className="text-slate-400 text-xs ml-2">{item.customerName}</span></div>
+                          <div className="text-sm font-medium text-slate-700">{item.invoiceNo || item.billNo} <span className="text-slate-400 text-xs ml-2">{item.customerName}</span></div>
                         )}
                         {(activeModal === 'scan_item' || activeModal === 'search_barcode') && (
                           <div className="text-sm font-medium text-slate-700">{item.name} <span className="text-slate-400 text-xs ml-2">{item.barcode || item.sku}</span></div>

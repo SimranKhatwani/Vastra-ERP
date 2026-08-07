@@ -12,10 +12,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingCart,
+  Loader2
 } from "lucide-react";
 
 export const ProductManagementView = ({
-  products,
+  products = [],
+  isLoadingProducts = false,
   onAddProduct,
   onUpdateProduct,
   onDeleteProducts,
@@ -73,7 +75,12 @@ export const ProductManagementView = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedBrand, setSelectedBrand] = useState("All");
+  const [selectedCompany, setSelectedCompany] = useState("All");
+  const [selectedSize, setSelectedSize] = useState("All");
+  const [selectedColor, setSelectedColor] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
+  const [sortField, setSortField] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   // Multi select rows
   const [selectedProductIds, setSelectedProductIds] = useState([]);
@@ -103,11 +110,78 @@ export const ProductManagementView = ({
   const [formStock, setFormStock] = useState(50);
   const [formMinStock, setFormMinStock] = useState(10);
 
-  // Calculate dynamic categories from products
+  // Local state for products with persistent direct API fetch fallback
+  const [localProducts, setLocalProducts] = React.useState(products || []);
+  const [isFetching, setIsFetching] = React.useState(false);
+
+  React.useEffect(() => {
+    const loadProducts = async () => {
+      if (Array.isArray(products) && products.length > 0) {
+        setLocalProducts(products);
+        setIsFetching(false);
+        return;
+      }
+      setIsFetching(true);
+      try {
+        const res = await api.get(`/products`);
+        if (res.data?.success) {
+          const raw = Array.isArray(res.data.data) ? res.data.data : (res.data.data?.products || []);
+          if (raw.length > 0 || localProducts.length === 0) {
+            setLocalProducts(raw.map(p => ({ ...p, id: p._id })));
+          }
+        }
+      } catch (err) {
+        console.error("Direct fetch in ProductManagementView failed:", err);
+      } finally {
+        setIsFetching(false);
+      }
+    };
+    loadProducts();
+  }, [products]);
+
+  // Helper for safe string conversions
+  const safeStr = (val, fallback = '') => {
+    if (!val) return fallback;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') return val.name || val.code || fallback;
+    return String(val);
+  };
+
+  // Dynamic Companies List
+  const dynamicCompaniesList = React.useMemo(() => {
+    const set = new Set();
+    (localProducts || []).forEach(p => {
+      const comp = safeStr(p.company, safeStr(p.firmName, "Primary Store Firm"));
+      set.add(comp);
+    });
+    return Array.from(set);
+  }, [localProducts]);
+
+  // Dynamic Sizes List
+  const dynamicSizesList = React.useMemo(() => {
+    const set = new Set();
+    (localProducts || []).forEach(p => {
+      const sz = safeStr(p.size);
+      if (sz) sz.split(',').forEach(s => set.add(s.trim()));
+    });
+    return Array.from(set).filter(Boolean);
+  }, [localProducts]);
+
+  // Dynamic Colors List
+  const dynamicColorsList = React.useMemo(() => {
+    const set = new Set();
+    (localProducts || []).forEach(p => {
+      const clr = safeStr(p.primaryColor, safeStr(p.color));
+      if (clr) set.add(clr.trim());
+    });
+    return Array.from(set).filter(Boolean);
+  }, [localProducts]);
+
+  // Dynamic Categories List
   const dynamicCategoriesList = React.useMemo(() => {
     const counts = {};
-    products.forEach(p => {
-      const cat = p.category || "Uncategorized";
+    (localProducts || []).forEach(p => {
+      const cat = safeStr(p.categoryId, safeStr(p.category, "Uncategorized"));
       counts[cat] = (counts[cat] || 0) + 1;
     });
     return Object.keys(counts).map((cat, idx) => ({
@@ -117,13 +191,13 @@ export const ProductManagementView = ({
       totalProducts: counts[cat],
       description: `All garments under ${cat}`
     }));
-  }, [products]);
+  }, [localProducts]);
 
-  // Calculate dynamic brands from products
+  // Dynamic Brands List
   const dynamicBrandsList = React.useMemo(() => {
     const counts = {};
-    products.forEach(p => {
-      const brand = p.brand || "Generic";
+    (localProducts || []).forEach(p => {
+      const brand = safeStr(p.brandId, safeStr(p.brand, "Generic"));
       counts[brand] = (counts[brand] || 0) + 1;
     });
     return Object.keys(counts).map((brand, idx) => ({
@@ -132,61 +206,90 @@ export const ProductManagementView = ({
       code: brand.substring(0, 3).toUpperCase(),
       totalProducts: counts[brand]
     }));
-  }, [products]);
+  }, [localProducts]);
 
-  // Filters application
-  const filteredProductsList = products.filter((p) => {
+  // Filters application & MongoDB field mapping
+  const filteredProductsList = (localProducts || []).map(p => {
+    const categoryName = safeStr(p.categoryId, safeStr(p.category, 'General'));
+    const brandName = safeStr(p.brandId, safeStr(p.brand, 'Generic'));
+    const companyName = safeStr(p.company, safeStr(p.firmName, 'Primary Store Firm'));
+    const sizeVal = safeStr(p.size, 'FREE');
+    const colorVal = safeStr(p.primaryColor, safeStr(p.color, '-'));
+    const secondaryColorVal = safeStr(p.secondaryColor, '-');
+    const hsnVal = safeStr(p.hsnId, safeStr(p.hsn, 'N/A'));
+
+    return {
+      ...p,
+      id: p._id || p.id,
+      name: safeStr(p.itemName, safeStr(p.name, 'Unnamed Product')),
+      itemName: safeStr(p.itemName, safeStr(p.name, 'Unnamed Product')),
+      subItem: safeStr(p.subItem, ''),
+      designNo: safeStr(p.designNo, 'N/A'),
+      itemCode: safeStr(p.itemCode, safeStr(p.designNo, 'N/A')),
+      sku: safeStr(p.itemCode, safeStr(p.designNo, safeStr(p.sku, 'N/A'))),
+      productCode: safeStr(p.itemCode, safeStr(p.designNo, safeStr(p.productCode, 'N/A'))),
+      barcode: safeStr(p.barcode, safeStr(p.pieces?.[0]?.barcode, '')),
+      uniqueCode: safeStr(p.uniqueCode, safeStr(p.pieces?.[0]?.uniqueCode, '')),
+      ipn: safeStr(p.ipn, safeStr(p.pieces?.[0]?.ipn, '')),
+      category: categoryName,
+      brand: brandName,
+      company: companyName,
+      firmName: companyName,
+      size: sizeVal,
+      color: colorVal,
+      primaryColor: colorVal,
+      secondaryColor: secondaryColorVal,
+      hsn: hsnVal,
+      mrp: p.defaultMRP ?? p.mrp ?? 0,
+      price: p.defaultMRP ?? p.price ?? 0,
+      sellingPrice: p.sellingPrice ?? p.defaultMRP ?? p.price ?? 0,
+      purchasePrice: p.purchasePrice ?? p.purchaseRate ?? 0,
+      stock: p.stock ?? 0,
+      rackLocation: safeStr(p.rackLocation, 'Shelf A1'),
+      status: (p.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock',
+      createdAtDate: p.createdAt ? new Date(p.createdAt) : new Date(0),
+      formattedDate: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+    };
+  }).filter((p) => {
+    const searchLower = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.productCode && p.productCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.barcode && p.barcode.includes(searchQuery));
+      !searchQuery ||
+      safeStr(p.name).toLowerCase().includes(searchLower) ||
+      safeStr(p.itemName).toLowerCase().includes(searchLower) ||
+      safeStr(p.itemCode).toLowerCase().includes(searchLower) ||
+      safeStr(p.designNo).toLowerCase().includes(searchLower) ||
+      safeStr(p.barcode).toLowerCase().includes(searchLower) ||
+      safeStr(p.uniqueCode).toLowerCase().includes(searchLower) ||
+      safeStr(p.ipn).toLowerCase().includes(searchLower);
+
     const matchesCat =
-      selectedCategory === "All" || p.category?.toLowerCase() === selectedCategory.toLowerCase();
-    const matchesBrand = selectedBrand === "All" || p.brand === selectedBrand;
+      selectedCategory === "All" || safeStr(p.category).toLowerCase() === selectedCategory.toLowerCase();
+    const matchesBrand = selectedBrand === "All" || safeStr(p.brand).toLowerCase() === selectedBrand.toLowerCase();
+    const matchesCompany = selectedCompany === "All" || safeStr(p.company).toLowerCase() === selectedCompany.toLowerCase();
+    const matchesSize = selectedSize === "All" || safeStr(p.size).toLowerCase().includes(selectedSize.toLowerCase());
+    const matchesColor = selectedColor === "All" || safeStr(p.primaryColor).toLowerCase().includes(selectedColor.toLowerCase());
+
     let matchesStatus = true;
     if (selectedStatus === "In Stock")
-      matchesStatus = p.status === 'In Stock';
+      matchesStatus = p.stock > 0;
     else if (selectedStatus === "Low Stock")
-      matchesStatus = p.status === 'Low Stock';
-    else if (selectedStatus === "Out of Stock") matchesStatus = p.status === 'Out of Stock';
+      matchesStatus = p.stock > 0 && p.stock <= 10;
+    else if (selectedStatus === "Out of Stock") matchesStatus = p.stock <= 0;
 
-    return matchesSearch && matchesCat && matchesBrand && matchesStatus && (activeSubTab === 'low_stock' ? p.status === 'Low Stock' : true);
+    return matchesSearch && matchesCat && matchesBrand && matchesCompany && matchesSize && matchesColor && matchesStatus && (activeSubTab === 'low_stock' ? p.stock <= 10 : true);
+  }).sort((a, b) => {
+    let valA = a[sortField] ?? '';
+    let valB = b[sortField] ?? '';
+    if (typeof valA === 'string') valA = valA.toLowerCase();
+    if (typeof valB === 'string') valB = valB.toLowerCase();
+    if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+    if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
   });
 
-  // Group products by style (Name + Brand)
+  // Direct product list mapping from database records
   const groupedProductsList = React.useMemo(() => {
-    const groups = {};
-    filteredProductsList.forEach(p => {
-       const baseName = p.name ? p.name.split('-')[0].trim().toLowerCase() : '';
-       const key = `${baseName}-${p.brand?.trim().toLowerCase()}`;
-       if (!groups[key]) {
-           groups[key] = { 
-             ...p, 
-             sizesAvailable: new Set(p.size ? [p.size] : []), 
-             colorsAvailable: new Set(p.color ? [p.color] : []),
-             variants: [p] 
-           };
-       } else {
-           if (p.size) groups[key].sizesAvailable.add(p.size);
-           if (p.color) groups[key].colorsAvailable.add(p.color);
-           groups[key].variants.push(p);
-           groups[key].stock += (p.stock || 0);
-           groups[key].openingStock = (groups[key].openingStock || 0) + (p.openingStock || 0);
-           groups[key].purchasedQuantity = (groups[key].purchasedQuantity || 0) + (p.purchasedQuantity || 0);
-           groups[key].threshold = (groups[key].threshold || 0) + (p.threshold || 0);
-       }
-    });
-    return Object.values(groups).map(g => {
-       const totalIncoming = (g.openingStock || 0) + (g.purchasedQuantity || 0);
-       const stockPercentage = totalIncoming > 0 ? Number(((g.stock / totalIncoming) * 100).toFixed(1)) : 0;
-       return {
-         ...g,
-         stockPercentage,
-         size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
-         color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
-       };
-    });
+    return filteredProductsList;
   }, [filteredProductsList]);
 
   // Pagination logic
@@ -266,23 +369,45 @@ export const ProductManagementView = ({
     setShowProductModal(true);
   };
 
+  // Extra Detail States
+  const [formSubItem, setFormSubItem] = useState("");
+  const [formDesignNo, setFormDesignNo] = useState("");
+  const [formItemCode, setFormItemCode] = useState("");
+  const [formUniqueCode, setFormUniqueCode] = useState("");
+  const [formIPN, setFormIPN] = useState("");
+  const [formSecondaryColor, setFormSecondaryColor] = useState("");
+  const [formCompany, setFormCompany] = useState("");
+  const [formRack, setFormRack] = useState("");
+  const [formHSN, setFormHSN] = useState("");
+  const [formCreatedDate, setFormCreatedDate] = useState("");
+
   // Open Edit Modal
   const openEditModal = (prod) => {
     setModalMode("edit");
     setEditingProductId(prod.id);
-    setFormName(prod.name);
+    setFormName(prod.itemName || prod.name || '');
+    setFormSubItem(prod.subItem || '');
+    setFormDesignNo(prod.designNo || '');
+    setFormItemCode(prod.itemCode || '');
     setFormCategory(prod.category);
     setFormBrand(prod.brand);
     setFormSKU(prod.sku);
     setFormBarcode(prod.barcode);
-    setFormColor(prod.color);
+    setFormUniqueCode(prod.uniqueCode || '');
+    setFormIPN(prod.ipn || '');
+    setFormColor(prod.primaryColor || prod.color || '');
+    setFormSecondaryColor(prod.secondaryColor || '');
+    setFormCompany(prod.company || prod.firmName || '');
+    setFormRack(prod.rackLocation || '');
+    setFormHSN(prod.hsn || '');
     setFormSize(prod.size);
     setFormVariants(prod.variants || []);
-    setFormPurchasePrice(prod.purchasePrice);
-    setFormMRP(prod.mrp);
-    setFormSellingPrice(prod.sellingPrice);
-    setFormStock(prod.stock);
-    setFormMinStock(prod.minStockAlert);
+    setFormPurchasePrice(prod.purchasePrice || 0);
+    setFormMRP(prod.mrp || 0);
+    setFormSellingPrice(prod.sellingPrice || 0);
+    setFormStock(prod.stock || 0);
+    setFormMinStock(prod.minStockAlert || 5);
+    setFormCreatedDate(prod.formattedDate || '—');
     setShowProductModal(true);
   };
 
@@ -479,6 +604,22 @@ export const ProductManagementView = ({
 
             <div className="flex flex-wrap gap-3 w-full md:w-auto items-center justify-end">
               <div>
+                <span className="text-slate-400 mr-1.5">Company:</span>
+                <select
+                  value={selectedCompany}
+                  onChange={(e) => { setSelectedCompany(e.target.value); setCurrentPage(1); }}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5"
+                >
+                  <option value="All">All Companies</option>
+                  {dynamicCompaniesList.map((comp) => (
+                    <option key={comp} value={comp}>
+                      {comp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <span className="text-slate-400 mr-1.5">Category:</span>
                 <select
                   value={selectedCategory}
@@ -486,13 +627,11 @@ export const ProductManagementView = ({
                   className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5"
                 >
                   <option value="All">All Categories</option>
-                  {Array.from(new Set(products.map((p) => p.category))).map(
-                    (cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ),
-                  )}
+                  {dynamicCategoriesList.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -504,13 +643,43 @@ export const ProductManagementView = ({
                   className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5"
                 >
                   <option value="All">All Brands</option>
-                  {Array.from(new Set(products.map((p) => p.brand))).map(
-                    (b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ),
-                  )}
+                  {dynamicBrandsList.map((b) => (
+                    <option key={b.name} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="text-slate-400 mr-1.5">Size:</span>
+                <select
+                  value={selectedSize}
+                  onChange={(e) => { setSelectedSize(e.target.value); setCurrentPage(1); }}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5"
+                >
+                  <option value="All">All Sizes</option>
+                  {dynamicSizesList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="text-slate-400 mr-1.5">Color:</span>
+                <select
+                  value={selectedColor}
+                  onChange={(e) => { setSelectedColor(e.target.value); setCurrentPage(1); }}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5"
+                >
+                  <option value="All">All Colors</option>
+                  {dynamicColorsList.map((col) => (
+                    <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -719,6 +888,26 @@ export const ProductManagementView = ({
                       </tr>
                     );
                   })}
+                  {(isLoadingProducts || isFetching) ? (
+                    <tr>
+                      <td colSpan={10} className="p-12 text-center text-slate-500 font-medium">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <Loader2 className="w-7 h-7 animate-spin text-indigo-600" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                            Searching & Preparing Garment Catalog... Please wait.
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedProducts.length === 0 && (
+                      <tr>
+                        <td colSpan={10} className="p-8 text-center text-slate-400 text-xs font-medium">
+                          No catalog items found matching your search.
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>
@@ -836,7 +1025,7 @@ export const ProductManagementView = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    Garment Name *
+                    Garment / Product Name *
                   </label>
                   <input
                     required
@@ -848,18 +1037,84 @@ export const ProductManagementView = ({
                   />
                 </div>
 
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Design No.
+                  </label>
+                  <input
+                    type="text"
+                    value={formDesignNo}
+                    onChange={(e) => setFormDesignNo(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
+                    placeholder="e.g. DSG-1002"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Item Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formItemCode}
+                    onChange={(e) => setFormItemCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono uppercase"
+                    placeholder="e.g. ITEM-001"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Sub Item Type
+                  </label>
+                  <input
+                    type="text"
+                    value={formSubItem}
+                    onChange={(e) => setFormSubItem(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
+                    placeholder="e.g. BANARASI / HALF SLEEVE"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Company / Firm
+                  </label>
+                  <input
+                    type="text"
+                    value={formCompany}
+                    onChange={(e) => setFormCompany(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
+                    placeholder="e.g. Primary Store Firm"
+                  />
+                </div>
+
                 {modalMode === "edit" && (
-                  <div className="sm:col-span-2">
-                    <label className="block text-slate-500 mb-1 font-semibold">
-                      Unique Product ID (Read-Only)
-                    </label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={`PRD-${editingProductId ? editingProductId.toString().substring(Math.max(0, editingProductId.toString().length - 6)).toUpperCase() : ""}`}
-                      className="w-full bg-slate-100 border border-slate-250 px-3 py-2 rounded-xl font-mono text-slate-500"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Unique Code
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={formUniqueCode || 'N/A'}
+                        className="w-full bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        IPN (Piece No.)
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={formIPN || 'N/A'}
+                        className="w-full bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-600"
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div>
@@ -928,7 +1183,7 @@ export const ProductManagementView = ({
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    Color Shade
+                    Primary Color
                   </label>
                   <input
                     type="text"
@@ -936,6 +1191,45 @@ export const ProductManagementView = ({
                     onChange={(e) => setFormColor(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
                     placeholder="e.g. Royal Indigo"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Secondary Color
+                  </label>
+                  <input
+                    type="text"
+                    value={formSecondaryColor}
+                    onChange={(e) => setFormSecondaryColor(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
+                    placeholder="e.g. Gold Accent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Rack Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formRack}
+                    onChange={(e) => setFormRack(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
+                    placeholder="e.g. Shelf A1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    HSN Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formHSN}
+                    onChange={(e) => setFormHSN(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
+                    placeholder="e.g. 6205"
                   />
                 </div>
 

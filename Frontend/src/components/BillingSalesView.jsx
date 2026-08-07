@@ -25,13 +25,65 @@ import {
   Clock,
   ArrowRight,
   TrendingUp,
-  Users
+  Users,
+  Loader2
 } from "lucide-react";
+
+const extractBillsArray = (resData) => {
+  if (!resData) return [];
+  if (Array.isArray(resData.data)) return resData.data;
+  if (resData.data && Array.isArray(resData.data.bills)) return resData.data.bills;
+  if (Array.isArray(resData.bills)) return resData.bills;
+  if (Array.isArray(resData)) return resData;
+  return [];
+};
+
+const normalizeInvoice = (b) => {
+  if (!b) return null;
+  const billId = b._id || b.id;
+  const rawItems = (Array.isArray(b.items) && b.items.length > 0)
+    ? b.items
+    : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
+  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in Customer";
+  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "9999999999";
+
+  return {
+    ...b,
+    id: billId,
+    _id: billId,
+    invoiceNo: b.billNo || b.invoiceNo || `BILL-${billId}`,
+    billNo: b.billNo || b.invoiceNo || `BILL-${billId}`,
+    date: b.billDate || b.date || b.createdAt,
+    customerName: custName,
+    customerPhone: custPhone,
+    customerId: b.customerId?._id || b.customerId?.id || b.customerId,
+    items: rawItems.map(i => ({
+      ...i,
+      id: i._id || i.id,
+      name: i.name || i.productName || i.itemName || i.barcode || "Garment Item",
+      price: i.sellingPrice || i.price || i.mrp || 0,
+      quantity: i.quantity || i.qty || 1,
+      sellingPrice: i.sellingPrice || i.price || 0,
+      discountAmount: i.discountAmount || 0,
+      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0))
+    })),
+    subTotal: b.subTotal || b.grandTotal || 0,
+    discount: b.discountAmount || b.discount || 0,
+    grandTotal: b.grandTotal || b.totalAmount || 0,
+    amountPaid: b.paidAmount ?? b.amountPaid ?? b.grandTotal,
+    dueAmount: b.dueAmount || 0,
+    paymentMethod: b.paymentMethod || (b.dueAmount > 0 ? "Credit" : "Cash"),
+    status: b.status || "Completed"
+  };
+};
 
 export const BillingSalesView = ({
   products = [],
   customers = [],
   employees = [],
+  invoices = [],
+  isLoadingInvoices = false,
+  isLoadingProducts = false,
   onAddNotification
 }) => {
   const [activeTab, setActiveTab] = useState("wholesale-billing");
@@ -115,19 +167,27 @@ export const BillingSalesView = ({
     setHistoryLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await api.get(`/billing-sales/reports`);
-      const json = res.data;
-      if (json.success) {
-        setInvoicesList(json.data);
-        // Automatically populate outstanding list
-        setOutstandingInvoices(json.data.filter(inv => inv.status !== "Paid"));
+      if (!token) return;
+      const res = await api.get(`/billing`);
+      const fetched = extractBillsArray(res.data);
+      const normalized = fetched.map(i => normalizeInvoice(i)).filter(Boolean);
+      if (normalized.length > 0) {
+        setInvoicesList(normalized);
+        setOutstandingInvoices(normalized.filter(inv => inv.dueAmount > 0));
       }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch invoice history:", err);
     } finally {
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (Array.isArray(invoices) && invoices.length > 0) {
+      setInvoicesList(invoices);
+      setOutstandingInvoices(invoices.filter(inv => inv.dueAmount > 0));
+    }
+  }, [invoices]);
 
   useEffect(() => {
     if (activeTab === "invoice-history" || activeTab === "outstanding-receivables") {
@@ -540,8 +600,11 @@ export const BillingSalesView = ({
           </div>
         </div>
 
-        {historyLoading ? (
-          <div className="text-center p-12 animate-pulse text-slate-400 font-bold">Querying MongoDB logs...</div>
+        {(historyLoading || isLoadingInvoices) ? (
+          <div className="flex flex-col items-center justify-center p-16 bg-slate-50/50 rounded-2xl border border-slate-100 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Preparing Invoice History... Please wait.</span>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">

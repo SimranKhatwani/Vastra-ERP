@@ -1,0 +1,61 @@
+const express = require('express');
+const authRoutes = require('./auth.routes');
+const superAdminRoutes = require('./superAdmin.routes');
+const userRoutes = require('./user.routes');
+const roleRoutes = require('./role.routes');
+const masterRoutes = require('./master.routes');
+const productRoutes = require('./product.routes');
+const ptImportRoutes = require('./ptImport.routes');
+const inventoryRoutes = require('./inventory.routes');
+const purchaseRoutes = require('./purchase.routes');
+const billingRoutes = require('./billing.routes');
+const customerRoutes = require('./customer.routes');
+const ledgerRoutes = require('./ledger.routes');
+const alterationRoutes = require('./alteration.routes');
+const returnRoutes = require('./return.routes');
+const exchangeRoutes = require('./exchange.routes');
+const goodsReturnRoutes = require('./goodsReturn.routes');
+const loyaltyRoutes = require('./loyalty.routes');
+const dashboardRoutes = require('./dashboard.routes');
+const reportRoutes = require('./report.routes');
+const auditRoutes = require('./audit.routes');
+const barcodeRoutes = require('./barcode.routes');
+const inventoryLifecycleRoutes = require('./inventoryLifecycle.routes');
+
+
+const permissionRoutes = require('./permission.routes');
+
+const router = express.Router();
+
+router.use('/auth', authRoutes);
+router.use('/superadmin', superAdminRoutes);
+router.use('/users', userRoutes);
+router.use('/roles', roleRoutes);
+router.use('/permissions', permissionRoutes);
+router.use('/masters', masterRoutes);
+router.use('/products', productRoutes);
+router.use('/pt-import', ptImportRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/purchase', purchaseRoutes);
+router.use('/purchase-orders', purchaseRoutes);
+router.use('/billing', billingRoutes);
+router.use('/invoices', billingRoutes);
+router.use('/customers', customerRoutes);
+router.use('/ledger', ledgerRoutes);
+router.use('/alterations', alterationRoutes);
+router.use('/returns', returnRoutes);
+router.use('/categories', require('./category.routes'));
+router.use('/brands', require('./brand.routes'));
+router.use('/vendors', require('./vendor.routes'));
+router.use('/firms', require('./firm.routes'));
+router.use('/warehouses', require('./warehouse.routes'));
+router.use('/exchanges', exchangeRoutes);
+router.use('/goods-return', goodsReturnRoutes);
+router.use('/loyalty', loyaltyRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/barcode', barcodeRoutes);
+router.use('/inventory-lifecycle', inventoryLifecycleRoutes);
+router.use('/reports', reportRoutes);
+router.use('/audit', auditRoutes);
+
+module.exports = router;

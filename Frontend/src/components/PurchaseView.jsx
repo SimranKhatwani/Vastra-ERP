@@ -1382,6 +1382,24 @@ export const PurchaseView = ({
   const [viewingPO, setViewingPO] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Permanently sync & fetch PT Import History and Purchase Bills directly from Database on mount
+  React.useEffect(() => {
+    const fetchPOHistory = async () => {
+      try {
+        const res = await api.get('/purchase-orders');
+        const dataOrBills = Array.isArray(res.data?.data)
+          ? res.data.data
+          : (Array.isArray(res.data?.data?.bills) ? res.data.data.bills : []);
+        if (dataOrBills.length > 0 && setPurchaseOrders) {
+          setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
+        }
+      } catch (err) {
+        console.warn("Could not refetch purchase orders on PurchaseView mount:", err);
+      }
+    };
+    fetchPOHistory();
+  }, [setPurchaseOrders]);
+
   // Quick Draft PO Modal State
   const [showPOModal, setShowPOModal] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");
@@ -1449,6 +1467,29 @@ export const PurchaseView = ({
     setPoSupplierId("");
     setPoProductId("");
     setPoQty(100);
+  };
+
+  const handleViewVoucher = async (po) => {
+    setViewingPO(po);
+    const poId = po._id || po.id;
+    if (poId) {
+      try {
+        const res = await api.get(`/purchase-orders/${poId}`);
+        const data = res.data;
+        if (data?.success && data.data) {
+          const fullVoucher = data.data;
+          setViewingPO(prev => ({
+            ...prev,
+            ...fullVoucher,
+            items: (Array.isArray(fullVoucher.items) && fullVoucher.items.length > 0)
+              ? fullVoucher.items
+              : (prev?.items || prev?.billItems || prev?.products || [])
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not fetch detailed PO from API, using cached voucher:", err);
+      }
+    }
   };
 
   const filteredPOs = useMemo(() => {
@@ -1676,7 +1717,7 @@ export const PurchaseView = ({
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1">
                                 <button
-                                  onClick={() => setViewingPO(po)}
+                                  onClick={() => handleViewVoucher(po)}
                                   className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
                                   title="View Voucher Invoice"
                                 >

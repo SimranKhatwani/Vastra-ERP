@@ -34,7 +34,8 @@ import {
   Copy,
   Info,
   Banknote,
-  Wallet
+  Wallet,
+  Loader2
 } from "lucide-react";
 
 const generateUniqueItemCode = () => {
@@ -55,6 +56,8 @@ export const BillingPOSView = ({
   customers = [],
   employees = [],
   invoices = [],
+  isLoadingInvoices = false,
+  isLoadingProducts = false,
   onAddInvoice,
   onAddCustomer,
   onUpdateCustomerBalance,
@@ -311,6 +314,8 @@ export const BillingPOSView = ({
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isPreparingPayment, setIsPreparingPayment] = useState(false);
+  const [paymentLoaderMessage, setPaymentLoaderMessage] = useState("Preparing Payment Details... Please wait.");
   const [showAdvancePromptModal, setShowAdvancePromptModal] = useState(false);
   const [splitCash, setSplitCash] = useState(0);
   const [splitCard, setSplitCard] = useState(0);
@@ -460,7 +465,7 @@ export const BillingPOSView = ({
   };
 
   useEffect(() => {
-    if (invoices && invoices.length > 0) {
+    if (Array.isArray(invoices)) {
       setInvoiceList(invoices);
     }
   }, [invoices]);
@@ -1650,82 +1655,112 @@ export const BillingPOSView = ({
       return;
     }
     
-    // Refresh discounts to ensure inactive discounts are dropped before checkout
-    await fetchActiveRules();
+    setPaymentLoaderMessage("Preparing Payment Details... Please wait.");
+    setIsPreparingPayment(true);
 
-    const totalAdvance = (activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0);
-    if (activeCustomer && activeCustomer.id !== "c-walkin" && totalAdvance > 0) {
-      setShowAdvancePromptModal(true);
-    } else {
-      setPaymentType('Full Payment');
-      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
-      setPartPaymentAmounts({
-        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
-      });
-      setShowPaymentModal(true);
+    try {
+      // Refresh discounts & active rules to ensure latest calculation
+      await fetchActiveRules().catch(() => {});
+
+      const totalAdvance = (activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0);
+
+      // Brief async pause (300ms) to ensure state synchronization & display loader
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      if (activeCustomer && activeCustomer.id !== "c-walkin" && totalAdvance > 0) {
+        setShowAdvancePromptModal(true);
+      } else {
+        setPaymentType('Full Payment');
+        setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
+        setPartPaymentAmounts({
+          Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+        });
+        setShowPaymentModal(true);
+      }
+    } catch (err) {
+      console.error("Error opening payment flow:", err);
+    } finally {
+      setIsPreparingPayment(false);
     }
   };
 
-  const handleApplyCategoryAdvance = (category) => {
+  const handleApplyCategoryAdvance = async (category) => {
     setShowAdvancePromptModal(false);
-    const wallet = activeCustomer?.walletAdvance || 0;
-    const loyalty = activeCustomer?.loyaltyPoints || 0;
-    const history = activeCustomer?.advanceHistory || [];
+    setPaymentLoaderMessage("Preparing Payment Details... Please wait.");
+    setIsPreparingPayment(true);
 
-    const returnAmt = history
-      .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
-      .reduce((acc, h) => acc + (h.amount || 0), 0);
-    const overpaidAmt = history
-      .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
-      .reduce((acc, h) => acc + (h.amount || 0), 0);
-    const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
+    try {
+      const wallet = activeCustomer?.walletAdvance || 0;
+      const loyalty = activeCustomer?.loyaltyPoints || 0;
+      const history = activeCustomer?.advanceHistory || [];
 
-    setPaymentType("Part Payment");
+      const returnAmt = history
+        .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
+        .reduce((acc, h) => acc + (h.amount || 0), 0);
+      const overpaidAmt = history
+        .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+        .reduce((acc, h) => acc + (h.amount || 0), 0);
+      const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
 
-    if (category === "loyalty") {
-      const applyLoyalty = Math.min(loyalty, grandTotal);
-      setPartPaymentAmounts((p) => ({
-        ...p,
-        "Points Redeem": applyLoyalty > 0 ? applyLoyalty.toString() : ""
-      }));
-    } else if (category === "overpaid") {
-      const applyOverpaid = Math.min(fallbackOverpaid, grandTotal);
-      setPartPaymentAmounts((p) => ({
-        ...p,
-        Advance: applyOverpaid > 0 ? applyOverpaid.toString() : ""
-      }));
-    } else if (category === "return") {
-      const applyReturn = Math.min(returnAmt, grandTotal);
-      setPartPaymentAmounts((p) => ({
-        ...p,
-        Advance: applyReturn > 0 ? applyReturn.toString() : ""
-      }));
-    } else if (category === "all") {
-      const totalAdvance = wallet + loyalty;
-      const applyAmount = Math.min(totalAdvance, grandTotal);
-      const advanceUse = Math.min(wallet, applyAmount);
-      const loyaltyUse = applyAmount - advanceUse;
-      setPartPaymentAmounts((p) => ({
-        ...p,
-        Advance: advanceUse > 0 ? advanceUse.toString() : "",
-        "Points Redeem": loyaltyUse > 0 ? loyaltyUse.toString() : ""
-      }));
+      setPaymentType("Part Payment");
+
+      if (category === "loyalty") {
+        const applyLoyalty = Math.min(loyalty, grandTotal);
+        setPartPaymentAmounts((p) => ({
+          ...p,
+          "Points Redeem": applyLoyalty > 0 ? applyLoyalty.toString() : ""
+        }));
+      } else if (category === "overpaid") {
+        const applyOverpaid = Math.min(fallbackOverpaid, grandTotal);
+        setPartPaymentAmounts((p) => ({
+          ...p,
+          Advance: applyOverpaid > 0 ? applyOverpaid.toString() : ""
+        }));
+      } else if (category === "return") {
+        const applyReturn = Math.min(returnAmt, grandTotal);
+        setPartPaymentAmounts((p) => ({
+          ...p,
+          Advance: applyReturn > 0 ? applyReturn.toString() : ""
+        }));
+      } else if (category === "all") {
+        const totalAdvance = wallet + loyalty;
+        const applyAmount = Math.min(totalAdvance, grandTotal);
+        const advanceUse = Math.min(wallet, applyAmount);
+        const loyaltyUse = applyAmount - advanceUse;
+        setPartPaymentAmounts((p) => ({
+          ...p,
+          Advance: advanceUse > 0 ? advanceUse.toString() : "",
+          "Points Redeem": loyaltyUse > 0 ? loyaltyUse.toString() : ""
+        }));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setShowPaymentModal(true);
+    } catch (err) {
+      console.error("Error applying category advance:", err);
+    } finally {
+      setIsPreparingPayment(false);
     }
-
-    setShowPaymentModal(true);
   };
 
-  const handleAcceptAdvance = (accept) => {
+  const handleAcceptAdvance = async (accept) => {
     if (accept) {
-      handleApplyCategoryAdvance("all");
+      await handleApplyCategoryAdvance("all");
     } else {
       setShowAdvancePromptModal(false);
-      setShowPaymentModal(true);
+      setPaymentLoaderMessage("Preparing Payment Details... Please wait.");
+      setIsPreparingPayment(true);
+      try {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        setShowPaymentModal(true);
+      } finally {
+        setIsPreparingPayment(false);
+      }
     }
   };
 
   // Handle checkout
-  const handleCheckoutSubmit = async (overrideCustomerDue = false) => {
+  const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false) => {
     if (cart.length === 0) {
       onAddNotification(
         "POS Checkout Failed",
@@ -1842,8 +1877,13 @@ export const BillingPOSView = ({
       }
     }
 
-    // Trigger state callbacks — onAddInvoice now returns the saved invoice object (or null on error)
+    // Trigger state callbacks — onAddInvoice returns the saved invoice object from MongoDB (or null on error)
     const savedInvoice = await onAddInvoice(newInvoice);
+
+    if (!savedInvoice) {
+      setIsPreparingPayment(false);
+      return;
+    }
 
     // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
     const mergedInvoice = {
@@ -1870,7 +1910,9 @@ export const BillingPOSView = ({
     setSplitCard(0);
     setSplitUPI(0);
     setSalespersonId("");
-    setShowBillPreviewInvoice(mergedInvoice);
+    if (!skipBillPreview) {
+      setShowBillPreviewInvoice(mergedInvoice);
+    }
 
     onAddNotification(
       "Invoice Compiled Successfully",
@@ -2224,18 +2266,18 @@ export const BillingPOSView = ({
   };
 
   const handlePrintConfirm = async () => {
-    const saved = await handleCheckoutSubmit();
+    const saved = await handleCheckoutSubmit(false, true);
     if (saved) {
       handleDirectPrint(saved);
-      setShowBillPreviewInvoice(null);
+      setShowBillPreviewInvoice(saved);
     }
   };
 
   const handleDownloadConfirm = async () => {
-    const saved = await handleCheckoutSubmit();
+    const saved = await handleCheckoutSubmit(false, true);
     if (saved) {
       handleDownloadOnly(saved);
-      setShowBillPreviewInvoice(null);
+      setShowBillPreviewInvoice(saved);
     }
   };
 
@@ -2575,27 +2617,31 @@ export const BillingPOSView = ({
   };
 
   const handleOpenItemSearchModal = () => {
-    const formatted = products.map(p => ({
+    const formatted = (products || []).map(p => ({
       _id: p._id || p.id,
       id: p._id || p.id,
-      barcode: p.barcode,
-      name: p.name,
-      subItem: p.subItem || p.category || '',
-      designNo: p.sku || '',
-      itemCode: p.productCode || '',
-      ipn: p.ipn || p.rackLocation || '',
-      uniqueCode: p.uniqueCode || '',
-      hsn: p.hsn || '',
-      company: p.company || p.brand || '',
+      barcode: p.barcode || (p.pieces && p.pieces[0]?.barcode) || '',
+      name: p.itemName || p.name || 'Unnamed Item',
+      itemName: p.itemName || p.name || 'Unnamed Item',
+      subItem: p.subItem || (typeof p.category === 'string' ? p.category : p.categoryId?.name) || '',
+      designNo: p.designNo || p.sku || '',
+      itemCode: p.itemCode || p.productCode || '',
+      ipn: p.ipn || p.pieces?.[0]?.ipn || p.rackLocation || '',
+      uniqueCode: p.uniqueCode || p.pieces?.[0]?.uniqueCode || '',
+      hsn: p.hsn || p.hsnId?.code || '',
+      company: p.company || p.firmName || (typeof p.brand === 'string' ? p.brand : p.brandId?.name) || '',
       remarks: p.remarks || '',
-      color: p.color || '',
+      color: p.primaryColor || p.color || '',
+      primaryColor: p.primaryColor || p.color || '',
+      secondaryColor: p.secondaryColor || '',
       size: p.size || '',
-      mrp: p.mrp || p.sellingPrice || 0,
-      sellingRate: p.sellingPrice || p.price || 0,
-      availableStock: p.stock || 0,
+      mrp: p.defaultMRP ?? p.mrp ?? p.sellingPrice ?? 0,
+      sellingPrice: p.sellingPrice ?? p.defaultMRP ?? p.mrp ?? 0,
+      sellingRate: p.sellingPrice ?? p.defaultMRP ?? p.mrp ?? 0,
+      availableStock: p.stock ?? 0,
       soldQuantity: p.soldQuantity || 0,
-      basePrice: p.basePrice || 0,
-      purchasePrice: p.purchasePrice || 0
+      basePrice: p.purchasePrice ?? p.purchaseRate ?? 0,
+      purchasePrice: p.purchasePrice ?? p.purchaseRate ?? 0
     }));
     setItemSearchResults(formatted);
     setSelectedSearchItem(formatted[0] || null);
@@ -2906,15 +2952,26 @@ export const BillingPOSView = ({
                         ? (isCharge ? disc : disc + billAdjShare)
                         : disc;
 
+                      const barcodeDisplay = item.barcode || item.barcodeNo || item.productId?.barcode || item.pieces?.[0]?.barcode || '';
+                      const nameDisplay = item.itemName || item.name || item.productId?.itemName || item.productId?.name || '';
+                      const subItemDisplay = item.subItem || item.productId?.subItem || (typeof item.category === 'string' ? item.category : item.category?.name) || '';
+                      const designNoDisplay = item.designNo || item.productId?.designNo || item.sku || '';
+                      const itemCodeDisplay = item.itemCode || item.productId?.itemCode || '';
+                      const ipnDisplay = item.ipn || item.productId?.ipn || item.piece?.ipn || '';
+                      const colorDisplay = item.primaryColor || item.color || item.productId?.primaryColor || '';
+                      const secondaryColorDisplay = item.secondaryColor || item.productId?.secondaryColor || '';
+                      const sizeDisplay = item.size || item.productId?.size || '';
+                      const hsnDisplay = item.hsn || item.hsnCode || item.hsnId?.code || '';
+
                       return (
                         <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
                           <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
-                          <td className="border-r border-slate-300 p-1">{item.barcode}</td>
-                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{item.name}</td>
-                          <td className="border-r border-slate-300 p-1">{item.subItem || item.category || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.designNo || item.sku || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.itemCode || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.ipn || ''}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono">{barcodeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{nameDisplay}</td>
+                          <td className="border-r border-slate-300 p-1">{subItemDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono">{designNoDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono">{itemCodeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono">{ipnDisplay}</td>
                           <td className="border-r border-slate-300 p-1 text-center">
                             <div className="flex items-center justify-center gap-1">
                               <button onClick={() => {
@@ -2945,10 +3002,10 @@ export const BillingPOSView = ({
                               }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
                             </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1">{item.color || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.secondaryColor || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.size || ''}</td>
-                          <td className="border-r border-slate-300 p-1">{item.hsn || ''}</td>
+                          <td className="border-r border-slate-300 p-1">{colorDisplay}</td>
+                          <td className="border-r border-slate-300 p-1">{secondaryColorDisplay}</td>
+                          <td className="border-r border-slate-300 p-1">{sizeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1">{hsnDisplay}</td>
                           <td className="border-r border-slate-300 p-1 text-right">
                             <input
                               type="number"
@@ -3393,12 +3450,25 @@ export const BillingPOSView = ({
                     </tr>
                   );
                 })}
-                {filteredHistoryInvoices.length === 0 && (
+                {isLoadingInvoices ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-medium">
-                      No invoices found matching "{historySearch}".
+                    <td colSpan={8} className="p-12 text-center text-slate-500 font-medium">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="w-7 h-7 animate-spin text-indigo-600" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                          Preparing Invoice History... Please wait.
+                        </span>
+                      </div>
                     </td>
                   </tr>
+                ) : (
+                  filteredHistoryInvoices.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-medium">
+                        No invoices found matching "{historySearch}".
+                      </td>
+                    </tr>
+                  )
                 )}
               </tbody>
             </table>
@@ -6350,9 +6420,9 @@ export const BillingPOSView = ({
               {showBillPreviewInvoice.isDraftPreview && (
                 <button
                   onClick={async () => {
-                    const saved = await handleCheckoutSubmit();
+                    const saved = await handleCheckoutSubmit(false, true);
                     if (saved) {
-                      setShowBillPreviewInvoice(null);
+                      setShowBillPreviewInvoice(saved);
                     }
                   }}
                   className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mb-1"
@@ -7288,6 +7358,48 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* PROFESSIONAL PAYMENT QUICK TAB LOADER OVERLAY */}
+      {isPreparingPayment && (
+        <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-white rounded-3xl p-8 shadow-2xl border border-slate-100 flex flex-col items-center text-center max-w-md w-full animate-scale-up relative overflow-hidden">
+            {/* Top decorative gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500"></div>
+
+            {/* Glowing Spinner Icon */}
+            <div className="relative w-20 h-20 mb-6 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-4 border-indigo-100 animate-ping opacity-25"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
+              <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 shadow-inner">
+                <CreditCard className="w-6 h-6 animate-pulse" />
+              </div>
+            </div>
+            
+            <h3 className="text-base font-black text-slate-800 mb-1 tracking-wider uppercase">
+              Payment Quick Tab Initialization
+            </h3>
+            
+            <p className="text-sm font-bold text-indigo-600 mb-4 animate-pulse">
+              {paymentLoaderMessage}
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full text-left space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span className="flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" /> Recalculating Bill Breakdown</span>
+                <span className="text-emerald-600 font-bold">Active</span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span className="flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 text-purple-500" /> Verifying Advance & Loyalty</span>
+                <span className="text-purple-600 font-bold">Updated</span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-emerald-500" /> Syncing Payable Summary</span>
+                <span className="text-slate-800 font-mono font-bold">₹{(grandTotal || 0).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enhanced Payment Selection & Cash Denomination Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
@@ -7515,44 +7627,90 @@ export const BillingPOSView = ({
               </div>
 
               {/* Right Column: Billing Break-up */}
-              <div className="w-72 bg-white flex flex-col text-sm border-l border-slate-200 shrink-0">
-                <div className="bg-slate-100 font-bold p-3 border-b border-slate-200 text-slate-700 text-center uppercase tracking-wider text-xs">Payment Break-up</div>
+              <div className="w-80 bg-white flex flex-col text-sm border-l border-slate-200 shrink-0">
+                <div className="bg-slate-100 font-bold p-3 border-b border-slate-200 text-slate-700 flex justify-between items-center uppercase tracking-wider text-xs">
+                  <span>Payment Break-up</span>
+                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">Live Summary</span>
+                </div>
 
-                <div className="p-4 space-y-3 font-mono flex-1 overflow-y-auto">
-                  {(() => {
-                    const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                    return [
-                      { label: "Net Amount", val: grandTotal, isTotal: true },
-                      { label: "Cash", val: paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : 0) : cashTotal },
-                      { label: "Card", val: paymentType === 'Full Payment' ? (paymentMethod === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
-                      { label: "UPI", val: paymentType === 'Full Payment' ? (paymentMethod === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
-                      { label: "Advance", val: paymentType === 'Full Payment' ? (paymentMethod === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
-                      { label: "Due", val: paymentType === 'Full Payment' ? (paymentMethod === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
-                    ].map((row, idx) => (
-                      <div key={idx} className={`flex justify-between items-center ${row.isTotal ? 'border-b-2 border-slate-800 pb-2 mb-2 font-black text-lg text-slate-800' : 'text-slate-600'}`}>
-                        <span>{row.label}</span>
-                        <span className={row.val > 0 && !row.isTotal ? 'text-emerald-600 font-bold' : ''}>₹{row.val.toLocaleString()}</span>
+                <div className="p-3.5 space-y-2.5 font-mono flex-1 overflow-y-auto text-xs">
+                  {/* Summary Breakdown Header */}
+                  <div className="space-y-1.5 pb-2.5 border-b border-slate-200">
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span>Original Bill Total</span>
+                      <span className="font-bold text-slate-800">₹{(subTotal || 0).toLocaleString()}</span>
+                    </div>
+                    {discountTotal > 0 && (
+                      <div className="flex justify-between items-center text-emerald-600">
+                        <span>Total Discounts</span>
+                        <span className="font-bold">-₹{discountTotal.toLocaleString()}</span>
                       </div>
-                    ));
-                  })()}
+                    )}
+                    {billAdjustment && billAdjustment.amount > 0 && (
+                      <div className="flex justify-between items-center text-indigo-600">
+                        <span>Bill Adjustment ({billAdjustment.operation})</span>
+                        <span className="font-bold">
+                          {billAdjustment.operation === 'Discount' ? '-' : '+'}₹{billAdjustment.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center text-slate-900 pt-1.5 border-t border-slate-200 font-black text-sm">
+                      <span>Net Payable Amount</span>
+                      <span className="text-indigo-700">₹{grandTotal.toLocaleString()}</span>
+                    </div>
+                  </div>
 
-                  <div className="pt-4 mt-4 border-t border-slate-200">
+                  {/* Payment Modes Allocation */}
+                  <div className="space-y-1.5 py-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Allocated Payment Modes</div>
+                    {(() => {
+                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      const rows = [
+                        { label: "Cash", val: paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : 0) : cashTotal },
+                        { label: "Card", val: paymentType === 'Full Payment' ? (paymentMethod === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
+                        { label: "UPI", val: paymentType === 'Full Payment' ? (paymentMethod === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
+                        { label: "Advance Used", val: paymentType === 'Full Payment' ? (paymentMethod === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
+                        { label: "Points Redeem", val: paymentType === 'Full Payment' ? (paymentMethod === 'Points Redeem' ? grandTotal : 0) : (Number(partPaymentAmounts['Points Redeem']) || 0) },
+                        { label: "Due Balance", val: paymentType === 'Full Payment' ? (paymentMethod === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
+                        { label: "Gift Voucher / Other", val: (Number(partPaymentAmounts['Gift Voucher']) || 0) + (Number(partPaymentAmounts['Credit Note']) || 0) + (Number(partPaymentAmounts['Other']) || 0) },
+                      ];
+                      return rows.map((row, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-slate-600 text-[11px]">
+                          <span>{row.label}</span>
+                          <span className={row.val > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}>₹{row.val.toLocaleString()}</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+
+                  {/* Summary Totals Footer */}
+                  <div className="pt-2 border-t border-slate-200 space-y-1.5">
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
+                      const remainingDue = Math.max(0, grandTotal - totalPaidDisplay);
+                      const changeReturn = Math.max(0, totalPaidDisplay - grandTotal);
                       return (
                         <>
-                          <div className="flex justify-between items-center text-slate-800 mb-2">
-                            <span className="font-bold">Total Paid</span>
-                            <span className="font-black text-emerald-600 text-lg">
+                          <div className="flex justify-between items-center text-slate-800 pt-1">
+                            <span className="font-bold text-xs">Total Amount Paid</span>
+                            <span className="font-black text-emerald-600 text-base">
                               ₹{totalPaidDisplay.toLocaleString()}
                             </span>
                           </div>
-                          <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200">
-                            <span className="font-bold">Balance (Return)</span>
-                            <span className="font-black text-rose-600 text-lg">
-                              ₹{Math.max(0, totalPaidDisplay - grandTotal).toLocaleString()}
+                          {remainingDue > 0 && (
+                            <div className="flex justify-between items-center text-amber-900 bg-amber-50 p-2 rounded border border-amber-200 text-xs">
+                              <span className="font-bold">Remaining Due</span>
+                              <span className="font-black text-amber-700 text-sm">
+                                ₹{remainingDue.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200 text-xs">
+                            <span className="font-bold">Balance (Change Return)</span>
+                            <span className="font-black text-rose-600 text-sm">
+                              ₹{changeReturn.toLocaleString()}
                             </span>
                           </div>
                         </>

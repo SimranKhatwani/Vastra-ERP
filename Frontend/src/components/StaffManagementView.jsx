@@ -28,11 +28,11 @@ export function StaffManagementView() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data.success) {
-        setStaff(data.data.length > 0 ? data.data : generateDemoEmployees());
+        setStaff(data.data || []);
       }
     } catch (error) {
-      console.warn("Failed to fetch staff, using demo data:", error.message);
-      setStaff(generateDemoEmployees());
+      console.warn("Failed to fetch staff from API:", error.message);
+      setStaff([]);
     }
   };
 

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 export const InventoryView = ({
-  products,
+  products = [],
   onAdjustStock,
   onAddNotification,
 }) => {
@@ -1041,14 +1041,20 @@ export const InventoryView = ({
     setAdjustAmount(10);
   };
 
-  const lowStockAlerts = products.filter((p) => p.stock <= p.minStockAlert);
+  const lowStockAlerts = (products || []).filter((p) => p && (Number(p.stock || 0) <= Number(p.minStockAlert || 0)));
 
   // Search & Filter
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+  const filteredProducts = (products || []).filter((p) => {
+    if (!p) return false;
+    const query = String(searchQuery || "").toLowerCase();
+    const nameStr = String(p.name || p.productName || "").toLowerCase();
+    const skuStr = String(p.sku || p.productCode || p.itemCode || "").toLowerCase();
+    const categoryStr = String(p.category || "").toLowerCase();
+    return (
+      nameStr.includes(query) ||
+      skuStr.includes(query) ||
+      categoryStr.includes(query)
+    );
   });
 
   const paginatedProducts = filteredProducts.slice(

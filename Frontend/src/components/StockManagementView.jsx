@@ -617,8 +617,14 @@ export const StockManagementView = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {openingList
-                      .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
+                    {(openingList || [])
+                      .filter(p => {
+                        if (!p) return false;
+                        const q = String(searchQuery || "").toLowerCase();
+                        const nameStr = String(p.name || p.productName || "").toLowerCase();
+                        const skuStr = String(p.sku || p.productCode || "").toLowerCase();
+                        return nameStr.includes(q) || skuStr.includes(q);
+                      })
                       .map((p) => (
                         <tr key={p._id} className="border-b border-slate-50 hover:bg-slate-50/50">
                           <td className="p-3.5 font-bold text-slate-800">{p.name}</td>

@@ -361,7 +361,7 @@ export const DashboardView = ({
       return {
         name: tp.name,
         units: tp.units,
-        sales: `₹${tp.revenue.toLocaleString("en-IN")}`,
+        sales: `₹${Number(tp.revenue || 0).toLocaleString("en-IN")}`,
         stock: prod ? (prod.stock || 0) : "-",
       };
     });
@@ -370,8 +370,8 @@ export const DashboardView = ({
   const stores = [
     {
       name: currentUser?.businessName || "Your Store",
-      sales: `₹${monthlyRevenue.toLocaleString("en-IN")}`,
-      target: `₹${(monthlyRevenue * 1.1).toLocaleString("en-IN")}`,
+      sales: `₹${Number(monthlyRevenue || 0).toLocaleString("en-IN")}`,
+      target: `₹${Number((monthlyRevenue || 0) * 1.1).toLocaleString("en-IN")}`,
       ratio: "90%",
       billsText: todayBillsCount > 0 ? `${todayBillsCount} bills today` : "No bills yet",
       trend: monthlyRevenue > 0 ? "up" : "down",
@@ -381,7 +381,7 @@ export const DashboardView = ({
   const userObj = currentUser?.user || currentUser || {};
   const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
   const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
-  const isStaffView = !["admin", "businessadmin", "superadmin"].includes(curRole) && !curName.includes("dhruv");
+  const isStaffView = !["admin", "businessadmin", "superadmin", "tenant_admin", "tenantadmin", "tenant_owner", "tenantowner", "owner"].includes(curRole) && !curRole.includes("admin") && !curRole.includes("owner") && !curName.includes("dhruv");
 
   if (isStaffView) {
     const curId = userObj.id || userObj._id || userObj.employeeId || currentUser?.id || currentUser?._id || currentUser?.employeeId;
@@ -519,7 +519,7 @@ export const DashboardView = ({
                     Today's Sale
                   </span>
                   <div className="text-2xl font-black text-slate-800 font-sans">
-                    ₹{myTodaySales.toLocaleString("en-IN")}
+                    ₹{Number(myTodaySales || 0).toLocaleString("en-IN")}
                   </div>
                   <p className="text-[10px] text-slate-500 font-medium">
                     Sales generated today
@@ -537,7 +537,7 @@ export const DashboardView = ({
                     Total Sales
                   </span>
                   <div className="text-2xl font-black text-slate-800 font-sans">
-                    ₹{myTotalSales.toLocaleString("en-IN")}
+                    ₹{Number(myTotalSales || 0).toLocaleString("en-IN")}
                   </div>
                   <p className="text-[10px] text-slate-500 font-medium">
                     {totalBillsCount} total bills processed
@@ -593,7 +593,7 @@ export const DashboardView = ({
                     My Total Billed Sales
                   </span>
                   <div className="text-2xl font-black text-slate-800 font-sans">
-                    ₹{myTotalSales.toLocaleString("en-IN")}
+                    ₹{Number(myTotalSales || 0).toLocaleString("en-IN")}
                   </div>
                   <p className="text-[10px] text-slate-500 font-medium">
                     {totalBillsCount} total bill{totalBillsCount === 1 ? '' : 's'}
@@ -610,7 +610,7 @@ export const DashboardView = ({
                     My Earned Commission
                   </span>
                   <div className="text-2xl font-black text-emerald-600 font-sans">
-                    ₹{myCommission.toLocaleString("en-IN")}
+                    ₹{Number(myCommission || 0).toLocaleString("en-IN")}
                   </div>
                   <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded inline-block">
                     {commRate}% Commission Rate
@@ -727,7 +727,7 @@ export const DashboardView = ({
                           </span>
                         </td>
                         <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                          ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
+                          ₹{Number(inv?.grandTotal || 0).toLocaleString("en-IN")}
                         </td>
                         <td className="px-5 py-4 text-right">
                           {hideCommissionUI ? (
@@ -736,7 +736,7 @@ export const DashboardView = ({
                             </span>
                           ) : (
                             <span className="font-black text-emerald-600 font-mono">
-                              +₹{itemComm.toLocaleString("en-IN")}
+                              +₹{Number(itemComm || 0).toLocaleString("en-IN")}
                             </span>
                           )}
                         </td>
@@ -896,7 +896,7 @@ export const DashboardView = ({
             </span>
             <div className="text-2xl font-bold text-slate-800 font-sans">
               ₹
-              {todaySales.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              {Number(todaySales || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </div>
             <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
@@ -916,7 +916,7 @@ export const DashboardView = ({
             </span>
             <div className="text-2xl font-bold text-slate-800 font-sans">
               ₹
-              {todayProfit.toLocaleString("en-IN", {
+              {Number(todayProfit || 0).toLocaleString("en-IN", {
                 maximumFractionDigits: 0,
               })}
             </div>
@@ -957,7 +957,7 @@ export const DashboardView = ({
             </span>
             <div className="text-2xl font-bold text-slate-800 font-sans">
               ₹
-              {totalCostValue.toLocaleString("en-IN", {
+              {Number(totalCostValue || 0).toLocaleString("en-IN", {
                 maximumFractionDigits: 0,
               })}
             </div>
@@ -965,7 +965,7 @@ export const DashboardView = ({
               <Layers className="w-3.5 h-3.5 text-slate-400" />
               <span>
                 Retail MRP: ₹
-                {totalRetailValue.toLocaleString("en-IN", {
+                {Number(totalRetailValue || 0).toLocaleString("en-IN", {
                   maximumFractionDigits: 0,
                 })}
               </span>
@@ -1298,7 +1298,7 @@ export const DashboardView = ({
               <div className="text-sm font-semibold">{monthNames[currentMonth]} Sales Revenue</div>
               <div className="text-xs text-slate-500">
                 ₹
-                {monthlyRevenue.toLocaleString("en-IN", {
+                {Number(monthlyRevenue || 0).toLocaleString("en-IN", {
                   maximumFractionDigits: 0,
                 })}
               </div>
@@ -1315,8 +1315,8 @@ export const DashboardView = ({
             <div>
               <div className="text-sm font-semibold">Outstanding Cashflow</div>
               <div className="text-xs text-slate-500">
-                Recv: ₹{pendingCustomerCredit.toLocaleString("en-IN")} | Pay: ₹
-                {pendingSupplierCredit.toLocaleString("en-IN")}
+                Recv: ₹{Number(pendingCustomerCredit || 0).toLocaleString("en-IN")} | Pay: ₹
+                {Number(pendingSupplierCredit || 0).toLocaleString("en-IN")}
               </div>
             </div>
           </div>
@@ -1532,7 +1532,7 @@ export const DashboardView = ({
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right font-bold text-slate-800">
-                    ₹{(inv.grandTotal || 0).toLocaleString("en-IN")}
+                    ₹{Number(inv?.grandTotal || 0).toLocaleString("en-IN")}
                   </td>
                 </tr>
               ))}
@@ -1629,7 +1629,7 @@ export const DashboardView = ({
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs font-bold text-slate-800">
-                      ₹{c.totalSpent.toLocaleString("en-IN")}
+                      ₹{Number(c?.totalSpent || 0).toLocaleString("en-IN")}
                     </p>
                     <p className="text-[10px] text-slate-400 font-mono">
                       {c.loyaltyPoints} LP

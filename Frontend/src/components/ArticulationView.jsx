@@ -306,7 +306,7 @@ export const ArticulationView = ({
     setSearchingAltInvoices(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await api.get(`/invoices?search=${altInvoiceSearch}`);
+      const res = await api.get(`/billing?search=${altInvoiceSearch}`);
       const data = res.data;
       if (data.success && data.data) {
         setAltInvoices(data.data);

@@ -1,0 +1,37 @@
+const mongoose = require('mongoose');
+const baseSchemaPlugin = require('../plugins/baseSchema');
+const { ALTERATION_STATUS } = require('../../constants/status');
+
+const alterationSchema = new mongoose.Schema({
+  alterationNo: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  saleBillId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SaleBill'
+  },
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Customer',
+    required: true
+  },
+  expectedDeliveryDate: Date,
+  status: {
+    type: String,
+    enum: Object.values(ALTERATION_STATUS),
+    default: ALTERATION_STATUS.RECEIVED
+  },
+  tailorName: String,
+  totalCharges: {
+    type: Number,
+    default: 0
+  },
+  remarks: String
+});
+
+alterationSchema.index({ tenantId: 1, alterationNo: 1 }, { unique: true });
+alterationSchema.plugin(baseSchemaPlugin);
+
+module.exports = mongoose.model('Alteration', alterationSchema);

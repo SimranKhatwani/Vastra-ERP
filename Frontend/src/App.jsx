@@ -63,6 +63,7 @@ import AttendancePolicySettings from "./components/AttendancePolicySettings";
 import ManagerReviewPanel from "./components/ManagerReviewPanel";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
@@ -70,32 +71,55 @@ import { useSocket } from "./contexts/SocketContext";
 import { useSession } from "./contexts/SessionProvider";
 import { setupFetchInterceptor } from "./utils/apiInterceptor";
 
-// Import mock data generators
-import {
-  generateDemoProducts,
-  generateDemoCustomers,
-  generateDemoSuppliers,
-  generateDemoEmployees,
-  generateDemoPurchaseOrders,
-  generateDemoInvoices,
-  generateExpenses,
-  generateSaaSTenants,
-  generateSupportTickets,
-  generateNotifications,
-  generateAuditLogs,
-} from "./data/demoData";
 
-const demoProductsData = generateDemoProducts();
-const demoCustomersData = generateDemoCustomers();
-const demoSuppliersData = generateDemoSuppliers();
-const demoEmployeesData = generateDemoEmployees();
-const demoInvoicesData = generateDemoInvoices(demoCustomersData, demoProductsData, demoEmployeesData);
-const demoPurchaseOrdersData = generateDemoPurchaseOrders(demoSuppliersData, demoProductsData);
-const demoExpensesData = generateExpenses();
-const demoTenantsData = generateSaaSTenants();
-const demoSupportTicketsData = generateSupportTickets();
-const demoNotificationsData = generateNotifications();
-const demoAuditLogsData = generateAuditLogs();
+
+const extractBillsArray = (resData) => {
+  if (!resData) return [];
+  if (Array.isArray(resData.data)) return resData.data;
+  if (resData.data && Array.isArray(resData.data.bills)) return resData.data.bills;
+  if (Array.isArray(resData.bills)) return resData.bills;
+  if (Array.isArray(resData)) return resData;
+  return [];
+};
+
+const normalizeInvoice = (b) => {
+  if (!b) return null;
+  const billId = b._id || b.id;
+  const rawItems = (Array.isArray(b.items) && b.items.length > 0)
+    ? b.items
+    : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
+  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in Customer";
+  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "9999999999";
+
+  return {
+    ...b,
+    id: billId,
+    _id: billId,
+    invoiceNo: b.billNo || b.invoiceNo || `BILL-${billId}`,
+    billNo: b.billNo || b.invoiceNo || `BILL-${billId}`,
+    date: b.billDate || b.date || b.createdAt,
+    customerName: custName,
+    customerPhone: custPhone,
+    customerId: b.customerId?._id || b.customerId?.id || b.customerId,
+    items: rawItems.map(i => ({
+      ...i,
+      id: i._id || i.id,
+      name: i.name || i.productName || i.itemName || i.barcode || "Garment Item",
+      price: i.sellingPrice || i.price || i.mrp || 0,
+      quantity: i.quantity || i.qty || 1,
+      sellingPrice: i.sellingPrice || i.price || 0,
+      discountAmount: i.discountAmount || 0,
+      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0))
+    })),
+    subTotal: b.subTotal || b.grandTotal || 0,
+    discount: b.discountAmount || b.discount || 0,
+    grandTotal: b.grandTotal || b.totalAmount || 0,
+    amountPaid: b.paidAmount ?? b.amountPaid ?? b.grandTotal,
+    dueAmount: b.dueAmount || 0,
+    paymentMethod: b.paymentMethod || (b.dueAmount > 0 ? "Credit" : "Cash"),
+    status: b.status || "Completed"
+  };
+};
 
 export default function App() {
   const { socket, connected } = useSocket();
@@ -113,10 +137,12 @@ export default function App() {
   const [invoices, setInvoices] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [tenants, setTenants] = useState([]); 
+  const [tenants, setTenants] = useState([]);
   const [supportTickets, setSupportTickets] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [isLoadingInvoices, setIsLoadingInvoices] = useState(true);
 
   // Purchase Management States
   const [vendors, setVendors] = useState([]);
@@ -137,30 +163,13 @@ export default function App() {
     } catch (e) {
       console.error("Failed to parse stored user", e);
     }
-    const emps = generateDemoEmployees();
-    return (
-      emps[0] || {
-        id: "e-1",
-        name: "Vijay Shekhar",
-        email: "vijay.shekhar@garmentflow.com",
-        phone: "7000000000",
-        role: "Admin",
-        status: "Active",
-        attendanceRate: 98,
-        salary: 85000,
-        commissionEarned: 0,
-        commissionRate: 0,
-        monthlySales: 0,
-        salesTarget: 0,
-        leavesRemaining: 10,
-      }
-    );
+    return null;
   });
-  
+
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     return !!localStorage.getItem("token");
   });
-  
+
   React.useEffect(() => {
     if (!socket) return;
 
@@ -190,8 +199,8 @@ export default function App() {
 
       if (payload?.event === 'inventory.updated' && payload.product) {
         setProducts((prev) => prev.map((p) => {
-          const isMatch = (p.id && (p.id === payload.product._id || p.id === payload.product.id)) || 
-                          (p._id && (p._id === payload.product._id || p._id === payload.product.id));
+          const isMatch = (p.id && (p.id === payload.product._id || p.id === payload.product.id)) ||
+            (p._id && (p._id === payload.product._id || p._id === payload.product.id));
           if (isMatch) {
             return { ...p, ...payload.product, id: payload.product._id || payload.product.id, _id: payload.product._id || payload.product.id };
           }
@@ -211,7 +220,7 @@ export default function App() {
       }
     };
 
-    const events = ['notification.created','notification.updated','inventory.updated','inventory.low','invoice.created','invoice.updated','purchase.created','purchase.approved','employee.created','employee.updated','commission.updated','supplier.updated','payroll.updated','whatsapp.sent','whatsapp.failed','tenant.activity','dashboard.stats.updated','permissions.updated'];
+    const events = ['notification.created', 'notification.updated', 'inventory.updated', 'inventory.low', 'invoice.created', 'invoice.updated', 'purchase.created', 'purchase.approved', 'employee.created', 'employee.updated', 'commission.updated', 'supplier.updated', 'payroll.updated', 'whatsapp.sent', 'whatsapp.failed', 'tenant.activity', 'dashboard.stats.updated', 'permissions.updated'];
     events.forEach((eventName) => socket.on(eventName, handleRealtimeEvent));
 
     return () => {
@@ -222,66 +231,74 @@ export default function App() {
   React.useEffect(() => {
     const fetchProducts = async () => {
       if (isLoggedIn && currentUser?.role !== "SuperAdmin") {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setIsLoadingProducts(false);
+          setIsLoadingInvoices(false);
+          return;
+        }
+
+        setIsLoadingProducts(true);
+        setIsLoadingInvoices(true);
+
+        // Fetch products independently
         try {
-          const token = localStorage.getItem("token");
-          if (!token) return;
-          const [resProducts, resCustomers, resInvoices, resSuppliers, resPurchaseOrders, resEmployees, resExpenses, resTickets, resNotifications] = await Promise.all([
-            api.get(`/products`),
-            api.get(`/customers`),
-            api.get(`/invoices`),
-            api.get(`/suppliers`),
-            api.get(`/purchase-orders`),
-            api.get(`/employees`),
-            api.get(`/expenses`),
-            api.get(`/tickets`),
-            api.get(`/notifications`)
-          ]);
-          
-          if (resProducts.status === 401 || resCustomers.status === 401 || resInvoices.status === 401) {
-            // API interceptor will handle this via logoutUser() callback now
-            return;
-          }
-
+          const resProducts = await api.get(`/products`);
           const dataProducts = resProducts.data;
-          const dataCustomers = resCustomers.data;
-          const dataInvoices = resInvoices.data;
-          const dataSuppliers = resSuppliers.data;
-          const dataPurchaseOrders = resPurchaseOrders.data;
-          const dataEmployees = resEmployees.data;
-          const dataExpenses = resExpenses.data;
-          const dataTickets = resTickets.data;
-          const dataNotifications = resNotifications.data;
-
-          if (dataProducts.success) {
-            const arr = dataProducts.data.map(p => ({...p, id: p._id}));
+          if (dataProducts && dataProducts.success) {
+            const rawList = Array.isArray(dataProducts.data) ? dataProducts.data : (dataProducts.data?.products || []);
+            const arr = rawList.map(p => ({ ...p, id: p._id }));
+            console.log('[App Trace] Loaded products count:', arr.length);
             setProducts(arr);
           }
-          if (dataCustomers.success) {
-            const arr = dataCustomers.data.map(c => ({...c, id: c._id}));
-            setCustomers(arr);
+        } catch (err) {
+          console.error("Failed to fetch products:", err);
+        } finally {
+          setIsLoadingProducts(false);
+        }
+
+        // Fetch remaining resources independently
+        try {
+          const resCustomers = await api.get(`/customers`);
+          if (resCustomers.data?.success) setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
+        } catch (e) {}
+
+        try {
+          const resInvoices = await api.get(`/billing`);
+          const fetchedInvoices = extractBillsArray(resInvoices.data);
+          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
+        } catch (e) {
+          console.error("Failed to fetch invoices:", e);
+        } finally {
+          setIsLoadingInvoices(false);
+        }
+
+        try {
+          const resSuppliers = await api.get(`/suppliers`);
+          if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
+        } catch (e) {}
+
+        try {
+          const resPurchaseOrders = await api.get(`/purchase-orders`);
+          const dataOrBills = Array.isArray(resPurchaseOrders.data?.data)
+            ? resPurchaseOrders.data.data
+            : (Array.isArray(resPurchaseOrders.data?.data?.bills) ? resPurchaseOrders.data.data.bills : []);
+          if (dataOrBills.length > 0) {
+            setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
           }
-          if (dataInvoices.success) {
-            const arr = dataInvoices.data.map(i => ({...i, id: i._id}));
-            setInvoices(arr);
-          }
-          if (dataSuppliers.success) {
-            const arr = dataSuppliers.data.map(s => ({...s, id: s._id}));
-            setSuppliers(arr);
-          }
-          if (dataPurchaseOrders.success) {
-            const arr = dataPurchaseOrders.data.map(p => ({...p, id: p._id}));
-            setPurchaseOrders(arr);
-          }
-          if (dataEmployees.success) {
-            const arr = dataEmployees.data.map(e => ({...e, id: e._id || e.id}));
+        } catch (e) {}
+
+        try {
+          const resEmployees = await api.get(`/employees`);
+          if (resEmployees.data?.success) {
+            const arr = resEmployees.data.data.map(e => ({ ...e, id: e._id || e.id }));
             setEmployees(arr);
 
-            // Synchronize currentUser with real DB record on refresh
             const storedUserStr = localStorage.getItem("user");
             if (storedUserStr) {
               try {
                 const storedUser = JSON.parse(storedUserStr);
-                const matchUser = arr.find(e => 
+                const matchUser = arr.find(e =>
                   (e._id && String(e._id) === String(storedUser._id || storedUser.id)) ||
                   (e.id && String(e.id) === String(storedUser.id || storedUser._id)) ||
                   (storedUser.email && e.email && e.email.toLowerCase() === storedUser.email.toLowerCase()) ||
@@ -291,55 +308,39 @@ export default function App() {
                   setCurrentUser(matchUser);
                   localStorage.setItem("user", JSON.stringify(matchUser));
                 }
-              } catch (err) {
-                console.error("Error syncing stored user with DB employee", err);
-              }
+              } catch (err) {}
             }
           }
-          if (dataExpenses.success) {
-            const arr = dataExpenses.data.map(e => ({...e, id: e._id}));
-            setExpenses(arr);
-          }
-          if (dataTickets.success) {
-            const arr = dataTickets.data.map(t => ({...t, id: t._id}));
-            setSupportTickets(arr);
-          }
-          if (dataNotifications.success) {
-            const arr = dataNotifications.data.map(n => ({...n, id: n._id}));
-            setNotifications(arr);
-          }
+        } catch (e) {}
 
-          // Fetch purchase management data (non-blocking, best-effort)
-          try {
-            const [resVendors, resGRNs, resInvoicesP, resReturns, resPending, resOutstanding] = await Promise.all([
-              api.get(`/purchase/vendors`),
-              api.get(`/purchase/grn`),
-              api.get(`/purchase/invoice`),
-              api.get(`/purchase/return`),
-              api.get(`/purchase/pending-tracking`),
-              api.get(`/purchase/outstanding`),
-            ]);
-            const [dV, dG, dI, dR, dP, dO] = await Promise.all([
-              resVendors.data, resGRNs.data, resInvoicesP.data,
-              resReturns.data, resPending.data, resOutstanding.data
-            ]);
-            if (dV.success) setVendors(dV.data.map(v => ({...v, id: v._id})));
-            if (dG.success) setGrns(dG.data.map(g => ({...g, id: g._id})));
-            if (dI.success) setPurchaseInvoices(dI.data.map(i => ({...i, id: i._id})));
-            if (dR.success) setPurchaseReturns(dR.data.map(r => ({...r, id: r._id})));
-            if (dP.success) setPendingPurchases(dP.data);
-            if (dO.success) setVendorOutstanding(dO.data.map(o => ({...o, id: o._id})));
-          } catch(purchaseErr) {
-            console.warn("Purchase management data fetch failed:", purchaseErr.message);
-          }
-        } catch (error) {
-          console.error("Failed to fetch data", error);
+        // Fetch purchase management data (non-blocking, best-effort)
+        try {
+          const [resVendors, resGRNs, resInvoicesP, resReturns, resPending, resOutstanding] = await Promise.all([
+            api.get(`/purchase/vendors`),
+            api.get(`/purchase/grn`),
+            api.get(`/purchase/invoice`),
+            api.get(`/purchase/return`),
+            api.get(`/purchase/pending-tracking`),
+            api.get(`/purchase/outstanding`),
+          ]);
+          const [dV, dG, dI, dR, dP, dO] = await Promise.all([
+            resVendors.data, resGRNs.data, resInvoicesP.data,
+            resReturns.data, resPending.data, resOutstanding.data
+          ]);
+          if (dV.success) setVendors(dV.data.map(v => ({ ...v, id: v._id })));
+          if (dG.success) setGrns(dG.data.map(g => ({ ...g, id: g._id })));
+          if (dI.success) setPurchaseInvoices(dI.data.map(i => ({ ...i, id: i._id })));
+          if (dR.success) setPurchaseReturns(dR.data.map(r => ({ ...r, id: r._id })));
+          if (dP.success) setPendingPurchases(dP.data);
+          if (dO.success) setVendorOutstanding(dO.data.map(o => ({ ...o, id: o._id })));
+        } catch (purchaseErr) {
+          console.warn("Purchase management data fetch failed:", purchaseErr.message);
         }
       }
     };
     fetchProducts();
   }, [isLoggedIn, currentUser?.id, currentUser?._id, currentUser?.email]);
-  
+
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
   // Navigation
@@ -413,19 +414,19 @@ export default function App() {
   // Helper to normalize role keys safely (e.g. "Sales Person" -> "salesperson")
   const normalizeRoleKey = (role) => {
     let r = (role || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    if (r.includes('admin') || r.includes('owner') || r === 'businessadmin' || r === 'tenantadmin' || r === 'tenantowner') return 'admin';
     if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
-    if (r === 'businessadmin' || r === 'admin' || r === 'administrator' || r === 'owner') return 'admin';
     if (r === 'worker' || r === 'floorworker' || r === 'productionworker') return 'worker';
     if (r === 'cashier' || r === 'poscashier') return 'cashier';
     if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
     if (r === 'accountant' || r === 'accounts') return 'accountant';
-    return r;
+    return 'admin';
   };
 
   // Role-based sidebar module access helper
   const getAccessibleModules = (role) => {
     const roleKey = normalizeRoleKey(role);
-    
+
     // Base fallback modules per role
     let baseModules = [];
     switch (roleKey) {
@@ -549,7 +550,35 @@ export default function App() {
         ];
         break;
       default:
-        baseModules = ["billing", "financial-management", "accounts-treasury", "vendor-communication"];
+        baseModules = [
+          "dashboard",
+          "billing",
+          "articulation",
+          "inventory_articulation",
+          "commissions",
+          "products",
+          "inventory",
+          "stock-management",
+          "billing-sales",
+          "discount-offers",
+          "purchase",
+          "vendor-communication",
+          "financial-management",
+          "accounts-treasury",
+          "customers",
+          "employees",
+          "staff",
+          "accounting",
+          "reports",
+          "permissions",
+          "staff-activity",
+          "integrations",
+          "dev",
+          "settings",
+          "attendance-dashboard",
+          "manager-review",
+          "attendance-settings",
+        ];
         break;
     }
 
@@ -616,7 +645,7 @@ export default function App() {
   const addToastNotification = React.useCallback((title, msg, type = "info") => {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     setToasts((prev) => [...prev, { id, title, msg, type, visible: true }]);
-    
+
     // Auto-clear transition timeline
     setTimeout(() => {
       setToasts((prev) => prev.map((t) => t.id === id ? { ...t, visible: false } : t));
@@ -651,7 +680,7 @@ export default function App() {
       const res = await api.post(`/products`, prod);
       const data = res.data;
       if (data.success) {
-        setProducts((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        setProducts((prev) => [{ ...data.data, id: data.data._id }, ...prev]);
       } else {
         addToastNotification("Error", data.message, "danger");
       }
@@ -666,7 +695,7 @@ export default function App() {
       const res = await api.put(`/products/${updated.id}`, updated);
       const data = res.data;
       if (data.success) {
-        setProducts((prev) => prev.map((p) => (p.id === updated.id ? {...data.data, id: data.data._id} : p)));
+        setProducts((prev) => prev.map((p) => (p.id === updated.id ? { ...data.data, id: data.data._id } : p)));
       } else {
         addToastNotification("Error", data.message, "danger");
       }
@@ -694,7 +723,7 @@ export default function App() {
       const data = res.data;
       if (data.success) {
         setProducts((prev) =>
-          prev.map((p) => (p.id === productId ? {...data.data, id: data.data._id} : p)),
+          prev.map((p) => (p.id === productId ? { ...data.data, id: data.data._id } : p)),
         );
       } else {
         addToastNotification("Error", data.message, "danger");
@@ -708,7 +737,7 @@ export default function App() {
     // Helper for offline/fallback state update
     const performLocalStateUpdates = (invoiceToSave) => {
       setInvoices(prev => [invoiceToSave, ...prev]);
-      
+
       // Deduct stock locally
       setProducts(prevProducts => {
         const newProducts = [...prevProducts];
@@ -748,51 +777,120 @@ export default function App() {
 
     try {
       const token = localStorage.getItem("token");
-      if (!token) throw new Error("Offline Mode");
+      if (!token) throw new Error("Authentication token missing. Please log in again.");
 
-      const res = await api.post(`/invoices`, inv);
+      // Helper to ensure valid 24-hex ObjectId string
+      const toValidObjectId = (idStr, fallbackHex = "65f000000000000000000001") => {
+        if (typeof idStr === "string" && idStr.length === 24 && /^[0-9a-fA-F]{24}$/.test(idStr)) {
+          return idStr;
+        }
+        return fallbackHex;
+      };
+
+      const defaultCustId = (customers.find(c => c._id || c.id) || {})._id || "65f000000000000000000001";
+      const validCustomerId = toValidObjectId(inv.customerId || inv.customer?._id, toValidObjectId(defaultCustId));
+      const validFirmId = toValidObjectId(inv.firmId, "65f000000000000000000002");
+      const validWarehouseId = toValidObjectId(inv.warehouseId, "65f000000000000000000003");
+      const validSalesmanId = (inv.employeeId && inv.employeeId.length === 24 && /^[0-9a-fA-F]{24}$/.test(inv.employeeId)) ? inv.employeeId : null;
+
+      const barcodesList = (inv.items || []).map((item, idx) => ({
+        barcode: item.barcode || item.itemCode || `BC-${Date.now()}-${idx}`,
+        sellingPrice: Number(item.price || item.sellingPrice || 0),
+        discountAmount: Number(item.discountAmount || 0)
+      }));
+
+      const validPaymentMode = (() => {
+        const pm = String(inv.paymentMethod || "Cash").toUpperCase();
+        if (pm === "CREDIT") return "CREDIT";
+        if (pm === "CARD") return "CARD";
+        if (pm === "UPI") return "UPI";
+        if (pm === "WALLET") return "WALLET";
+        return "CASH";
+      })();
+
+      const paymentTransactionsList = Array.isArray(inv.paymentTransactions) && inv.paymentTransactions.length > 0
+        ? inv.paymentTransactions.map(tx => ({
+            mode: String(tx.mode || validPaymentMode).toUpperCase(),
+            amount: Number(tx.amount || inv.grandTotal || 0),
+            referenceNo: tx.referenceNo || null,
+            notes: tx.notes || null
+          }))
+        : [{
+            mode: validPaymentMode,
+            amount: Number(inv.grandTotal || 0),
+            referenceNo: null,
+            notes: null
+          }];
+
+      const billingPayload = {
+        billNo: inv.invoiceNo || inv.billNo || `BILL-${Date.now()}`,
+        billDate: inv.date || new Date().toISOString(),
+        customerId: validCustomerId,
+        firmId: validFirmId,
+        warehouseId: validWarehouseId,
+        salesmanId: validSalesmanId,
+        barcodes: barcodesList.length > 0 ? barcodesList : [{ barcode: `BC-${Date.now()}`, sellingPrice: Number(inv.grandTotal || 0), discountAmount: 0 }],
+        paymentTransactions: paymentTransactionsList,
+        remarks: inv.remarks || null
+      };
+
+      const res = await api.post(`/billing`, billingPayload);
       const data = res.data;
-      
-      if (data.success) {
-        performLocalStateUpdates({...data.data, id: data.data._id});
-        addToastNotification("Success", "Invoice saved to database", "success");
 
-        // Sync updated customer data directly from database
-        try {
-          const custRes = await api.get(`/customers`);
-          if (custRes.data && custRes.data.success) {
-            setCustomers(custRes.data.data.map(c => ({ ...c, id: c._id })));
-          }
-        } catch (cErr) {
-          console.warn("Could not sync fresh customers post-invoice", cErr);
+      if (data.success && data.data) {
+        const rawBill = data.data.saleBill || data.data;
+        const savedInvoice = normalizeInvoice({
+          ...inv,
+          ...rawBill,
+          id: rawBill._id || rawBill.id || inv.id,
+          _id: rawBill._id || rawBill.id,
+          invoiceNo: rawBill.billNo || inv.invoiceNo,
+          billNo: rawBill.billNo || inv.invoiceNo,
+          items: inv.items || []
+        });
+
+        // Refetch invoices and customer lists directly from backend DB
+        const [resInvoices, resCustomers] = await Promise.all([
+          api.get(`/billing`),
+          api.get(`/customers`)
+        ]);
+
+        const fetchedInvoices = extractBillsArray(resInvoices.data);
+        if (fetchedInvoices.length > 0) {
+          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
+        } else {
+          setInvoices(prev => [savedInvoice, ...prev.filter(i => i.id !== savedInvoice.id)]);
         }
 
-        return data.data;
+        if (resCustomers.data?.success) {
+          setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
+        }
+
+        addToastNotification("Success", `Bill ${savedInvoice.invoiceNo} saved to MongoDB`, "success");
+        return savedInvoice;
       } else {
-        throw new Error(data.message || "Failed to save invoice");
+        throw new Error(data.message || "Failed to save bill to database");
       }
     } catch (error) {
-      console.warn("Falling back to local invoice state due to API error:", error.message);
-      // Generate a mock ID if offline
-      const mockInvoice = { ...inv, id: `inv-mock-${Date.now()}` };
-      performLocalStateUpdates(mockInvoice);
-      addToastNotification("Offline Mode", "Invoice saved locally. Stock deducted.", "info");
-      return mockInvoice;
+      console.error("[handleAddInvoice Error]", error);
+      const errorMsg = error.response?.data?.message || error.message || "Failed to save bill to database";
+      addToastNotification("Billing Error", errorMsg, "danger");
+      return null;
     }
-  }, [addToastNotification]);
+  }, [customers, addToastNotification]);
 
   const handleRetryWhatsApp = async (invoiceId) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await api.post(`/invoices/${invoiceId}/send-whatsapp`);
+      const res = await api.post(`/billing/${invoiceId}/send-whatsapp`);
       const data = res.data;
       if (data.success) {
         addToastNotification("WhatsApp", "Invoice dispatched to WhatsApp successfully.", "success");
         // Refresh invoices list so status updates reflect in history
-        const resInvoices = await api.get(`/invoices`);
-        const dataInvoices = resInvoices.data;
-        if (dataInvoices.success) {
-          setInvoices(dataInvoices.data.map((i) => ({ ...i, id: i._id })));
+        const resInvoices = await api.get(`/billing`);
+        const fetchedInvoices = extractBillsArray(resInvoices.data);
+        if (fetchedInvoices.length > 0) {
+          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
         }
         return true;
       } else {
@@ -811,30 +909,50 @@ export default function App() {
       const token = localStorage.getItem("token");
       const res = await api.post(`/purchase-orders`, po);
       const data = res.data;
-      
+
       if (data.success) {
-        setPurchaseOrders((prev) => [{...data.data, id: data.data._id}, ...prev]);
-        
-        // Backend handles stock addition and supplier balance updates, so refetch
-        const [resProducts, resSuppliers] = await Promise.all([
-          api.get(`/products`),
-          api.get(`/suppliers`)
-        ]);
-        
-        const dataProducts = resProducts.data;
-        const dataSuppliers = resSuppliers.data;
-        
-        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
-        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+        const savedPo = {
+          ...data.data,
+          id: data.data._id || data.data.id || po.id,
+          items: (Array.isArray(data.data?.items) && data.data.items.length > 0)
+            ? data.data.items
+            : (po.items || po.billItems || po.products || [])
+        };
+        setPurchaseOrders((prev) => [savedPo, ...prev]);
+
+        // Refetch purchase orders, products, and suppliers from MongoDB to guarantee persistence sync
+        try {
+          const [resPOs, resProducts, resSuppliers] = await Promise.all([
+            api.get(`/purchase-orders`),
+            api.get(`/products`),
+            api.get(`/suppliers`)
+          ]);
+
+          const dataOrBills = Array.isArray(resPOs.data?.data)
+            ? resPOs.data.data
+            : (Array.isArray(resPOs.data?.data?.bills) ? resPOs.data.data.bills : []);
+          if (dataOrBills.length > 0) {
+            const fetchedList = dataOrBills.map(p => ({ ...p, id: p._id || p.id }));
+            setPurchaseOrders((prev) => {
+              const combined = [...fetchedList];
+              if (!combined.some(p => p.id === savedPo.id || p.poNo === savedPo.poNo)) {
+                combined.unshift(savedPo);
+              }
+              return combined;
+            });
+          }
+
+          if (resProducts.data?.success) setProducts(resProducts.data.data.map(p => ({ ...p, id: p._id })));
+          if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
+        } catch (e) {}
         return true;
       } else {
-        alert("Backend Error: " + (data.message || "Unknown error"));
-        addToastNotification("Error", data.message, "danger");
+        addToastNotification("Error", data.message || "Failed to save Purchase Order", "danger");
         return false;
       }
     } catch (error) {
-      alert("App.jsx catch error: " + error.message);
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.error("handleAddPurchaseOrder catch error:", error);
+      addToastNotification("Error", error.response?.data?.message || error.message || "Failed to connect to API", "danger");
       return false;
     }
   };
@@ -844,20 +962,20 @@ export default function App() {
       const token = localStorage.getItem("token");
       const res = await api.put(`/purchase-orders/${id}`, po);
       const data = res.data;
-      
+
       if (data.success) {
-        setPurchaseOrders((prev) => prev.map(p => p.id === id ? {...data.data, id: data.data._id} : p));
-        
+        setPurchaseOrders((prev) => prev.map(p => p.id === id ? { ...data.data, id: data.data._id } : p));
+
         const [resProducts, resSuppliers] = await Promise.all([
           api.get(`/products`),
           api.get(`/suppliers`)
         ]);
-        
+
         const dataProducts = resProducts.data;
         const dataSuppliers = resSuppliers.data;
-        
-        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
-        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({ ...p, id: p._id })));
+        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({ ...s, id: s._id })));
         return true;
       } else {
         alert("Backend Error: " + (data.message || "Unknown error"));
@@ -876,20 +994,20 @@ export default function App() {
       const token = localStorage.getItem("token");
       const res = await api.delete(`/purchase-orders/${id}`);
       const data = res.data;
-      
+
       if (data.success) {
         setPurchaseOrders((prev) => prev.filter(p => p.id !== id));
-        
+
         const [resProducts, resSuppliers] = await Promise.all([
           api.get(`/products`),
           api.get(`/suppliers`)
         ]);
-        
+
         const dataProducts = resProducts.data;
         const dataSuppliers = resSuppliers.data;
-        
-        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({...p, id: p._id})));
-        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({...s, id: s._id})));
+
+        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({ ...p, id: p._id })));
+        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({ ...s, id: s._id })));
         return true;
       } else {
         alert("Backend Error: " + (data.message || "Unknown error"));
@@ -908,9 +1026,9 @@ export default function App() {
       const token = localStorage.getItem("token");
       const res = await api.put(`/suppliers/${supplierId}/settle`, { amount });
       const data = res.data;
-      
+
       if (data.success) {
-        setSuppliers((prev) => prev.map((s) => (s.id === supplierId ? {...data.data, id: data.data._id} : s)));
+        setSuppliers((prev) => prev.map((s) => (s.id === supplierId ? { ...data.data, id: data.data._id } : s)));
         addToastNotification("Success", "Supplier balance settled", "success");
       } else {
         addToastNotification("Error", data.message, "danger");
@@ -926,7 +1044,7 @@ export default function App() {
       const res = await api.put(`/customers/${customerId}/settle`, { amount });
       const data = res.data;
       if (data.success) {
-        setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
+        setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...data.data, id: data.data._id } : c)));
         addToastNotification("Success", "Customer balance settled", "success");
       } else {
         addToastNotification("Error", data.message, "danger");
@@ -941,9 +1059,9 @@ export default function App() {
       const token = localStorage.getItem("token");
       const res = await api.put(`/employees/${employeeId}/disburse`, { amount });
       const data = res.data;
-      
+
       if (data.success) {
-        setEmployees((prev) => prev.map((e) => (e.id === employeeId ? {...data.data, id: data.data._id} : e)));
+        setEmployees((prev) => prev.map((e) => (e.id === employeeId ? { ...data.data, id: data.data._id } : e)));
         addToastNotification("Success", "Commission disbursed", "success");
       } else {
         addToastNotification("Error", data.message, "danger");
@@ -959,7 +1077,7 @@ export default function App() {
       const res = await api.post(`/expenses`, exp);
       const data = res.data;
       if (data.success) {
-        setExpenses((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        setExpenses((prev) => [{ ...data.data, id: data.data._id }, ...prev]);
         addToastNotification("Success", "Expense logged successfully", "success");
       } else {
         addToastNotification("Error", data.message, "danger");
@@ -1020,7 +1138,7 @@ export default function App() {
       const res = await api.put(`/customers/${customerId}`, { outstandingBalance: newBalance });
       const data = res.data;
       if (data.success) {
-        setCustomers((prev) => prev.map((c) => (c.id === customerId ? {...data.data, id: data.data._id} : c)));
+        setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...data.data, id: data.data._id } : c)));
       } else {
         addToastNotification("Error", data.message, "danger");
       }
@@ -1035,7 +1153,7 @@ export default function App() {
       const res = await api.post(`/customers`, newCust);
       const data = res.data;
       if (data.success) {
-        setCustomers((prev) => [{...data.data, id: data.data._id}, ...prev]);
+        setCustomers((prev) => [{ ...data.data, id: data.data._id }, ...prev]);
       } else {
         addToastNotification("Error", data.message, "danger");
       }
@@ -1059,18 +1177,9 @@ export default function App() {
     setActiveModule("articulation");
   };
 
-  // Complete list of employees for admin role swap
   const switchableEmployees = Array.isArray(employees) && employees.length > 0
-    ? employees
-    : [
-        "Admin",
-        "Worker",
-        "Cashier",
-        "Salesperson",
-        "Tailor",
-      ]
-        .map((role) => (employees || []).find((e) => e.role === role))
-        .filter(Boolean);
+    ? employees.filter(Boolean)
+    : [];
 
   const isAdminOrDhruv = ["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) ||
     (currentUser?.name || '').toLowerCase().includes("dhruv");
@@ -1119,10 +1228,10 @@ export default function App() {
         const accentColor = isSuccess
           ? "#10b981"
           : isDanger
-          ? "#ef4444"
-          : isWarning
-          ? "#f59e0b"
-          : "#6366f1";
+            ? "#ef4444"
+            : isWarning
+              ? "#f59e0b"
+              : "#6366f1";
         const icon = isSuccess ? "✅" : isDanger ? "❌" : isWarning ? "⚠️" : "ℹ️";
         return (
           <div
@@ -1226,7 +1335,7 @@ export default function App() {
 
             {modulesList
               .filter((mod) =>
-                getAccessibleModules(currentUser.role).includes(mod.id),
+                getAccessibleModules(currentUser?.role).includes(mod.id),
               )
               .map((mod) => {
                 const Icon = mod.icon;
@@ -1260,15 +1369,15 @@ export default function App() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
-                {getUserInitials(currentUser.name)}
+                {getUserInitials(currentUser?.name)}
               </div>
               {!sidebarCollapsed && (
                 <div className="text-[10px] truncate">
                   <p className="font-bold text-slate-800 leading-tight truncate">
-                    {currentUser.name}
+                    {currentUser?.name || "Guest User"}
                   </p>
                   <p className="text-indigo-600 font-semibold uppercase font-mono tracking-wider text-[8px] truncate">
-                    {currentUser.role} • Active
+                    {currentUser?.role || "Guest"} • Active
                   </p>
                 </div>
               )}
@@ -1370,17 +1479,17 @@ export default function App() {
                   </div>
                   <div className="space-y-1.5 max-h-[400px] overflow-y-auto px-2 pb-2 custom-scrollbar">
                     {notifications.length === 0 ? (
-                       <div className="text-center p-6 text-slate-400">
-                         <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                         <p className="font-semibold text-[11px]">No active alerts.</p>
-                       </div>
+                      <div className="text-center p-6 text-slate-400">
+                        <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                        <p className="font-semibold text-[11px]">No active alerts.</p>
+                      </div>
                     ) : (
                       notifications.map((n) => {
                         let PriorityIcon = Info;
                         let colorClass = "bg-slate-50 border-slate-100 text-slate-700 hover:bg-slate-100";
                         let iconColor = "text-slate-400";
                         let badgeClass = "bg-slate-100 text-slate-500";
-                        
+
                         if (n.priority === 'Critical') {
                           PriorityIcon = AlertCircle;
                           colorClass = n.read ? "bg-red-50/30 border-red-100/50 text-red-900/60" : "bg-red-50 border-red-200 text-red-900 shadow-sm hover:bg-red-100";
@@ -1443,19 +1552,19 @@ export default function App() {
                 }}
                 className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 hover:ring-2 hover:ring-indigo-200 cursor-pointer flex items-center justify-center font-bold text-xs"
               >
-                {getUserInitials(currentUser.name)}
+                {getUserInitials(currentUser?.name)}
               </button>
               {showProfileDropdown && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 text-xs space-y-1 animate-scale-up">
                   <div className="p-2 border-b border-slate-100">
                     <p className="font-bold text-slate-800">
-                      {currentUser.name}
+                      {currentUser?.name || "Guest User"}
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium truncate">
-                      {currentUser.email}
+                      {currentUser?.email || "No email"}
                     </p>
                     <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] bg-indigo-50 text-indigo-700 font-bold uppercase tracking-wider">
-                      {currentUser.role}
+                      {currentUser?.role || "Guest"}
                     </span>
                   </div>
 
@@ -1516,6 +1625,7 @@ export default function App() {
 
         {/* DYNAMIC VIEW CONTENT */}
         <main className="erp-main-content">
+          <ErrorBoundary key={activeModule}>
           {activeModule === "dashboard" && (
             <DashboardView
               currentUser={currentUser}
@@ -1542,6 +1652,8 @@ export default function App() {
               customers={customers}
               employees={employees}
               invoices={invoices}
+              isLoadingInvoices={isLoadingInvoices}
+              isLoadingProducts={isLoadingProducts}
               onAddInvoice={handleAddInvoice}
               onAddCustomer={handleAddCustomer}
               onUpdateCustomerBalance={handleUpdateCustomerBalance}
@@ -1581,6 +1693,7 @@ export default function App() {
             <ProductManagementView
               currentUser={currentUser}
               products={products}
+              isLoadingProducts={isLoadingProducts}
               onAddProduct={handleAddProduct}
               onUpdateProduct={handleUpdateProduct}
               onDeleteProducts={handleDeleteProducts}
@@ -1609,6 +1722,9 @@ export default function App() {
               products={products}
               customers={customers}
               employees={employees}
+              invoices={invoices}
+              isLoadingInvoices={isLoadingInvoices}
+              isLoadingProducts={isLoadingProducts}
               onAddNotification={addToastNotification}
             />
           )}
@@ -1759,6 +1875,7 @@ export default function App() {
           {activeModule === "attendance-settings" && (
             <AttendancePolicySettings token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
           )}
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -1816,20 +1933,20 @@ export default function App() {
         {/* Isolated Super Admin Routes */}
         <Route path="/ad/su" element={
           (isLoggedIn && currentUser?.role === "SuperAdmin") ? <Navigate to="/super-admin/dashboard" replace /> : (
-            <AdminLogin 
-              onLogin={(user) => { 
-                setCurrentUser(user); 
-                setIsLoggedIn(true); 
+            <AdminLogin
+              onLogin={(user) => {
+                setCurrentUser(user);
+                setIsLoggedIn(true);
                 localStorage.setItem("token", user.token);
                 localStorage.setItem("user", JSON.stringify(user));
-              }} 
-              addToastNotification={addToastNotification} 
+              }}
+              addToastNotification={addToastNotification}
             />
           )
         } />
-        
-        <Route 
-          path="/super-admin/*" 
+
+        <Route
+          path="/super-admin/*"
           element={
             <ProtectedRoute isLoggedIn={isLoggedIn} user={currentUser} requiredRole="SuperAdmin">
               <SuperAdminLayout
@@ -1840,15 +1957,15 @@ export default function App() {
                 tenants={tenants}
               />
             </ProtectedRoute>
-          } 
+          }
         />
 
         {/* Standard User App */}
         <Route path="/*" element={
           !isLoggedIn ? (
             <UserLogin
-              onLogin={(user) => { 
-                setCurrentUser(user); 
+              onLogin={(user) => {
+                setCurrentUser(user);
                 setIsLoggedIn(true);
                 localStorage.setItem("token", user.token);
                 localStorage.setItem("user", JSON.stringify(user));

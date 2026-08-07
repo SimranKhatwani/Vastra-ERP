@@ -28,7 +28,7 @@ export const StaffCommissionPanel = ({ role, onAddNotification }) => {
   const handleViewInvoice = async (invoiceId) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await api.get(`/invoices/${invoiceId}`, {
+      const res = await api.get(`/billing/${invoiceId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {

@@ -27,23 +27,32 @@ export function AdminLogin({ onLogin, addToastNotification }) {
           onSubmit={async (e) => {
             e.preventDefault();
             const email = e.target.email.value;
-            const secretKey = e.target.secretKey.value;
-            
+            const password = e.target.secretKey.value;
+
+            console.log('[Auth Trace] Initiating SuperAdmin Login Request:', { email });
+
             try {
-              const res = await api.post(`/superadmin/login`, { email, secretKey });
-              
+              // SuperAdmin authenticates via /auth/login without tenantCode
+              const res = await api.post(`/auth/login`, { email, password });
               const data = res.data;
-              
-              if (data.success) {
+
+              console.log('[Auth Trace] SuperAdmin Response Received:', data);
+
+              if (data.success && data.data) {
+                const accessToken = data.data.accessToken;
                 const superAdminUser = {
-                  id: "admin-0",
-                  name: "Super Admin",
-                  email: data.user?.email || email,
+                  ...data.data.user,
+                  id: data.data.user?.id || data.data.user?._id || "admin-0",
+                  name: data.data.user?.name || "Super Admin",
+                  email: data.data.user?.email || email,
                   role: "SuperAdmin",
                   status: "Active",
-                  token: data.token
+                  token: accessToken
                 };
-                localStorage.setItem("token", data.token);
+
+                console.log('[Auth Trace] Storing SuperAdmin token & updating session state:', { accessToken: accessToken ? 'PRESENT' : 'MISSING', user: superAdminUser });
+
+                localStorage.setItem("token", accessToken);
                 localStorage.setItem("user", JSON.stringify(superAdminUser));
                 onLogin(superAdminUser);
 
@@ -54,6 +63,7 @@ export function AdminLogin({ onLogin, addToastNotification }) {
                 );
                 navigate("/super-admin/dashboard", { replace: true });
               } else {
+                console.warn('[Auth Trace] SuperAdmin Login Failed:', data.message);
                 addToastNotification(
                   "Access Denied",
                   data.message || "wrong or invalid credential try another",
@@ -61,7 +71,8 @@ export function AdminLogin({ onLogin, addToastNotification }) {
                 );
               }
             } catch (err) {
-              addToastNotification("Connection Error", "Could not reach the authentication server.", "danger");
+              console.error('[Auth Trace] SuperAdmin Login Error:', err?.response?.data || err.message);
+              addToastNotification("Connection Error", err?.response?.data?.message || "Could not reach authentication server.", "danger");
             }
           }}
           className="space-y-4"
@@ -74,22 +85,22 @@ export function AdminLogin({ onLogin, addToastNotification }) {
               name="email"
               type="email"
               required
-              defaultValue="hp@gmail.com"
+              defaultValue="superadmin@vastra.com"
               className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
-              placeholder="hp@gmail.com"
+              placeholder="superadmin@vastra.com"
             />
           </div>
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5 tracking-wider">
-              NSD Secret Key
+              NSD Secret Key / Password
             </label>
             <input
               name="secretKey"
               type="password"
               required
-              defaultValue="Requin@SaaS2026"
+              defaultValue="SuperAdmin@123456"
               className="w-full text-xs bg-slate-900 border border-slate-700/50 rounded-xl px-4.5 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
-              placeholder="Requin@SaaS2026"
+              placeholder="Enter admin password"
             />
           </div>
 
