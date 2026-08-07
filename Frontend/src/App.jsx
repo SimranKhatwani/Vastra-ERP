@@ -787,8 +787,15 @@ export default function App() {
         return fallbackHex;
       };
 
-      const defaultCustId = (customers.find(c => c._id || c.id) || {})._id || "65f000000000000000000001";
-      const validCustomerId = toValidObjectId(inv.customerId || inv.customer?._id, toValidObjectId(defaultCustId));
+      const walkinCust = customers.find(c =>
+        (c.phone === "9999999999") ||
+        (c.name && c.name.toLowerCase().includes("walk-in"))
+      );
+      const defaultCustId = walkinCust ? (walkinCust._id || walkinCust.id) : null;
+      const rawCustId = inv.customerId || inv.customer?._id;
+      const validCustomerId = (typeof rawCustId === "string" && rawCustId.length === 24 && /^[0-9a-fA-F]{24}$/.test(rawCustId))
+        ? rawCustId
+        : (defaultCustId || null);
       const validFirmId = toValidObjectId(inv.firmId, "65f000000000000000000002");
       const validWarehouseId = toValidObjectId(inv.warehouseId, "65f000000000000000000003");
       const validSalesmanId = (inv.employeeId && inv.employeeId.length === 24 && /^[0-9a-fA-F]{24}$/.test(inv.employeeId)) ? inv.employeeId : null;

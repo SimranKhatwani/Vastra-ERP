@@ -298,6 +298,9 @@ export const BillingPOSView = ({
   const [showSearchItemDetailsPanel, setShowSearchItemDetailsPanel] = useState(false);
   const [alterationPromptItem, setAlterationPromptItem] = useState(null);
   const [showBillPreviewInvoice, setShowBillPreviewInvoice] = useState(null);
+  const [isGeneratingBill, setIsGeneratingBill] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -1761,181 +1764,197 @@ export const BillingPOSView = ({
 
   // Handle checkout
   const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false) => {
-    if (cart.length === 0) {
-      onAddNotification(
-        "POS Checkout Failed",
-        "Cannot compile an empty cart.",
-        "danger",
-      );
-      return false;
-    }
+    if (isGeneratingBill) return false;
+    setIsGeneratingBill(true);
 
-    const computedDueAmount = paymentType === "Full Payment"
-      ? (paymentMethod === "Due" ? grandTotal : 0)
-      : (Number(partPaymentAmounts["Due"]) || 0);
-
-    const isCustomerMissing = !selectedCustomerId || activeCustomer.id === "c-walkin" || !activeCustomer.name;
-    if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
-      setShowDueCustomerModal(true);
-      return false;
-    }
-
-    // Overpayment Logic
-    const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-    let computedAmountPaid = grandTotal;
-    let advanceApplied = 0;
-    let loyaltyPointsUsed = 0;
-
-    if (paymentType === "Part Payment") {
-      computedAmountPaid = cashTotal + ["Card", "UPI"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-      advanceApplied = Number(partPaymentAmounts["Advance"]) || 0;
-      loyaltyPointsUsed = Number(partPaymentAmounts["Points Redeem"]) || 0;
-    } else if (paymentMethod === "Cash") {
-      computedAmountPaid = cashTotal > 0 ? cashTotal : grandTotal;
-    } else if (paymentMethod === "Credit" || paymentMethod === "Due") {
-      computedAmountPaid = 0;
-    } else if (paymentMethod === "Advance") {
-      computedAmountPaid = 0;
-      advanceApplied = grandTotal;
-    } else if (paymentMethod === "Points Redeem") {
-      computedAmountPaid = 0;
-      loyaltyPointsUsed = grandTotal;
-    }
-
-    const effectiveTotalPaid = computedAmountPaid + advanceApplied + loyaltyPointsUsed;
-    if (effectiveTotalPaid > grandTotal && isCustomerMissing && overrideCustomerDue !== true) {
-      // Just reuse the due modal for overpayment customer requirements
-      setShowDueCustomerModal(true);
-      onAddNotification(
-        "Customer Details Required",
-        "Customer details are required to save the overpaid advance amount to their wallet.",
-        "warning"
-      );
-      return false;
-    }
-
-    const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
-
-    // Create Invoice object
-    const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
-    const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
-
-    const newInvoice = {
-      invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
-      date: new Date().toISOString(),
-      customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
-      customerName: activeCustomer.name,
-      customerPhone: activeCustomer.phone,
-      items: [...cart],
-      subTotal,
-      discountTotal,
-      couponCode: couponCode ? couponCode : undefined,
-      couponDiscount,
-      gstTotal,
-      grandTotal,
-      paymentMethod: paymentType === "Part Payment" ? "Split" : paymentMethod,
-      splitPayments: paymentType === "Part Payment"
-        ? [
-          { method: "Cash", amount: cashTotal },
-          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
-        ].filter((s) => s.amount > 0)
-        : undefined,
-      amountPaid: computedAmountPaid,
-      advanceApplied,
-      loyaltyPointsUsed,
-      status: paymentMethod === "Credit" || computedDueAmount >= grandTotal ? "Unpaid" : "Paid",
-      employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
-      employeeName: cashier.name,
-      salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
-      billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
-    };
-
-    // If Credit, add outstanding balance to Customer's profile
-    if (paymentMethod === "Credit") {
-      onUpdateCustomerBalance(selectedCustomerId, grandTotal);
-      onAddNotification(
-        "Credit Balance Logged",
-        `₹${grandTotal.toLocaleString()} logged to ${activeCustomer.name}'s credit ledger.`,
-        "info",
-      );
-    }
-
-    const loyaltyOffer = selectedLoyaltyRuleId ? discountRules.find(r => (r._id || r.id) === selectedLoyaltyRuleId) : null;
-    // Process Loyalty point deductions
-    if (loyaltyOffer && selectedCustomerId && selectedCustomerId.length === 24) {
-      try {
-        const token = localStorage.getItem("token");
-        const nextPoints = Math.max(0, (activeCustomer.loyaltyPoints || 0) - loyaltyOffer.requiredLoyaltyPoints);
-        await api.put(`/customers/${selectedCustomerId}`, { loyaltyPoints: nextPoints });
+    try {
+      if (cart.length === 0) {
         onAddNotification(
-          "Loyalty Redemed",
-          `Redeemed ${loyaltyOffer.requiredLoyaltyPoints} points for discount.`,
-          "success"
+          "POS Checkout Failed",
+          "Cannot compile an empty cart.",
+          "danger",
         );
-      } catch (err) {
-        console.error("Failed to update loyalty balance:", err);
+        return false;
       }
-    }
 
-    // Trigger state callbacks — onAddInvoice returns the saved invoice object from MongoDB (or null on error)
-    const savedInvoice = await onAddInvoice(newInvoice);
+      const computedDueAmount = paymentType === "Full Payment"
+        ? (paymentMethod === "Due" ? grandTotal : 0)
+        : (Number(partPaymentAmounts["Due"]) || 0);
 
-    if (!savedInvoice) {
-      setIsPreparingPayment(false);
-      return;
-    }
-
-    // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
-    const mergedInvoice = {
-      ...(savedInvoice || newInvoice),
-      items: ((savedInvoice && savedInvoice.items) || newInvoice.items).map((savedItem, i) => {
-        const originalItem = newInvoice.items[i] || savedItem;
-        return {
-          ...savedItem,
-          hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
-          alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
-        };
-      })
-    };
-
-    setCompletedInvoice(mergedInvoice);
-    setCart([]);
-    setCouponCode("");
-    setSelectedCustomerId("");
-
-    setSelectedLoyaltyRuleId("");
-    setCancelAutoDiscount(false);
-    setPaymentMethod("Cash");
-    setSplitCash(0);
-    setSplitCard(0);
-    setSplitUPI(0);
-    setSalespersonId("");
-    if (!skipBillPreview) {
-      setShowBillPreviewInvoice(mergedInvoice);
-    }
-
-    onAddNotification(
-      "Invoice Compiled Successfully",
-      `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`,
-      "success",
-    );
-
-    // ── Automatic WhatsApp Dispatch (fire-and-forget, never blocks checkout) ──
-    if (savedInvoice && savedInvoice._id && onRetryWhatsApp) {
-      setWhatsappDispatchState('sending');
-      setWhatsappDispatchId(savedInvoice._id);
-      try {
-        const ok = await onRetryWhatsApp(savedInvoice._id);
-        setWhatsappDispatchState(ok ? 'success' : 'failed');
-      } catch (err) {
-        console.error('[BillingPOSView] WhatsApp dispatch error:', err);
-        setWhatsappDispatchState('failed');
+      const isCustomerMissing = !selectedCustomerId || activeCustomer.id === "c-walkin" || !activeCustomer.name;
+      if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
+        setShowDueCustomerModal(true);
+        return false;
       }
-    } else {
-      setWhatsappDispatchState('idle');
-    }
 
-    return mergedInvoice;
+      // Overpayment Logic
+      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+      let computedAmountPaid = grandTotal;
+      let advanceApplied = 0;
+      let loyaltyPointsUsed = 0;
+
+      if (paymentType === "Part Payment") {
+        computedAmountPaid = cashTotal + ["Card", "UPI"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+        advanceApplied = Number(partPaymentAmounts["Advance"]) || 0;
+        loyaltyPointsUsed = Number(partPaymentAmounts["Points Redeem"]) || 0;
+      } else if (paymentMethod === "Cash") {
+        computedAmountPaid = cashTotal > 0 ? cashTotal : grandTotal;
+      } else if (paymentMethod === "Credit" || paymentMethod === "Due") {
+        computedAmountPaid = 0;
+      } else if (paymentMethod === "Advance") {
+        computedAmountPaid = 0;
+        advanceApplied = grandTotal;
+      } else if (paymentMethod === "Points Redeem") {
+        computedAmountPaid = 0;
+        loyaltyPointsUsed = grandTotal;
+      }
+
+      const effectiveTotalPaid = computedAmountPaid + advanceApplied + loyaltyPointsUsed;
+      if (effectiveTotalPaid > grandTotal && isCustomerMissing && overrideCustomerDue !== true) {
+        // Just reuse the due modal for overpayment customer requirements
+        setShowDueCustomerModal(true);
+        onAddNotification(
+          "Customer Details Required",
+          "Customer details are required to save the overpaid advance amount to their wallet.",
+          "warning"
+        );
+        return false;
+      }
+
+      const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
+
+      // Create Invoice object
+      const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
+      const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
+
+      const newInvoice = {
+        invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
+        date: new Date().toISOString(),
+        customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
+        customerName: activeCustomer.name,
+        customerPhone: activeCustomer.phone,
+        items: [...cart],
+        subTotal,
+        discountTotal,
+        couponCode: couponCode ? couponCode : undefined,
+        couponDiscount,
+        gstTotal,
+        grandTotal,
+        paymentMethod: paymentType === "Part Payment" ? "Split" : paymentMethod,
+        splitPayments: paymentType === "Part Payment"
+          ? [
+            { method: "Cash", amount: cashTotal },
+            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
+          ].filter((s) => s.amount > 0)
+          : undefined,
+        amountPaid: computedAmountPaid,
+        advanceApplied,
+        loyaltyPointsUsed,
+        status: paymentMethod === "Credit" || computedDueAmount >= grandTotal ? "Unpaid" : "Paid",
+        employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
+        employeeName: cashier.name,
+        salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
+        billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
+      };
+
+      // If Credit, add outstanding balance to Customer's profile
+      if (paymentMethod === "Credit") {
+        onUpdateCustomerBalance(selectedCustomerId, grandTotal);
+        onAddNotification(
+          "Credit Balance Logged",
+          `₹${grandTotal.toLocaleString()} logged to ${activeCustomer.name}'s credit ledger.`,
+          "info",
+        );
+      }
+
+      const loyaltyOffer = selectedLoyaltyRuleId ? discountRules.find(r => (r._id || r.id) === selectedLoyaltyRuleId) : null;
+      // Process Loyalty point deductions
+      if (loyaltyOffer && selectedCustomerId && selectedCustomerId.length === 24) {
+        try {
+          const token = localStorage.getItem("token");
+          const nextPoints = Math.max(0, (activeCustomer.loyaltyPoints || 0) - loyaltyOffer.requiredLoyaltyPoints);
+          await api.put(`/customers/${selectedCustomerId}`, { loyaltyPoints: nextPoints });
+          onAddNotification(
+            "Loyalty Redeemed",
+            `Redeemed ${loyaltyOffer.requiredLoyaltyPoints} points for discount.`,
+            "success"
+          );
+        } catch (err) {
+          console.error("Failed to update loyalty balance:", err);
+        }
+      }
+
+      // Trigger state callbacks — onAddInvoice returns the saved invoice object from MongoDB (or null on error)
+      const savedInvoice = await onAddInvoice(newInvoice);
+
+      if (!savedInvoice) {
+        setIsPreparingPayment(false);
+        return false;
+      }
+
+      // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
+      const mergedInvoice = {
+        ...(savedInvoice || newInvoice),
+        items: ((savedInvoice && savedInvoice.items) || newInvoice.items).map((savedItem, i) => {
+          const originalItem = newInvoice.items[i] || savedItem;
+          return {
+            ...savedItem,
+            hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
+            alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
+          };
+        })
+      };
+
+      setCompletedInvoice(mergedInvoice);
+      setCart([]);
+      setCouponCode("");
+      setSelectedCustomerId("");
+      setCustomerSearch("");
+      setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '' });
+
+      setSelectedLoyaltyRuleId("");
+      setCancelAutoDiscount(false);
+      setPaymentMethod("Cash");
+      setSplitCash(0);
+      setSplitCard(0);
+      setSplitUPI(0);
+      setSalespersonId("");
+      setBillAdjustment({
+        type: 'Amount',
+        operation: 'Discount',
+        value: '',
+        amount: 0,
+        reason: '',
+        isApproved: false
+      });
+      if (!skipBillPreview) {
+        setShowBillPreviewInvoice(mergedInvoice);
+      }
+
+      onAddNotification(
+        "Invoice Compiled Successfully",
+        `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`,
+        "success",
+      );
+
+      // ── Automatic WhatsApp Dispatch (fire-and-forget, never blocks checkout) ──
+      if (savedInvoice && savedInvoice._id && onRetryWhatsApp) {
+        setWhatsappDispatchState('sending');
+        setWhatsappDispatchId(savedInvoice._id);
+        onRetryWhatsApp(savedInvoice._id)
+          .then(ok => setWhatsappDispatchState(ok ? 'success' : 'failed'))
+          .catch(err => {
+            console.error('[BillingPOSView] WhatsApp dispatch error:', err);
+            setWhatsappDispatchState('failed');
+          });
+      } else {
+        setWhatsappDispatchState('idle');
+      }
+
+      return mergedInvoice;
+    } finally {
+      setIsGeneratingBill(false);
+    }
   };
 
   // Add new customer local submit
@@ -2265,19 +2284,45 @@ export const BillingPOSView = ({
     setShowBillPreviewInvoice(previewInv);
   };
 
-  const handlePrintConfirm = async () => {
-    const saved = await handleCheckoutSubmit(false, true);
-    if (saved) {
-      handleDirectPrint(saved);
-      setShowBillPreviewInvoice(saved);
+  const handleGenerateBillAction = async () => {
+    if (isGeneratingBill) return;
+    setIsGeneratingBill(true);
+    try {
+      const saved = await handleCheckoutSubmit(false, true);
+      if (saved) {
+        setShowBillPreviewInvoice(null);
+        if (typeof onAddNotification === 'function') {
+          onAddNotification("Success", "Bill generated successfully.", "success");
+        }
+      }
+    } catch (err) {
+      console.error("Generate Bill Error:", err);
+    } finally {
+      setIsGeneratingBill(false);
     }
   };
 
-  const handleDownloadConfirm = async () => {
-    const saved = await handleCheckoutSubmit(false, true);
-    if (saved) {
-      handleDownloadOnly(saved);
-      setShowBillPreviewInvoice(saved);
+  const handlePrintAction = () => {
+    if (isPrinting || !showBillPreviewInvoice) return;
+    setIsPrinting(true);
+    try {
+      handleDirectPrint(showBillPreviewInvoice);
+    } catch (err) {
+      console.error("Print Action Error:", err);
+    } finally {
+      setTimeout(() => setIsPrinting(false), 400);
+    }
+  };
+
+  const handleDownloadAction = () => {
+    if (isDownloading || !showBillPreviewInvoice) return;
+    setIsDownloading(true);
+    try {
+      handleDownloadOnly(showBillPreviewInvoice);
+    } catch (err) {
+      console.error("Download Action Error:", err);
+    } finally {
+      setTimeout(() => setIsDownloading(false), 400);
     }
   };
 
@@ -2439,37 +2484,74 @@ export const BillingPOSView = ({
 
   // Direct print trigger using a hidden iframe to prevent blank browser tabs
   const handleDirectPrint = (invoice) => {
-    const htmlContent = generateReceiptHTMLContent(invoice, true);
+    if (!invoice) return;
+    const htmlContent = generateReceiptHTMLContent(invoice, false);
+    
     let iframe = document.getElementById("print-iframe");
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = "print-iframe";
-      iframe.style.position = "absolute";
-      iframe.style.width = "0px";
-      iframe.style.height = "0px";
-      iframe.style.border = "none";
-      document.body.appendChild(iframe);
+    if (iframe) {
+      try { document.body.removeChild(iframe); } catch (e) {}
     }
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    iframe = document.createElement("iframe");
+    iframe.id = "print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0px";
+    iframe.style.height = "0px";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
     doc.open();
     doc.write(htmlContent);
     doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (e) {
+        console.error("Iframe print error:", e);
+        const win = window.open('', '_blank', 'width=400,height=600');
+        if (win) {
+          win.document.write(htmlContent);
+          win.document.close();
+          win.focus();
+          win.print();
+          win.close();
+        }
+      }
+    }, 250);
   };
 
   // Direct download trigger as HTML file
   const handleDownloadOnly = (invoice) => {
+    if (!invoice) return;
     const htmlContent = generateReceiptHTMLContent(invoice, false);
+    const invoiceNoStr = (invoice.invoiceNo || invoice.billNo || 'DRAFT').replace(/[^a-z0-9_]/gi, '_');
+    const filename = `Invoice_${invoiceNoStr}.html`;
+
     const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Invoice-${invoice.invoiceNo || 'DRAFT'}.html`;
+    link.download = filename;
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    setTimeout(() => {
+      link.click();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      }, 100);
+    }, 50);
+
     onAddNotification(
       "File Downloader",
-      `Invoice ${invoice.invoiceNo || 'DRAFT'} downloaded in HTML format.`,
+      `Invoice ${filename} downloaded in HTML format.`,
       "success"
     );
   };
@@ -6419,33 +6501,31 @@ export const BillingPOSView = ({
             <div className="flex gap-3 shrink-0 pt-2 font-mono flex-wrap">
               {showBillPreviewInvoice.isDraftPreview && (
                 <button
-                  onClick={async () => {
-                    const saved = await handleCheckoutSubmit(false, true);
-                    if (saved) {
-                      setShowBillPreviewInvoice(saved);
-                    }
-                  }}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mb-1"
+                  disabled={isGeneratingBill}
+                  onClick={handleGenerateBillAction}
+                  className={`w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 mb-1 ${isGeneratingBill ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
-                  <span className="text-sm">✅</span>
-                  <span>GENERATE BILL (NO PRINT)</span>
+                  {isGeneratingBill ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">✅</span>}
+                  <span>{isGeneratingBill ? 'GENERATING BILL...' : 'GENERATE BILL (NO PRINT)'}</span>
                 </button>
               )}
               <div className="flex gap-3 w-full">
                 <button
-                  onClick={() => showBillPreviewInvoice.isDraftPreview ? handlePrintConfirm() : handleDirectPrint(showBillPreviewInvoice)}
-                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isPrinting}
+                  onClick={handlePrintAction}
+                  className={`flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${isPrinting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
-                  <span className="text-sm">🖨️</span>
-                  <span>PRINT</span>
+                  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">🖨️</span>}
+                  <span>{isPrinting ? 'PRINTING...' : 'PRINT'}</span>
                 </button>
 
                 <button
-                  onClick={() => showBillPreviewInvoice.isDraftPreview ? handleDownloadConfirm() : handleDownloadOnly(showBillPreviewInvoice)}
-                  className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isDownloading}
+                  onClick={handleDownloadAction}
+                  className={`flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${isDownloading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
-                  <span className="text-sm">⬇️</span>
-                  <span>DOWNLOAD HTML</span>
+                  {isDownloading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">⬇️</span>}
+                  <span>{isDownloading ? 'DOWNLOADING...' : 'DOWNLOAD HTML'}</span>
                 </button>
               </div>
             </div>
