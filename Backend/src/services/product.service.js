@@ -97,9 +97,15 @@ class ProductService {
       const colors = Array.from(new Set(pPieces.map(pc => pc.primaryColor).filter(Boolean))).join(', ');
       const secondaryColors = Array.from(new Set(pPieces.map(pc => pc.secondaryColor).filter(Boolean))).join(', ');
       
+      const calculatedStock = pPieces.length > 0 
+        ? availablePieces.length 
+        : Math.max(0, Number(pObj.availableStock ?? pObj.stock ?? 0));
+
       return {
         ...pObj,
-        stock: availablePieces.length,
+        stock: calculatedStock,
+        availableStock: calculatedStock,
+        soldQuantity: pPieces.filter(pc => pc.status === 'SOLD').length || Number(pObj.soldQuantity || 0),
         totalPieces: pPieces.length,
         barcode: pPieces[0]?.barcode || '',
         uniqueCode: pPieces[0]?.uniqueCode || '',

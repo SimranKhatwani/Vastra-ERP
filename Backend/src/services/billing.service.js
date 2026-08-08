@@ -118,6 +118,22 @@ class BillingService {
         });
       }
 
+      // Ensure piece is linked to a Product document
+      if (!piece.productId) {
+        const prd = await Product.findOne({
+          $or: [
+            { barcode: itemBarcode },
+            { itemCode: itemBarcode },
+            { uniqueCode: itemBarcode },
+            { _id: (typeof item.productId === 'string' && item.productId.length === 24) ? item.productId : null }
+          ]
+        }) || defaultPrd;
+        if (prd) {
+          piece.productId = prd._id;
+          await piece.save();
+        }
+      }
+
       if (piece.status !== INVENTORY_STATUS.AVAILABLE && !billData.isHold) {
         piece.status = INVENTORY_STATUS.AVAILABLE;
         await piece.save();
@@ -203,6 +219,20 @@ class BillingService {
         val.piece.currentLocation = 'CUSTOMER';
         val.piece.updatedBy = userId;
         await val.piece.save();
+
+        // 3.1 Synchronize Product stock & available quantity in MongoDB
+        if (val.piece.productId) {
+          await Product.updateOne(
+            { _id: val.piece.productId },
+            {
+              $inc: {
+                stock: -1,
+                availableStock: -1,
+                soldQuantity: 1
+              }
+            }
+          );
+        }
 
         await InventoryLifecycle.create({
           tenantId,

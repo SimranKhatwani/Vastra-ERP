@@ -856,21 +856,31 @@ export default function App() {
           items: inv.items || []
         });
 
-        // Refetch invoices and customer lists directly from backend DB
-        const [resInvoices, resCustomers] = await Promise.all([
-          api.get(`/billing`),
-          api.get(`/customers`)
-        ]);
+        // Refetch invoices, customer lists, and products catalog directly from backend DB
+        try {
+          const [resInvoices, resCustomers, resProducts] = await Promise.all([
+            api.get(`/billing`),
+            api.get(`/customers`),
+            api.get(`/products`)
+          ]);
 
-        const fetchedInvoices = extractBillsArray(resInvoices.data);
-        if (fetchedInvoices.length > 0) {
-          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
-        } else {
-          setInvoices(prev => [savedInvoice, ...prev.filter(i => i.id !== savedInvoice.id)]);
-        }
+          const fetchedInvoices = extractBillsArray(resInvoices.data);
+          if (fetchedInvoices.length > 0) {
+            setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
+          } else {
+            setInvoices(prev => [savedInvoice, ...prev.filter(i => i.id !== savedInvoice.id)]);
+          }
 
-        if (resCustomers.data?.success) {
-          setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
+          if (resCustomers.data?.success) {
+            setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
+          }
+
+          if (resProducts.data?.success) {
+            const rawProds = Array.isArray(resProducts.data.data) ? resProducts.data.data : (resProducts.data.data?.products || []);
+            setProducts(rawProds.map(p => ({ ...p, id: p._id })));
+          }
+        } catch (refetchErr) {
+          console.error("[Post-checkout refetch error]", refetchErr);
         }
 
         addToastNotification("Success", `Bill ${savedInvoice.invoiceNo} saved to MongoDB`, "success");
@@ -1113,12 +1123,11 @@ export default function App() {
   };
 
   const handleMarkAllNotificationsRead = async () => {
+    setNotifications([]);
     try {
-      const token = localStorage.getItem("token");
       await api.delete(`/notifications/clear`);
-      setNotifications([]);
     } catch (error) {
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.warn("Notification clear endpoint unavailable, cleared locally.");
     }
   };
 

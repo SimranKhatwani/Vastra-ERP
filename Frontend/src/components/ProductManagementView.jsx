@@ -115,28 +115,26 @@ export const ProductManagementView = ({
   const [isFetching, setIsFetching] = React.useState(false);
 
   React.useEffect(() => {
-    const loadProducts = async () => {
-      if (Array.isArray(products) && products.length > 0) {
-        setLocalProducts(products);
-        setIsFetching(false);
-        return;
-      }
+    let isMounted = true;
+    if (Array.isArray(products)) {
+      setLocalProducts(products.map(p => ({ ...p, id: p._id || p.id })));
+    }
+    const fetchLiveProducts = async () => {
       setIsFetching(true);
       try {
         const res = await api.get(`/products`);
-        if (res.data?.success) {
+        if (res.data?.success && isMounted) {
           const raw = Array.isArray(res.data.data) ? res.data.data : (res.data.data?.products || []);
-          if (raw.length > 0 || localProducts.length === 0) {
-            setLocalProducts(raw.map(p => ({ ...p, id: p._id })));
-          }
+          setLocalProducts(raw.map(p => ({ ...p, id: p._id || p.id })));
         }
       } catch (err) {
-        console.error("Direct fetch in ProductManagementView failed:", err);
+        console.error("Fetch live products in ProductManagementView error:", err);
       } finally {
-        setIsFetching(false);
+        if (isMounted) setIsFetching(false);
       }
     };
-    loadProducts();
+    fetchLiveProducts();
+    return () => { isMounted = false; };
   }, [products]);
 
   // Helper for safe string conversions
