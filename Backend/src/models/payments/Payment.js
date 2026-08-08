@@ -20,6 +20,10 @@ const paymentSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  advanceApplied: {
+    type: Number,
+    default: 0
+  },
   paymentDate: {
     type: Date,
     default: Date.now

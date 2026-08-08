@@ -318,8 +318,17 @@ export const BillingPOSView = ({
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isPreparingPayment, setIsPreparingPayment] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [paymentLoaderMessage, setPaymentLoaderMessage] = useState("Preparing Payment Details... Please wait.");
   const [showAdvancePromptModal, setShowAdvancePromptModal] = useState(false);
+  const [showOverpaymentModal, setShowOverpaymentModal] = useState(false);
+  const [overpaidModalData, setOverpaidModalData] = useState({
+    grandTotal: 0,
+    paidTotal: 0,
+    excessAmount: 0,
+    manualAmount: 0,
+    reason: ''
+  });
   const [splitCash, setSplitCash] = useState(0);
   const [splitCard, setSplitCard] = useState(0);
   const [splitUPI, setSplitUPI] = useState(0);
@@ -1789,8 +1798,51 @@ export const BillingPOSView = ({
     }
   };
 
+  const handleSaveOverpaidAdvance = async () => {
+    const saveAmount = Number(overpaidModalData.manualAmount || 0);
+    if (saveAmount > 0) {
+      if (selectedCustomerId && selectedCustomerId.length === 24) {
+        try {
+          const currentWallet = Number(activeCustomer?.walletAdvance || 0);
+          const currentPrepaid = Number(activeCustomer?.prepaidAdvance || 0);
+          const newWallet = currentWallet + saveAmount;
+          const newPrepaid = currentPrepaid + saveAmount;
+          const newHistory = [
+            ...(activeCustomer?.advanceHistory || []),
+            {
+              amount: saveAmount,
+              reason: overpaidModalData.reason || `Overpaid excess saved as advance from bill`,
+              date: new Date()
+            }
+          ];
+          await api.put(`/customers/${selectedCustomerId}`, {
+            walletAdvance: newWallet,
+            prepaidAdvance: newPrepaid,
+            advanceHistory: newHistory
+          });
+          onAddNotification(
+            "Overpaid Advance Saved",
+            `₹${saveAmount.toLocaleString('en-IN')} saved to ${activeCustomer.name}'s wallet as Future Advance.`,
+            "success"
+          );
+        } catch (err) {
+          console.error("Failed to save overpaid advance:", err);
+          onAddNotification("Error", "Failed to save overpaid advance: " + err.message, "error");
+        }
+      } else {
+        onAddNotification(
+          "Notice",
+          `₹${saveAmount.toLocaleString('en-IN')} excess payment logged.`,
+          "info"
+        );
+      }
+    }
+    setShowOverpaymentModal(false);
+    handleCheckoutSubmit(false, true, true);
+  };
+
   // Handle checkout
-  const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false) => {
+  const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false, skipOverpaymentPrompt = false) => {
     if (isGeneratingBill) return false;
     setIsGeneratingBill(true);
 
@@ -1838,7 +1890,6 @@ export const BillingPOSView = ({
 
       const effectiveTotalPaid = computedAmountPaid + advanceApplied + loyaltyPointsUsed;
       if (effectiveTotalPaid > grandTotal && isCustomerMissing && overrideCustomerDue !== true) {
-        // Just reuse the due modal for overpayment customer requirements
         setShowDueCustomerModal(true);
         onAddNotification(
           "Customer Details Required",
@@ -1848,11 +1899,52 @@ export const BillingPOSView = ({
         return false;
       }
 
+      if (effectiveTotalPaid > grandTotal && !skipOverpaymentPrompt) {
+        const excess = effectiveTotalPaid - grandTotal;
+        setOverpaidModalData({
+          grandTotal,
+          paidTotal: effectiveTotalPaid,
+          excessAmount: excess,
+          manualAmount: excess,
+          reason: `Overpaid excess saved as advance from bill`
+        });
+        setShowOverpaymentModal(true);
+        setIsGeneratingBill(false);
+        return false;
+      }
+
       const cashier = employees.find((e) => e.id === cashierId) || employees[0] || { id: "e-default", name: "Default Cashier" };
 
       // Create Invoice object
       const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
       const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
+
+      const compiledTransactions = paymentType === "Part Payment"
+        ? [
+            ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
+            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+              .filter(m => Number(partPaymentAmounts[m]) > 0)
+              .map(m => {
+                let mode = m.toUpperCase().replace(/\s+/g, '_');
+                if (mode === 'POINTS_REDEEM') mode = 'POINTS';
+                return { mode, amount: Number(partPaymentAmounts[m]) };
+              })
+          ]
+        : [
+            {
+              mode: paymentMethod === 'Cash' ? 'CASH'
+                : (paymentMethod === 'Card' ? 'CARD'
+                : (paymentMethod === 'UPI' ? 'UPI'
+                : (paymentMethod === 'Advance' ? 'ADVANCE'
+                : (paymentMethod === 'Points Redeem' ? 'POINTS'
+                : (paymentMethod === 'Due' ? 'DUE' : paymentMethod.toUpperCase()))))),
+              amount: grandTotal
+            }
+          ];
+
+      const displayPaymentMode = paymentType === "Part Payment"
+        ? (compiledTransactions.length > 1 ? compiledTransactions.map(t => t.mode).join(' + ') : (compiledTransactions[0]?.mode || 'Split'))
+        : paymentMethod;
 
       const newInvoice = {
         invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
@@ -1867,13 +1959,9 @@ export const BillingPOSView = ({
         couponDiscount,
         gstTotal,
         grandTotal,
-        paymentMethod: paymentType === "Part Payment" ? "Split" : paymentMethod,
-        splitPayments: paymentType === "Part Payment"
-          ? [
-            { method: "Cash", amount: cashTotal },
-            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(m => ({ method: m, amount: Number(partPaymentAmounts[m]) || 0 }))
-          ].filter((s) => s.amount > 0)
-          : undefined,
+        paymentMethod: displayPaymentMode,
+        paymentTransactions: compiledTransactions,
+        splitPayments: compiledTransactions.map(t => ({ method: t.mode, amount: t.amount })),
         amountPaid: computedAmountPaid,
         advanceApplied,
         loyaltyPointsUsed,
@@ -2471,9 +2559,9 @@ export const BillingPOSView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="details">
-          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => s.method === 'Advance' && s.amount > 0))) ?
+          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => (s.method || s.mode) === 'Advance' && s.amount > 0))) ?
             `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
-              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => s.method === 'Advance')?.amount || 0)).toLocaleString('en-IN')}
+              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => (s.method || s.mode) === 'Advance')?.amount || 0)).toLocaleString('en-IN')}
             </div>`
             : ''
           }
@@ -2482,15 +2570,16 @@ export const BillingPOSView = ({
               <div style="font-weight:bold; text-align:center; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">PAYMENT BREAKDOWN</div>
               ${invoice.splitPayments.map(sp => `
                 <div style="display:flex; justify-content:space-between; padding:2px 0;">
-                  <span>${sp.method}:</span>
+                  <span>${sp.method || sp.mode}:</span>
                   <b>&#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}</b>
                 </div>
               `).join('')}
             </div>`
-            : `<div class="text-center"><b>Payment Mode:</b> ${invoice.paymentMethod === 'Split' ? 'Part Payment' : invoice.paymentMethod}</div>`
+            : ''
           }
+          <div class="text-center"><b>Payment Mode:</b> ${invoice.paymentMethod || 'Cash'}</div>
           <div class="text-center">
-            <b>Status:</b> ${invoice.status.toUpperCase()}<br>
+            <b>Status:</b> ${(invoice.status || 'Paid').toUpperCase()}<br>
             Thank you for shopping with us!<br>
             Powered by GarmentFlow SaaS ERP
           </div>
@@ -7575,6 +7664,104 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* Overpaid Excess Balance Modal */}
+      {showOverpaymentModal && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-scale-up">
+            {/* Header */}
+            <div className="bg-emerald-600 text-white p-5 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center font-black text-xl">
+                  &#8377;
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg leading-tight">Overpaid Excess Balance Detected</h3>
+                  <p className="text-emerald-100 text-xs font-medium">Save excess payment to customer wallet as future advance</p>
+                </div>
+              </div>
+              <button onClick={() => setShowOverpaymentModal(false)} className="text-emerald-100 hover:text-white transition-colors cursor-pointer">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              {/* Bill vs Paid Summary */}
+              <div className="grid grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-center font-mono">
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Bill Total</span>
+                  <span className="text-sm font-black text-slate-800">&#8377;{overpaidModalData.grandTotal.toLocaleString('en-IN')}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Paid</span>
+                  <span className="text-sm font-black text-indigo-700">&#8377;{overpaidModalData.paidTotal.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-1 border border-emerald-200">
+                  <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider block">Excess</span>
+                  <span className="text-sm font-black text-emerald-700">&#8377;{overpaidModalData.excessAmount.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Customer Badge */}
+              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
+                <span className="font-bold text-indigo-900">Customer Wallet:</span>
+                <span className="font-extrabold text-indigo-700">{activeCustomer?.name || 'Walk-in Customer'}</span>
+              </div>
+
+              {/* Manual Amount Editor */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                  Overpaid Amount to Save as Future Advance (&#8377;)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={overpaidModalData.manualAmount}
+                  onChange={(e) => setOverpaidModalData(prev => ({ ...prev, manualAmount: e.target.value }))}
+                  className="w-full h-12 border-2 border-emerald-500 rounded-xl px-4 font-black font-mono text-lg text-slate-900 outline-none focus:ring-2 focus:ring-emerald-300 bg-white shadow-inner"
+                  placeholder="Enter excess amount to save"
+                />
+              </div>
+
+              {/* Reason / Remarks */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                  Reason / Remark (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={overpaidModalData.reason}
+                  onChange={(e) => setOverpaidModalData(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full h-10 border border-slate-300 rounded-xl px-3 text-sm text-slate-800 outline-none focus:border-indigo-500 bg-white"
+                  placeholder="Reason for advance saving"
+                />
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleSaveOverpaidAdvance}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-sm shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" /> Save &#8377;{Number(overpaidModalData.manualAmount || 0).toLocaleString('en-IN')} as Future Advance
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOverpaymentModal(false);
+                  handleCheckoutSubmit(false, true, true);
+                }}
+                className="w-full py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-600 rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                Proceed without saving extra to Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enhanced Payment Selection & Cash Denomination Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
@@ -7624,14 +7811,6 @@ export const BillingPOSView = ({
                     key={method}
                     onClick={() => {
                       setPaymentMethod(method);
-                      if (paymentType === 'Part Payment' && method !== 'Cash') {
-                        const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                        const left = Math.max(0, grandTotal - cashTot - otherTot);
-                        if (left > 0 && !partPaymentAmounts[method]) {
-                          setPartPaymentAmounts(p => ({ ...p, [method]: left.toString() }));
-                        }
-                      }
                     }}
                     className={`flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-left transition-all font-bold cursor-pointer ${paymentMethod === method ? "bg-indigo-50 text-indigo-700 border-l-4 border-l-indigo-600 shadow-sm z-10" : "text-slate-600 hover:bg-slate-50 border-l-4 border-l-transparent"}`}
                   >
@@ -7945,6 +8124,26 @@ export const BillingPOSView = ({
                           </button>
                         ))}
                       </div>
+
+                      {/* Pay Advance Button below editor */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (paymentType === 'Part Payment') {
+                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc === 'Advance' ? 0 : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                            const remainingUnpaid = Math.max(0, grandTotal - cashTot - otherTot);
+
+                            const currentVal = Number(partPaymentAmounts["Advance"]) || 0;
+                            if (currentVal <= 0 && remainingUnpaid > 0) {
+                              setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaid.toString() }));
+                            }
+                          }
+                        }}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle className="w-4 h-4" /> Pay Advance (&#8377;{paymentType === 'Full Payment' ? grandTotal.toLocaleString('en-IN') : (Number(partPaymentAmounts["Advance"]) || grandTotal).toLocaleString('en-IN')})
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -8010,6 +8209,26 @@ export const BillingPOSView = ({
                           </button>
                         ))}
                       </div>
+
+                      {/* Pay Button below manual editor */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (paymentType === 'Part Payment') {
+                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc === paymentMethod ? 0 : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                            const remainingUnpaid = Math.max(0, grandTotal - cashTot - otherTot);
+
+                            const currentVal = Number(partPaymentAmounts[paymentMethod]) || 0;
+                            if (currentVal <= 0 && remainingUnpaid > 0) {
+                              setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: remainingUnpaid.toString() }));
+                            }
+                          }
+                        }}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle className="w-4 h-4" /> Pay {paymentMethod} (&#8377;{paymentType === 'Full Payment' ? grandTotal.toLocaleString('en-IN') : (Number(partPaymentAmounts[paymentMethod]) || grandTotal).toLocaleString('en-IN')})
+                      </button>
                     </div>
                   </div>
                 )}
@@ -8112,7 +8331,9 @@ export const BillingPOSView = ({
 
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
                   <button
-                    onClick={() => {
+                    disabled={isSavingPayment}
+                    onClick={async () => {
+                      if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
@@ -8123,14 +8344,22 @@ export const BillingPOSView = ({
                         setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
                         return;
                       }
-                      setShowPaymentModal(false);
+                      setIsSavingPayment(true);
+                      try {
+                        setShowPaymentModal(false);
+                        await handlePrintConfirm();
+                      } finally {
+                        setIsSavingPayment(false);
+                      }
                     }}
-                    className="w-full py-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded font-bold uppercase text-xs shadow-sm cursor-pointer transition-colors"
+                    className="w-full py-3 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-300 text-slate-700 rounded font-bold uppercase text-xs shadow-sm cursor-pointer transition-colors"
                   >
-                    <Save className="w-4 h-4 inline mr-2" /> Save Payment
+                    <Save className="w-4 h-4 inline mr-2" /> {isSavingPayment ? "Saving Payment..." : "Save Payment"}
                   </button>
                   <button
-                    onClick={() => {
+                    disabled={isSavingPayment}
+                    onClick={async () => {
+                      if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
@@ -8141,12 +8370,17 @@ export const BillingPOSView = ({
                         setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
                         return;
                       }
-                      setShowPaymentModal(false);
-                      handlePrintConfirm();
+                      setIsSavingPayment(true);
+                      try {
+                        setShowPaymentModal(false);
+                        await handlePrintConfirm();
+                      } finally {
+                        setIsSavingPayment(false);
+                      }
                     }}
-                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-black uppercase text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded font-black uppercase text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
                   >
-                    <Printer className="w-5 h-5" /> Save & Print Bill
+                    <Printer className="w-5 h-5" /> {isSavingPayment ? "Saving & Printing..." : "Save & Print Bill"}
                   </button>
                 </div>
               </div>

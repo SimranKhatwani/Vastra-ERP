@@ -19,6 +19,8 @@ router.post('/hold/:id/retrieve', authorize(PERMISSIONS.BILLING_CREATE), auditLo
 router.get('/', authorize(PERMISSIONS.BILLING_READ), BillingController.getSaleBills);
 router.get('/export', authorize(PERMISSIONS.BILLING_READ), BillingController.exportSaleBills);
 router.get('/:id', authorize(PERMISSIONS.BILLING_READ), BillingController.getSaleBillById);
+router.get('/:id/payments', authorize(PERMISSIONS.BILLING_READ), BillingController.getBillPayments);
+router.post('/:id/payments', authorize(PERMISSIONS.BILLING_CREATE), auditLog('RECORD_BILL_PAYMENT', 'billing'), BillingController.recordBillPayment);
 router.get('/:id/reprint', authorize(PERMISSIONS.BILLING_READ), BillingController.reprintBill);
 router.post('/:id/cancel', authorize(PERMISSIONS.BILLING_CANCEL), auditLog('CANCEL_SALE_BILL', 'billing'), BillingController.cancelSaleBill);
 

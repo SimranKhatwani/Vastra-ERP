@@ -57,6 +57,10 @@ const saleBillSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  advanceApplied: {
+    type: Number,
+    default: 0
+  },
   status: {
     type: String,
     enum: Object.values(BILL_STATUS),

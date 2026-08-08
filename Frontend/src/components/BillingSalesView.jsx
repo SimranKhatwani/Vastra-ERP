@@ -528,13 +528,17 @@ export const BillingSalesView = ({
   const handleCollectPaymentSubmit = async (e) => {
     e.preventDefault();
     if (!collectionInvoice || !collectAmount) return;
+    const invId = collectionInvoice._id || collectionInvoice.id;
 
     try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(`/billing-sales/collect-payment`, {
-          invoiceId: collectionInvoice._id,
-          amount: Number(collectAmount)
+      const mode = collectMethod === "UPI" ? "UPI" : (collectMethod === "Card" ? "CARD" : "CASH");
+      const res = await api.post(`/billing/${invId}/payments`, {
+        paymentTransactions: [
+          { mode, amount: Number(collectAmount), referenceNo: collectRef, notes: collectRemarks }
+        ],
+        remarks: collectRemarks || `Payment collection for bill ${collectionInvoice.invoiceNo}`
       });
+
       const json = res.data;
       if (json.success) {
         onAddNotification("Payment Logged", `Received ₹${collectAmount} for invoice ${collectionInvoice.invoiceNo}`, "success");
@@ -545,7 +549,8 @@ export const BillingSalesView = ({
         fetchInvoicesHistory();
       }
     } catch (err) {
-      alert("Failed to save payment collection: " + err.message);
+      console.error("Payment collection error:", err);
+      onAddNotification("Error", "Failed to save payment collection: " + (err.response?.data?.message || err.message), "error");
     }
   };
 

@@ -806,28 +806,31 @@ export default function App() {
         discountAmount: Number(item.discountAmount || 0)
       }));
 
-      const validPaymentMode = (() => {
-        const pm = String(inv.paymentMethod || "Cash").toUpperCase();
-        if (pm === "CREDIT") return "CREDIT";
-        if (pm === "CARD") return "CARD";
-        if (pm === "UPI") return "UPI";
-        if (pm === "WALLET") return "WALLET";
-        return "CASH";
-      })();
-
-      const paymentTransactionsList = Array.isArray(inv.paymentTransactions) && inv.paymentTransactions.length > 0
-        ? inv.paymentTransactions.map(tx => ({
-            mode: String(tx.mode || validPaymentMode).toUpperCase(),
-            amount: Number(tx.amount || inv.grandTotal || 0),
+      const paymentTransactionsList = (() => {
+        if (Array.isArray(inv.paymentTransactions) && inv.paymentTransactions.length > 0) {
+          return inv.paymentTransactions.map(tx => ({
+            mode: String(tx.mode || 'CASH').toUpperCase().replace(/\s+/g, '_'),
+            amount: Number(tx.amount || 0),
             referenceNo: tx.referenceNo || null,
             notes: tx.notes || null
-          }))
-        : [{
-            mode: validPaymentMode,
-            amount: Number(inv.grandTotal || 0),
+          })).filter(tx => tx.amount > 0);
+        }
+        if (Array.isArray(inv.splitPayments) && inv.splitPayments.length > 0) {
+          return inv.splitPayments.map(sp => ({
+            mode: String(sp.method || sp.mode || 'CASH').toUpperCase().replace(/\s+/g, '_'),
+            amount: Number(sp.amount || 0),
             referenceNo: null,
             notes: null
-          }];
+          })).filter(tx => tx.amount > 0);
+        }
+        const pm = String(inv.paymentMethod || 'CASH').toUpperCase().replace(/\s+/g, '_');
+        return [{
+          mode: pm === 'SPLIT' ? 'CASH' : pm,
+          amount: Number(inv.grandTotal || 0),
+          referenceNo: null,
+          notes: null
+        }];
+      })();
 
       const billingPayload = {
         billNo: inv.invoiceNo || inv.billNo || `BILL-${Date.now()}`,

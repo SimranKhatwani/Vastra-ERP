@@ -43,6 +43,16 @@ class BillingController {
     return res.status(200).json(new ApiResponse(200, payload, 'Reprint data retrieved.'));
   });
 
+  static getBillPayments = asyncHandler(async (req, res) => {
+    const result = await BillingService.getBillPayments(req.params.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, result, 'Bill payments fetched successfully.'));
+  });
+
+  static recordBillPayment = asyncHandler(async (req, res) => {
+    const result = await BillingService.recordBillPayment(req.params.id, req.body, req.user.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, result, 'Bill payment recorded successfully.'));
+  });
+
   static exportSaleBills = asyncHandler(async (req, res) => {
     const exportResult = await BillingService.exportSaleBills(req.query, req.tenantId, req.query.format || 'csv');
     if (req.query.format === 'csv') {

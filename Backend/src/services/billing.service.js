@@ -255,12 +255,25 @@ class BillingService {
     // 4. Record Payments if completed/partially paid
     let payment = null;
     if (!billData.isHold && billData.paymentTransactions && billData.paymentTransactions.length) {
+      let totalAdvanceApplied = 0;
+      let totalPointsRedeemed = 0;
+
+      for (const tx of billData.paymentTransactions) {
+        const mode = String(tx.mode || '').toUpperCase();
+        if (mode === 'ADVANCE') {
+          totalAdvanceApplied += Number(tx.amount || 0);
+        } else if (mode === 'POINTS' || mode === 'POINTS_REDEEM') {
+          totalPointsRedeemed += Number(tx.amount || 0);
+        }
+      }
+
       payment = await Payment.create({
         tenantId,
         saleBillId: saleBill._id,
         customerId: customer._id,
         receiptNo: `PAY-${saleBill.billNo}`,
         totalAmount: totalPaid,
+        advanceApplied: totalAdvanceApplied,
         createdBy: userId
       });
 
@@ -274,6 +287,23 @@ class BillingService {
           notes: tx.notes,
           createdBy: userId
         });
+      }
+
+      if (totalAdvanceApplied > 0 && customer) {
+        customer.walletAdvance = Math.max(0, (customer.walletAdvance || 0) - totalAdvanceApplied);
+        customer.prepaidAdvance = Math.max(0, (customer.prepaidAdvance || 0) - totalAdvanceApplied);
+        customer.advanceHistory = customer.advanceHistory || [];
+        customer.advanceHistory.push({
+          amount: -totalAdvanceApplied,
+          reason: `Advance applied to Bill ${saleBill.billNo}`,
+          date: new Date()
+        });
+        await customer.save();
+      }
+
+      if (totalPointsRedeemed > 0 && customer) {
+        customer.loyaltyPoints = Math.max(0, (customer.loyaltyPoints || 0) - totalPointsRedeemed);
+        await customer.save();
       }
 
       // Ledger entry
@@ -448,10 +478,158 @@ class BillingService {
         populate: { path: 'productId' }
       });
 
-    const payment = await Payment.findOne({ saleBillId: id, tenantId });
-    const transactions = payment ? await PaymentTransaction.find({ paymentId: payment._id, tenantId }) : [];
+    const payments = await Payment.find({ saleBillId: id, tenantId });
+    const paymentIds = payments.map(p => p._id);
+    const transactions = paymentIds.length > 0 ? await PaymentTransaction.find({ paymentId: { $in: paymentIds }, tenantId }) : [];
 
-    return { bill, items, payment, transactions };
+    const advanceApplied = payments.reduce((acc, p) => acc + (p.advanceApplied || 0), 0) || (bill.advanceApplied || 0);
+    const previouslyPaidAmount = transactions
+      .filter(tx => tx.mode !== PAYMENT_MODE.DUE && tx.mode !== PAYMENT_MODE.ADVANCE && tx.mode !== 'Advance')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0);
+
+    const remainingAmount = Math.max(0, bill.grandTotal - advanceApplied - previouslyPaidAmount);
+
+    return { bill, items, payment: payments[0] || null, payments, transactions, previouslyPaidAmount, advanceApplied, remainingAmount };
+  }
+
+  static async getBillPayments(billId, tenantId) {
+    const saleBill = await SaleBill.findOne({ _id: billId, tenantId, isDeleted: false })
+      .populate('customerId firmId warehouseId salesmanId');
+    if (!saleBill) throw new ApiError(404, 'Sale Bill not found.');
+
+    const payments = await Payment.find({ saleBillId: billId, tenantId }).sort({ createdAt: 1 });
+    const paymentIds = payments.map(p => p._id);
+    const transactions = paymentIds.length > 0
+      ? await PaymentTransaction.find({ paymentId: { $in: paymentIds }, tenantId }).sort({ createdAt: 1 })
+      : [];
+
+    const advanceApplied = payments.reduce((acc, p) => acc + (p.advanceApplied || 0), 0) || (saleBill.advanceApplied || 0);
+    const previouslyPaidAmount = transactions
+      .filter(tx => tx.mode !== PAYMENT_MODE.DUE && tx.mode !== PAYMENT_MODE.ADVANCE && tx.mode !== 'Advance')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0);
+
+    const remainingAmount = Math.max(0, saleBill.grandTotal - advanceApplied - previouslyPaidAmount);
+
+    return {
+      saleBill,
+      payments,
+      transactions,
+      previouslyPaidAmount,
+      advanceApplied,
+      remainingAmount
+    };
+  }
+
+  static async recordBillPayment(billId, paymentData, userId, tenantId) {
+    const saleBill = await SaleBill.findOne({ _id: billId, tenantId, isDeleted: false });
+    if (!saleBill) throw new ApiError(404, 'Sale Bill not found.');
+
+    const customer = await Customer.findOne({ _id: saleBill.customerId, tenantId });
+
+    const rawTxs = paymentData.paymentTransactions || [];
+    if (!rawTxs.length && !(paymentData.advanceApplied > 0)) {
+      throw new ApiError(400, 'Payment transactions or advance allocation required.');
+    }
+
+    let newPaid = 0;
+    let newAdvance = Number(paymentData.advanceApplied || 0);
+
+    rawTxs.forEach(tx => {
+      if (tx.mode === PAYMENT_MODE.ADVANCE || tx.mode === 'Advance') {
+        newAdvance += Number(tx.amount || 0);
+      } else if (tx.mode !== PAYMENT_MODE.DUE) {
+        newPaid += Number(tx.amount || 0);
+      }
+    });
+
+    // 1. Create Payment master
+    const receiptNo = paymentData.receiptNo || `PAY-${saleBill.billNo}-${Date.now().toString().slice(-4)}`;
+    const payment = await Payment.create({
+      tenantId,
+      saleBillId: saleBill._id,
+      customerId: saleBill.customerId,
+      receiptNo,
+      totalAmount: newPaid,
+      advanceApplied: newAdvance,
+      remarks: paymentData.remarks || `Payment for Bill No: ${saleBill.billNo}`,
+      createdBy: userId
+    });
+
+    // 2. Create PaymentTransaction records
+    const createdTxs = [];
+    for (const tx of rawTxs) {
+      if (tx.amount > 0) {
+        const txDoc = await PaymentTransaction.create({
+          tenantId,
+          paymentId: payment._id,
+          mode: tx.mode,
+          amount: tx.amount,
+          referenceNo: tx.referenceNo || paymentData.referenceNo,
+          notes: tx.notes || paymentData.remarks,
+          createdBy: userId
+        });
+        createdTxs.push(txDoc);
+      }
+    }
+
+    // 3. Recalculate totals across ALL payments
+    const allPayments = await Payment.find({ saleBillId: billId, tenantId });
+    const allPaymentIds = allPayments.map(p => p._id);
+    const allTxs = await PaymentTransaction.find({ paymentId: { $in: allPaymentIds }, tenantId });
+
+    const totalAdvanceSoFar = allPayments.reduce((acc, p) => acc + (p.advanceApplied || 0), 0);
+    const totalPaidSoFar = allTxs
+      .filter(tx => tx.mode !== PAYMENT_MODE.DUE && tx.mode !== PAYMENT_MODE.ADVANCE && tx.mode !== 'Advance')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0);
+
+    const dueAmount = Math.max(0, saleBill.grandTotal - totalPaidSoFar - totalAdvanceSoFar);
+    const status = dueAmount === 0 ? BILL_STATUS.COMPLETED : BILL_STATUS.PARTIALLY_PAID;
+
+    saleBill.paidAmount = totalPaidSoFar;
+    saleBill.advanceApplied = totalAdvanceSoFar;
+    saleBill.dueAmount = dueAmount;
+    saleBill.status = status;
+    saleBill.updatedBy = userId;
+    await saleBill.save();
+
+    // 4. Update Customer Advance Balance if newAdvance applied
+    if (newAdvance > 0 && customer) {
+      customer.walletAdvance = Math.max(0, (customer.walletAdvance || 0) - newAdvance);
+      customer.prepaidAdvance = Math.max(0, (customer.prepaidAdvance || 0) - newAdvance);
+      customer.advanceHistory = customer.advanceHistory || [];
+      customer.advanceHistory.push({
+        amount: -newAdvance,
+        reason: `Advance applied to Bill ${saleBill.billNo}`,
+        date: new Date()
+      });
+      await customer.save();
+    }
+
+    // 5. Update Customer Ledger
+    if (customer && (newPaid > 0 || newAdvance > 0)) {
+      customer.dueBalance = Math.max(0, customer.dueBalance - newPaid);
+      await customer.save();
+
+      await CustomerLedger.create({
+        tenantId,
+        customerId: customer._id,
+        type: LEDGER_TYPE.PAYMENT,
+        amount: newPaid + newAdvance,
+        balanceAfter: customer.dueBalance,
+        referenceBillId: saleBill._id,
+        remarks: `Payment of ₹${newPaid + newAdvance} received for Bill ${saleBill.billNo}`,
+        createdBy: userId
+      });
+    }
+
+    return {
+      saleBill,
+      payment,
+      transactions: createdTxs,
+      previouslyPaidAmount: totalPaidSoFar,
+      advanceApplied: totalAdvanceSoFar,
+      remainingAmount: dueAmount
+    };
   }
 
   /**
