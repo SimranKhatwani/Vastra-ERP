@@ -206,6 +206,7 @@ class BillingService {
         saleBillId: saleBill._id,
         inventoryPieceId: val.piece._id,
         barcode: val.piece.barcode,
+        uniqueCode: val.piece.uniqueCode || val.piece.barcode,
         mrp: val.piece.mrp,
         sellingPrice: val.sellingPrice,
         discountAmount: val.discountAmount,
@@ -385,8 +386,48 @@ class BillingService {
 
     const total = await SaleBill.countDocuments(filter);
 
+    // Enrich bills with SaleItems & uniqueCode tracking info
+    const billIds = bills.map(b => b._id);
+    const allSaleItems = await SaleItem.find({ saleBillId: { $in: billIds }, tenantId })
+      .populate({
+        path: 'inventoryPieceId',
+        populate: { path: 'productId' }
+      });
+
+    const itemsByBill = new Map();
+    allSaleItems.forEach(item => {
+      const bId = item.saleBillId.toString();
+      if (!itemsByBill.has(bId)) itemsByBill.set(bId, []);
+      const piece = item.inventoryPieceId || {};
+      const product = piece.productId || {};
+      itemsByBill.get(bId).push({
+        _id: item._id,
+        inventoryPieceId: piece._id || item.inventoryPieceId,
+        barcode: item.barcode || piece.barcode || '',
+        uniqueCode: item.uniqueCode || piece.uniqueCode || piece.barcode || '',
+        name: product.itemName || product.name || 'Garment Item',
+        itemName: product.itemName || product.name || 'Garment Item',
+        size: piece.size || product.size || 'FS',
+        color: piece.primaryColor || product.color || 'Standard',
+        mrp: item.mrp || 0,
+        price: item.sellingPrice || 0,
+        sellingPrice: item.sellingPrice || 0,
+        discountAmount: item.discountAmount || 0,
+        finalPrice: item.finalPrice || 0,
+        quantity: 1
+      });
+    });
+
+    const enrichedBills = bills.map(b => {
+      const bObj = b.toObject();
+      return {
+        ...bObj,
+        items: itemsByBill.get(b._id.toString()) || bObj.items || []
+      };
+    });
+
     return {
-      bills,
+      bills: enrichedBills,
       pagination: {
         total,
         page,

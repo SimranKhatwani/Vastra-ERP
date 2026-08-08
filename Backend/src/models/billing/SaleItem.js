@@ -20,6 +20,10 @@ const saleItemSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  uniqueCode: {
+    type: String,
+    trim: true
+  },
   mrp: {
     type: Number,
     required: true
