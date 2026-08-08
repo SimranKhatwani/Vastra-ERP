@@ -184,14 +184,14 @@ export const BillingPOSView = ({
     });
   }, [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' });
+  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', email: '', dob: '', gstin: '', lf: '2588' });
 
   const handleCustomerPhoneChange = (e) => {
     const val = e.target.value;
     const match = customers.find(c => c.phone === val || c.mobile === val);
     if (match) {
-      setCustomerForm({ phone: val, name: match.name || '', email: match.email || '', dob: match.dob || '', title: match.title || 'Mr.', lf: '2588' });
-      setSelectedCustomerId(match.id);
+      setCustomerForm({ phone: val, name: match.name || '', email: match.email || '', dob: match.dob || '', gstin: match.gstin || match.gstNo || '', lf: '2588' });
+      setSelectedCustomerId(match.id || match._id);
     } else {
       setCustomerForm(prev => ({ ...prev, phone: val }));
       setSelectedCustomerId("");
@@ -209,17 +209,31 @@ export const BillingPOSView = ({
           name: customerForm.name,
           phone: customerForm.phone,
           email: customerForm.email,
-          dob: customerForm.dob
+          dob: customerForm.dob,
+          gstin: customerForm.gstin
         });
-        if (newCust && newCust.id) {
-          setSelectedCustomerId(newCust.id);
-          if (onAddNotification) onAddNotification("Success", "Customer Saved", "success");
+        if (newCust && (newCust.id || newCust._id)) {
+          setSelectedCustomerId(newCust.id || newCust._id);
+          if (onAddNotification) onAddNotification("Success", "Customer Created & Saved", "success");
         }
       } catch (err) {
         console.error(err);
       }
     } else if (selectedCustomerId) {
-      if (onAddNotification) onAddNotification("Info", "Customer already exists", "info");
+      try {
+        const res = await api.put(`/customers/${selectedCustomerId}`, {
+          name: customerForm.name,
+          phone: customerForm.phone,
+          email: customerForm.email,
+          dob: customerForm.dob,
+          gstin: customerForm.gstin
+        });
+        if (res.data && res.data.data) {
+          if (onAddNotification) onAddNotification("Success", "Customer Info Updated", "success");
+        }
+      } catch (err) {
+        console.error("Failed to update existing customer:", err);
+      }
     }
   };
   const [selectedLoyaltyRuleId, setSelectedLoyaltyRuleId] = useState("");
@@ -3025,42 +3039,42 @@ export const BillingPOSView = ({
                     ).map((c, idx) => (
                       <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
                         onClick={() => {
-                          setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', title: c.title || 'Mr.', lf: '2588' });
+                          setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
                           setSelectedCustomerId(c.id || c._id);
                           setCustomerSearchQuery(c.phone);
                           setIsCustomerDropdownOpen(false);
                           if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
                         }}>
                         <div className="font-bold text-slate-800">{c.name}</div>
-                        <div className="text-slate-500">Phone: {c.phone} | Pts: {c.loyaltyPoints || 0}</div>
+                        <div className="text-slate-500">Phone: {c.phone} {c.gstin ? `| GST: ${c.gstin}` : ''} | Pts: {c.loyaltyPoints || 0}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-
-
-              {/* Title */}
-              <div className="flex items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Title</span>
-                <select className="flex-1 p-1 text-[10px] outline-none border-none" value={customerForm.title} onChange={e => setCustomerForm(prev => ({ ...prev, title: e.target.value }))}>
-                  <option>Mr.</option>
-                  <option>Mrs.</option>
-                  <option>Ms.</option>
-                </select>
-              </div>
-
               {/* Name */}
               <div className="flex relative items-center border border-slate-300 bg-white">
                 <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Name</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
               </div>
 
               {/* Mobile Display */}
               <div className="flex relative items-center border border-slate-300 bg-white">
                 <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Mobile</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.phone} onChange={handleCustomerPhoneChange} />
+                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.phone} onChange={handleCustomerPhoneChange} placeholder="Mobile" />
+              </div>
+
+              {/* GST No. (Replaced Title) */}
+              <div className="flex relative items-center border border-slate-300 bg-white">
+                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold">GST No.</span>
+                <input
+                  type="text"
+                  className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-bold"
+                  value={customerForm.gstin}
+                  onChange={e => setCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
+                  placeholder="GSTIN (Optional)"
+                />
               </div>
 
               {/* Email */}

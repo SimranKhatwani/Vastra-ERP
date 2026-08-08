@@ -8,6 +8,7 @@ export const CustomersView = ({
   onSettleCustomerBalance,
   onAddNotification,
   onUpdateCustomerPrepaidAdvance,
+  onAddCustomer
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [membershipFilter, setMembershipFilter] = useState("All");
@@ -21,11 +22,42 @@ export const CustomersView = ({
   const [editPrepaidAmount, setEditPrepaidAmount] = useState("");
   const [editPrepaidReason, setEditPrepaidReason] = useState("");
   const [editPrepaidDate, setEditPrepaidDate] = useState(new Date().toISOString().split("T")[0]);
+  const [editGstin, setEditGstin] = useState("");
   const [isSavingPrepaid, setIsSavingPrepaid] = useState(false);
+
+  // Add Customer Modal State
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "", dob: "", gstin: "" });
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+
+  const handleCreateCustomerSubmit = async (e) => {
+    e.preventDefault();
+    if (!newCustomerForm.name || !newCustomerForm.phone) {
+      onAddNotification("Required Fields Missing", "Please enter customer name and phone number.", "error");
+      return;
+    }
+    setIsCreatingCustomer(true);
+    try {
+      if (onAddCustomer) {
+        await onAddCustomer(newCustomerForm);
+        onAddNotification("Customer Created", `${newCustomerForm.name} saved successfully.`, "success");
+      } else {
+        await api.post('/customers', newCustomerForm);
+        onAddNotification("Customer Created", `${newCustomerForm.name} saved successfully.`, "success");
+      }
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({ name: "", phone: "", email: "", dob: "", gstin: "" });
+    } catch (err) {
+      console.error("Failed to create customer:", err);
+      onAddNotification("Error", "Failed to create customer: " + (err.response?.data?.message || err.message), "error");
+    } finally {
+      setIsCreatingCustomer(false);
+    }
+  };
 
   const handleSavePrepaidAdvance = async (cust) => {
     const custId = cust._id || cust.id || cust.phone;
-    const amount = Number(editPrepaidAmount);
+    const amount = editPrepaidAmount !== "" ? Number(editPrepaidAmount) : (cust.prepaidAdvance || 0);
     if (isNaN(amount) || amount < 0) {
       onAddNotification("Invalid Amount", "Please enter a valid prepaid amount.", "error");
       return;
@@ -36,16 +68,18 @@ export const CustomersView = ({
       const entryDate = editPrepaidDate ? new Date(editPrepaidDate) : new Date();
       const entryReason = editPrepaidReason.trim() ? editPrepaidReason.trim() : "Prepaid Advance Deposit";
 
-      const updatedHistory = [
+      const updatedHistory = editPrepaidAmount !== "" ? [
         ...history,
         { amount: amount, reason: entryReason, date: entryDate }
-      ];
-      const newWallet = (cust.walletAdvance || 0) + (amount - (cust.prepaidAdvance || 0));
+      ] : history;
+
+      const newWallet = editPrepaidAmount !== "" ? (cust.walletAdvance || 0) + (amount - (cust.prepaidAdvance || 0)) : (cust.walletAdvance || 0);
 
       const payload = {
         name: cust.name,
         phone: cust.phone,
         email: cust.email,
+        gstin: editGstin,
         prepaidAdvance: amount,
         walletAdvance: Math.max(0, newWallet),
         advanceHistory: updatedHistory
@@ -65,7 +99,7 @@ export const CustomersView = ({
         console.warn("Backend API put error, applying local customer state sync:", networkErr);
       }
 
-      onAddNotification("Prepaid Advance Saved", `Prepaid balance set to ₹${amount.toLocaleString('en-IN')} for ${cust.name}`, "success");
+      onAddNotification("Customer Info Saved", `Customer profile updated for ${cust.name}`, "success");
       if (onUpdateCustomerPrepaidAdvance) {
         onUpdateCustomerPrepaidAdvance(custId, updatedCust);
       }
@@ -73,8 +107,8 @@ export const CustomersView = ({
       setEditPrepaidAmount("");
       setEditPrepaidReason("");
     } catch (err) {
-      console.error("Failed to update prepaid advance", err);
-      onAddNotification("Error", "Error updating customer prepaid advance", "error");
+      console.error("Failed to update customer details", err);
+      onAddNotification("Error", "Error updating customer details", "error");
     } finally {
       setIsSavingPrepaid(false);
     }
@@ -198,14 +232,21 @@ export const CustomersView = ({
                 <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">CRM Customer Loyalty Directory</h4>
                 <p className="text-[10px] text-slate-400">Active records in database: {customers.length}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <input
                   type="text"
-                  placeholder="Search phone or name..."
+                  placeholder="Search phone, name or GST..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  + Add Customer
+                </button>
               </div>
             </div>
 
@@ -215,6 +256,7 @@ export const CustomersView = ({
                   <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
                     <th className="p-3.5">Customer Name</th>
                     <th className="p-3.5">Contact Detail</th>
+                    <th className="p-3.5 font-mono">GST No.</th>
                     <th className="p-3.5 text-center font-mono">Loyalty Points</th>
                     <th className="p-3.5 text-right font-mono text-amber-600">Prepaid Advance</th>
                     <th className="p-3.5 text-right font-mono">Total Advance</th>
@@ -243,7 +285,10 @@ export const CustomersView = ({
                             </div>
                               <p
                                 className="font-bold text-indigo-600 leading-tight cursor-pointer hover:underline"
-                                onClick={() => setSelectedCustomerModal({ cust, customerInvoices, tab: 'invoices' })}
+                                onClick={() => {
+                                  setSelectedCustomerModal({ cust, customerInvoices, tab: 'invoices' });
+                                  setEditGstin(cust.gstin || cust.gstNo || "");
+                                }}
                               >
                                 {cust.name}
                               </p>
@@ -252,6 +297,9 @@ export const CustomersView = ({
                         <td className="p-3.5">
                           <p>{cust.phone}</p>
                           <p className="text-[10px] text-slate-400">{cust.email}</p>
+                        </td>
+                        <td className="p-3.5 font-mono font-bold text-slate-700 uppercase">
+                          {cust.gstin || cust.gstNo || '-'}
                         </td>
                         <td className="p-3.5 text-center font-bold font-mono text-violet-600">
                           {cust.loyaltyPoints || 0} LP
@@ -443,13 +491,25 @@ export const CustomersView = ({
                             </div>
                           </div>
 
+                          {/* Field 4: GST No. */}
+                          <div className="pt-1">
+                            <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">GST No. (Optional)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 07ABCDE1234F1Z5"
+                              value={editGstin}
+                              onChange={(e) => setEditGstin(e.target.value)}
+                              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 uppercase outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+
                           <div className="flex justify-end pt-1">
                             <button
                               onClick={() => handleSavePrepaidAdvance(cust)}
                               disabled={isSavingPrepaid}
                               className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
                             >
-                              {isSavingPrepaid ? "Saving..." : "Save Prepaid Advance"}
+                              {isSavingPrepaid ? "Saving..." : "Save Customer Info"}
                             </button>
                           </div>
                         </div>
@@ -481,6 +541,92 @@ export const CustomersView = ({
                     );
                   })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD NEW CUSTOMER */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up border border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Add New Customer</h3>
+              <button onClick={() => setShowAddCustomerModal(false)} className="p-1 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateCustomerSubmit} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Customer Name <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  value={newCustomerForm.name}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Phone <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 9876543210"
+                  value={newCustomerForm.phone}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold font-mono outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">GST No. (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 07ABCDE1234F1Z5"
+                  value={newCustomerForm.gstin}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono uppercase font-bold text-slate-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Email (Optional)</label>
+                  <input
+                    type="email"
+                    placeholder="email@example.com"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">DOB (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="DD-MM-YYYY"
+                    value={newCustomerForm.dob}
+                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, dob: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingCustomer}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold shadow-md transition-colors cursor-pointer"
+                >
+                  {isCreatingCustomer ? "Saving..." : "Save Customer"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

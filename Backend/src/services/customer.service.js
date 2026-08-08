@@ -15,10 +15,13 @@ class CustomerService {
       throw new ApiError(400, `Customer with phone '${customerData.phone}' already exists.`);
     }
 
-    const customer = await Customer.create({
+    const payload = {
       ...customerData,
+      gstin: customerData.gstin !== undefined ? customerData.gstin : (customerData.gstNo || ''),
       tenantId
-    });
+    };
+
+    const customer = await Customer.create(payload);
 
     if (customerData.address) {
       await CustomerAddress.create({
@@ -53,7 +56,8 @@ class CustomerService {
       filter.$or = [
         { name: searchRegex },
         { phone: searchRegex },
-        { email: searchRegex }
+        { email: searchRegex },
+        { gstin: searchRegex }
       ];
     }
 
@@ -99,15 +103,22 @@ class CustomerService {
     const mongoose = require('mongoose');
     let customer = null;
 
+    const finalPayload = {
+      ...updateData,
+    };
+    if (updateData.gstNo !== undefined && updateData.gstin === undefined) {
+      finalPayload.gstin = updateData.gstNo;
+    }
+
     if (mongoose.Types.ObjectId.isValid(customerId)) {
-      customer = await Customer.findOneAndUpdate({ _id: customerId, tenantId }, updateData, { new: true });
+      customer = await Customer.findOneAndUpdate({ _id: customerId, tenantId }, finalPayload, { new: true });
     }
 
     if (!customer && (updateData.phone || customerId)) {
       const searchPhone = updateData.phone || customerId;
       customer = await Customer.findOneAndUpdate(
         { phone: searchPhone, tenantId },
-        updateData,
+        finalPayload,
         { new: true }
       );
     }
@@ -115,7 +126,7 @@ class CustomerService {
     if (!customer && updateData.phone && updateData.name) {
       customer = await Customer.findOneAndUpdate(
         { phone: updateData.phone, tenantId },
-        { ...updateData, tenantId },
+        { ...finalPayload, tenantId },
         { new: true, upsert: true }
       );
     }

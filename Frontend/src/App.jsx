@@ -1835,6 +1835,7 @@ export default function App() {
               invoices={invoices}
               onSettleCustomerBalance={handleSettleCustomerBalance}
               onAddNotification={addToastNotification}
+              onAddCustomer={handleAddCustomer}
               onUpdateCustomerPrepaidAdvance={(updatedCustId, updatedCustData) => {
                 setCustomers(prev => prev.map(c => ((c.id || c._id) === updatedCustId ? { ...c, ...updatedCustData, id: updatedCustData._id || updatedCustId } : c)));
               }}
