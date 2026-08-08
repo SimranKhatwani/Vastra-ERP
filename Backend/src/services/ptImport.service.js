@@ -157,37 +157,10 @@ class PTImportService {
         const subItem = String(getVal(row, 'SUB ITEM NAME', 'Sub Item', 'subItem', 'Sub Item Name') || '').trim();
 
         const size = String(getVal(row, 'Size', 'size') || 'FREE').trim();
-        const mrp = parseFloat(getVal(row, 'MRP', 'mrp') || 0);
+        let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice') || 0);
         const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate') || 0);
-        const wspAfterGST = parseFloat(getVal(row, 'WSP AFTER GST', 'wspAfterGST', 'WSP After GST') || purchaseRate);
-        const discount = parseFloat(getVal(row, 'dis. On purchase', 'Discount', 'discount', 'Dis. On purchase') || 0);
-        const rawGst = String(getVal(row, 'GST ON PURCHASE', 'GST On Purchase', 'gstOnPurchase') || '').replace(/[^0-9.]/g, '');
-        const taxRate = parseFloat(rawGst) || 0;
-
-        // Auto-calculate qty (default 1 per PT row) and lineTotal
-        const qty = parseInt(getVal(row, 'Total Qty.', 'Total Qty', 'totalQty', 'qty'), 10) || 1;
-        const lineTotal = (purchaseRate * qty) - discount > 0 ? (purchaseRate * qty) - discount : (purchaseRate * qty);
-
-        const inputBarcode = String(getVal(row, 'Barcode No', 'Barcode', 'barcode', 'BarcodeNo') || '').trim();
-        const inputUniqueCode = String(getVal(row, 'UNIQUE CODE', 'Unique Code', 'uniqueCode') || '').trim();
-        const ipn = String(getVal(row, 'IPN', 'ipn') || inputBarcode).trim();
-        const batch = String(getVal(row, 'BATCH', 'Batch', 'batch') || '').trim();
-        const primaryColor = String(getVal(row, 'Color(P)', 'Primary Color', 'primaryColor', 'Color P') || '').trim();
-        const secondaryColor = String(getVal(row, 'COLOR(S)', 'Secondary Color', 'secondaryColor', 'Color S') || '').trim();
-        const gender = String(getVal(row, 'GROUP 3 (GENDER)', 'Gender', 'gender') || 'FEMALE').trim().toUpperCase();
-        const topBottomSet = String(getVal(row, 'Group 1(Top/Bottom/SET)', 'Top Bottom Set', 'topBottomSet') || 'TOP').trim().toUpperCase();
-        const firmName = String(getVal(row, 'firm', 'Firm', 'firmName') || '').trim();
-
-        const barcode = inputBarcode || generateBarcode(tenantId);
-        const uniqueCode = inputUniqueCode || generateUniqueCode(designNo, size, rowIndex);
-
-        currentRowCtx = { rowNum, barcode, itemCode, billNo, ipn };
-
-        // Validate Row Data
         if (!mrp || mrp <= 0) {
-          summary.failed++;
-          summary.errors.push({ row: rowNum, error: `Invalid or missing MRP on row ${rowNum}` });
-          continue;
+          mrp = purchaseRate > 0 ? Math.round(purchaseRate * 1.5) : 500;
         }
 
         if (processedBarcodesSet.has(barcode)) {

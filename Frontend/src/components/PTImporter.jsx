@@ -335,6 +335,9 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const res = await api.post(`/pt-import`, { rows: parsedRows });
         if (res.data?.success) {
           importSuccess = true;
+          if (onAddPurchaseOrder) {
+            await onAddPurchaseOrder({ ...newVoucher, skipApiPost: true });
+          }
         }
       } catch (ptImportErr) {
         console.warn("Backend /pt-import endpoint unavailable, falling back to /purchase-orders:", ptImportErr);

@@ -96,7 +96,30 @@ class CustomerService {
   }
 
   static async updateCustomer(customerId, updateData, tenantId) {
-    const customer = await Customer.findOneAndUpdate({ _id: customerId, tenantId }, updateData, { new: true });
+    const mongoose = require('mongoose');
+    let customer = null;
+
+    if (mongoose.Types.ObjectId.isValid(customerId)) {
+      customer = await Customer.findOneAndUpdate({ _id: customerId, tenantId }, updateData, { new: true });
+    }
+
+    if (!customer && (updateData.phone || customerId)) {
+      const searchPhone = updateData.phone || customerId;
+      customer = await Customer.findOneAndUpdate(
+        { phone: searchPhone, tenantId },
+        updateData,
+        { new: true }
+      );
+    }
+
+    if (!customer && updateData.phone && updateData.name) {
+      customer = await Customer.findOneAndUpdate(
+        { phone: updateData.phone, tenantId },
+        { ...updateData, tenantId },
+        { new: true, upsert: true }
+      );
+    }
+
     if (!customer) throw new ApiError(404, 'Customer not found.');
     return customer;
   }

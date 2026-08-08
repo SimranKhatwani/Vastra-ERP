@@ -1687,6 +1687,26 @@ export const BillingPOSView = ({
     }
   };
 
+  const handleRemoveCategoryAdvance = (category) => {
+    if (category === "loyalty") {
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        "Points Redeem": ""
+      }));
+    } else if (category === "all") {
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        Advance: "",
+        "Points Redeem": ""
+      }));
+    } else {
+      setPartPaymentAmounts((p) => ({
+        ...p,
+        Advance: ""
+      }));
+    }
+  };
+
   const handleApplyCategoryAdvance = async (category) => {
     setShowAdvancePromptModal(false);
     setPaymentLoaderMessage("Preparing Payment Details... Please wait.");
@@ -1701,41 +1721,48 @@ export const BillingPOSView = ({
         .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
         .reduce((acc, h) => acc + (h.amount || 0), 0);
       const overpaidAmt = history
-        .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+        .filter(h => h.reason && h.reason.toLowerCase().includes('overpayment'))
         .reduce((acc, h) => acc + (h.amount || 0), 0);
-      const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
+      const prepaidFromHistory = history
+        .filter(h => h.reason && (h.reason.toLowerCase().includes('prepaid') || h.reason.toLowerCase().includes('advance') || h.reason.toLowerCase().includes('deposit')))
+        .reduce((acc, h) => acc + (h.amount || 0), 0);
+
+      const prepaidAmt = activeCustomer?.prepaidAdvance || activeCustomer?.prepaidAmount || prepaidFromHistory || Math.max(0, wallet - overpaidAmt - returnAmt);
+      const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 && prepaidAmt === 0 ? wallet : 0);
 
       setPaymentType("Part Payment");
 
-      if (category === "loyalty") {
-        const applyLoyalty = Math.min(loyalty, grandTotal);
-        setPartPaymentAmounts((p) => ({
-          ...p,
-          "Points Redeem": applyLoyalty > 0 ? applyLoyalty.toString() : ""
-        }));
-      } else if (category === "overpaid") {
-        const applyOverpaid = Math.min(fallbackOverpaid, grandTotal);
-        setPartPaymentAmounts((p) => ({
-          ...p,
-          Advance: applyOverpaid > 0 ? applyOverpaid.toString() : ""
-        }));
-      } else if (category === "return") {
-        const applyReturn = Math.min(returnAmt, grandTotal);
-        setPartPaymentAmounts((p) => ({
-          ...p,
-          Advance: applyReturn > 0 ? applyReturn.toString() : ""
-        }));
-      } else if (category === "all") {
-        const totalAdvance = wallet + loyalty;
-        const applyAmount = Math.min(totalAdvance, grandTotal);
-        const advanceUse = Math.min(wallet, applyAmount);
-        const loyaltyUse = applyAmount - advanceUse;
-        setPartPaymentAmounts((p) => ({
-          ...p,
-          Advance: advanceUse > 0 ? advanceUse.toString() : "",
-          "Points Redeem": loyaltyUse > 0 ? loyaltyUse.toString() : ""
-        }));
-      }
+      setPartPaymentAmounts((prev) => {
+        const currentPointsRedeem = Number(prev["Points Redeem"]) || 0;
+        const currentAdvance = Number(prev["Advance"]) || 0;
+        let newPointsRedeem = currentPointsRedeem;
+        let newAdvance = currentAdvance;
+
+        if (category === "loyalty") {
+          const remainingForLoyalty = Math.max(0, grandTotal - currentAdvance);
+          const applyLoyalty = Math.min(loyalty, remainingForLoyalty);
+          newPointsRedeem = applyLoyalty;
+          if (newPointsRedeem + newAdvance > grandTotal) {
+            newAdvance = Math.max(0, grandTotal - newPointsRedeem);
+          }
+        } else {
+          const remainingForAdvance = Math.max(0, grandTotal - currentPointsRedeem);
+          let targetCategoryBalance = 0;
+          if (category === "overpaid") targetCategoryBalance = fallbackOverpaid;
+          else if (category === "return") targetCategoryBalance = returnAmt;
+          else if (category === "prepaid") targetCategoryBalance = prepaidAmt;
+          else if (category === "all") targetCategoryBalance = wallet;
+
+          const applyAdvance = Math.min(targetCategoryBalance, remainingForAdvance);
+          newAdvance = applyAdvance;
+        }
+
+        return {
+          ...prev,
+          "Points Redeem": newPointsRedeem > 0 ? newPointsRedeem.toString() : "",
+          "Advance": newAdvance > 0 ? newAdvance.toString() : ""
+        };
+      });
 
       await new Promise(resolve => setTimeout(resolve, 300));
       setShowPaymentModal(true);
@@ -7366,25 +7393,42 @@ export const BillingPOSView = ({
                 .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
                 .reduce((acc, h) => acc + (h.amount || 0), 0);
               const overpaidAmt = history
-                .filter(h => h.reason && (h.reason.toLowerCase().includes('overpayment') || (!h.reason.toLowerCase().includes('return') && h.amount > 0)))
+                .filter(h => h.reason && h.reason.toLowerCase().includes('overpayment'))
                 .reduce((acc, h) => acc + (h.amount || 0), 0);
-              const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 ? wallet : 0);
+              const prepaidFromHistory = history
+                .filter(h => h.reason && (h.reason.toLowerCase().includes('prepaid') || h.reason.toLowerCase().includes('advance') || h.reason.toLowerCase().includes('deposit')))
+                .reduce((acc, h) => acc + (h.amount || 0), 0);
+
+              const prepaidAmt = activeCustomer?.prepaidAdvance || activeCustomer?.prepaidAmount || prepaidFromHistory || Math.max(0, wallet - overpaidAmt - returnAmt);
+              const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 && prepaidAmt === 0 ? wallet : 0);
 
               return (
-                <div className="space-y-3 mb-6">
+                <div className="space-y-3 mb-6 max-h-80 overflow-y-auto pr-1">
                   {/* Category 1: Loyalty Points */}
                   <div className="flex items-center justify-between p-3 bg-purple-50 rounded-xl border border-purple-100">
                     <div>
                       <p className="text-xs font-bold text-purple-900">Loyalty Point Amount</p>
                       <p className="text-sm font-black text-purple-700 font-mono">&#8377;{loyalty.toLocaleString('en-IN')}</p>
                     </div>
-                    <button
-                      onClick={() => handleApplyCategoryAdvance('loyalty')}
-                      disabled={loyalty <= 0}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                    >
-                      Apply
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {Number(partPaymentAmounts["Points Redeem"]) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCategoryAdvance('loyalty')}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCategoryAdvance('loyalty')}
+                        disabled={loyalty <= 0}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
 
                   {/* Category 2: Overpaid Amount */}
@@ -7393,13 +7437,25 @@ export const BillingPOSView = ({
                       <p className="text-xs font-bold text-emerald-900">Overpaid Amount</p>
                       <p className="text-sm font-black text-emerald-700 font-mono">&#8377;{fallbackOverpaid.toLocaleString('en-IN')}</p>
                     </div>
-                    <button
-                      onClick={() => handleApplyCategoryAdvance('overpaid')}
-                      disabled={fallbackOverpaid <= 0}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                    >
-                      Apply
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {Number(partPaymentAmounts["Advance"]) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCategoryAdvance('overpaid')}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCategoryAdvance('overpaid')}
+                        disabled={fallbackOverpaid <= 0}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
 
                   {/* Category 3: Return Amount */}
@@ -7408,13 +7464,52 @@ export const BillingPOSView = ({
                       <p className="text-xs font-bold text-blue-900">Return Amount</p>
                       <p className="text-sm font-black text-blue-700 font-mono">&#8377;{returnAmt.toLocaleString('en-IN')}</p>
                     </div>
-                    <button
-                      onClick={() => handleApplyCategoryAdvance('return')}
-                      disabled={returnAmt <= 0}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                    >
-                      Apply
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {Number(partPaymentAmounts["Advance"]) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCategoryAdvance('return')}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCategoryAdvance('return')}
+                        disabled={returnAmt <= 0}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Category 4: Prepaid Amount */}
+                  <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-100">
+                    <div>
+                      <p className="text-xs font-bold text-amber-900">Prepaid Amount</p>
+                      <p className="text-sm font-black text-amber-700 font-mono">&#8377;{prepaidAmt.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {Number(partPaymentAmounts["Advance"]) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCategoryAdvance('prepaid')}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCategoryAdvance('prepaid')}
+                        disabled={prepaidAmt <= 0}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -7483,7 +7578,7 @@ export const BillingPOSView = ({
       {/* Enhanced Payment Selection & Cash Denomination Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-slate-50 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up flex flex-col border border-slate-200 h-[650px] relative">
+          <div className="bg-slate-50 rounded-2xl shadow-2xl w-[94vw] max-w-[1340px] overflow-hidden animate-scale-up flex flex-col border border-slate-200 h-[720px] max-h-[90vh] relative">
 
             {/* Custom Payment Warning Overlay */}
             {paymentWarning && (
@@ -7515,13 +7610,15 @@ export const BillingPOSView = ({
                   <input type="radio" name="paymentType" checked={paymentType === 'Part Payment'} onChange={() => setPaymentType('Part Payment')} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
                   <span className="font-bold text-slate-700 text-sm">Part Payment</span>
                 </label>
-                <button onClick={() => setShowPaymentModal(false)} className="ml-4 text-slate-400 hover:text-rose-500 cursor-pointer"><X className="w-6 h-6" /></button>
+                <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 ml-2">
+                  <X className="w-6 h-6" />
+                </button>
               </div>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
               {/* Left Column: Payment Methods */}
-              <div className="w-48 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
+              <div className="w-52 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
                 {["Cash", "Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(method => (
                   <button
                     key={method}
@@ -7549,7 +7646,7 @@ export const BillingPOSView = ({
                 {paymentMethod === "Cash" ? (
                   <>
                     <div className="flex-1 p-4 overflow-y-auto border-r border-slate-200">
-                      <div className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {[
                           { val: 500 },
                           { val: 200 },
@@ -7564,33 +7661,40 @@ export const BillingPOSView = ({
                           <div
                             key={note.val}
                             onClick={() => setActiveDenomination(note.val)}
-                            className={`flex items-center gap-1.5 px-1 py-1.5 rounded-lg border-2 cursor-pointer transition-all ${activeDenomination === note.val ? 'border-indigo-500 bg-indigo-50/50 shadow-md' : 'border-slate-200 bg-white hover:border-indigo-300'}`}
+                            className={`flex items-center gap-3 p-3.5 min-h-[84px] rounded-2xl border-2 cursor-pointer transition-all ${activeDenomination === note.val ? 'border-indigo-600 bg-indigo-50/80 shadow-md ring-2 ring-indigo-200' : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm'}`}
                           >
                             {note.isCoin ? (
-                              <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-xs shadow border-2 border-amber-400 shrink-0" style={{ background: 'linear-gradient(145deg, #f5d98e, #d4a843)', color: '#6b4c00' }}>
-                                ₹{note.val}
+                              <div className="w-14 h-14 rounded-full flex items-center justify-center font-black text-sm shadow-md border-2 border-amber-400 shrink-0" style={{ background: 'linear-gradient(145deg, #f5d98e, #d4a843)', color: '#6b4c00' }}>
+                                &#8377;{note.val}
                               </div>
                             ) : (
                               <img
                                 src={`/photos/${note.val}.jpg`}
                                 alt={"₹" + note.val}
-                                className="w-16 h-8 object-cover rounded shadow border border-slate-200 transition-transform hover:scale-[1.02]"
+                                className="w-24 h-16 object-cover rounded-xl shadow-sm border border-slate-200 transition-transform hover:scale-[1.03] shrink-0"
                               />
                             )}
 
-                            <input
-                              type="number" min="0"
-                              className="w-12 h-8 border border-slate-300 rounded text-center font-bold text-slate-800 outline-none focus:border-indigo-500 bg-white text-sm"
-                              value={cashDenominations[note.val] || ''}
-                              onChange={(e) => {
-                                setActiveDenomination(note.val);
-                                setCashDenominations(prev => ({ ...prev, [note.val]: e.target.value }));
-                              }}
-                              placeholder="0"
-                            />
-                            <span className="font-mono font-bold text-slate-800 text-right ml-auto text-sm shrink-0 pr-1">
-                              ₹{((Number(cashDenominations[note.val]) || 0) * note.val).toLocaleString()}
-                            </span>
+                            <div className="flex flex-col flex-1 min-w-0">
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Qty</span>
+                              <input
+                                type="number" min="0"
+                                className="w-full h-10 border border-slate-300 rounded-xl text-center font-extrabold text-slate-800 outline-none focus:border-indigo-500 bg-white text-base shadow-inner"
+                                value={cashDenominations[note.val] || ''}
+                                onChange={(e) => {
+                                  setActiveDenomination(note.val);
+                                  setCashDenominations(prev => ({ ...prev, [note.val]: e.target.value }));
+                                }}
+                                placeholder="0"
+                              />
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider mb-0.5">Total</span>
+                              <span className="font-mono font-black text-slate-900 text-sm">
+                                &#8377;{((Number(cashDenominations[note.val]) || 0) * note.val).toLocaleString()}
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -7636,6 +7740,213 @@ export const BillingPOSView = ({
                       </div>
                     </div>
                   </>
+                ) : paymentMethod === "Advance" ? (
+                  <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 p-4 overflow-y-auto border-r border-slate-200 bg-white">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <CreditCard className="w-4 h-4 text-indigo-600 shrink-0" />
+                            <span className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">Customer Wallet & Advance</span>
+                          </div>
+                          <span className="text-xs font-black text-indigo-700 bg-indigo-100/80 px-2.5 py-0.5 rounded-full shrink-0 font-mono">
+                            Avail: &#8377;{((activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span>Customer: <strong className="text-slate-700 font-bold">{activeCustomer?.name || 'Walk-in Customer'}</strong></span>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const wallet = activeCustomer?.walletAdvance || 0;
+                        const loyalty = activeCustomer?.loyaltyPoints || 0;
+                        const history = activeCustomer?.advanceHistory || [];
+
+                        const returnAmt = history
+                          .filter(h => h.reason && h.reason.toLowerCase().includes('return'))
+                          .reduce((acc, h) => acc + (h.amount || 0), 0);
+                        const overpaidAmt = history
+                          .filter(h => h.reason && h.reason.toLowerCase().includes('overpayment'))
+                          .reduce((acc, h) => acc + (h.amount || 0), 0);
+                        const prepaidFromHistory = history
+                          .filter(h => h.reason && (h.reason.toLowerCase().includes('prepaid') || h.reason.toLowerCase().includes('advance') || h.reason.toLowerCase().includes('deposit')))
+                          .reduce((acc, h) => acc + (h.amount || 0), 0);
+
+                        const prepaidAmt = activeCustomer?.prepaidAdvance || activeCustomer?.prepaidAmount || prepaidFromHistory || Math.max(0, wallet - overpaidAmt - returnAmt);
+                        const fallbackOverpaid = overpaidAmt > 0 ? overpaidAmt : (history.length === 0 && prepaidAmt === 0 ? wallet : 0);
+
+                        return (
+                          <div className="space-y-2.5">
+                            {/* Option 1: Loyalty Points */}
+                            <div className="flex items-center justify-between p-2.5 bg-purple-50/70 rounded-xl border border-purple-100">
+                              <div>
+                                <p className="text-xs font-bold text-purple-900">Loyalty Point Amount</p>
+                                <p className="text-sm font-black text-purple-700 font-mono">&#8377;{loyalty.toLocaleString('en-IN')}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {Number(partPaymentAmounts["Points Redeem"]) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveCategoryAdvance('loyalty')}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyCategoryAdvance('loyalty')}
+                                  disabled={loyalty <= 0}
+                                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Option 2: Overpaid Amount */}
+                            <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-100">
+                              <div>
+                                <p className="text-xs font-bold text-emerald-900">Overpaid Amount</p>
+                                <p className="text-sm font-black text-emerald-700 font-mono">&#8377;{fallbackOverpaid.toLocaleString('en-IN')}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {Number(partPaymentAmounts["Advance"]) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveCategoryAdvance('overpaid')}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyCategoryAdvance('overpaid')}
+                                  disabled={fallbackOverpaid <= 0}
+                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Option 3: Return Amount */}
+                            <div className="flex items-center justify-between p-2.5 bg-blue-50/70 rounded-xl border border-blue-100">
+                              <div>
+                                <p className="text-xs font-bold text-blue-900">Return Amount</p>
+                                <p className="text-sm font-black text-blue-700 font-mono">&#8377;{returnAmt.toLocaleString('en-IN')}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {Number(partPaymentAmounts["Advance"]) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveCategoryAdvance('return')}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyCategoryAdvance('return')}
+                                  disabled={returnAmt <= 0}
+                                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Option 4: Prepaid Amount */}
+                            <div className="flex items-center justify-between p-2.5 bg-amber-50/70 rounded-xl border border-amber-100">
+                              <div>
+                                <p className="text-xs font-bold text-amber-900">Prepaid Amount</p>
+                                <p className="text-sm font-black text-amber-700 font-mono">&#8377;{prepaidAmt.toLocaleString('en-IN')}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {Number(partPaymentAmounts["Advance"]) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveCategoryAdvance('prepaid')}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyCategoryAdvance('prepaid')}
+                                  disabled={prepaidAmt <= 0}
+                                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="w-[280px] p-4 bg-[#e8ecf1] flex flex-col items-center justify-center gap-3 shrink-0">
+                      {/* LCD Display */}
+                      <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
+                        <span className="text-xs font-bold text-slate-400">Advance Allocated</span>
+                        <div className="flex items-center w-full justify-end">
+                          <span className="text-2xl font-black font-mono text-slate-800 mr-1">&#8377;</span>
+                          {paymentType === 'Full Payment' ? (
+                            <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
+                          ) : (
+                            <input
+                              type="number" min="0"
+                              autoFocus
+                              value={partPaymentAmounts["Advance"] || ''}
+                              onChange={(e) => setPartPaymentAmounts(p => ({ ...p, Advance: e.target.value }))}
+                              className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
+                              placeholder="0"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 w-full">
+                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, Advance: '' })) }} className="col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">CLR</button>
+                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, Advance: (p.Advance?.toString() || '').slice(0, -1) })) }} className="col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer">BCK</button>
+
+                        {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              if (btn === 'Pay') {
+                                if (paymentType === 'Full Payment') {
+                                  setShowPaymentModal(false);
+                                  handlePrintConfirm();
+                                  return;
+                                }
+                                const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                                if (partTot < grandTotal) {
+                                  setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
+                                  return;
+                                }
+                                setShowPaymentModal(false);
+                                handlePrintConfirm();
+                              } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
+                                setPartPaymentAmounts(p => ({ ...p, Advance: (p.Advance?.toString() || '') + btn }));
+                              }
+                            }}
+                            className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' :
+                                ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
+                              }`}
+                          >
+                            {btn}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center p-4 relative">
                     {paymentType === 'Full Payment' && (
@@ -7649,7 +7960,7 @@ export const BillingPOSView = ({
                       <div className="w-full h-16 bg-white border border-slate-300 rounded shadow-inner flex flex-col justify-center items-end px-4">
                         <span className="text-xs font-bold text-slate-400">{paymentMethod} Amount</span>
                         <div className="flex items-center w-full justify-end">
-                          <span className="text-2xl font-black font-mono text-slate-800 mr-1">₹</span>
+                          <span className="text-2xl font-black font-mono text-slate-800 mr-1">&#8377;</span>
                           {paymentType === 'Full Payment' ? (
                             <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
                           ) : (
@@ -7666,11 +7977,9 @@ export const BillingPOSView = ({
                       </div>
 
                       <div className="grid grid-cols-4 gap-2 w-full">
-                        {/* Row 1 */}
                         <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' })) }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
                         <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1) })) }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
 
-                        {/* Numbers */}
                         {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
                           <button
                             key={i}
@@ -7776,23 +8085,25 @@ export const BillingPOSView = ({
                           <div className="flex justify-between items-center text-slate-800 pt-1">
                             <span className="font-bold text-xs">Total Amount Paid</span>
                             <span className="font-black text-emerald-600 text-base">
-                              ₹{totalPaidDisplay.toLocaleString()}
+                              ₹{totalPaidDisplay.toLocaleString('en-IN')}
                             </span>
                           </div>
                           {remainingDue > 0 && (
                             <div className="flex justify-between items-center text-amber-900 bg-amber-50 p-2 rounded border border-amber-200 text-xs">
-                              <span className="font-bold">Remaining Due</span>
+                              <span className="font-bold">Remaining Amount to be Paid</span>
                               <span className="font-black text-amber-700 text-sm">
-                                ₹{remainingDue.toLocaleString()}
+                                ₹{remainingDue.toLocaleString('en-IN')}
                               </span>
                             </div>
                           )}
-                          <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200 text-xs">
-                            <span className="font-bold">Balance (Change Return)</span>
-                            <span className="font-black text-rose-600 text-sm">
-                              ₹{changeReturn.toLocaleString()}
-                            </span>
-                          </div>
+                          {changeReturn > 0 && (
+                            <div className="flex justify-between items-center text-slate-800 bg-rose-50 p-2 rounded border border-rose-200 text-xs">
+                              <span className="font-bold">Balance (Change Return)</span>
+                              <span className="font-black text-rose-600 text-sm">
+                                ₹{changeReturn.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
                         </>
                       );
                     })()}

@@ -10,7 +10,16 @@ const customerSchema = new mongoose.Schema({
   anniversary: Date,
   loyaltyPoints: { type: Number, default: 0 },
   dueBalance: { type: Number, default: 0 },
-  advanceBalance: { type: Number, default: 0 }
+  advanceBalance: { type: Number, default: 0 },
+  walletAdvance: { type: Number, default: 0 },
+  prepaidAdvance: { type: Number, default: 0 },
+  advanceHistory: [
+    {
+      amount: { type: Number, default: 0 },
+      reason: { type: String, default: '' },
+      date: { type: Date, default: Date.now }
+    }
+  ]
 });
 
 customerSchema.index({ tenantId: 1, phone: 1 }, { unique: true });

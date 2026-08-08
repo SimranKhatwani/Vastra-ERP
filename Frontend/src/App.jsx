@@ -923,6 +923,32 @@ export default function App() {
 
   const handleAddPurchaseOrder = async (po) => {
     try {
+      if (po?.skipApiPost) {
+        try {
+          const [resPOs, resProducts, resSuppliers] = await Promise.all([
+            api.get(`/purchase-orders`),
+            api.get(`/products`),
+            api.get(`/suppliers`)
+          ]);
+          if (resProducts.data?.success) {
+            const rawProds = Array.isArray(resProducts.data.data) ? resProducts.data.data : (resProducts.data.data?.products || []);
+            setProducts(rawProds.map(p => ({ ...p, id: p._id || p.id })));
+          }
+          const dataOrBills = Array.isArray(resPOs.data?.data)
+            ? resPOs.data.data
+            : (Array.isArray(resPOs.data?.data?.bills) ? resPOs.data.data.bills : []);
+          if (dataOrBills.length > 0) {
+            setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
+          }
+          if (resSuppliers.data?.success) {
+            setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id || s.id })));
+          }
+        } catch (refetchErr) {
+          console.warn("Refetch after PT import error:", refetchErr);
+        }
+        return;
+      }
+
       const token = localStorage.getItem("token");
       const res = await api.post(`/purchase-orders`, po);
       const data = res.data;
@@ -1806,6 +1832,9 @@ export default function App() {
               invoices={invoices}
               onSettleCustomerBalance={handleSettleCustomerBalance}
               onAddNotification={addToastNotification}
+              onUpdateCustomerPrepaidAdvance={(updatedCustId, updatedCustData) => {
+                setCustomers(prev => prev.map(c => ((c.id || c._id) === updatedCustId ? { ...c, ...updatedCustData, id: updatedCustData._id || updatedCustId } : c)));
+              }}
             />
           )}
 
