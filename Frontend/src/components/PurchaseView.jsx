@@ -17,7 +17,20 @@ const getToken = () => localStorage.getItem("token");
 const authHeaders = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` });
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d) => {
+  if (!d) return "—";
+  let dateObj = new Date(d);
+  if (isNaN(dateObj.getTime())) {
+    const serial = parseFloat(d);
+    if (!isNaN(serial) && serial > 10000) {
+      dateObj = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
+    } else {
+      return String(d);
+    }
+  }
+  if (dateObj.getFullYear() <= 1970) return new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+};
 
 const Badge = ({ label, color = "slate" }) => {
   const map = {

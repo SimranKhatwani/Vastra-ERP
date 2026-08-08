@@ -41,23 +41,38 @@ class PurchaseService {
       }
 
       if (!product) {
-        const barcode = item.barcode || `BCODE${Math.floor(10000000 + Math.random() * 90000000)}`;
+        const Brand = require('../models/masters/Brand');
+        const Category = require('../models/masters/Category');
+        const brandName = item.brand || 'GENERIC BRAND';
+        const categoryName = item.category || item.itemName || 'GENERAL';
+
+        let brand = await Brand.findOne({ tenantId, name: new RegExp(`^${brandName}$`, 'i') });
+        if (!brand) {
+          brand = await Brand.create({ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() });
+        }
+
+        let category = await Category.findOne({ tenantId, name: new RegExp(`^${categoryName}$`, 'i') });
+        if (!category) {
+          category = await Category.create({ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() });
+        }
+
+        const barcode = item.barcode || `BC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const designNo = String(item.designNo || 'DSG-001').trim();
+        const itemCode = String(item.itemCode || `ITEM-${designNo}-${Date.now()}`).trim();
+        const itemName = String(item.itemName || item.name || `${brandName} ${designNo}`).trim();
+        const mrp = Number(item.mrp || item.sellingPrice || item.purchasePrice || 100);
+
         product = await Product.create({
           tenantId,
-          name: item.name || item.itemName || "PT Garment Item",
-          category: item.category || item.itemName || "General",
-          brand: item.brand || "Generic",
-          sku: `${item.designNo || 'DES'}-${barcode}`,
-          barcode,
-          itemCode: item.itemCode || "N/A",
-          color: item.color || item.colorPrimary || "Standard",
-          size: item.size || "FS",
-          purchasePrice: item.purchasePrice || item.purchaseRate || 0,
-          sellingPrice: item.mrp || 0,
-          mrp: item.mrp || 0,
-          gstPercent: item.gstOnSalePrice || item.gstOnPurchase || item.taxRate || 0,
-          stock: item.quantity || item.qty || 1,
-          status: "In Stock",
+          designNo,
+          itemCode,
+          itemName,
+          subItem: item.subItem || '',
+          brandId: brand._id,
+          categoryId: category._id,
+          gender: 'UNISEX',
+          topBottomSet: 'TOP',
+          defaultMRP: mrp,
           createdBy: userId
         });
       }
@@ -189,7 +204,17 @@ class PurchaseService {
       InventoryPiece.find({ purchaseBillId: billId }).select('barcode uniqueCode status mrp purchaseRate size ipn primaryColor secondaryColor')
     ]);
 
-    const enrichedItems = items.map(item => {
+    // Deduplicate items to prevent duplicate rows if multiple submission APIs were called
+    const seenKeys = new Set();
+    const uniqueItems = items.filter(item => {
+      const prd = item.productId || {};
+      const key = `${prd._id || item.productId || ''}_${item.size || ''}_${item.color || ''}_${item.purchaseRate || ''}`;
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
+
+    const enrichedItems = uniqueItems.map(item => {
       const prd = item.productId || {};
       const piece = pieces.find(p => p.size === item.size) || pieces[0] || {};
       const qty = item.qty || 1;
@@ -241,7 +266,10 @@ class PurchaseService {
   }
 
   static async getPurchaseBills(query = {}, tenantId) {
-    const filter = { tenantId, isDeleted: false };
+    const filter = {
+      $or: [{ tenantId }, { tenantId: { $exists: false } }, { tenantId: null }],
+      isDeleted: false
+    };
     if (query.vendorId) filter.vendorId = query.vendorId;
     if (query.status) filter.status = query.status;
     if (query.search) {

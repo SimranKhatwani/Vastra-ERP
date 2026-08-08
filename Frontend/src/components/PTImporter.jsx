@@ -1,3 +1,4 @@
+import api from '../api/axios';
 import React, { useState, useRef, useMemo } from "react";
 import { UploadCloud, CheckCircle2, CheckCircle, XCircle, FileSpreadsheet, Edit3, Save, ArrowLeft, Printer, Download, AlertTriangle, RefreshCw, FileText, Check, ChevronRight, Eye, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -328,7 +329,18 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         status: "Completed"
       };
 
-      if (onAddPurchaseOrder) {
+      // Submit PT Excel rows to backend engine once (avoids duplicate item creation)
+      let importSuccess = false;
+      try {
+        const res = await api.post(`/pt-import`, { rows: parsedRows });
+        if (res.data?.success) {
+          importSuccess = true;
+        }
+      } catch (ptImportErr) {
+        console.warn("Backend /pt-import endpoint unavailable, falling back to /purchase-orders:", ptImportErr);
+      }
+
+      if (!importSuccess && onAddPurchaseOrder) {
         await onAddPurchaseOrder(newVoucher);
       }
 
@@ -583,6 +595,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
             return String(dateStr);
         }
     }
+    if (d.getFullYear() <= 1970) return new Date().toLocaleDateString('en-GB');
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = String(d.getFullYear()).slice(-2);

@@ -21,6 +21,7 @@ const ptImportHistorySchema = new mongoose.Schema({
   purchaseBillIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseBill' }],
   inventoryPieceIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryPiece' }],
   purchaseItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseItem' }],
+  importedRows: [mongoose.Schema.Types.Mixed],
   rollbackAt: Date,
   rollbackBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 });

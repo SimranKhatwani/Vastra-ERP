@@ -317,27 +317,29 @@ class PTImportService {
           }
         }
 
-        // Purchase Bill Management
+        // Purchase Bill Management - Each import upload session creates a distinct PurchaseBill
         let purchaseBill = billCache.get(billNo.toUpperCase());
         if (!purchaseBill) {
           try {
-            console.log(`BEFORE PurchaseBill lookup/creation: ${billNo}`);
-            purchaseBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp(`^${billNo}$`, 'i') }).session(session);
-            if (!purchaseBill) {
-              const created = await PurchaseBill.create([{
-                tenantId,
-                billNo,
-                vendorId: vendor._id,
-                firmId: firm._id,
-                warehouseId: warehouse._id,
-                billDate,
-                totalAmount: 0,
-                status: 'APPROVED'
-              }], { session });
-              purchaseBill = created[0];
+            console.log(`BEFORE PurchaseBill creation: ${billNo}`);
+            const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp(`^${billNo}$`, 'i') }).session(session);
+            let targetBillNo = billNo;
+            if (existingBill) {
+              targetBillNo = `${billNo}-${Date.now().toString().slice(-4)}`;
             }
+            const created = await PurchaseBill.create([{
+              tenantId,
+              billNo: targetBillNo,
+              vendorId: vendor._id,
+              firmId: firm._id,
+              warehouseId: warehouse._id,
+              billDate,
+              totalAmount: 0,
+              status: 'APPROVED'
+            }], { session });
+            purchaseBill = created[0];
             billCache.set(billNo.toUpperCase(), purchaseBill);
-            console.log(`AFTER PurchaseBill lookup/creation: ${purchaseBill._id}. inTransaction: ${session.inTransaction()}`);
+            console.log(`AFTER PurchaseBill creation: ${purchaseBill._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: PurchaseBill Management');
             console.error(err);
@@ -479,7 +481,8 @@ class PTImportService {
         importedBy: userId,
         purchaseBillIds,
         inventoryPieceIds,
-        purchaseItemIds
+        purchaseItemIds,
+        importedRows: rows
       }], { session });
 
       summary.importId = importHistory[0]._id;
@@ -525,13 +528,16 @@ class PTImportService {
     const limit = parseInt(query.limit) || 20;
     const skip = (page - 1) * limit;
     
-    const history = await PTImportHistory.find({ tenantId })
+    const filter = {
+      $or: [{ tenantId }, { tenantId: { $exists: false } }, { tenantId: null }]
+    };
+    const history = await PTImportHistory.find(filter)
       .populate('importedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
     
-    const total = await PTImportHistory.countDocuments({ tenantId });
+    const total = await PTImportHistory.countDocuments(filter);
     return { items: history, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
