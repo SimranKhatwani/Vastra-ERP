@@ -255,16 +255,27 @@ export const BillingPOSView = ({
             ...prev,
             {
               productId: p._id || p.id,
-              name: p.name,
-              sku: p.sku,
+              name: p.itemName || p.name || 'Item',
+              itemName: p.itemName || p.name || 'Item',
+              barcode: p.barcode || (p.pieces && p.pieces[0]?.barcode) || '',
+              subItem: p.subItem || (typeof p.category === 'string' ? p.category : p.categoryId?.name) || '',
+              designNo: p.designNo || p.sku || '',
+              itemCode: p.itemCode || p.productCode || p.sku || '',
+              ipn: p.ipn || p.pieces?.[0]?.ipn || '',
+              sku: p.sku || p.designNo || '',
               size: p.size || 'M',
-              color: p.color || 'Std',
+              color: p.primaryColor || p.color || 'Standard',
+              primaryColor: p.primaryColor || p.color || 'Standard',
+              secondaryColor: p.secondaryColor || '',
+              hsn: p.hsn || p.hsnCode || '',
+              mrp: Number(p.mrp) || Number(p.defaultMRP) || sPrice,
+              price: sPrice,
+              sellingPrice: sPrice,
               salespersonId: "",
               salespersonName: "",
               workerId: "",
               workerName: "",
               quantity: 1,
-              price: sPrice,
               discount: 0,
               gstPercent: 0,
               totalPrice: sPrice,
@@ -304,6 +315,8 @@ export const BillingPOSView = ({
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemNameInput, setItemNameInput] = useState("");
+  const [itemCodeSearchInput, setItemCodeSearchInput] = useState("");
+  const [isItemCodeDropdownOpen, setIsItemCodeDropdownOpen] = useState(false);
   const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
@@ -315,6 +328,18 @@ export const BillingPOSView = ({
   const [isGeneratingBill, setIsGeneratingBill] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const filteredItemCodeProducts = React.useMemo(() => {
+    if (!products || products.length === 0) return [];
+    const q = (itemCodeSearchInput || "").trim().toLowerCase();
+    if (!q) return products.slice(0, 40);
+    return products.filter(p => {
+      const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
+      const name = (p.itemName || p.name || "").toLowerCase();
+      const barcode = (p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
+      return code.includes(q) || name.includes(q) || barcode.includes(q);
+    }).slice(0, 60);
+  }, [products, itemCodeSearchInput]);
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -1407,23 +1432,47 @@ export const BillingPOSView = ({
   const finalizeAddToCart = (prod, customQty, customSize, customColor, spId, spName, wId, wName) => {
     setCart((prev) => {
       const newItems = [];
-      const sPrice = Number(prod.sellingPrice) || Number(prod.price) || Number(prod.mrp) || Number(prod.basePrice) || 0;
+      const sPrice = Number(prod.sellingPrice) ?? Number(prod.price) ?? Number(prod.mrp) ?? Number(prod.defaultMRP) ?? 0;
+      const mrpVal = Number(prod.mrp) ?? Number(prod.defaultMRP) ?? sPrice;
+      const itemNameVal = prod.itemName || prod.name || 'Unnamed Item';
+      const barcodeVal = prod.barcode || prod.barcodeNo || (prod.pieces && prod.pieces[0]?.barcode) || '';
+      const subItemVal = prod.subItem || (typeof prod.category === 'string' ? prod.category : prod.categoryId?.name) || '';
+      const designNoVal = prod.designNo || prod.sku || '';
+      const itemCodeVal = prod.itemCode || prod.productCode || prod.sku || '';
+      const ipnVal = prod.ipn || prod.pieces?.[0]?.ipn || '';
+      const primaryColorVal = customColor || prod.primaryColor || prod.color || 'Standard';
+      const secondaryColorVal = prod.secondaryColor || '';
+      const sizeVal = customSize || prod.size || 'M';
+      const hsnVal = prod.hsn || prod.hsnCode || prod.hsnId?.code || '';
+
       for (let i = 0; i < customQty; i++) {
         newItems.push({
           productId: prod._id || prod.id,
-          name: prod.name,
-          sku: prod.sku,
-          size: customSize,
-          color: customColor,
+          name: itemNameVal,
+          itemName: itemNameVal,
+          barcode: barcodeVal,
+          barcodeNo: barcodeVal,
+          subItem: subItemVal,
+          designNo: designNoVal,
+          itemCode: itemCodeVal,
+          ipn: ipnVal,
+          sku: prod.sku || designNoVal,
+          size: sizeVal,
+          color: primaryColorVal,
+          primaryColor: primaryColorVal,
+          secondaryColor: secondaryColorVal,
+          hsn: hsnVal,
+          mrp: mrpVal,
+          price: sPrice,
+          sellingPrice: sPrice,
+          discount: Number(prod.discount) || 0,
+          gstPercent: Number(prod.gstPercent) || 0,
+          totalPrice: sPrice,
           salespersonId: spId,
           salespersonName: spName,
           workerId: wId,
           workerName: wName,
           quantity: 1,
-          price: sPrice,
-          discount: 0,
-          gstPercent: 0,
-          totalPrice: sPrice,
           uniqueCode: generateUniqueItemCode()
         });
       }
@@ -3014,111 +3063,125 @@ export const BillingPOSView = ({
                 {selectedCustomerId ? `ID: ${selectedCustomerId}` : 'New/Walk-in'}
               </span>
             </div>
-            <div className="p-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2 items-center bg-slate-50">
+            <div className="p-2 flex flex-col gap-2 bg-slate-50">
+              {/* Row 1: Search, Name, Mobile, GST No., Blank */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 items-center">
+                {/* Mobile No Search / Dropdown */}
+                <div className="flex items-center border border-slate-300 relative bg-white col-span-1 md:col-span-2">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Search Mobile/Name</span>
+                  <input type="text" id="mobileSearchInput" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold"
+                    value={customerSearchQuery || customerForm.phone}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setCustomerForm(prev => ({ ...prev, phone: e.target.value }));
+                      setIsCustomerDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsCustomerDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
+                    placeholder="Type to search..."
+                  />
+                  {isCustomerDropdownOpen && customerSearchQuery && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
+                      {customers.filter(c =>
+                        (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                        (c.phone || "").includes(customerSearchQuery) ||
+                        (c.id || "").includes(customerSearchQuery)
+                      ).map((c, idx) => (
+                        <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
+                          onClick={() => {
+                            setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
+                            setSelectedCustomerId(c.id || c._id);
+                            setCustomerSearchQuery(c.phone);
+                            setIsCustomerDropdownOpen(false);
+                            if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
+                          }}>
+                          <div className="font-bold text-slate-800">{c.name}</div>
+                          <div className="text-slate-500">Phone: {c.phone} {c.gstin ? `| GST: ${c.gstin}` : ''} | Pts: {c.loyaltyPoints || 0}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              {/* Mobile No Search / Dropdown */}
-              <div className="flex items-center border border-slate-300 relative bg-white col-span-1 md:col-span-2">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Search Mobile/Name</span>
-                <input type="text" id="mobileSearchInput" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold"
-                  value={customerSearchQuery || customerForm.phone}
-                  onChange={(e) => {
-                    setCustomerSearchQuery(e.target.value);
-                    setCustomerForm(prev => ({ ...prev, phone: e.target.value }));
-                    setIsCustomerDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsCustomerDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
-                  placeholder="Type to search..."
-                />
-                {isCustomerDropdownOpen && customerSearchQuery && (
-                  <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
-                    {customers.filter(c =>
-                      (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-                      (c.phone || "").includes(customerSearchQuery) ||
-                      (c.id || "").includes(customerSearchQuery)
-                    ).map((c, idx) => (
-                      <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
-                        onClick={() => {
-                          setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
-                          setSelectedCustomerId(c.id || c._id);
-                          setCustomerSearchQuery(c.phone);
-                          setIsCustomerDropdownOpen(false);
-                          if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
-                        }}>
-                        <div className="font-bold text-slate-800">{c.name}</div>
-                        <div className="text-slate-500">Phone: {c.phone} {c.gstin ? `| GST: ${c.gstin}` : ''} | Pts: {c.loyaltyPoints || 0}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Name */}
+                <div className="flex relative items-center border border-slate-300 bg-white">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Name</span>
+                  <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
+                </div>
+
+                {/* Mobile Display */}
+                <div className="flex relative items-center border border-slate-300 bg-white">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Mobile</span>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold font-mono"
+                    value={customerForm.phone}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      handleCustomerPhoneChange({ target: { value: digits } });
+                    }}
+                    placeholder="10 Digits"
+                  />
+                </div>
+
+                {/* GST No. (Replaced Title) */}
+                <div className="flex relative items-center border border-slate-300 bg-white">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold">GST No.</span>
+                  <input
+                    type="text"
+                    className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-bold"
+                    value={customerForm.gstin}
+                    onChange={e => setCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
+                    placeholder="GSTIN (Optional)"
+                  />
+                </div>
+
+                {/* Blank Space on Row 1 */}
+                <div className="hidden md:block"></div>
               </div>
 
-              {/* Name */}
-              <div className="flex relative items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Name</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
-              </div>
+              {/* Row 2: Email, DOB, Points & Actions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 items-center pt-1 border-t border-slate-200/80">
+                {/* Email */}
+                <div className="flex relative items-center border border-slate-300 bg-white">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Email</span>
+                  <input type="email" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" />
+                </div>
 
-              {/* Mobile Display */}
-              <div className="flex relative items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Mobile</span>
-                <input
-                  type="text"
-                  maxLength={10}
-                  className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold font-mono"
-                  value={customerForm.phone}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    handleCustomerPhoneChange({ target: { value: digits } });
-                  }}
-                  placeholder="10 Digits"
-                />
-              </div>
+                {/* DOB */}
+                <div className="flex relative items-center border border-slate-300 bg-white">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">DOB</span>
+                  <input type="date" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-semibold" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} />
+                </div>
 
-              {/* GST No. (Replaced Title) */}
-              <div className="flex relative items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold">GST No.</span>
-                <input
-                  type="text"
-                  className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-bold"
-                  value={customerForm.gstin}
-                  onChange={e => setCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
-                  placeholder="GSTIN (Optional)"
-                />
-              </div>
+                {/* Loyalty Points */}
+                <div className="flex items-center border border-slate-300 bg-slate-100">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Points</span>
+                  <span className="flex-1 p-1 text-[10px] font-bold text-indigo-700">
+                    {customers.find(c => (c.id || c._id) === selectedCustomerId)?.loyaltyPoints || 0} pts
+                  </span>
+                </div>
 
-              {/* Email */}
-              <div className="flex relative items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Email</span>
-                <input type="email" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" />
-              </div>
+                {/* Blank Space on Row 2 */}
+                <div className="hidden md:block"></div>
 
-              {/* DOB */}
-              <div className="flex relative items-center border border-slate-300 bg-white">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">DOB</span>
-                <input type="date" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-semibold" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} />
+                {/* Customer Actions */}
+                <div className="flex gap-1.5 justify-end col-span-1 md:col-span-2">
+                  <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={handleCustomerSave}>
+                    <Save className="w-3.5 h-3.5 text-green-600" />
+                    <span>Save Profile</span>
+                  </button>
+                  <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => {
+                    setSelectedCustomerId("");
+                    setCustomerForm({ phone: '', name: '', email: '', dob: '', gstin: '', lf: '2588' });
+                    setCustomerSearchQuery("");
+                  }}>
+                    <X className="w-3.5 h-3.5 text-red-500" />
+                    <span>New Customer</span>
+                  </button>
+                </div>
               </div>
-
-              {/* Loyalty Points */}
-              <div className="flex items-center border border-slate-300 bg-slate-100">
-                <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Points</span>
-                <span className="flex-1 p-1 text-[10px] font-bold text-indigo-700">
-                  {customers.find(c => (c.id || c._id) === selectedCustomerId)?.loyaltyPoints || 0} pts
-                </span>
-              </div>
-
-              {/* Customer Actions */}
-              <div className="flex gap-1 justify-end col-span-1 sm:col-span-2 md:col-span-4 lg:col-span-5 xl:col-span-4">
-                <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={handleCustomerSave}>
-                  <Save className="w-3.5 h-3.5 text-green-600" />
-                  <span>Save Profile</span>
-                </button>
-                <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' })}>
-                  <X className="w-3.5 h-3.5 text-red-600" />
-                  <span>New Customer</span>
-                </button>
-              </div>
-
             </div>
           </div>
 
@@ -3318,7 +3381,99 @@ export const BillingPOSView = ({
                         />
                       </td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
+                      {/* Item Code (Click to Search with SEARCH placeholder & Dropdown) */}
+                      <td className="border-r border-slate-300 p-0.5 relative">
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase shadow-inner placeholder-slate-500 font-mono"
+                          placeholder="SEARCH"
+                          value={itemCodeSearchInput}
+                          onChange={(e) => {
+                            setItemCodeSearchInput(e.target.value);
+                            setIsItemCodeDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsItemCodeDropdownOpen(true)}
+                          onClick={() => setIsItemCodeDropdownOpen(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              const q = itemCodeSearchInput.trim().toLowerCase();
+                              if (!q) {
+                                handleOpenItemSearchModal();
+                                return;
+                              }
+                              const matches = (products || []).filter(p => {
+                                const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
+                                return code === q || code.includes(q);
+                              });
+                              if (matches.length === 1) {
+                                handleAddProductToCart(matches[0]);
+                                setItemCodeSearchInput("");
+                                setIsItemCodeDropdownOpen(false);
+                              } else if (matches.length > 1) {
+                                setIsItemCodeDropdownOpen(true);
+                              } else {
+                                handleOpenItemSearchModal();
+                              }
+                            }
+                          }}
+                        />
+
+                        {/* Dropdown list for multiple products with same/matching Item Code */}
+                        {isItemCodeDropdownOpen && (
+                          <div className="absolute top-full left-0 w-80 bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-72 overflow-y-auto z-[200] text-slate-800">
+                            <div className="p-1.5 bg-indigo-600 text-white flex items-center justify-between text-[10px] font-bold">
+                              <span>Select Item Code ({filteredItemCodeProducts.length} items)</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsItemCodeDropdownOpen(false);
+                                }}
+                                className="text-indigo-200 hover:text-white font-extrabold px-1 text-xs cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {filteredItemCodeProducts.length === 0 ? (
+                              <div className="p-3 text-center text-[11px] text-slate-400 font-medium">No items found matching item code</div>
+                            ) : (
+                              filteredItemCodeProducts.map((p, pIdx) => {
+                                const code = p.itemCode || p.productCode || p.sku || '-';
+                                const name = p.itemName || p.name || 'Unnamed Item';
+                                const size = p.size || '-';
+                                const color = p.primaryColor || p.color || '-';
+                                const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                const barcode = p.barcode || (p.pieces && p.pieces[0]?.barcode) || '';
+
+                                return (
+                                  <div
+                                    key={p._id || p.id || pIdx}
+                                    className="p-2 border-b border-slate-100 hover:bg-yellow-50 cursor-pointer transition-colors text-xs"
+                                    onClick={() => {
+                                      handleAddProductToCart(p);
+                                      setItemCodeSearchInput("");
+                                      setIsItemCodeDropdownOpen(false);
+                                      if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                    }}
+                                  >
+                                    <div className="flex items-center justify-between font-bold text-slate-800">
+                                      <span className="font-mono text-indigo-600 bg-indigo-50 px-1 rounded text-[10px]">{code}</span>
+                                      <span className="text-slate-900 font-extrabold">&#8377;{price}</span>
+                                    </div>
+                                    <div className="text-[11px] font-semibold text-slate-700 mt-0.5">{name}</div>
+                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                      <span>Size: <strong className="text-slate-700">{size}</strong></span>
+                                      <span>Color: <strong className="text-slate-700">{color}</strong></span>
+                                      <span>Barcode: <strong className="text-slate-700 font-mono">{barcode || '-'}</strong></span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
