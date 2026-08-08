@@ -329,6 +329,25 @@ export const BillingPOSView = ({
   const [isPrinting, setIsPrinting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // Alteration Panel Keyboard Focus States
+  const [isAlterationModeActive, setIsAlterationModeActive] = useState(false);
+  const [focusedAlterationIndex, setFocusedAlterationIndex] = useState(0);
+
+  const handleOpenAlterationForCartItem = (item) => {
+    if (!item) return;
+    setSelectedAlterationCartItem(item);
+    setAltMeasurements(item.alterationRecord?.measurements || {});
+    setAltOptions(item.alterationRecord?.alterationDetails || []);
+    setAltCustomText(item.alterationRecord?.customAlterationText || "");
+    setAltSpecialInstructions(item.alterationRecord?.specialInstructions || "");
+    setAltDeliveryDate(item.alterationRecord?.deliveryDate || "");
+    setAltDeliveryTime(item.alterationRecord?.deliveryTime || "05:00 PM");
+    setAltTrialDate(item.alterationRecord?.trialDate || "");
+    setAltPriority(item.alterationRecord?.priority || "Normal");
+    setAltSelectedTailor((tailorEmployeesList || []).find(t => t.name === item.alterationRecord?.tailorName) || null);
+    setShowAlterationModal(true);
+  };
+
   const filteredItemCodeProducts = React.useMemo(() => {
     if (!products || products.length === 0) return [];
     const q = (itemCodeSearchInput || "").trim().toLowerCase();
@@ -1092,6 +1111,48 @@ export const BillingPOSView = ({
         handleOpenDraftPreview();
       }
 
+      // Master Shortcut: Alt + A → Focus/Activate Alteration Panel
+      if (e.altKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (cart.length === 0) {
+          if (onAddNotification) onAddNotification("Alteration Panel", "No items in bill to alter.", "info");
+          return;
+        }
+        if (document.activeElement && typeof document.activeElement.blur === "function") {
+          document.activeElement.blur();
+        }
+        setIsAlterationModeActive(true);
+        setFocusedAlterationIndex(prev => (prev >= 0 && prev < cart.length ? prev : 0));
+        return;
+      }
+
+      // Alteration Panel Active Mode Navigation Controls
+      if (isAlterationModeActive && cart.length > 0 && !showAlterationModal && !showPaymentModal && !isItemSearchModalOpen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setIsAlterationModeActive(false);
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setFocusedAlterationIndex(prev => Math.min(cart.length - 1, prev + 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setFocusedAlterationIndex(prev => Math.max(0, prev - 1));
+          return;
+        }
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const targetItem = cart[focusedAlterationIndex];
+          if (targetItem) {
+            handleOpenAlterationForCartItem(targetItem);
+          }
+          return;
+        }
+      }
+
       // Payment Modal Navigation
       if (showPaymentModal) {
         const methods = ["Cash", "Card", "UPI", "Credit"];
@@ -1133,7 +1194,10 @@ export const BillingPOSView = ({
     selectedSearchItem,
     products,
     activeModule,
-    alterationPromptItem
+    alterationPromptItem,
+    isAlterationModeActive,
+    focusedAlterationIndex,
+    showAlterationModal
   ]); // Re-bind if these states change so handleHoldBill gets latest state
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
@@ -3609,9 +3673,16 @@ export const BillingPOSView = ({
 
             {/* RIGHT COLUMN: ALTERATION PANEL */}
             <div className="w-[200px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400">
-              <div className="bg-[#c0c0c0] text-center text-[10px] py-1 font-bold border-b border-slate-400 text-slate-700 shadow-inner text-white flex items-center justify-center gap-1 uppercase tracking-wider" style={{ background: 'linear-gradient(to bottom, #999, #777)' }}>
-                <Scissors className="w-3.5 h-3.5 text-white" />
-                <span>Alteration Panel</span>
+              <div className="bg-[#555] text-center py-1.5 px-1 border-b border-slate-500 text-white shadow-inner flex flex-col items-center justify-center gap-1 uppercase tracking-wider" style={{ background: 'linear-gradient(to bottom, #6b7280, #4b5563)' }}>
+                <div className="flex items-center justify-center gap-1.5 text-[11px] font-extrabold text-white">
+                  <Scissors className="w-3.5 h-3.5 text-white" />
+                  <span>Alteration Panel</span>
+                </div>
+                <div className="inline-flex items-center gap-1 bg-black/25 px-2 py-0.5 rounded text-[9px] font-bold font-sans text-slate-100 border border-white/20 normal-case tracking-normal">
+                  <span>Alt + A</span>
+                  <span className="text-slate-300">→</span>
+                  <span>Focus Panel</span>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5 custom-scrollbar bg-slate-50">
                 {cart.length === 0 ? (
@@ -3621,32 +3692,44 @@ export const BillingPOSView = ({
                 ) : (
                   cart.map((item, idx) => {
                     const hasAlt = !!(item.hasAlteration || item.alterationRecord);
+                    const isFocused = isAlterationModeActive && focusedAlterationIndex === idx;
+
+                    const cardStyle = isFocused
+                      ? (hasAlt
+                          ? 'bg-emerald-100/90 border-2 border-indigo-600 ring-2 ring-indigo-500/40 shadow-md font-bold'
+                          : 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md font-bold')
+                      : (hasAlt
+                          ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400'
+                          : 'bg-white border-slate-300 hover:border-slate-400');
+
                     return (
                       <div
                         key={idx}
-                        className={`p-2 rounded border transition-all flex flex-col gap-1 ${hasAlt ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-300 hover:border-slate-400'}`}
+                        id={`alt-panel-item-${idx}`}
+                        className={`p-2 rounded border transition-all flex flex-col gap-1 cursor-pointer ${cardStyle}`}
+                        onClick={() => {
+                          setFocusedAlterationIndex(idx);
+                          setIsAlterationModeActive(true);
+                          handleOpenAlterationForCartItem(item);
+                        }}
                       >
                         <div className="flex items-start gap-1.5">
+                          {isFocused && (
+                            <span className="text-indigo-700 font-black text-xs shrink-0 animate-pulse">➢</span>
+                          )}
                           <input
                             type="checkbox"
                             checked={hasAlt}
-                            onChange={() => {
-                              setSelectedAlterationCartItem(item);
-                              setAltMeasurements(item.alterationRecord?.measurements || {});
-                              setAltOptions(item.alterationRecord?.alterationDetails || []);
-                              setAltCustomText(item.alterationRecord?.customAlterationText || "");
-                              setAltSpecialInstructions(item.alterationRecord?.specialInstructions || "");
-                              setAltDeliveryDate(item.alterationRecord?.deliveryDate || "");
-                              setAltDeliveryTime(item.alterationRecord?.deliveryTime || "05:00 PM");
-                              setAltTrialDate(item.alterationRecord?.trialDate || "");
-                              setAltPriority(item.alterationRecord?.priority || "Normal");
-                              setAltSelectedTailor(tailorEmployeesList.find(t => t.name === item.alterationRecord?.tailorName) || null);
-                              setShowAlterationModal(true);
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setFocusedAlterationIndex(idx);
+                              setIsAlterationModeActive(true);
+                              handleOpenAlterationForCartItem(item);
                             }}
-                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5 shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-slate-800 truncate text-[10px]" title={item.name}>
+                            <div className={`font-bold truncate text-[10px] ${isFocused ? 'text-indigo-950 font-extrabold' : 'text-slate-800'}`} title={item.name}>
                               {item.name}
                             </div>
                             <div className="text-[9px] text-slate-500 font-mono">
