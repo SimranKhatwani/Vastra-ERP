@@ -36,6 +36,10 @@ export const CustomersView = ({
       onAddNotification("Required Fields Missing", "Please enter customer name and phone number.", "error");
       return;
     }
+    if (newCustomerForm.phone.length !== 10) {
+      onAddNotification("Invalid Mobile Number", "Mobile number must be exactly 10 digits.", "error");
+      return;
+    }
     setIsCreatingCustomer(true);
     try {
       if (onAddCustomer) {
@@ -568,13 +572,17 @@ export const CustomersView = ({
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Phone <span className="text-rose-500">*</span></label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Phone (10 digits) <span className="text-rose-500">*</span></label>
                 <input
                   type="text"
                   required
+                  maxLength={10}
                   placeholder="e.g. 9876543210"
                   value={newCustomerForm.phone}
-                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setNewCustomerForm(prev => ({ ...prev, phone: digitsOnly }));
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold font-mono outline-none focus:border-indigo-500"
                 />
               </div>
@@ -602,11 +610,10 @@ export const CustomersView = ({
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">DOB (Optional)</label>
                   <input
-                    type="text"
-                    placeholder="DD-MM-YYYY"
+                    type="date"
                     value={newCustomerForm.dob}
                     onChange={(e) => setNewCustomerForm(prev => ({ ...prev, dob: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 font-semibold"
                   />
                 </div>
               </div>

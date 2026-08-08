@@ -3062,7 +3062,17 @@ export const BillingPOSView = ({
               {/* Mobile Display */}
               <div className="flex relative items-center border border-slate-300 bg-white">
                 <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Mobile</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.phone} onChange={handleCustomerPhoneChange} placeholder="Mobile" />
+                <input
+                  type="text"
+                  maxLength={10}
+                  className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold font-mono"
+                  value={customerForm.phone}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    handleCustomerPhoneChange({ target: { value: digits } });
+                  }}
+                  placeholder="10 Digits"
+                />
               </div>
 
               {/* GST No. (Replaced Title) */}
@@ -3086,7 +3096,7 @@ export const BillingPOSView = ({
               {/* DOB */}
               <div className="flex relative items-center border border-slate-300 bg-white">
                 <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">DOB</span>
-                <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} placeholder="DD-MM-YYYY" />
+                <input type="date" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-semibold" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} />
               </div>
 
               {/* Loyalty Points */}
