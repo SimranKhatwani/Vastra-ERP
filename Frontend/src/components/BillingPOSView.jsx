@@ -7233,14 +7233,23 @@ export const BillingPOSView = ({
 
       {/* BILL ADJUSTMENT MODAL */}
       {showAdjustmentModal && (() => {
-        const MAX_MANUAL_DISCOUNT_LIMIT = 500;
+        const maxAllowedDiscountWithoutApproval = (subTotal || 0) * 0.05;
+        const enteredVal = parseFloat(billAdjustment.value) || 0;
 
         const handleApply = () => {
           if (billAdjustment.operation === 'Discount' && billAdjustment.amount > (subTotal || 0)) {
             if (onAddNotification) onAddNotification("Adjustment Error", "Negative adjustment cannot exceed the bill amount.", "danger");
             return;
           }
-          if (billAdjustment.operation === 'Discount' && billAdjustment.amount > MAX_MANUAL_DISCOUNT_LIMIT && !billAdjustment.isApproved) {
+
+          // Require Owner Approval if Discount > 5% (both for Percentage > 5% and Amount > 5% of Bill Amount)
+          const requiresApproval = billAdjustment.operation === 'Discount' && !billAdjustment.isApproved && (
+            billAdjustment.type === 'Percentage'
+              ? enteredVal > 5
+              : billAdjustment.amount > maxAllowedDiscountWithoutApproval
+          );
+
+          if (requiresApproval) {
             setShowOwnerApprovalModal(true);
             return;
           }
@@ -7378,9 +7387,11 @@ export const BillingPOSView = ({
       {/* OWNER APPROVAL MODAL */}
       {showOwnerApprovalModal && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60">
-          <div className="bg-white p-6 shadow-2xl border-t-4 border-rose-600 w-[350px]">
+          <div className="bg-white p-6 shadow-2xl border-t-4 border-rose-600 w-[380px]">
             <h3 className="text-lg font-bold text-rose-700 mb-2">Owner Approval Required</h3>
-            <p className="text-xs text-slate-600 mb-4">The manual discount exceeds the allowed store limit (₹500). Enter Owner PIN to authorize.</p>
+            <p className="text-xs text-slate-600 mb-4">
+              The manual discount exceeds the allowed 5% limit (Max: 5% / ₹{((subTotal || 0) * 0.05).toFixed(2)}). Enter Owner PIN to authorize.
+            </p>
             <input
               type="password"
               autoFocus
