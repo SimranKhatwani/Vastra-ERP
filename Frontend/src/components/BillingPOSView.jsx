@@ -3648,46 +3648,18 @@ export const BillingPOSView = ({
                           <input
                             type="text"
                             className="w-full outline-none p-1 text-xs focus:bg-yellow-100 cursor-pointer placeholder-slate-500 font-semibold"
-                            placeholder="Click to Search Item..."
+                            placeholder="Click to Search Item (F2)..."
                             value={itemSearchInputText}
                             onChange={(e) => {
                               setItemSearchInputText(e.target.value);
-                              setItemSearchHighlightedIndex(0);
-                              setIsItemDropdownOpen(true);
+                              handleOpenItemSearchModal();
                             }}
-                            onClick={() => setIsItemDropdownOpen(prev => !prev)}
-                            onFocus={() => setIsItemDropdownOpen(true)}
+                            onClick={() => handleOpenItemSearchModal()}
+                            onFocus={() => handleOpenItemSearchModal()}
                             onKeyDown={(e) => {
-                              if (e.key === "ArrowDown") {
+                              if (e.key === "Enter" || e.key === "ArrowDown") {
                                 e.preventDefault();
-                                setIsItemDropdownOpen(true);
-                                setItemSearchHighlightedIndex(prev => {
-                                  const next = Math.min(filteredItemSearchProducts.length - 1, prev + 1);
-                                  document.getElementById(`itemsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
-                                  return next;
-                                });
-                              } else if (e.key === "ArrowUp") {
-                                e.preventDefault();
-                                setIsItemDropdownOpen(true);
-                                setItemSearchHighlightedIndex(prev => {
-                                  const next = Math.max(0, prev - 1);
-                                  document.getElementById(`itemsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
-                                  return next;
-                                });
-                              } else if (e.key === "Enter") {
-                                e.preventDefault();
-                                if (isItemDropdownOpen && filteredItemSearchProducts[itemSearchHighlightedIndex]) {
-                                  const target = filteredItemSearchProducts[itemSearchHighlightedIndex];
-                                  handleAddProductToCart(target);
-                                  setItemSearchInputText("");
-                                  setIsItemDropdownOpen(false);
-                                  if (onAddNotification) onAddNotification("Item Added", `Added ${target.itemName || target.name} to bill`, "success");
-                                } else {
-                                  handleOpenItemSearchModal();
-                                }
-                              } else if (e.key === "Escape") {
-                                e.preventDefault();
-                                setIsItemDropdownOpen(false);
+                                handleOpenItemSearchModal();
                               }
                             }}
                           />
@@ -3696,20 +3668,23 @@ export const BillingPOSView = ({
                             className="px-1.5 py-1 text-slate-500 hover:text-blue-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setIsItemDropdownOpen(prev => !prev);
+                              handleOpenItemSearchModal();
                             }}
-                            title="Toggle Item Dropdown"
+                            title="Open Detailed Item Search List (F2)"
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {/* Interactive Item Dropdown List */}
+                        {/* Interactive Detailed Item Table Dropdown List */}
                         {isItemDropdownOpen && (
-                          <div className="absolute top-full left-0 w-96 bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-72 overflow-y-auto z-[200] text-slate-800">
-                            <div className="p-1.5 bg-blue-700 text-white flex items-center justify-between text-[10px] font-bold sticky top-0 z-10 shadow-xs">
-                              <span>Select Item ({filteredItemSearchProducts.length}) • Use ↑ ↓ & Enter</span>
-                              <div className="flex items-center gap-1.5">
+                          <div className="absolute top-full left-0 w-[780px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-blue-600">
+                            <div className="p-2 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Inventory Search</span>
+                                <span>Found {filteredItemSearchProducts.length} Items • Use ↑ ↓ & Enter</span>
+                              </div>
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3717,9 +3692,9 @@ export const BillingPOSView = ({
                                     setIsItemDropdownOpen(false);
                                     handleOpenItemSearchModal();
                                   }}
-                                  className="bg-blue-800 hover:bg-blue-900 text-white px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                                  className="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider cursor-pointer shadow-xs flex items-center gap-1"
                                 >
-                                  Full List (F2)
+                                  <span>Full List (F2)</span>
                                 </button>
                                 <button
                                   type="button"
@@ -3727,62 +3702,88 @@ export const BillingPOSView = ({
                                     e.stopPropagation();
                                     setIsItemDropdownOpen(false);
                                   }}
-                                  className="text-blue-200 hover:text-white font-extrabold px-1 text-xs cursor-pointer"
+                                  className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
                                 >
                                   ✕
                                 </button>
                               </div>
                             </div>
-                            {filteredItemSearchProducts.length === 0 ? (
-                              <div className="p-3 text-center text-[11px] text-slate-400 font-medium">No matching items found</div>
-                            ) : (
-                              filteredItemSearchProducts.map((p, pIdx) => {
-                                const code = p.itemCode || p.productCode || p.sku || '-';
-                                const name = p.itemName || p.name || 'Unnamed Item';
-                                const size = p.size || '-';
-                                const color = p.primaryColor || p.color || '-';
-                                const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                const stock = p.availableStock ?? 0;
-                                const isHighlighted = pIdx === itemSearchHighlightedIndex;
 
-                                return (
-                                  <div
-                                    id={`itemsearch-opt-${pIdx}`}
-                                    key={p._id || p.id || pIdx}
-                                    className={`p-2 border-b border-slate-100 cursor-pointer transition-colors text-xs flex justify-between items-center ${
-                                      isHighlighted
-                                        ? 'bg-blue-100/90 border-l-4 border-blue-600 font-bold shadow-xs'
-                                        : 'hover:bg-blue-50'
-                                    }`}
-                                    onClick={() => {
-                                      handleAddProductToCart(p);
-                                      setItemSearchInputText("");
-                                      setIsItemDropdownOpen(false);
-                                      if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                    }}
-                                  >
-                                    <div>
-                                      <div className="font-bold text-slate-800 flex items-center gap-2">
-                                        <span>{name}</span>
-                                        <span className="font-mono text-blue-600 bg-blue-50 px-1 rounded text-[10px]">{code}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                                        <span>Size: <strong className="text-slate-700">{size}</strong></span>
-                                        <span>Color: <strong className="text-slate-700">{color}</strong></span>
-                                        <span>Stock: <strong className={stock > 0 ? "text-emerald-600 font-mono" : "text-red-500 font-mono"}>{stock}</strong></span>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <div className="font-extrabold text-slate-900 text-sm">&#8377;{price}</div>
-                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-block ${
-                                        isHighlighted ? 'bg-blue-700 text-white shadow-xs' : 'bg-blue-600 text-white'
-                                      }`}>
-                                        + Add
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })
+                            {filteredItemSearchProducts.length === 0 ? (
+                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching items found</div>
+                            ) : (
+                              <table className="w-full text-left border-collapse text-xs">
+                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
+                                  <tr>
+                                    <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
+                                    <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Size</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Color</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Stock</th>
+                                    <th className="p-2 border-r border-slate-200 text-right">Price</th>
+                                    <th className="p-2 text-center">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 text-slate-700">
+                                  {filteredItemSearchProducts.map((p, pIdx) => {
+                                    const barcode = p.barcode || p.uniqueCode || p.itemCode || '-';
+                                    const code = p.itemCode || p.productCode || p.sku || '-';
+                                    const name = p.itemName || p.name || 'Unnamed Item';
+                                    const subItem = p.subCategory || p.subItem || p.category || '-';
+                                    const size = p.size || '-';
+                                    const color = p.primaryColor || p.color || '-';
+                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                    const stock = p.availableStock ?? p.stock ?? 0;
+                                    const isHighlighted = pIdx === itemSearchHighlightedIndex;
+
+                                    return (
+                                      <tr
+                                        id={`itemsearch-opt-${pIdx}`}
+                                        key={p._id || p.id || pIdx}
+                                        className={`cursor-pointer transition-colors ${
+                                          isHighlighted
+                                            ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
+                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
+                                        }`}
+                                        onClick={() => {
+                                          handleAddProductToCart(p);
+                                          setItemSearchInputText("");
+                                          setIsItemDropdownOpen(false);
+                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                        }}
+                                      >
+                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
+                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
+                                        </td>
+                                        <td className="p-2 border-r border-slate-200">
+                                          <div className="font-bold text-slate-900">{name}</div>
+                                          <div className="text-[10px] text-slate-500 font-medium">Code: <span className="font-mono text-blue-600 font-bold">{code}</span> {subItem !== '-' && `• ${subItem}`}</div>
+                                        </td>
+                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
+                                        <td className="p-2 text-center border-r border-slate-200">{color}</td>
+                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                            {stock} pcs
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
+                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="p-2 text-center">
+                                          <button
+                                            type="button"
+                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${
+                                              isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                            }`}
+                                          >
+                                            + Add
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             )}
                           </div>
                         )}
@@ -3796,64 +3797,19 @@ export const BillingPOSView = ({
                           <input
                             id="itemCodeSearchInput"
                             type="text"
-                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono"
+                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer"
                             placeholder="SEARCH"
                             value={itemCodeSearchInput}
                             onChange={(e) => {
                               setItemCodeSearchInput(e.target.value);
-                              setItemCodeHighlightedIndex(0);
-                              setIsItemCodeDropdownOpen(true);
+                              handleOpenItemSearchModal();
                             }}
-                            onFocus={() => setIsItemCodeDropdownOpen(true)}
-                            onClick={() => setIsItemCodeDropdownOpen(true)}
+                            onFocus={() => handleOpenItemSearchModal()}
+                            onClick={() => handleOpenItemSearchModal()}
                             onKeyDown={(e) => {
-                              if (e.key === "ArrowDown") {
+                              if (e.key === "Enter" || e.key === "ArrowDown") {
                                 e.preventDefault();
-                                setIsItemCodeDropdownOpen(true);
-                                setItemCodeHighlightedIndex(prev => {
-                                  const next = Math.min(filteredItemCodeProducts.length - 1, prev + 1);
-                                  document.getElementById(`itemcode-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
-                                  return next;
-                                });
-                              } else if (e.key === "ArrowUp") {
-                                e.preventDefault();
-                                setIsItemCodeDropdownOpen(true);
-                                setItemCodeHighlightedIndex(prev => {
-                                  const next = Math.max(0, prev - 1);
-                                  document.getElementById(`itemcode-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
-                                  return next;
-                                });
-                              } else if (e.key === "Enter") {
-                                e.preventDefault();
-                                if (isItemCodeDropdownOpen && filteredItemCodeProducts[itemCodeHighlightedIndex]) {
-                                  const target = filteredItemCodeProducts[itemCodeHighlightedIndex];
-                                  handleAddProductToCart(target);
-                                  setItemCodeSearchInput("");
-                                  setIsItemCodeDropdownOpen(false);
-                                  if (onAddNotification) onAddNotification("Item Added", `Added ${target.itemName || target.name} to bill`, "success");
-                                } else {
-                                  const q = itemCodeSearchInput.trim().toLowerCase();
-                                  if (!q) {
-                                    handleOpenItemSearchModal();
-                                    return;
-                                  }
-                                  const matches = (products || []).filter(p => {
-                                    const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
-                                    return code === q || code.includes(q);
-                                  });
-                                  if (matches.length === 1) {
-                                    handleAddProductToCart(matches[0]);
-                                    setItemCodeSearchInput("");
-                                    setIsItemCodeDropdownOpen(false);
-                                  } else if (matches.length > 1) {
-                                    setIsItemCodeDropdownOpen(true);
-                                  } else {
-                                    handleOpenItemSearchModal();
-                                  }
-                                }
-                              } else if (e.key === "Escape") {
-                                e.preventDefault();
-                                setIsItemCodeDropdownOpen(false);
+                                handleOpenItemSearchModal();
                               }
                             }}
                           />
@@ -3862,9 +3818,9 @@ export const BillingPOSView = ({
                             className="px-1.5 py-1 text-slate-500 hover:text-indigo-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setIsItemCodeDropdownOpen(prev => !prev);
+                              handleOpenItemSearchModal();
                             }}
-                            title="Toggle Item Code Dropdown"
+                            title="Open Detailed Item Search List (F2)"
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
@@ -3872,70 +3828,102 @@ export const BillingPOSView = ({
 
                         {/* Dropdown list for multiple products with same/matching Item Code */}
                         {isItemCodeDropdownOpen && (
-                          <div className="absolute top-full left-0 w-80 bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-72 overflow-y-auto z-[200] text-slate-800">
-                            <div className="p-1.5 bg-indigo-600 text-white flex items-center justify-between text-[10px] font-bold sticky top-0 z-10 shadow-xs">
-                              <span>Select Item Code ({filteredItemCodeProducts.length}) • Use ↑ ↓ & Enter</span>
+                          <div className="absolute top-full left-0 w-[780px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-indigo-600">
+                            <div className="p-2 bg-gradient-to-r from-slate-900 to-indigo-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Item Code Search</span>
+                                <span>Found {filteredItemCodeProducts.length} Matching Items • Use ↑ ↓ & Enter</span>
+                              </div>
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setIsItemCodeDropdownOpen(false);
                                 }}
-                                className="text-indigo-200 hover:text-white font-extrabold px-1 text-xs cursor-pointer"
+                                className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
                               >
                                 ✕
                               </button>
                             </div>
                             {filteredItemCodeProducts.length === 0 ? (
-                              <div className="p-3 text-center text-[11px] text-slate-400 font-medium">No items found matching item code</div>
+                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No items found matching item code</div>
                             ) : (
-                              filteredItemCodeProducts.map((p, pIdx) => {
-                                const code = p.itemCode || p.productCode || p.sku || '-';
-                                const name = p.itemName || p.name || 'Unnamed Item';
-                                const size = p.size || '-';
-                                const color = p.primaryColor || p.color || '-';
-                                const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                const barcode = p.barcode || (p.pieces && p.pieces[0]?.barcode) || '';
-                                const isHighlighted = pIdx === itemCodeHighlightedIndex;
+                              <table className="w-full text-left border-collapse text-xs">
+                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
+                                  <tr>
+                                    <th className="p-2 border-r border-slate-200">Item Code</th>
+                                    <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
+                                    <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Size</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Color</th>
+                                    <th className="p-2 border-r border-slate-200 text-center">Stock</th>
+                                    <th className="p-2 border-r border-slate-200 text-right">Price</th>
+                                    <th className="p-2 text-center">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 text-slate-700">
+                                  {filteredItemCodeProducts.map((p, pIdx) => {
+                                    const code = p.itemCode || p.productCode || p.sku || '-';
+                                    const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
+                                    const name = p.itemName || p.name || 'Unnamed Item';
+                                    const subItem = p.subCategory || p.subItem || p.category || '-';
+                                    const size = p.size || '-';
+                                    const color = p.primaryColor || p.color || '-';
+                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                    const stock = p.availableStock ?? p.stock ?? 0;
+                                    const isHighlighted = pIdx === itemCodeHighlightedIndex;
 
-                                return (
-                                  <div
-                                    id={`itemcode-opt-${pIdx}`}
-                                    key={p._id || p.id || pIdx}
-                                    className={`p-2 border-b border-slate-100 cursor-pointer transition-colors text-xs flex justify-between items-center ${
-                                      isHighlighted
-                                        ? 'bg-indigo-100/90 border-l-4 border-indigo-600 font-bold shadow-xs'
-                                        : 'hover:bg-yellow-50'
-                                    }`}
-                                    onClick={() => {
-                                      handleAddProductToCart(p);
-                                      setItemCodeSearchInput("");
-                                      setIsItemCodeDropdownOpen(false);
-                                      if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                    }}
-                                  >
-                                    <div>
-                                      <div className="flex items-center gap-2 font-bold text-slate-800">
-                                        <span className="font-mono text-indigo-600 bg-indigo-50 px-1 rounded text-[10px]">{code}</span>
-                                        <span>{name}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                                        <span>Size: <strong className="text-slate-700">{size}</strong></span>
-                                        <span>Color: <strong className="text-slate-700">{color}</strong></span>
-                                        <span>Barcode: <strong className="text-slate-700 font-mono">{barcode || '-'}</strong></span>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <div className="font-extrabold text-slate-900 text-sm">&#8377;{price}</div>
-                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-block ${
-                                        isHighlighted ? 'bg-indigo-700 text-white shadow-xs' : 'bg-indigo-600 text-white'
-                                      }`}>
-                                        + Select
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })
+                                    return (
+                                      <tr
+                                        id={`itemcode-opt-${pIdx}`}
+                                        key={p._id || p.id || pIdx}
+                                        className={`cursor-pointer transition-colors ${
+                                          isHighlighted
+                                            ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
+                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-50/60 hover:bg-indigo-50'
+                                        }`}
+                                        onClick={() => {
+                                          handleAddProductToCart(p);
+                                          setItemCodeSearchInput("");
+                                          setIsItemCodeDropdownOpen(false);
+                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                        }}
+                                      >
+                                        <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200">
+                                          <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{code}</span>
+                                        </td>
+                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
+                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
+                                        </td>
+                                        <td className="p-2 border-r border-slate-200">
+                                          <div className="font-bold text-slate-900">{name}</div>
+                                          {subItem !== '-' && <div className="text-[10px] text-slate-500 font-medium">{subItem}</div>}
+                                        </td>
+                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
+                                        <td className="p-2 text-center border-r border-slate-200">{color}</td>
+                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                            {stock} pcs
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
+                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="p-2 text-center">
+                                          <button
+                                            type="button"
+                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${
+                                              isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                            }`}
+                                          >
+                                            + Select
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             )}
                           </div>
                         )}
