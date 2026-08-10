@@ -1042,6 +1042,40 @@ export const BillingPOSView = ({
         }
       }
 
+      // If the receipt preview modal is open, handle its keyboard shortcuts
+      if (showBillPreviewInvoice) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowBillPreviewInvoice(null);
+          return;
+        }
+        // Button 1: Generate Bill (No Print) -> Enter ONLY
+        if (showBillPreviewInvoice.isDraftPreview && e.key === "Enter") {
+          e.preventDefault();
+          if (!isGeneratingBill) handleGenerateBillAction();
+          return;
+        }
+        // Button 2: Print -> F10 ONLY
+        if (e.key === "F10") {
+          e.preventDefault();
+          if (!isPrinting) handlePrintAction();
+          return;
+        }
+        // Button 3: Download HTML -> F11 ONLY
+        if (e.key === "F11") {
+          e.preventDefault();
+          if (!isDownloading) handleDownloadAction();
+          return;
+        }
+        // Button 4: WhatsApp -> F12 ONLY
+        if (e.key === "F12") {
+          e.preventDefault();
+          handleSendWhatsAppAction();
+          return;
+        }
+        return;
+      }
+
       // If the receipt modal is open, close it on Escape
       if (completedInvoice && e.key === "Escape") {
         e.preventDefault();
@@ -2565,6 +2599,38 @@ export const BillingPOSView = ({
       console.error("Download Action Error:", err);
     } finally {
       setTimeout(() => setIsDownloading(false), 400);
+    }
+  };
+
+  const handleSendWhatsAppAction = () => {
+    if (!showBillPreviewInvoice) return;
+    const inv = showBillPreviewInvoice;
+    const custName = inv.customerName || customerForm.name || "Customer";
+    const rawPhone = (inv.customerPhone || customerForm.phone || "").replace(/\D/g, "");
+    const invNo = inv.invoiceNo || inv.billNumber || inv.id || "DRAFT";
+    const total = (inv.grandTotal || grandTotal || 0).toLocaleString('en-IN');
+    const payMode = inv.paymentMode || paymentMethod || "Cash";
+    const dateStr = inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN');
+
+    const itemsSummary = (inv.items || cart || []).map(i => {
+      const iName = i.name || i.itemName || "Item";
+      const iQty = i.quantity || 1;
+      const iPrice = (i.sellingPrice || i.price || i.mrp || 0) * iQty;
+      return `• ${iName} (Qty: ${iQty}) - ₹${iPrice.toLocaleString('en-IN')}`;
+    }).join('\n');
+
+    const messageText = `*ZIVA FASHION BOUTIQUE*\nInvoice & Receipt Confirmation\n--------------------------------\n*Receipt No:* ${invNo}\n*Date:* ${dateStr}\n*Customer:* ${custName}\n\n*Items Purchased:*\n${itemsSummary}\n\n*Grand Total:* ₹${total}\n*Payment Mode:* ${payMode}\n\nThank you for shopping with us! 🙏`;
+
+    const encodedMsg = encodeURIComponent(messageText);
+    let whatsappUrl = `https://api.whatsapp.com/send?text=${encodedMsg}`;
+    if (rawPhone && rawPhone.length >= 10) {
+      const formattedPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+      whatsappUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodedMsg}`;
+    }
+
+    window.open(whatsappUrl, '_blank');
+    if (typeof onAddNotification === 'function') {
+      onAddNotification("WhatsApp Shared", `Opening WhatsApp to send invoice ${invNo}`, "success");
     }
   };
 
@@ -6876,43 +6942,62 @@ export const BillingPOSView = ({
             </div>
 
             {/* Modal Actions */}
-            <div className="flex gap-3 shrink-0 pt-2 font-mono flex-wrap">
+            <div className="flex flex-col gap-2 shrink-0 pt-1 font-sans">
               {showBillPreviewInvoice.isDraftPreview && (
                 <button
                   disabled={isGeneratingBill}
                   onClick={handleGenerateBillAction}
-                  className={`w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 mb-1 ${isGeneratingBill ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${isGeneratingBill ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title="Shortcut: Enter"
                 >
                   {isGeneratingBill ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">✅</span>}
                   <span>{isGeneratingBill ? 'GENERATING BILL...' : 'GENERATE BILL (NO PRINT)'}</span>
+                  <span className="bg-black/25 text-amber-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/20 normal-case ml-1">Enter</span>
                 </button>
               )}
-              <div className="flex gap-3 w-full">
+              <div className="flex gap-2 w-full">
                 <button
                   disabled={isPrinting}
                   onClick={handlePrintAction}
-                  className={`flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${isPrinting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 ${isPrinting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title="Shortcut: F10"
                 >
                   {isPrinting ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">🖨️</span>}
                   <span>{isPrinting ? 'PRINTING...' : 'PRINT'}</span>
+                  <span className="bg-black/25 text-blue-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/20 normal-case ml-0.5">F10</span>
                 </button>
 
                 <button
                   disabled={isDownloading}
                   onClick={handleDownloadAction}
-                  className={`flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${isDownloading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 ${isDownloading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title="Shortcut: F11"
                 >
                   {isDownloading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <span className="text-sm">⬇️</span>}
                   <span>{isDownloading ? 'DOWNLOADING...' : 'DOWNLOAD HTML'}</span>
+                  <span className="bg-black/25 text-emerald-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/20 normal-case ml-0.5">F11</span>
                 </button>
               </div>
+
+              {/* NEW BUTTON: WhatsApp Direct Share */}
+              <button
+                type="button"
+                onClick={handleSendWhatsAppAction}
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
+                title="Shortcut: F12"
+              >
+                <span className="text-sm">💬</span>
+                <span>SEND BILL DIRECTLY TO WHATSAPP</span>
+                <span className="bg-black/30 text-emerald-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/30 normal-case ml-1">F12</span>
+              </button>
             </div>
 
             <button
               onClick={() => setShowBillPreviewInvoice(null)}
-              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0 flex items-center justify-center gap-1"
             >
-              Close
+              <span>Close</span>
+              <span className="text-[10px] text-slate-400 font-mono font-normal">(Esc)</span>
             </button>
           </div>
         </div>
