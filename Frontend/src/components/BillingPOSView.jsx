@@ -2060,10 +2060,13 @@ export const BillingPOSView = ({
           newAdvance = applyAdvance;
         }
 
+        const remainingUnpaid = Math.max(0, Number((grandTotal - newPointsRedeem - newAdvance).toFixed(2)));
+
         return {
           ...prev,
           "Points Redeem": newPointsRedeem > 0 ? newPointsRedeem.toString() : "",
-          "Advance": newAdvance > 0 ? newAdvance.toString() : ""
+          "Advance": newAdvance > 0 ? newAdvance.toString() : "",
+          "UPI": remainingUnpaid > 0 && !prev["Card"] && !prev["Due"] ? remainingUnpaid.toString() : (prev["UPI"] || "")
         };
       });
 
@@ -2303,7 +2306,12 @@ export const BillingPOSView = ({
 
       // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
       const mergedInvoice = {
-        ...(savedInvoice || newInvoice),
+        ...newInvoice,
+        ...(savedInvoice || {}),
+        paymentMethod: newInvoice.paymentMethod || savedInvoice?.paymentMethod || "Cash",
+        splitPayments: newInvoice.splitPayments || savedInvoice?.splitPayments,
+        paymentTransactions: newInvoice.paymentTransactions || savedInvoice?.paymentTransactions,
+        advanceApplied: newInvoice.advanceApplied || savedInvoice?.advanceApplied || 0,
         items: ((savedInvoice && savedInvoice.items) || newInvoice.items).map((savedItem, i) => {
           const originalItem = newInvoice.items[i] || savedItem;
           return {
@@ -2885,9 +2893,9 @@ export const BillingPOSView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="details">
-          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => (s.method || s.mode) === 'Advance' && s.amount > 0))) ?
+          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE' && s.amount > 0))) ?
             `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
-              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => (s.method || s.mode) === 'Advance')?.amount || 0)).toLocaleString('en-IN')}
+              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0)).toLocaleString('en-IN')}
             </div>`
             : ''
           }
@@ -8498,6 +8506,17 @@ export const BillingPOSView = ({
                     key={method}
                     onClick={() => {
                       setPaymentMethod(method);
+                      if (paymentType === 'Part Payment' && method !== 'Cash' && method !== 'Advance') {
+                        setPartPaymentAmounts(p => {
+                          if (!p[method]) {
+                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === method ? acc : acc + (Number(p[m]) || 0), 0);
+                            const remaining = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
+                            if (remaining > 0) return { ...p, [method]: remaining.toString() };
+                          }
+                          return p;
+                        });
+                      }
                     }}
                     className={`flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-left transition-all font-bold cursor-pointer ${paymentMethod === method ? "bg-indigo-50 text-indigo-700 border-l-4 border-l-indigo-600 shadow-sm z-10" : "text-slate-600 hover:bg-slate-50 border-l-4 border-l-transparent"}`}
                   >
@@ -8813,24 +8832,29 @@ export const BillingPOSView = ({
                       </div>
 
                       {/* Pay Advance Button below editor */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (paymentType === 'Part Payment') {
-                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc === 'Advance' ? 0 : acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                            const remainingUnpaid = Math.max(0, grandTotal - cashTot - otherTot);
+                      {(() => {
+                        const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === 'Advance' ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        const remainingUnpaidAdv = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
+                        const advVal = Number(partPaymentAmounts["Advance"]) || 0;
+                        const displayAdvVal = paymentType === 'Full Payment' ? grandTotal : (advVal > 0 ? advVal : remainingUnpaidAdv);
 
-                            const currentVal = Number(partPaymentAmounts["Advance"]) || 0;
-                            if (currentVal <= 0 && remainingUnpaid > 0) {
-                              setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaid.toString() }));
-                            }
-                          }
-                        }}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle className="w-4 h-4" /> Pay Advance (&#8377;{paymentType === 'Full Payment' ? grandTotal.toLocaleString('en-IN') : (Number(partPaymentAmounts["Advance"]) || grandTotal).toLocaleString('en-IN')})
-                      </button>
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (paymentType === 'Part Payment') {
+                                if (advVal <= 0 && remainingUnpaidAdv > 0) {
+                                  setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaidAdv.toString() }));
+                                }
+                              }
+                            }}
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle className="w-4 h-4" /> Pay Advance (&#8377;{displayAdvVal.toLocaleString('en-IN')})
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 ) : (
@@ -8851,7 +8875,7 @@ export const BillingPOSView = ({
                             <span className="text-2xl font-black font-mono text-slate-800">{grandTotal}</span>
                           ) : (
                             <input
-                              type="number" min="0"
+                              type="number" step="any" min="0"
                               autoFocus
                               value={partPaymentAmounts[paymentMethod] || ''}
                               onChange={(e) => setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: e.target.value }))}
@@ -8885,7 +8909,11 @@ export const BillingPOSView = ({
                                 setShowPaymentModal(false);
                                 handlePrintConfirm();
                               } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
-                                setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '') + btn }));
+                                setPartPaymentAmounts(p => {
+                                  const curr = p[paymentMethod]?.toString() || '';
+                                  if (btn === '.' && curr.includes('.')) return p;
+                                  return { ...p, [paymentMethod]: curr + btn };
+                                });
                               }
                             }}
                             className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' :
@@ -8898,24 +8926,36 @@ export const BillingPOSView = ({
                       </div>
 
                       {/* Pay Button below manual editor */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (paymentType === 'Part Payment') {
-                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc === paymentMethod ? 0 : acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                            const remainingUnpaid = Math.max(0, grandTotal - cashTot - otherTot);
+                      {(() => {
+                        const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === paymentMethod ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        const remainingUnpaidMode = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
+                        const currentVal = Number(partPaymentAmounts[paymentMethod]) || 0;
+                        const displayVal = paymentType === 'Full Payment' ? grandTotal : (currentVal > 0 ? currentVal : remainingUnpaidMode);
 
-                            const currentVal = Number(partPaymentAmounts[paymentMethod]) || 0;
-                            if (currentVal <= 0 && remainingUnpaid > 0) {
-                              setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: remainingUnpaid.toString() }));
-                            }
-                          }
-                        }}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle className="w-4 h-4" /> Pay {paymentMethod} (&#8377;{paymentType === 'Full Payment' ? grandTotal.toLocaleString('en-IN') : (Number(partPaymentAmounts[paymentMethod]) || grandTotal).toLocaleString('en-IN')})
-                      </button>
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (paymentType === 'Part Payment') {
+                                let newPart = { ...partPaymentAmounts };
+                                if (currentVal <= 0 && remainingUnpaidMode > 0) {
+                                  newPart[paymentMethod] = remainingUnpaidMode.toString();
+                                  setPartPaymentAmounts(newPart);
+                                }
+                                const currentAllocated = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(newPart[m]) || 0), 0);
+                                if (currentAllocated >= grandTotal) {
+                                  setShowPaymentModal(false);
+                                  handlePrintConfirm();
+                                }
+                              }
+                            }}
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle className="w-4 h-4" /> Pay {paymentMethod} (&#8377;{displayVal.toLocaleString('en-IN')})
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}

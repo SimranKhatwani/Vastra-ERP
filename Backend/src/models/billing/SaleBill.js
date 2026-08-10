@@ -66,6 +66,10 @@ const saleBillSchema = new mongoose.Schema({
     enum: Object.values(BILL_STATUS),
     default: BILL_STATUS.COMPLETED
   },
+  paymentMethod: {
+    type: String,
+    default: 'Cash'
+  },
   remarks: String
 });
 

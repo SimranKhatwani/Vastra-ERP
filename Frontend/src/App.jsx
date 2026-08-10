@@ -116,7 +116,10 @@ const normalizeInvoice = (b) => {
     grandTotal: b.grandTotal || b.totalAmount || 0,
     amountPaid: b.paidAmount ?? b.amountPaid ?? b.grandTotal,
     dueAmount: b.dueAmount || 0,
+    advanceApplied: b.advanceApplied || 0,
     paymentMethod: b.paymentMethod || (b.dueAmount > 0 ? "Credit" : "Cash"),
+    splitPayments: b.splitPayments || (b.paymentTransactions ? b.paymentTransactions.map(t => ({ method: t.mode, amount: t.amount })) : undefined),
+    paymentTransactions: b.paymentTransactions,
     status: b.status || "Completed"
   };
 };
@@ -761,13 +764,17 @@ export default function App() {
             let balanceInc = 0;
             if (invoiceToSave.paymentMethod === 'Credit') balanceInc = invoiceToSave.grandTotal;
             else if ((invoiceToSave.amountPaid || 0) < invoiceToSave.grandTotal) balanceInc = invoiceToSave.grandTotal - (invoiceToSave.amountPaid || 0);
+            const newAdv = Math.max(0, (c.walletAdvance || c.prepaidAdvance || 0) - (invoiceToSave.advanceApplied || 0));
+            const newDue = (c.dueBalance || c.outstandingBalance || 0) + balanceInc;
             return {
               ...c,
               totalInvoices: (c.totalInvoices || 0) + 1,
               totalSpent: (c.totalSpent || 0) + invoiceToSave.grandTotal,
-              walletAdvance: Math.max(0, (c.walletAdvance || 0) - (invoiceToSave.advanceApplied || 0)),
+              walletAdvance: newAdv,
+              prepaidAdvance: newAdv,
               loyaltyPoints: Math.max(0, (c.loyaltyPoints || 0) - (invoiceToSave.loyaltyPointsUsed || 0)),
-              outstandingBalance: (c.outstandingBalance || 0) + balanceInc
+              dueBalance: newDue,
+              outstandingBalance: newDue
             };
           }
           return c;
@@ -844,6 +851,8 @@ export default function App() {
         salesmanId: validSalesmanId,
         barcodes: barcodesList.length > 0 ? barcodesList : [{ barcode: `BC-${Date.now()}`, sellingPrice: Number(inv.grandTotal || 0), discountAmount: 0 }],
         paymentTransactions: paymentTransactionsList,
+        paymentMethod: inv.paymentMethod || (paymentTransactionsList.length > 0 ? paymentTransactionsList.map(t => t.mode).join(' + ') : 'CASH'),
+        advanceApplied: Number(inv.advanceApplied || 0),
         remarks: inv.remarks || null
       };
 

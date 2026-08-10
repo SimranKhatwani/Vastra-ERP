@@ -159,7 +159,8 @@ export const CustomersView = ({
       const receiptDate = invoice.date
         ? new Date(invoice.date).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })
         : "-";
-      const htmlContent = `<!DOCTYPE html><html><head><title>Receipt ${invoice.invoiceNo}</title><style>body{font-family:'Courier New',Courier,monospace;color:#000;padding:20px;max-width:380px;margin:0 auto}.text-center{text-align:center}.header{font-size:14px;font-weight:bold;margin-bottom:5px}.details{font-size:11px;line-height:1.4;margin-bottom:10px}.divider{border-bottom:1px dashed #000;margin:10px 0}table{width:100%;font-size:11px}th{text-align:left}.text-right{text-align:right}.totals{font-weight:bold}</style></head><body><div class="text-center header">GarmentFlow ERP</div><div class="divider"></div><div class="details"><b>Receipt No:</b> ${invoice.invoiceNo}<br><b>Date:</b> ${receiptDate}<br><b>Customer:</b> ${invoice.customerName || "-"} ${invoice.customerPhone ? "(" + invoice.customerPhone + ")" : ""}</div><div class="divider"></div><table><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead><tbody>${(invoice.items || []).map(item => "<tr><td>" + (item.name||"") + "</td><td class=\"text-right\">" + item.quantity + "</td><td class=\"text-right\">&#8377;" + item.price + "</td><td class=\"text-right\">&#8377;" + item.totalPrice + "</td></tr>").join("")}</tbody></table><div class="divider"></div><table><tr><td>Grand Total:</td><td class="text-right"><b>&#8377;${invoice.grandTotal}</b></td></tr><tr><td>Payment:</td><td class="text-right">${invoice.paymentMethod || "-"}</td></tr></table><div class="divider"></div><div class="text-center" style="font-size:10px">Thank you for shopping with us!</div></body></html>`;
+      const advAmt = invoice.advanceApplied || (invoice.splitPayments?.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0);
+      const htmlContent = `<!DOCTYPE html><html><head><title>Receipt ${invoice.invoiceNo}</title><style>body{font-family:'Courier New',Courier,monospace;color:#000;padding:20px;max-width:380px;margin:0 auto}.text-center{text-align:center}.header{font-size:14px;font-weight:bold;margin-bottom:5px}.details{font-size:11px;line-height:1.4;margin-bottom:10px}.divider{border-bottom:1px dashed #000;margin:10px 0}table{width:100%;font-size:11px}th{text-align:left}.text-right{text-align:right}.totals{font-weight:bold}</style></head><body><div class="text-center header">GarmentFlow ERP</div><div class="divider"></div><div class="details"><b>Receipt No:</b> ${invoice.invoiceNo}<br><b>Date:</b> ${receiptDate}<br><b>Customer:</b> ${invoice.customerName || "-"} ${invoice.customerPhone ? "(" + invoice.customerPhone + ")" : ""}</div><div class="divider"></div><table><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead><tbody>${(invoice.items || []).map(item => "<tr><td>" + (item.name||"") + "</td><td class=\"text-right\">" + item.quantity + "</td><td class=\"text-right\">&#8377;" + item.price + "</td><td class=\"text-right\">&#8377;" + item.totalPrice + "</td></tr>").join("")}</tbody></table><div class="divider"></div><table><tr><td>Grand Total:</td><td class="text-right"><b>&#8377;${invoice.grandTotal}</b></td></tr>${advAmt > 0 ? `<tr><td style="color:#047857;font-weight:bold;">Advance Applied:</td><td class="text-right" style="color:#047857;font-weight:bold;">-&#8377;${advAmt}</td></tr>` : ''}<tr><td>Payment Mode:</td><td class="text-right">${invoice.paymentMethod || "-"}</td></tr></table><div class="divider"></div><div class="text-center" style="font-size:10px">Thank you for shopping with us!</div></body></html>`;
       const blob = new Blob([htmlContent], { type: "text/html" });
       window.open(URL.createObjectURL(blob), "_blank");
     } catch (err) {
@@ -276,9 +277,9 @@ export const CustomersView = ({
                       return invCustId && custId && invCustId === custId;
                     });
                     const prepaidFromHistory = (cust.advanceHistory || [])
-                      .filter(h => h.reason && (h.reason.toLowerCase().includes('prepaid') || h.reason.toLowerCase().includes('advance') || h.reason.toLowerCase().includes('deposit')))
                       .reduce((acc, h) => acc + (h.amount || 0), 0);
-                    const prepaidAmt = cust.prepaidAdvance || cust.prepaidAmount || prepaidFromHistory || 0;
+                    const prepaidAmt = cust.walletAdvance !== undefined ? cust.walletAdvance : (cust.prepaidAdvance !== undefined ? cust.prepaidAdvance : Math.max(0, prepaidFromHistory));
+                    const dueAmt = cust.dueBalance !== undefined ? cust.dueBalance : (cust.outstandingBalance || 0);
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/50">
@@ -312,10 +313,10 @@ export const CustomersView = ({
                           &#8377;{prepaidAmt.toLocaleString('en-IN')}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
-                          &#8377;{((cust.walletAdvance || 0) + (cust.loyaltyPoints || 0)).toLocaleString()}
+                          &#8377;{prepaidAmt.toLocaleString('en-IN')}
                         </td>
-                        <td className={`p-3.5 text-right font-mono font-bold ${(cust.outstandingBalance || 0) > 0 ? "text-red-500" : "text-slate-400"}`}>
-                          &#8377;{(cust.outstandingBalance || 0).toLocaleString()}
+                        <td className={`p-3.5 text-right font-mono font-bold ${dueAmt > 0 ? "text-red-500" : "text-slate-400"}`}>
+                          &#8377;{dueAmt.toLocaleString('en-IN')}
                         </td>
                         <td className="p-3.5 text-center">
                           <button

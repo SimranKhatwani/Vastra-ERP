@@ -72,7 +72,10 @@ const normalizeInvoice = (b) => {
     grandTotal: b.grandTotal || b.totalAmount || 0,
     amountPaid: b.paidAmount ?? b.amountPaid ?? b.grandTotal,
     dueAmount: b.dueAmount || 0,
-    paymentMethod: b.paymentMethod || (b.dueAmount > 0 ? "Credit" : "Cash"),
+    advanceApplied: b.advanceApplied || 0,
+    paymentMethod: b.paymentMethod || (b.paymentTransactions && b.paymentTransactions.length > 0 ? b.paymentTransactions.map(t => t.mode).join(' + ') : (b.dueAmount > 0 ? "Credit" : "Cash")),
+    splitPayments: b.splitPayments || (b.paymentTransactions ? b.paymentTransactions.map(t => ({ method: t.mode, amount: t.amount })) : undefined),
+    paymentTransactions: b.paymentTransactions,
     status: b.status || "Completed"
   };
 };

@@ -245,6 +245,8 @@ class BillingService {
       grandTotal,
       paidAmount: totalPaid,
       dueAmount,
+      advanceApplied: Number(billData.advanceApplied || 0),
+      paymentMethod: billData.paymentMethod || (billData.paymentTransactions && billData.paymentTransactions.length > 0 ? billData.paymentTransactions.map(t => t.mode).join(' + ') : (dueAmount > 0 ? "Credit" : "Cash")),
       status: billStatus,
       remarks: billData.remarks,
       isHold: Boolean(billData.isHold),
@@ -502,10 +504,34 @@ class BillingService {
       });
     });
 
+    // Fetch Payment and PaymentTransaction details for all bills to determine true paymentMethod
+    const payments = billIds.length > 0 ? await Payment.find({ saleBillId: { $in: billIds }, tenantId }) : [];
+    const paymentIds = payments.map(p => p._id);
+    const transactions = paymentIds.length > 0 ? await PaymentTransaction.find({ paymentId: { $in: paymentIds }, tenantId }) : [];
+
+    const paymentByBill = new Map();
+    payments.forEach(p => {
+      const bId = p.saleBillId.toString();
+      const txs = transactions.filter(t => t.paymentId.toString() === p._id.toString());
+      if (txs.length > 0) {
+        const modeStr = txs.map(t => t.mode).join(' + ');
+        paymentByBill.set(bId, { modeStr, txs, advanceApplied: p.advanceApplied });
+      }
+    });
+
     const enrichedBills = bills.map(b => {
       const bObj = b.toObject();
+      const pInfo = paymentByBill.get(b._id.toString());
+      let computedMode = bObj.paymentMethod;
+      if (pInfo && pInfo.modeStr) {
+        computedMode = pInfo.modeStr;
+      } else if (bObj.advanceApplied > 0) {
+        computedMode = `ADVANCE + ${bObj.paymentMethod || 'CASH'}`;
+      }
       return {
         ...bObj,
+        paymentMethod: computedMode || (bObj.dueAmount > 0 ? "Credit" : "Cash"),
+        paymentTransactions: pInfo?.txs || bObj.paymentTransactions,
         items: itemsByBill.get(b._id.toString()) || bObj.items || []
       };
     });
