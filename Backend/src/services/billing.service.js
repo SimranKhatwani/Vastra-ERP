@@ -76,38 +76,95 @@ class BillingService {
 
     let defaultPrd = await Product.findOne({ isDeleted: false });
 
-    // 1. Validate all scanned barcodes (with auto fallback and on-the-fly piece generation)
+    // 1. Validate all scanned barcodes (resolving existing AVAILABLE inventory pieces first)
     for (const item of rawItems) {
-      const itemBarcode = item.barcode || item.itemCode || item.uniqueCode || `BC-${Date.now()}`;
-      let piece = await InventoryPiece.findOne({
-        barcode: itemBarcode,
-        isDeleted: false
-      });
+      const itemBarcode = item.barcode || item.itemCode || item.uniqueCode;
+      const targetProductId = (typeof item.productId === 'string' && item.productId.length === 24)
+        ? item.productId
+        : null;
 
-      if (!piece) {
+      let piece = null;
+
+      // 1.1 Try finding an AVAILABLE InventoryPiece matching exact barcode or uniqueCode
+      if (itemBarcode) {
         piece = await InventoryPiece.findOne({
-          uniqueCode: itemBarcode,
+          tenantId,
+          barcode: itemBarcode,
+          status: INVENTORY_STATUS.AVAILABLE,
           isDeleted: false
+        });
+
+        if (!piece) {
+          piece = await InventoryPiece.findOne({
+            tenantId,
+            uniqueCode: itemBarcode,
+            status: INVENTORY_STATUS.AVAILABLE,
+            isDeleted: false
+          });
+        }
+      }
+
+      // 1.2 If not found by exact barcode, find the oldest AVAILABLE InventoryPiece for this productId!
+      if (!piece && targetProductId) {
+        piece = await InventoryPiece.findOne({
+          tenantId,
+          productId: targetProductId,
+          status: INVENTORY_STATUS.AVAILABLE,
+          isDeleted: false
+        }).sort({ createdAt: 1 });
+      }
+
+      // 1.3 If still not found, search Product master by itemCode/barcode to find Product ID & its AVAILABLE piece
+      if (!piece && itemBarcode) {
+        const matchingProduct = await Product.findOne({
+          tenantId,
+          isDeleted: false,
+          $or: [
+            { itemCode: itemBarcode },
+            { barcode: itemBarcode },
+            { designNo: itemBarcode }
+          ]
+        });
+
+        if (matchingProduct) {
+          piece = await InventoryPiece.findOne({
+            tenantId,
+            productId: matchingProduct._id,
+            status: INVENTORY_STATUS.AVAILABLE,
+            isDeleted: false
+          }).sort({ createdAt: 1 });
+        }
+      }
+
+      // 1.4 Fallback: Any piece matching barcode/uniqueCode even if not marked AVAILABLE
+      if (!piece && itemBarcode) {
+        piece = await InventoryPiece.findOne({
+          tenantId,
+          isDeleted: false,
+          $or: [{ barcode: itemBarcode }, { uniqueCode: itemBarcode }]
         });
       }
 
+      // 1.5 Final Fallback: Auto-create piece ONLY if no piece or product inventory exists at all
       if (!piece) {
-        // Auto-create an InventoryPiece on the fly for POS checkout if not pre-registered
-        const prd = await Product.findOne({
-          $or: [
-            { barcode: itemBarcode },
-            { itemCode: itemBarcode },
-            { _id: (typeof item.productId === 'string' && item.productId.length === 24) ? item.productId : null }
-          ]
-        }) || defaultPrd;
+        const fallbackBarcode = itemBarcode || `BC-${Date.now()}`;
+        const prd = targetProductId
+          ? await Product.findOne({ _id: targetProductId, tenantId })
+          : await Product.findOne({
+              tenantId,
+              $or: [
+                { barcode: fallbackBarcode },
+                { itemCode: fallbackBarcode }
+              ]
+            }) || defaultPrd;
 
         piece = await InventoryPiece.create({
           tenantId,
           productId: prd ? prd._id : undefined,
           firmId: firmId || undefined,
           warehouseId: warehouseId || undefined,
-          barcode: itemBarcode,
-          uniqueCode: itemBarcode,
+          barcode: fallbackBarcode,
+          uniqueCode: fallbackBarcode,
           ipn: prd?.ipn || `IPN-${Date.now()}`,
           mrp: item.sellingPrice || item.price || prd?.sellingPrice || prd?.mrp || 100,
           purchaseRate: prd?.purchasePrice || 0,
@@ -120,23 +177,20 @@ class BillingService {
 
       // Ensure piece is linked to a Product document
       if (!piece.productId) {
-        const prd = await Product.findOne({
-          $or: [
-            { barcode: itemBarcode },
-            { itemCode: itemBarcode },
-            { uniqueCode: itemBarcode },
-            { _id: (typeof item.productId === 'string' && item.productId.length === 24) ? item.productId : null }
-          ]
-        }) || defaultPrd;
+        const prd = targetProductId
+          ? await Product.findOne({ _id: targetProductId, tenantId })
+          : await Product.findOne({
+              tenantId,
+              $or: [
+                { barcode: itemBarcode },
+                { itemCode: itemBarcode },
+                { uniqueCode: itemBarcode }
+              ]
+            }) || defaultPrd;
         if (prd) {
           piece.productId = prd._id;
           await piece.save();
         }
-      }
-
-      if (piece.status !== INVENTORY_STATUS.AVAILABLE && !billData.isHold) {
-        piece.status = INVENTORY_STATUS.AVAILABLE;
-        await piece.save();
       }
 
       const sellingPrice = item.sellingPrice || piece.mrp || 0;

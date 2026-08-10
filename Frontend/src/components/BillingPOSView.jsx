@@ -19,6 +19,7 @@ import {
   AlertCircle,
   User,
   ChevronRight,
+  ChevronDown,
   Grid,
   FileSpreadsheet,
   Clock,
@@ -315,8 +316,12 @@ export const BillingPOSView = ({
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemNameInput, setItemNameInput] = useState("");
+  const [itemSearchInputText, setItemSearchInputText] = useState("");
+  const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false);
+  const [itemSearchHighlightedIndex, setItemSearchHighlightedIndex] = useState(0);
   const [itemCodeSearchInput, setItemCodeSearchInput] = useState("");
   const [isItemCodeDropdownOpen, setIsItemCodeDropdownOpen] = useState(false);
+  const [itemCodeHighlightedIndex, setItemCodeHighlightedIndex] = useState(0);
   const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
@@ -359,6 +364,19 @@ export const BillingPOSView = ({
       return code.includes(q) || name.includes(q) || barcode.includes(q);
     }).slice(0, 60);
   }, [products, itemCodeSearchInput]);
+
+  const filteredItemSearchProducts = React.useMemo(() => {
+    if (!products || products.length === 0) return [];
+    const q = (itemSearchInputText || "").trim().toLowerCase();
+    if (!q) return products.slice(0, 40);
+    return products.filter(p => {
+      const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
+      const name = (p.itemName || p.name || "").toLowerCase();
+      const design = (p.designNo || "").toLowerCase();
+      const barcode = (p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || design.includes(q) || barcode.includes(q);
+    }).slice(0, 60);
+  }, [products, itemSearchInputText]);
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -928,6 +946,15 @@ export const BillingPOSView = ({
     if (onAddNotification) onAddNotification("Resume Bill", "Bill resumed (F5).", "success");
   };
 
+  const handleFocusItemCodeSearch = () => {
+    const input = document.getElementById("itemCodeSearchInput");
+    if (input) {
+      input.focus();
+      if (typeof input.select === "function") input.select();
+      setIsItemCodeDropdownOpen(true);
+    }
+  };
+
   // --- GLOBAL KEYBOARD LISTENERS ---
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1108,52 +1135,69 @@ export const BillingPOSView = ({
         setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' });
         setSelectedCustomerId("");
         if (onAddNotification) onAddNotification("New Bill", "Cart cleared for new bill.", "info");
+        return;
       }
       // F2: Product Search
       if (e.key === "F2") {
+        e.preventDefault();
         handleOpenItemSearchModal();
+        return;
       }
       // F3: Customer Search
       if (e.key === "F3") {
+        e.preventDefault();
         document.getElementById("mobileSearchInput")?.focus();
+        return;
       }
-      // F4: Open New Customer Modal
-      if (e.key === "F4") {
-        setShowAddCustomerModal(true);
+      // F4 / Alt+I: Search Item Through Item Code
+      if (e.key === "F4" || (e.altKey && e.key.toLowerCase() === "i")) {
+        e.preventDefault();
+        handleFocusItemCodeSearch();
+        return;
       }
       // F5: Resume Bill
       if (e.key === "F5") {
+        e.preventDefault();
         handleResumeBill();
+        return;
       }
       // F6: Payment / Checkout
       if (e.key === "F6") {
+        e.preventDefault();
         handleOpenPaymentFlow();
+        return;
       }
       // F7: Save Bill
       if (e.key === "F7") {
         e.preventDefault();
         handleCheckoutSubmit();
+        return;
       }
       // F8: Hold Bill
       if (e.key === "F8") {
+        e.preventDefault();
         handleHoldBill();
+        return;
       }
       // F9: Generate/Print Draft Bill Preview
       if (e.key === "F9") {
         e.preventDefault();
         handleOpenDraftPreview();
+        return;
       }
 
       // Ctrl+B: Barcode Scanner
       if (e.ctrlKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         barcodeInputRef.current?.focus();
+        return;
       }
 
       // Esc: Close Modals / Dropdowns
       if (e.key === "Escape") {
         setIsProductDropdownOpen(false);
         setIsCustomerDropdownOpen(false);
+        setIsItemCodeDropdownOpen(false);
         setVariantModalProduct(null);
         setShowPaymentModal(false);
         setShowAlterationModal(false);
@@ -1175,9 +1219,9 @@ export const BillingPOSView = ({
         return;
       }
 
-      // Previous Bill (<) and Next Bill (>) and Single Key Shortcuts (A, R, D, E, C, L)
+      // Single Key Shortcuts & Space Key (Guarded when typing text in editable inputs)
       const isTyping = document.activeElement && (
-        document.activeElement.tagName === "INPUT" ||
+        (document.activeElement.tagName === "INPUT" && !document.activeElement.readOnly) ||
         document.activeElement.tagName === "TEXTAREA" ||
         document.activeElement.tagName === "SELECT" ||
         document.activeElement.isContentEditable
@@ -1186,10 +1230,22 @@ export const BillingPOSView = ({
       if (!isTyping && !isAlterationModeActive && !showPaymentModal && !isItemSearchModalOpen) {
         const k = (e.key || "").toLowerCase();
 
+        // Space Key -> Search Product Modal
+        if (e.code === "Space" || e.key === " " || e.key === "Spacebar") {
+          e.preventDefault();
+          handleOpenItemSearchModal();
+          return;
+        }
         // Adjustments -> A
         if (k === "a" && !e.altKey) {
           e.preventDefault();
           setShowAdjustmentModal(true);
+          return;
+        }
+        // Item Code Search -> I
+        if (k === "i" && !e.altKey) {
+          e.preventDefault();
+          handleFocusItemCodeSearch();
           return;
         }
         // Returns -> R
@@ -3578,59 +3634,239 @@ export const BillingPOSView = ({
                           onKeyDown={handleSmartBarcodeKeyDown}
                         />
                       </td>
-                      <td className="border-r border-slate-300 p-0.5" colSpan={2}>
-                        <input
-                          type="text"
-                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 cursor-pointer shadow-inner placeholder-slate-500"
-                          placeholder="Click to Search Item..."
-                          readOnly
-                          onClick={handleOpenItemSearchModal}
-                        />
+                      {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
+                      <td className="border-r border-slate-300 p-0.5 relative" colSpan={2}>
+                        <div className="flex items-center bg-white border border-blue-300 shadow-inner">
+                          <input
+                            type="text"
+                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 cursor-pointer placeholder-slate-500 font-semibold"
+                            placeholder="Click to Search Item..."
+                            value={itemSearchInputText}
+                            onChange={(e) => {
+                              setItemSearchInputText(e.target.value);
+                              setItemSearchHighlightedIndex(0);
+                              setIsItemDropdownOpen(true);
+                            }}
+                            onClick={() => setIsItemDropdownOpen(prev => !prev)}
+                            onFocus={() => setIsItemDropdownOpen(true)}
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowDown") {
+                                e.preventDefault();
+                                setIsItemDropdownOpen(true);
+                                setItemSearchHighlightedIndex(prev => {
+                                  const next = Math.min(filteredItemSearchProducts.length - 1, prev + 1);
+                                  document.getElementById(`itemsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+                                  return next;
+                                });
+                              } else if (e.key === "ArrowUp") {
+                                e.preventDefault();
+                                setIsItemDropdownOpen(true);
+                                setItemSearchHighlightedIndex(prev => {
+                                  const next = Math.max(0, prev - 1);
+                                  document.getElementById(`itemsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+                                  return next;
+                                });
+                              } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (isItemDropdownOpen && filteredItemSearchProducts[itemSearchHighlightedIndex]) {
+                                  const target = filteredItemSearchProducts[itemSearchHighlightedIndex];
+                                  handleAddProductToCart(target);
+                                  setItemSearchInputText("");
+                                  setIsItemDropdownOpen(false);
+                                  if (onAddNotification) onAddNotification("Item Added", `Added ${target.itemName || target.name} to bill`, "success");
+                                } else {
+                                  handleOpenItemSearchModal();
+                                }
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setIsItemDropdownOpen(false);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="px-1.5 py-1 text-slate-500 hover:text-blue-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsItemDropdownOpen(prev => !prev);
+                            }}
+                            title="Toggle Item Dropdown"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Interactive Item Dropdown List */}
+                        {isItemDropdownOpen && (
+                          <div className="absolute top-full left-0 w-96 bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-72 overflow-y-auto z-[200] text-slate-800">
+                            <div className="p-1.5 bg-blue-700 text-white flex items-center justify-between text-[10px] font-bold sticky top-0 z-10 shadow-xs">
+                              <span>Select Item ({filteredItemSearchProducts.length}) • Use ↑ ↓ & Enter</span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsItemDropdownOpen(false);
+                                    handleOpenItemSearchModal();
+                                  }}
+                                  className="bg-blue-800 hover:bg-blue-900 text-white px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                                >
+                                  Full List (F2)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsItemDropdownOpen(false);
+                                  }}
+                                  className="text-blue-200 hover:text-white font-extrabold px-1 text-xs cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                            {filteredItemSearchProducts.length === 0 ? (
+                              <div className="p-3 text-center text-[11px] text-slate-400 font-medium">No matching items found</div>
+                            ) : (
+                              filteredItemSearchProducts.map((p, pIdx) => {
+                                const code = p.itemCode || p.productCode || p.sku || '-';
+                                const name = p.itemName || p.name || 'Unnamed Item';
+                                const size = p.size || '-';
+                                const color = p.primaryColor || p.color || '-';
+                                const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                const stock = p.availableStock ?? 0;
+                                const isHighlighted = pIdx === itemSearchHighlightedIndex;
+
+                                return (
+                                  <div
+                                    id={`itemsearch-opt-${pIdx}`}
+                                    key={p._id || p.id || pIdx}
+                                    className={`p-2 border-b border-slate-100 cursor-pointer transition-colors text-xs flex justify-between items-center ${
+                                      isHighlighted
+                                        ? 'bg-blue-100/90 border-l-4 border-blue-600 font-bold shadow-xs'
+                                        : 'hover:bg-blue-50'
+                                    }`}
+                                    onClick={() => {
+                                      handleAddProductToCart(p);
+                                      setItemSearchInputText("");
+                                      setIsItemDropdownOpen(false);
+                                      if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                    }}
+                                  >
+                                    <div>
+                                      <div className="font-bold text-slate-800 flex items-center gap-2">
+                                        <span>{name}</span>
+                                        <span className="font-mono text-blue-600 bg-blue-50 px-1 rounded text-[10px]">{code}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                        <span>Size: <strong className="text-slate-700">{size}</strong></span>
+                                        <span>Color: <strong className="text-slate-700">{color}</strong></span>
+                                        <span>Stock: <strong className={stock > 0 ? "text-emerald-600 font-mono" : "text-red-500 font-mono"}>{stock}</strong></span>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="font-extrabold text-slate-900 text-sm">&#8377;{price}</div>
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-block ${
+                                        isHighlighted ? 'bg-blue-700 text-white shadow-xs' : 'bg-blue-600 text-white'
+                                      }`}>
+                                        + Add
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
                       </td>
+
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
+
                       {/* Item Code (Click to Search with SEARCH placeholder & Dropdown) */}
                       <td className="border-r border-slate-300 p-0.5 relative">
-                        <input
-                          type="text"
-                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase shadow-inner placeholder-slate-500 font-mono"
-                          placeholder="SEARCH"
-                          value={itemCodeSearchInput}
-                          onChange={(e) => {
-                            setItemCodeSearchInput(e.target.value);
-                            setIsItemCodeDropdownOpen(true);
-                          }}
-                          onFocus={() => setIsItemCodeDropdownOpen(true)}
-                          onClick={() => setIsItemCodeDropdownOpen(true)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              const q = itemCodeSearchInput.trim().toLowerCase();
-                              if (!q) {
-                                handleOpenItemSearchModal();
-                                return;
-                              }
-                              const matches = (products || []).filter(p => {
-                                const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
-                                return code === q || code.includes(q);
-                              });
-                              if (matches.length === 1) {
-                                handleAddProductToCart(matches[0]);
-                                setItemCodeSearchInput("");
-                                setIsItemCodeDropdownOpen(false);
-                              } else if (matches.length > 1) {
+                        <div className="flex items-center bg-white border border-blue-300 shadow-inner">
+                          <input
+                            id="itemCodeSearchInput"
+                            type="text"
+                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono"
+                            placeholder="SEARCH"
+                            value={itemCodeSearchInput}
+                            onChange={(e) => {
+                              setItemCodeSearchInput(e.target.value);
+                              setItemCodeHighlightedIndex(0);
+                              setIsItemCodeDropdownOpen(true);
+                            }}
+                            onFocus={() => setIsItemCodeDropdownOpen(true)}
+                            onClick={() => setIsItemCodeDropdownOpen(true)}
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowDown") {
+                                e.preventDefault();
                                 setIsItemCodeDropdownOpen(true);
-                              } else {
-                                handleOpenItemSearchModal();
+                                setItemCodeHighlightedIndex(prev => {
+                                  const next = Math.min(filteredItemCodeProducts.length - 1, prev + 1);
+                                  document.getElementById(`itemcode-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+                                  return next;
+                                });
+                              } else if (e.key === "ArrowUp") {
+                                e.preventDefault();
+                                setIsItemCodeDropdownOpen(true);
+                                setItemCodeHighlightedIndex(prev => {
+                                  const next = Math.max(0, prev - 1);
+                                  document.getElementById(`itemcode-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+                                  return next;
+                                });
+                              } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (isItemCodeDropdownOpen && filteredItemCodeProducts[itemCodeHighlightedIndex]) {
+                                  const target = filteredItemCodeProducts[itemCodeHighlightedIndex];
+                                  handleAddProductToCart(target);
+                                  setItemCodeSearchInput("");
+                                  setIsItemCodeDropdownOpen(false);
+                                  if (onAddNotification) onAddNotification("Item Added", `Added ${target.itemName || target.name} to bill`, "success");
+                                } else {
+                                  const q = itemCodeSearchInput.trim().toLowerCase();
+                                  if (!q) {
+                                    handleOpenItemSearchModal();
+                                    return;
+                                  }
+                                  const matches = (products || []).filter(p => {
+                                    const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
+                                    return code === q || code.includes(q);
+                                  });
+                                  if (matches.length === 1) {
+                                    handleAddProductToCart(matches[0]);
+                                    setItemCodeSearchInput("");
+                                    setIsItemCodeDropdownOpen(false);
+                                  } else if (matches.length > 1) {
+                                    setIsItemCodeDropdownOpen(true);
+                                  } else {
+                                    handleOpenItemSearchModal();
+                                  }
+                                }
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setIsItemCodeDropdownOpen(false);
                               }
-                            }
-                          }}
-                        />
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="px-1.5 py-1 text-slate-500 hover:text-indigo-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsItemCodeDropdownOpen(prev => !prev);
+                            }}
+                            title="Toggle Item Code Dropdown"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
 
                         {/* Dropdown list for multiple products with same/matching Item Code */}
                         {isItemCodeDropdownOpen && (
                           <div className="absolute top-full left-0 w-80 bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-72 overflow-y-auto z-[200] text-slate-800">
-                            <div className="p-1.5 bg-indigo-600 text-white flex items-center justify-between text-[10px] font-bold">
-                              <span>Select Item Code ({filteredItemCodeProducts.length} items)</span>
+                            <div className="p-1.5 bg-indigo-600 text-white flex items-center justify-between text-[10px] font-bold sticky top-0 z-10 shadow-xs">
+                              <span>Select Item Code ({filteredItemCodeProducts.length}) • Use ↑ ↓ & Enter</span>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -3652,11 +3888,17 @@ export const BillingPOSView = ({
                                 const color = p.primaryColor || p.color || '-';
                                 const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
                                 const barcode = p.barcode || (p.pieces && p.pieces[0]?.barcode) || '';
+                                const isHighlighted = pIdx === itemCodeHighlightedIndex;
 
                                 return (
                                   <div
+                                    id={`itemcode-opt-${pIdx}`}
                                     key={p._id || p.id || pIdx}
-                                    className="p-2 border-b border-slate-100 hover:bg-yellow-50 cursor-pointer transition-colors text-xs"
+                                    className={`p-2 border-b border-slate-100 cursor-pointer transition-colors text-xs flex justify-between items-center ${
+                                      isHighlighted
+                                        ? 'bg-indigo-100/90 border-l-4 border-indigo-600 font-bold shadow-xs'
+                                        : 'hover:bg-yellow-50'
+                                    }`}
                                     onClick={() => {
                                       handleAddProductToCart(p);
                                       setItemCodeSearchInput("");
@@ -3664,15 +3906,24 @@ export const BillingPOSView = ({
                                       if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
                                     }}
                                   >
-                                    <div className="flex items-center justify-between font-bold text-slate-800">
-                                      <span className="font-mono text-indigo-600 bg-indigo-50 px-1 rounded text-[10px]">{code}</span>
-                                      <span className="text-slate-900 font-extrabold">&#8377;{price}</span>
+                                    <div>
+                                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                                        <span className="font-mono text-indigo-600 bg-indigo-50 px-1 rounded text-[10px]">{code}</span>
+                                        <span>{name}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                        <span>Size: <strong className="text-slate-700">{size}</strong></span>
+                                        <span>Color: <strong className="text-slate-700">{color}</strong></span>
+                                        <span>Barcode: <strong className="text-slate-700 font-mono">{barcode || '-'}</strong></span>
+                                      </div>
                                     </div>
-                                    <div className="text-[11px] font-semibold text-slate-700 mt-0.5">{name}</div>
-                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                                      <span>Size: <strong className="text-slate-700">{size}</strong></span>
-                                      <span>Color: <strong className="text-slate-700">{color}</strong></span>
-                                      <span>Barcode: <strong className="text-slate-700 font-mono">{barcode || '-'}</strong></span>
+                                    <div className="text-right">
+                                      <div className="font-extrabold text-slate-900 text-sm">&#8377;{price}</div>
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-block ${
+                                        isHighlighted ? 'bg-indigo-700 text-white shadow-xs' : 'bg-indigo-600 text-white'
+                                      }`}>
+                                        + Select
+                                      </span>
                                     </div>
                                   </div>
                                 );
@@ -3788,7 +4039,8 @@ export const BillingPOSView = ({
                     { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
-                    { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
+                    { id: "searchItem", label: "Search Item (F2/Space)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
+                    { id: "itemCodeSearch", label: "Item Code (F4/I)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },

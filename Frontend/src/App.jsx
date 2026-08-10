@@ -802,6 +802,9 @@ export default function App() {
 
       const barcodesList = (inv.items || []).map((item, idx) => ({
         barcode: item.barcode || item.itemCode || `BC-${Date.now()}-${idx}`,
+        productId: item.productId || item.id || item._id,
+        itemCode: item.itemCode,
+        uniqueCode: item.uniqueCode,
         sellingPrice: Number(item.price || item.sellingPrice || 0),
         discountAmount: Number(item.discountAmount || 0)
       }));
