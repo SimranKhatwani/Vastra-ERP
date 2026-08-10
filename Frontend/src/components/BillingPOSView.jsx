@@ -1101,6 +1101,14 @@ export const BillingPOSView = ({
         return;
       }
 
+      // F1: New Bill
+      if (e.key === "F1") {
+        e.preventDefault();
+        setCart([]);
+        setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' });
+        setSelectedCustomerId("");
+        if (onAddNotification) onAddNotification("New Bill", "Cart cleared for new bill.", "info");
+      }
       // F2: Product Search
       if (e.key === "F2") {
         handleOpenItemSearchModal();
@@ -1121,15 +1129,27 @@ export const BillingPOSView = ({
       if (e.key === "F6") {
         handleOpenPaymentFlow();
       }
+      // F7: Save Bill
+      if (e.key === "F7") {
+        e.preventDefault();
+        handleCheckoutSubmit();
+      }
       // F8: Hold Bill
       if (e.key === "F8") {
         handleHoldBill();
       }
+      // F9: Generate/Print Draft Bill Preview
+      if (e.key === "F9") {
+        e.preventDefault();
+        handleOpenDraftPreview();
+      }
+
       // Ctrl+B: Barcode Scanner
       if (e.ctrlKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         barcodeInputRef.current?.focus();
       }
+
       // Esc: Close Modals / Dropdowns
       if (e.key === "Escape") {
         setIsProductDropdownOpen(false);
@@ -1138,11 +1158,6 @@ export const BillingPOSView = ({
         setShowPaymentModal(false);
         setShowAlterationModal(false);
         setShowDueCustomerModal(false);
-      }
-      // F9: Generate Bill
-      if (e.key === "F9") {
-        e.preventDefault();
-        handleOpenDraftPreview();
       }
 
       // Master Shortcut: Alt + A → Focus/Activate Alteration Panel
@@ -1158,6 +1173,68 @@ export const BillingPOSView = ({
         setIsAlterationModeActive(true);
         setFocusedAlterationIndex(prev => (prev >= 0 && prev < cart.length ? prev : 0));
         return;
+      }
+
+      // Previous Bill (<) and Next Bill (>) and Single Key Shortcuts (A, R, D, E, C, L)
+      const isTyping = document.activeElement && (
+        document.activeElement.tagName === "INPUT" ||
+        document.activeElement.tagName === "TEXTAREA" ||
+        document.activeElement.tagName === "SELECT" ||
+        document.activeElement.isContentEditable
+      );
+
+      if (!isTyping && !isAlterationModeActive && !showPaymentModal && !isItemSearchModalOpen) {
+        const k = (e.key || "").toLowerCase();
+
+        // Adjustments -> A
+        if (k === "a" && !e.altKey) {
+          e.preventDefault();
+          setShowAdjustmentModal(true);
+          return;
+        }
+        // Returns -> R
+        if (k === "r") {
+          e.preventDefault();
+          setActivePOSMode("returns");
+          return;
+        }
+        // Discount -> D
+        if (k === "d") {
+          e.preventDefault();
+          setShowDiscountSelectionModal(true);
+          return;
+        }
+        // Exchange -> E
+        if (k === "e") {
+          e.preventDefault();
+          setActivePOSMode("returns");
+          return;
+        }
+        // Clear Bill -> C
+        if (k === "c") {
+          e.preventDefault();
+          setCart([]);
+          if (onAddNotification) onAddNotification("Clear Bill", "Cart cleared.", "info");
+          return;
+        }
+        // Loyalty -> L
+        if (k === "l") {
+          e.preventDefault();
+          document.getElementById("mobileSearchInput")?.focus();
+          return;
+        }
+        // Previous Bill (<)
+        if (e.key === "<" || e.key === "," || (e.altKey && e.key === "ArrowLeft")) {
+          e.preventDefault();
+          handleLoadPreviousBill();
+          return;
+        }
+        // Next Bill (>)
+        if (e.key === ">" || e.key === "." || (e.altKey && e.key === "ArrowRight")) {
+          e.preventDefault();
+          handleLoadNextBill();
+          return;
+        }
       }
 
       // Alteration Panel Active Mode Navigation Controls
@@ -3703,24 +3780,24 @@ export const BillingPOSView = ({
                 {/* Action Toolbar */}
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                   {[
-                    { id: "newBill", label: "New Bill", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
-                    { id: "modify", label: "Alteration", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
+                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
+                    { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
-                    { id: "save", label: "Save", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
+                    { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
                     { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
-                    { id: "delete", label: "Delete", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
+                    { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
-                    { id: "searchItem", label: "Search Item", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
-                    { id: "prevBill", label: "Previous Bill", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
-                    { id: "nextBill", label: "Next Bill", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
-                    { id: "enterReturns", label: "Returns", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
-                    { id: "config", label: "Discount", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
-                    { id: "recvChallan", label: "Exchange", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
-                    { id: "adjustments", label: "Adjustments", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
-                    { id: "close", label: "Clear Bill", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
+                    { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
+                    { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
+                    { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
+                    { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                    { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
+                    { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                    { id: "adjustments", label: "Adjustments (A)", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
+                    { id: "close", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
                     { id: "viewHolds", label: "Resume (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
-                    { id: "loyaltyCustomer", label: "Loyalty", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
+                    { id: "loyaltyCustomer", label: "Loyalty (L)", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
                   ].map(btn => (
                     <button key={btn.id} onClick={btn.onClick || (() => { })} className="w-[68px] h-[58px] flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-slate-300 hover:to-white shadow-sm text-[9px] leading-[1.1] text-center p-1 rounded-sm">
                       {btn.icon}
