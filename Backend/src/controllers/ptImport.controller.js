@@ -7,17 +7,17 @@ const fs = require('fs');
 
 class PTImportController {
   static importPTExcel = asyncHandler(async (req, res) => {
+    let workbookData = null;
     let rows = req.body?.rows;
 
-    // 1. If file uploaded via Multer (Excel .xlsx, .xls, .csv)
     if (req.file) {
       try {
         const workbook = XLSX.readFile(req.file.path);
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        workbookData = {};
+        for (const sheetName of workbook.SheetNames) {
+          workbookData[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        }
 
-        // Clean up uploaded temp file
         if (fs.existsSync(req.file.path)) {
           fs.unlinkSync(req.file.path);
         }
@@ -29,7 +29,6 @@ class PTImportController {
       }
     }
 
-    // 2. If body sent as JSON string in form-data
     if (typeof rows === 'string') {
       try {
         rows = JSON.parse(rows);
@@ -38,20 +37,26 @@ class PTImportController {
       }
     }
 
-    if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      throw new ApiError(400, 'No import data found. Upload a valid Excel file (.xlsx, .xls, .csv) under file field or pass JSON array in rows.');
+    if (!workbookData && (!rows || !Array.isArray(rows) || rows.length === 0)) {
+      throw new ApiError(400, 'No import data found. Upload a valid Excel file or pass JSON array in rows.');
     }
 
     const defaultWarehouseId = req.body?.warehouseId || req.query?.warehouseId;
     const defaultFirmId = req.body?.firmId || req.query?.firmId;
 
-    const summary = await PTImportService.processImportRows(
-      rows,
-      defaultWarehouseId,
-      defaultFirmId,
-      req.user.id,
-      req.tenantId
-    );
+    let summary;
+    try {
+      summary = await PTImportService.processImportWorkbook(
+        workbookData || { Default: rows },
+        defaultWarehouseId,
+        defaultFirmId,
+        req.user.id,
+        req.tenantId
+      );
+    } catch (err) {
+      require('fs').writeFileSync('C:\\Users\\BAPS\\OneDrive\\Desktop\\Vastra ERP\\Backend\\debug_error.log', (err.stack || err.message) + '\n\n' + JSON.stringify(err.keyValue || {}));
+      throw err;
+    }
 
     return res.status(200).json(new ApiResponse(200, summary, 'PT Excel import processed successfully.'));
   });

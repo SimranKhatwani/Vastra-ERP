@@ -23,6 +23,14 @@ router.post('/', authorize(PERMISSIONS.PURCHASE_CREATE), validate(createPurchase
 router.get('/', authorize(PERMISSIONS.PURCHASE_READ), auditLog('PURCHASE_VIEW', 'purchase'), PurchaseController.getPurchaseBills);
 router.get('/export', authorize(PERMISSIONS.PURCHASE_READ), PurchaseController.exportPurchaseBills);
 router.get('/vendors', (req, res) => res.redirect(307, '/api/vendors'));
+
+// UI stubs to prevent 404s in frontend App.jsx on load
+router.get('/grn', (req, res) => res.status(200).json({ success: true, data: [], message: 'GRN mock data' }));
+router.get('/invoice', (req, res) => res.status(200).json({ success: true, data: [], message: 'Invoice mock data' }));
+router.get('/return', (req, res) => res.status(200).json({ success: true, data: [], message: 'Return mock data' }));
+router.get('/pending-tracking', (req, res) => res.status(200).json({ success: true, data: [], message: 'Pending tracking mock data' }));
+router.get('/outstanding', (req, res) => res.status(200).json({ success: true, data: [], message: 'Outstanding mock data' }));
+
 router.get('/:id', isValidObjectId, authorize(PERMISSIONS.PURCHASE_READ), auditLog('PURCHASE_VIEW_DETAIL', 'purchase'), PurchaseController.getPurchaseBillById);
 router.post('/:id/approve', isValidObjectId, authorize(PERMISSIONS.PURCHASE_APPROVE), auditLog('APPROVE_PURCHASE', 'purchase'), PurchaseController.approvePurchaseBill);
 router.post('/:id/cancel', isValidObjectId, authorize(PERMISSIONS.PURCHASE_CANCEL), auditLog('CANCEL_PURCHASE', 'purchase'), PurchaseController.cancelPurchaseBill);

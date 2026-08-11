@@ -35,20 +35,31 @@ const getVal = (row, ...keys) => {
   return '';
 };
 
+const escapeRegExp = (string) => {
+  return String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 class PTImportService {
   /**
    * PT Excel Import Engine
    * Each row represents ONE physical inventory piece.
    */
-  static async processImportRows(rows = [], defaultWarehouseId, defaultFirmId, userId, tenantId) {
+  static async processImportWorkbook(workbookData, defaultWarehouseId, defaultFirmId, userId, tenantId) {
+    let rows = [];
+    if (workbookData) {
+      rows = workbookData['RE_350'] || Object.values(workbookData)[0] || [];
+    }
+
     if (!rows || !rows.length) {
       throw new ApiError(400, 'Import file contains no data rows.');
     }
 
-    // Enable Mongoose query debugging for full visibility
-    mongoose.set('debug', true);
-
+    // Always start a session; transaction will be started only if replica set supports it
+    const isTxnSupported = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSet';
     const session = await mongoose.startSession();
+    if (isTxnSupported) {
+      await session.startTransaction();
+    }
 
     const summary = {
       total: rows.length,
@@ -67,7 +78,7 @@ class PTImportService {
     let currentRowCtx = { rowNum: 0, barcode: '', itemCode: '', billNo: '', ipn: '' };
 
     try {
-      session.startTransaction();
+// Removed redundant transaction start; already started above if supported
       console.log(`[TRANSACTION START] Starting PT Import Session. inTransaction: ${session.inTransaction()}`);
 
       // 1. Ensure default warehouse exists INSIDE session
@@ -78,7 +89,7 @@ class PTImportService {
           warehouse = await Warehouse.findOne({ _id: defaultWarehouseId, tenantId }).session(session);
         }
         if (!warehouse) {
-          warehouse = await Warehouse.findOne({ tenantId, isDeleted: false }).session(session);
+          warehouse = await Warehouse.findOne({ tenantId, name: 'Main Warehouse', includeDeleted: true }).session(session);
         }
         if (!warehouse) {
           console.log('BEFORE Default Warehouse Creation');
@@ -90,6 +101,10 @@ class PTImportService {
           }], { session });
           warehouse = createdWh[0];
           console.log('AFTER Default Warehouse Creation');
+        } else if (warehouse.isDeleted) {
+          warehouse.isDeleted = false;
+          warehouse.status = 'ACTIVE';
+          await warehouse.save({ session });
         }
         console.log(`AFTER Default Warehouse Lookup. inTransaction: ${session.inTransaction()}`);
       } catch (err) {
@@ -106,7 +121,7 @@ class PTImportService {
           defaultFirm = await Firm.findOne({ _id: defaultFirmId, tenantId }).session(session);
         }
         if (!defaultFirm) {
-          defaultFirm = await Firm.findOne({ tenantId, isDeleted: false }).session(session);
+          defaultFirm = await Firm.findOne({ tenantId, name: 'Primary Store Firm', includeDeleted: true }).session(session);
         }
         if (!defaultFirm) {
           console.log('BEFORE Default Firm Creation');
@@ -117,6 +132,10 @@ class PTImportService {
           }], { session });
           defaultFirm = createdFirm[0];
           console.log('AFTER Default Firm Creation');
+        } else if (defaultFirm.isDeleted) {
+          defaultFirm.isDeleted = false;
+          defaultFirm.status = 'ACTIVE';
+          await defaultFirm.save({ session });
         }
         console.log(`AFTER Default Firm Lookup. inTransaction: ${session.inTransaction()}`);
       } catch (err) {
@@ -144,10 +163,11 @@ class PTImportService {
         const rawBillDate = getVal(row, 'Bill date', 'Bill Date', 'billDate');
         const billDate = rawBillDate ? new Date(rawBillDate) : new Date();
 
-        const vendorName = String(getVal(row, 'vendor name', 'Vendor', 'vendor', 'Vendor Name') || 'K.R CHHABRA AND CO.').trim();
+        const vendorName = String(getVal(row, 'vendor name', 'Vendor', 'vendor', 'Vendor Name', 'Supplier') || 'K.R CHHABRA AND CO.').trim();
         const vendorCode = String(getVal(row, 'Vendor Code', 'vendorCode', 'Vendor code') || vendorName.substring(0, 8).toUpperCase()).trim();
         const vendorGst = String(getVal(row, 'Vendor GST', 'vendorGst', 'Vendor GSTIN') || '').trim();
 
+        const firmName = String(getVal(row, 'Firm', 'firm', 'Firm Name', 'Company') || '').trim();
         const brandName = String(getVal(row, 'Brand', 'brand', 'Brand Name') || 'GENERIC BRAND').trim();
         const categoryName = String(getVal(row, 'Category', 'category', 'Item name', 'ITEM NAME') || 'GENERAL').trim();
 
@@ -157,16 +177,47 @@ class PTImportService {
         const subItem = String(getVal(row, 'SUB ITEM NAME', 'Sub Item', 'subItem', 'Sub Item Name') || '').trim();
 
         const size = String(getVal(row, 'Size', 'size') || 'FREE').trim();
-        let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice') || 0);
-        const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate') || 0);
+        const primaryColor = String(getVal(row, 'COLOR', 'Color', 'color', 'Primary Color') || '-').trim();
+        const secondaryColor = String(getVal(row, 'Secondary Color', 'secondaryColor') || '').trim();
+
+        let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice', 'Sales Price') || 0);
+        const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate', 'Rate') || 0);
         if (!mrp || mrp <= 0) {
           mrp = purchaseRate > 0 ? Math.round(purchaseRate * 1.5) : 500;
         }
+        const wspAfterGST = parseFloat(getVal(row, 'WSP', 'wsp', 'WSP After GST') || purchaseRate);
+
+        let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE') || '').trim();
+        if (!barcode) {
+          barcode = generateBarcode();
+        }
+        let uniqueCode = String(getVal(row, 'Unique Code', 'uniqueCode', 'UNIQUE CODE') || '').trim();
+        if (!uniqueCode) {
+          uniqueCode = generateUniqueCode();
+        }
+        let ipn = String(getVal(row, 'IPN', 'ipn', 'IPN No') || '').trim();
+        if (!ipn) {
+          ipn = `IPN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
+        }
+        const batch = String(getVal(row, 'Batch', 'batch') || 'DEFAULT').trim();
+
+        const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
+        const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
+        const taxRate = parseFloat(getVal(row, 'Tax', 'tax', 'Tax Rate', 'GST') || 0);
+        const lineTotal = parseFloat(getVal(row, 'Net Amount', 'netAmount', 'Value', 'lineTotal') || (qty * purchaseRate));
+
+        const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
+        const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
+
+        currentRowCtx = { rowNum, barcode, itemCode, billNo, ipn };
 
         if (processedBarcodesSet.has(barcode)) {
-          summary.skipped++;
-          summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in batch skipped.` });
-          continue;
+          summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in batch. A new unique barcode was auto-generated.` });
+          barcode = generateBarcode();
+          // Fallback to avoid extreme edge-case collision in the same ms
+          while (processedBarcodesSet.has(barcode)) {
+             barcode = generateBarcode();
+          }
         }
 
         // Firm Management
@@ -176,7 +227,7 @@ class PTImportService {
             console.log(`BEFORE Firm lookup/creation: ${firmName}`);
             let cachedFirm = firmCache.get(firmName.toUpperCase());
             if (!cachedFirm) {
-              cachedFirm = await Firm.findOne({ tenantId, name: new RegExp(`^${firmName}$`, 'i') }).session(session);
+              cachedFirm = await Firm.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(firmName) + '$', 'i'), includeDeleted: true }).session(session);
               if (!cachedFirm) {
                 const created = await Firm.create([{
                   tenantId,
@@ -184,6 +235,10 @@ class PTImportService {
                   code: firmName.substring(0, 6).toUpperCase()
                 }], { session });
                 cachedFirm = created[0];
+              } else if (cachedFirm.isDeleted) {
+                cachedFirm.isDeleted = false;
+                cachedFirm.status = 'ACTIVE';
+                await cachedFirm.save({ session });
               }
               firmCache.set(firmName.toUpperCase(), cachedFirm);
             }
@@ -201,7 +256,7 @@ class PTImportService {
         if (!vendor) {
           try {
             console.log(`BEFORE Vendor lookup/creation: ${vendorName}`);
-            vendor = await Vendor.findOne({ tenantId, name: new RegExp(`^${vendorName}$`, 'i') }).session(session);
+            vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vendorName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!vendor) {
               const created = await Vendor.create([{
                 tenantId,
@@ -211,6 +266,10 @@ class PTImportService {
                 gstin: vendorGst
               }], { session });
               vendor = created[0];
+            } else if (vendor.isDeleted) {
+              vendor.isDeleted = false;
+              vendor.status = 'ACTIVE';
+              await vendor.save({ session });
             }
             vendorCache.set(vendorName.toUpperCase(), vendor);
             console.log(`AFTER Vendor lookup/creation: ${vendor._id}. inTransaction: ${session.inTransaction()}`);
@@ -226,10 +285,14 @@ class PTImportService {
         if (!brand) {
           try {
             console.log(`BEFORE Brand lookup/creation: ${brandName}`);
-            brand = await Brand.findOne({ tenantId, name: new RegExp(`^${brandName}$`, 'i') }).session(session);
+            brand = await Brand.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(brandName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!brand) {
               const created = await Brand.create([{ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() }], { session });
               brand = created[0];
+            } else if (brand.isDeleted) {
+              brand.isDeleted = false;
+              brand.status = 'ACTIVE';
+              await brand.save({ session });
             }
             brandCache.set(brandName.toUpperCase(), brand);
             console.log(`AFTER Brand lookup/creation: ${brand._id}. inTransaction: ${session.inTransaction()}`);
@@ -245,10 +308,14 @@ class PTImportService {
         if (!category) {
           try {
             console.log(`BEFORE Category lookup/creation: ${categoryName}`);
-            category = await Category.findOne({ tenantId, name: new RegExp(`^${categoryName}$`, 'i') }).session(session);
+            category = await Category.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(categoryName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!category) {
               const created = await Category.create([{ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() }], { session });
               category = created[0];
+            } else if (category.isDeleted) {
+              category.isDeleted = false;
+              category.status = 'ACTIVE';
+              await category.save({ session });
             }
             categoryCache.set(categoryName.toUpperCase(), category);
             console.log(`AFTER Category lookup/creation: ${category._id}. inTransaction: ${session.inTransaction()}`);
@@ -265,7 +332,7 @@ class PTImportService {
         if (!product) {
           try {
             console.log(`BEFORE Product lookup/creation: ${itemCode}`);
-            product = await Product.findOne({ tenantId, itemCode: new RegExp(`^${itemCode}$`, 'i') }).session(session);
+            product = await Product.findOne({ tenantId, itemCode: new RegExp('^' + escapeRegExp(itemCode) + '$', 'i'), includeDeleted: true }).session(session);
             if (!product) {
               const created = await Product.create([{
                 tenantId,
@@ -280,6 +347,10 @@ class PTImportService {
                 defaultMRP: mrp
               }], { session });
               product = created[0];
+            } else if (product.isDeleted) {
+              product.isDeleted = false;
+              product.status = 'ACTIVE';
+              await product.save({ session });
             }
             productCache.set(productKey, product);
             console.log(`AFTER Product lookup/creation: ${product._id}. inTransaction: ${session.inTransaction()}`);
@@ -295,7 +366,7 @@ class PTImportService {
         if (!purchaseBill) {
           try {
             console.log(`BEFORE PurchaseBill creation: ${billNo}`);
-            const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp(`^${billNo}$`, 'i') }).session(session);
+            const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp('^' + escapeRegExp(billNo) + '$', 'i') }).session(session);
             let targetBillNo = billNo;
             if (existingBill) {
               targetBillNo = `${billNo}-${Date.now().toString().slice(-4)}`;
@@ -330,9 +401,11 @@ class PTImportService {
           const existingBarcode = await InventoryPiece.findOne({ tenantId, barcode }).session(session);
           console.log(`AFTER InventoryPiece barcode check: ${barcode}. inTransaction: ${session.inTransaction()}`);
           if (existingBarcode) {
-            summary.skipped++;
-            summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in DB skipped.` });
-            continue;
+            summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in DB. A new unique barcode was auto-generated.` });
+            barcode = generateBarcode();
+            while (processedBarcodesSet.has(barcode)) {
+               barcode = generateBarcode();
+            }
           }
         } catch (err) {
           console.error('FAILED AT STEP: InventoryPiece barcode check');
@@ -440,17 +513,17 @@ class PTImportService {
         summary.inserted++;
       }
 
-      // Create PTImportHistory log
+      // 5. Finalize & Save History
       const importHistory = await PTImportHistory.create([{
         tenantId,
-        fileName: 'manual-import',
-        totalRows: rows.length,
+        fileName: 'Inline_Mapping_Import',
+        totalRows: summary.total,
         inserted: summary.inserted,
         updated: summary.updated,
         skipped: summary.skipped,
         failed: summary.failed,
         errors: summary.errors,
-        importStatus: 'COMPLETED',
+        importStatus: summary.failed > 0 ? (summary.inserted + summary.updated > 0 ? 'PARTIAL' : 'FAILED') : 'COMPLETED',
         importedBy: userId,
         purchaseBillIds,
         inventoryPieceIds,
@@ -460,9 +533,12 @@ class PTImportService {
 
       summary.importId = importHistory[0]._id;
 
-      console.log('BEFORE commitTransaction');
-      await session.commitTransaction();
-      console.log('AFTER commitTransaction - PT Import Completed Successfully!');
+      // Commit transaction if supported
+      if (isTxnSupported && session && session.inTransaction()) {
+        console.log('BEFORE commitTransaction');
+        await session.commitTransaction();
+        console.log('AFTER commitTransaction - PT Import Completed Successfully!');
+      }
       return summary;
     } catch (err) {
       console.error('===== ROOT ERROR =====');
@@ -473,12 +549,14 @@ class PTImportService {
       if (err.errors) console.error(err.errors);
       console.error('======================');
 
-      if (session.inTransaction()) {
+      // Abort transaction if active and supported
+      if (isTxnSupported && session && session.inTransaction()) {
         await session.abortTransaction();
       }
       throw err;
     } finally {
-      if (!session.hasEnded) {
+      // End session if it was started
+      if (session) {
         await session.endSession();
       }
     }

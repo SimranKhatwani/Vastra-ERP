@@ -16,4 +16,5 @@ router.get('/stock-by-brand', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardC
 router.get('/stock-by-category', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardController.getStockByCategory);
 router.get('/stock-by-firm', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardController.getStockByFirm);
 router.get('/low-stock', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardController.getLowStock);
+router.get('/staff-summary', (req, res) => res.status(200).json({ success: true, data: {} })); // Mock staff summary
 module.exports = router;

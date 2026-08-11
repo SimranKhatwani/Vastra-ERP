@@ -5,6 +5,7 @@ const baseSchemaPlugin = require('./plugins/baseSchema');
  * PTImportHistory - Tracks each PT Excel import session for history & rollback
  */
 const ptImportHistorySchema = new mongoose.Schema({
+  fileHash: { type: String, trim: true },
   fileName: { type: String, trim: true, default: 'manual-import' },
   totalRows: { type: Number, default: 0 },
   inserted: { type: Number, default: 0 },

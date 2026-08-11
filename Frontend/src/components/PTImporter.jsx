@@ -4,34 +4,39 @@ import { UploadCloud, CheckCircle2, CheckCircle, XCircle, FileSpreadsheet, Edit3
 import * as XLSX from "xlsx";
 
 const FIELDS_TO_MAP = [
-  { key: "billNo", label: "Bill No.", required: true, synonyms: ["bill no", "invoice no", "invoice"] },
+  { key: "billNo", label: "Bill No.", required: true, synonyms: ["bill no", "bill no.", "bill number", "invoice no", "invoice no.", "invoice", "invoice number"] },
   { key: "billDate", label: "Bill Date", required: true, synonyms: ["bill date", "date", "invoice date"] },
-  { key: "vendorName", label: "Vendor Name", required: true, synonyms: ["vendor", "supplier", "party"] },
-  { key: "brand", label: "Brand", required: false, synonyms: ["brand", "make"] },
-  { key: "designNo", label: "Design No.", required: true, synonyms: ["design", "design no", "design number", "article"] },
-  { key: "serialNumber", label: "Serial Number", required: false, synonyms: ["sr no", "serial", "sno"] },
-  { key: "barcode", label: "Barcode", required: false, synonyms: ["barcode"] },
-  { key: "itemCode", label: "Item Code", required: true, synonyms: ["item code", "code"] },
-  { key: "itemName", label: "Item Name", required: true, synonyms: ["item name", "item", "product"] },
-  { key: "subCategory", label: "Sub Category", required: false, synonyms: ["sub category", "sub-category"] },
-  { key: "quantity", label: "Quantity", required: true, synonyms: ["qty", "quantity", "pcs"] },
+  { key: "vendorName", label: "Vendor Name", required: true, synonyms: ["vendor name", "vendor", "supplier", "party", "party name", "supplier name"] },
+  { key: "vendorGst", label: "Vendor GST", required: false, synonyms: ["vendor gst", "vendor gstin", "gstin", "gst no", "gst number"] },
+  { key: "vendorCode", label: "Vendor Code", required: false, synonyms: ["vendor code", "v code", "party code"] },
+  { key: "brand", label: "Brand", required: false, synonyms: ["brand", "brand name", "make"] },
+  { key: "ipn", label: "IPN", required: false, synonyms: ["ipn", "ipn no"] },
+  { key: "designNo", label: "Design No.", required: true, synonyms: ["design no", "design no.", "design", "design number", "article"] },
+  { key: "barcode", label: "Barcode", required: false, synonyms: ["barcode", "barcode no", "barcode no.", "bar code"] },
+  { key: "itemName", label: "Item Name", required: true, synonyms: ["item name", "item", "product", "product name"] },
+  { key: "subCategory", label: "Sub Item Name", required: false, synonyms: ["sub item name", "sub item", "sub category", "sub-category"] },
+  { key: "itemCode", label: "Item Code", required: false, synonyms: ["item code", "code", "sku", "product code"] },
+  { key: "quantity", label: "Quantity", required: true, synonyms: ["qty", "qty.", "quantity", "pcs", "total qty", "total qty."] },
   { key: "batch", label: "Batch", required: false, synonyms: ["batch"] },
-  { key: "topBottomSet", label: "Top / Bottom / Set", required: false, synonyms: ["top/bottom/set", "set", "type"] },
+  { key: "topBottomSet", label: "Top / Bottom / Set", required: false, synonyms: ["top/bottom/set", "group 1", "group 1 (top/bottom/set)", "top bottom set", "type"] },
   { key: "gender", label: "Gender", required: false, synonyms: ["gender", "sex"] },
-  { key: "colorPrimary", label: "Primary Color", required: false, synonyms: ["color", "colour", "primary color"] },
-  { key: "colorSecondary", label: "Secondary Color", required: false, synonyms: ["secondary color"] },
+  { key: "colorPrimary", label: "Primary Color", required: false, synonyms: ["color (p)", "color(p)", "colour", "primary color", "color", "colour (p)"] },
+  { key: "colorSecondary", label: "Secondary Color", required: false, synonyms: ["color (s)", "color(s)", "secondary color", "colour (s)", "colour(s)"] },
   { key: "size", label: "Size", required: false, synonyms: ["size"] },
-  { key: "purchaseRate", label: "Purchase Rate", required: true, synonyms: ["p. rate", "rate", "purchase price", "wsp"] },
-  { key: "mrp", label: "MRP", required: true, synonyms: ["mrp", "retail price"] },
-  { key: "hsnCode", label: "HSN Code", required: true, synonyms: ["hsn", "hsn code"] },
-  { key: "gstOnPurchase", label: "GST on Purchase", required: true, synonyms: ["gst", "gst on purchase", "tax"] },
-  { key: "gstOnSalePrice", label: "GST on Sale Price", required: false, synonyms: ["gst on sale"] },
-  { key: "firm", label: "Firm", required: true, synonyms: ["firm", "company"] },
+  { key: "purchaseRate", label: "Purchase Rate", required: true, synonyms: ["p. rate", "p.rate", "purchase rate", "rate", "purchase price"] },
+  { key: "gstOnPurchase", label: "GST on Purchase", required: false, synonyms: ["gst on purchase", "gst", "tax", "tax rate", "gst %"] },
+  { key: "typeOfGst", label: "Type of GST (I/E)", required: false, synonyms: ["type of gst", "type of gst (i/e)", "gst type", "gst i/e"] },
+  { key: "gstStatus", label: "GST Status", required: false, synonyms: ["gst status", "tax status"] },
+  { key: "wspAfterGst", label: "WSP After GST", required: false, synonyms: ["wsp after gst", "wsp", "final rate", "landing cost"] },
+  { key: "mrp", label: "MRP", required: false, synonyms: ["mrp", "retail price", "selling price", "sale price"] },
+  { key: "gstOnSalePrice", label: "GST on Sale", required: false, synonyms: ["gst on sale", "gst on sale price", "sale gst"] },
+  { key: "discountStatus", label: "Discount Status", required: false, synonyms: ["discount status", "discount status (b/a/n)"] },
+  { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["dis. on purchase", "discount on purchase", "discount", "disc", "dis."] },
+  { key: "hsnCode", label: "HSN Code", required: false, synonyms: ["hsn code", "hsn", "sac code"] },
+  { key: "firm", label: "Firm", required: false, synonyms: ["firm", "company", "firm name"] },
   { key: "uniqueCode", label: "Unique Code", required: false, synonyms: ["unique code"] },
-  { key: "typeOfGst", label: "Type of GST (I / E)", required: true, synonyms: ["type of gst", "gst type"] },
-  { key: "wspAfterGst", label: "WSP AFTER GST", required: false, synonyms: ["wsp after gst", "final rate"] },
-  { key: "discountStatus", label: "Discount Status", required: true, synonyms: ["discount status", "status"] },
-  { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["discount", "disc"] }
+  { key: "serialNumber", label: "S.No.", required: false, synonyms: ["s.no.", "s.no", "sr no", "serial", "sno", "serial number", "sl no"] },
+  { key: "itemImage", label: "Item Image", required: false, synonyms: ["item image", "image", "photo"] }
 ];
 
 const generateObjectId = () => Math.floor(Date.now() / 1000).toString(16) + 'x'.repeat(16).replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
@@ -42,6 +47,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   const [headers, setHeaders] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
   const [globalValues, setGlobalValues] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [parsedRows, setParsedRows] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -69,11 +76,28 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const rows = data.slice(1).filter(r => r.some(cell => cell !== undefined && cell !== ""));
         setRawRows(rows);
         let initialMapping = {};
+        const usedCols = new Set(); // prevent double-mapping
+
+        // Pass 1: Exact match on field key or label
         FIELDS_TO_MAP.forEach(field => {
-          let matchIdx = hdrs.findIndex(h => h.toLowerCase() === field.key.toLowerCase() || h.toLowerCase() === field.label.toLowerCase());
-          if (matchIdx === -1) matchIdx = hdrs.findIndex(h => field.synonyms.some(syn => h.toLowerCase() === syn.toLowerCase() || h.toLowerCase().includes(syn.toLowerCase())));
-          if (matchIdx !== -1) initialMapping[field.key] = matchIdx;
+          const matchIdx = hdrs.findIndex((h, i) => !usedCols.has(i) && (h.toLowerCase() === field.key.toLowerCase() || h.toLowerCase() === field.label.toLowerCase()));
+          if (matchIdx !== -1) { initialMapping[field.key] = matchIdx; usedCols.add(matchIdx); }
         });
+
+        // Pass 2: Exact synonym match
+        FIELDS_TO_MAP.forEach(field => {
+          if (initialMapping[field.key] !== undefined) return;
+          const matchIdx = hdrs.findIndex((h, i) => !usedCols.has(i) && field.synonyms.some(syn => h.toLowerCase() === syn.toLowerCase()));
+          if (matchIdx !== -1) { initialMapping[field.key] = matchIdx; usedCols.add(matchIdx); }
+        });
+
+        // Pass 3: Partial (includes) synonym match — only for synonyms with 4+ chars to avoid false positives
+        FIELDS_TO_MAP.forEach(field => {
+          if (initialMapping[field.key] !== undefined) return;
+          const matchIdx = hdrs.findIndex((h, i) => !usedCols.has(i) && field.synonyms.some(syn => syn.length >= 4 && h.toLowerCase().includes(syn.toLowerCase())));
+          if (matchIdx !== -1) { initialMapping[field.key] = matchIdx; usedCols.add(matchIdx); }
+        });
+
         setColumnMapping(initialMapping);
         setUploadProgress(100);
         setTimeout(() => {
@@ -113,14 +137,35 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         return isNaN(parsedNum) ? 0 : parsedNum;
       };
 
-      const formatExcelDate = (serial) => {
-        if (!serial) return "";
-        if (isNaN(serial)) return String(serial).trim();
-        const num = parseFloat(serial);
-        const utc_days  = Math.floor(num - 25569);
-        const utc_value = utc_days * 86400;                                        
-        const date_info = new Date(utc_value * 1000);
-        return date_info.toISOString().split("T")[0];
+      const formatExcelDate = (val) => {
+        if (!val) return "";
+        const str = String(val).trim();
+        // Try Excel serial number (pure number > 10000)
+        const num = parseFloat(str);
+        if (!isNaN(num) && num > 10000 && str.match(/^\d+(\.\d+)?$/)) {
+          const utc_days = Math.floor(num - 25569);
+          const utc_value = utc_days * 86400;
+          const date_info = new Date(utc_value * 1000);
+          return date_info.toISOString().split("T")[0];
+        }
+        // Try DD-MM-YYYY or DD/MM/YYYY
+        const ddmmyyyy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+        if (ddmmyyyy) {
+          const [, dd, mm, yyyy] = ddmmyyyy;
+          return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+        }
+        // Try YYYY-MM-DD (already ISO)
+        const iso = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+        if (iso) {
+          const [, yyyy, mm, dd] = iso;
+          return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+        }
+        // Fallback: try native Date parsing
+        const d = new Date(str);
+        if (!isNaN(d.getTime()) && d.getFullYear() > 1970) {
+          return d.toISOString().split("T")[0];
+        }
+        return str;
       };
 
       const billNo = getVal("billNo");
@@ -130,7 +175,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const designNo = getVal("designNo");
       const serialNumber = getVal("serialNumber");
       const barcode = getVal("barcode");
-      const itemCode = getVal("itemCode");
+      const itemCode = getVal("itemCode") || `ITEM-${designNo}`;
       const itemName = getVal("itemName");
       const subCategory = getVal("subCategory");
       const quantity = getNum("quantity") || 1;
@@ -172,7 +217,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const warnings = [];
       if (!row.vendorName) errors.push("Vendor Name is missing");
       if (!row.billNo) errors.push("Bill Number is missing");
-      if (!row.itemCode) errors.push("Item Code is missing");
       if (!row.itemName) errors.push("Item Name is missing");
       if (row.quantity <= 0) errors.push("Quantity must be greater than 0");
       if (row.purchaseRate <= 0) errors.push("Purchase Rate must be greater than 0");
@@ -202,10 +246,13 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   };
 
   const handleImportPTFileSubmit = async () => {
+    if (isSubmittingRef.current) return;
     if (parsedRows.length === 0) {
       if (onAddNotification) onAddNotification("Error", "No valid data to import.", "danger");
       return;
     }
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     const errorCount = parsedRows.filter(r => r.status === "error").length;
     if (errorCount > 0) {
@@ -235,16 +282,9 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         }
       });
 
-      // Expand items by quantity so each barcode is unique
+      // Map parsed rows directly without grouping, so each imported row is a distinct item in the PO
       let currentProducts = [...(products || [])];
-      const billItems = [];
-      
-      let subTotal = 0;
-      let gstTotal = 0;
-      let grandDisc = 0;
-      
-      parsedRows.forEach((row) => {
-          // Compute total values for the bill
+      const billItems = parsedRows.filter(r => r.status === "valid").map(row => {
           const qty = row.quantity;
           const rate = row.purchaseRate;
           const itemSubTotal = qty * rate;
@@ -254,22 +294,16 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           let discAmt = row.discountOnPurchase || 0;
           
           if (row.typeOfGst?.toUpperCase() === "I") {
-              // Inclusive GST
               const baseRate = rate / (1 + (row.gstOnPurchase / 100));
               taxable = qty * baseRate;
               itemGst = itemSubTotal - taxable;
           } else {
-              // Exclusive GST
               itemGst = (taxable - discAmt) * (row.gstOnPurchase / 100);
           }
 
-          subTotal += taxable;
-          gstTotal += itemGst;
-          grandDisc += discAmt;
-
           const baseProductId = generateObjectId();
           
-          billItems.push({
+          return {
               ...row,
               productId: baseProductId,
               name: `${row.itemName} (${row.designNo})`,
@@ -279,30 +313,13 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
               calculatedGst: itemGst,
               calculatedTotal: taxable - discAmt + itemGst,
               calculatedDisc: discAmt
-          });
-
-          // Insert products into db (simulated)
-          for(let i=0; i<qty; i++) {
-              const uniqueBarcode = row.barcode || `BCODE${Math.floor(10000000 + Math.random() * 90000000)}`;
-              currentProducts.push({
-                  id: i === 0 ? baseProductId : generateObjectId(),
-                  name: `${row.itemName} (${row.designNo})`,
-                  category: row.itemName,
-                  brand: row.brand,
-                  sku: `${row.designNo}-${uniqueBarcode}`,
-                  barcode: uniqueBarcode,
-                  itemCode: row.itemCode,
-                  color: row.colorPrimary,
-                  size: row.size,
-                  purchasePrice: row.wspAfterGst,
-                  sellingPrice: row.mrp,
-                  mrp: row.mrp,
-                  gstPercent: row.gstOnSalePrice || row.gstOnPurchase,
-                  stock: 1, // EXACTLY 1 per barcode
-                  status: "In Stock"
-              });
-          }
+          };
       });
+
+      const subTotal = billItems.reduce((sum, r) => sum + r.calculatedTaxable, 0);
+      const gstTotal = billItems.reduce((sum, r) => sum + r.calculatedGst, 0);
+      const grandDisc = billItems.reduce((sum, r) => sum + r.calculatedDisc, 0);
+
 
       const firstRow = parsedRows[0];
       const supplierObj = currentSuppliers.find(s => s.name?.toLowerCase() === firstRow.vendorName?.toLowerCase());
@@ -330,21 +347,18 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       };
 
       // Submit PT Excel rows to backend engine once (avoids duplicate item creation)
-      let importSuccess = false;
       try {
         const res = await api.post(`/pt-import`, { rows: parsedRows });
         if (res.data?.success) {
-          importSuccess = true;
           if (onAddPurchaseOrder) {
             await onAddPurchaseOrder({ ...newVoucher, skipApiPost: true });
           }
+        } else {
+          throw new Error(res.data?.message || "Import failed on server.");
         }
       } catch (ptImportErr) {
-        console.warn("Backend /pt-import endpoint unavailable, falling back to /purchase-orders:", ptImportErr);
-      }
-
-      if (!importSuccess && onAddPurchaseOrder) {
-        await onAddPurchaseOrder(newVoucher);
+        console.error("Backend /pt-import failed:", ptImportErr);
+        throw new Error(ptImportErr.response?.data?.message || ptImportErr.message || "Failed to process PT File on backend");
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -356,6 +370,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       if (onAddNotification) onAddNotification("Import Error", error.message || "Failed to process PT File.", "danger");
     } finally {
       setIsImporting(false);
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -526,7 +542,13 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           <div className="p-6">
             <div className="flex justify-between mb-4">
                 <h3 className="text-lg font-bold">Review Data</h3>
-                <button onClick={handleImportPTFileSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold">Compile & Save Vouchers</button>
+                <button 
+                  onClick={handleImportPTFileSubmit} 
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 text-white rounded-lg font-bold ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600'}`}
+                >
+                  {isSubmitting ? 'Compiling & Saving...' : 'Compile & Save Vouchers'}
+                </button>
             </div>
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
                 <table className="w-full text-xs text-left">

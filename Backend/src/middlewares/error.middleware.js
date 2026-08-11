@@ -12,8 +12,9 @@ const errorHandler = (err, req, res, next) => {
 
   // Handle Mongoose duplicate key error (E11000)
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue || {})[0] || 'field';
-    error = new ApiError(400, `Duplicate value entered for '${field}'. Must be unique.`);
+    const fields = Object.keys(err.keyValue).join(', ');
+    require('fs').writeFileSync('duplicate_key_error.log', JSON.stringify(err.keyValue));
+    error = new ApiError(400, `Duplicate value entered for: ${fields}. Must be unique.`);
   }
 
   // Handle Mongoose CastError (invalid ObjectId)

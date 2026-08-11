@@ -11,6 +11,7 @@ const router = express.Router();
 
 router.use(authenticate, tenantContext);
 
+
 router.post(
   '/',
   authorize(PERMISSIONS.PURCHASE_CREATE),
