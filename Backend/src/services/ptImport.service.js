@@ -167,6 +167,78 @@ class PTImportService {
       const firmCache = new Map();
       const processedBarcodesSet = new Set();
 
+      // Phase 1: Pre-process Vendors from Sheet 2/3 (vendorDataRows)
+      if (vendorDataRows && vendorDataRows.length > 0) {
+        for (const vRow of vendorDataRows) {
+          const vName = String(getVal(vRow, 'VENDOR NAME', 'Vendor Name', 'Vendor') || '').trim();
+          if (!vName) continue;
+          
+          const vCode = String(getVal(vRow, 'VENDOR CODE', 'Vendor Code') || vName.substring(0, 8).toUpperCase()).trim();
+          const vGst = String(getVal(vRow, 'GST NUMBER', 'GSTIN', 'Vendor GST') || '').trim();
+          const vCompany = String(getVal(vRow, 'COMPANY NAME', 'Company Name', 'Firm') || '').trim();
+          const vPhone = [getVal(vRow, 'SALES/GENERAL CONTACT', 'Phone', 'Contact'), getVal(vRow, 'LANDLINE CONTACT', 'Landline')].filter(Boolean).join(' / ');
+          const vEmail = String(getVal(vRow, 'PRIMARY EMAIL', 'Email') || '').trim();
+          const vAddress = String(getVal(vRow, 'OFFICE ADDRESS', 'Address') || '').trim();
+          const vCity = String(getVal(vRow, 'CITY', 'City') || '').trim();
+          const vState = String(getVal(vRow, 'STATE', 'State') || '').trim();
+          const vPincode = String(getVal(vRow, 'PINCODE', 'Pincode') || '').trim();
+          const vPan = String(getVal(vRow, 'PAN NUMBER', 'PAN') || '').trim();
+
+          // Try to find by GST first, then Code, then Name
+          let vendor = null;
+          if (vGst) {
+            vendor = await Vendor.findOne({ tenantId, gstin: new RegExp('^' + escapeRegExp(vGst) + '$', 'i'), includeDeleted: true }).session(session);
+          }
+          if (!vendor && vCode) {
+            vendor = await Vendor.findOne({ tenantId, vendorCode: new RegExp('^' + escapeRegExp(vCode) + '$', 'i'), includeDeleted: true }).session(session);
+          }
+          if (!vendor) {
+            vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vName) + '$', 'i'), includeDeleted: true }).session(session);
+          }
+
+          if (!vendor) {
+            const created = await Vendor.create([{
+              tenantId,
+              name: vName,
+              vendorCode: vCode,
+              gstin: vGst,
+              companyName: vCompany,
+              phone: vPhone || 'N/A',
+              email: vEmail,
+              address: vAddress,
+              city: vCity,
+              state: vState,
+              pincode: vPincode,
+              panNumber: vPan,
+              importBatchId: historyId
+            }], { session });
+            vendor = created[0];
+          } else {
+            if (vendor.isDeleted) {
+              vendor.isDeleted = false;
+              vendor.status = 'ACTIVE';
+            }
+            // Update existing vendor with rich data
+            vendor.name = vName || vendor.name;
+            vendor.vendorCode = vCode || vendor.vendorCode;
+            vendor.gstin = vGst || vendor.gstin;
+            vendor.companyName = vCompany || vendor.companyName;
+            if (vPhone) vendor.phone = vPhone;
+            vendor.email = vEmail || vendor.email;
+            vendor.address = vAddress || vendor.address;
+            vendor.city = vCity || vendor.city;
+            vendor.state = vState || vendor.state;
+            vendor.pincode = vPincode || vendor.pincode;
+            vendor.panNumber = vPan || vendor.panNumber;
+            await vendor.save({ session });
+          }
+          
+          vendorCache.set(vName.toUpperCase(), vendor);
+          if (vGst) vendorCache.set(vGst.toUpperCase(), vendor);
+          if (vCode) vendorCache.set(vCode.toUpperCase(), vendor);
+        }
+      }
+
       let rowIndex = 0;
       for (const row of rows) {
         rowIndex++;
@@ -262,17 +334,32 @@ class PTImportService {
           }
         }
 
-        // Vendor Management
-        let vendor = vendorCache.get(vendorName.toUpperCase());
+        // Vendor Management (Phase 2)
+        // vendorGst, vendorCode, vendorName are extracted from the bill row (Sheet 1)
+        let vendor = null;
+        if (vendorGst) vendor = vendorCache.get(vendorGst.toUpperCase());
+        if (!vendor && vendorCode) vendor = vendorCache.get(vendorCode.toUpperCase());
+        if (!vendor) vendor = vendorCache.get(vendorName.toUpperCase());
+
         if (!vendor) {
           try {
-            vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vendorName) + '$', 'i'), includeDeleted: true }).session(session);
+            // Check DB directly in case it wasn't cached
+            if (vendorGst) {
+              vendor = await Vendor.findOne({ tenantId, gstin: new RegExp('^' + escapeRegExp(vendorGst) + '$', 'i'), includeDeleted: true }).session(session);
+            }
+            if (!vendor && vendorCode) {
+              vendor = await Vendor.findOne({ tenantId, vendorCode: new RegExp('^' + escapeRegExp(vendorCode) + '$', 'i'), includeDeleted: true }).session(session);
+            }
+            if (!vendor) {
+              vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vendorName) + '$', 'i'), includeDeleted: true }).session(session);
+            }
+
             if (!vendor) {
               const created = await Vendor.create([{
                 tenantId,
                 name: vendorName,
                 vendorCode,
-                gstNumber: vendorGst,
+                gstin: vendorGst,
                 importBatchId: historyId
               }], { session });
               vendor = created[0];
@@ -282,24 +369,10 @@ class PTImportService {
               await vendor.save({ session });
             }
             
-            if (vendorDataRows && vendorDataRows.length > 0) {
-               const matchingVendorData = vendorDataRows.find(v => (v['VENDOR NAME'] || '').toLowerCase() === vendorName.toLowerCase());
-               if (matchingVendorData) {
-                 vendor.companyName = matchingVendorData['COMPANY NAME'] || vendor.companyName;
-                 vendor.address = matchingVendorData['OFFICE ADDRESS'] || vendor.address;
-                 vendor.city = matchingVendorData['CITY'] || vendor.city;
-                 vendor.state = matchingVendorData['STATE'] || vendor.state;
-                 vendor.pincode = String(matchingVendorData['PINCODE'] || vendor.pincode || '');
-                 vendor.panNumber = matchingVendorData['PAN NUMBER'] || vendor.panNumber;
-                 vendor.email = matchingVendorData['PRIMARY EMAIL'] || vendor.email;
-                 const phones = [matchingVendorData['SALES/GENERAL CONTACT'], matchingVendorData['LANDLINE CONTACT']].filter(Boolean).join(' / ');
-                 if (phones) vendor.phone = phones;
-                 vendor.gstin = matchingVendorData['GST NUMBER'] || vendor.gstin;
-                 await vendor.save({ session });
-               }
-            }
-            
+            // Cache it so we don't look it up again
             vendorCache.set(vendorName.toUpperCase(), vendor);
+            if (vendorGst) vendorCache.set(vendorGst.toUpperCase(), vendor);
+            if (vendorCode) vendorCache.set(vendorCode.toUpperCase(), vendor);
           } catch (err) {
             console.error('FAILED AT STEP: Vendor Management');
             throw err;
@@ -385,6 +458,11 @@ class PTImportService {
           try {
             const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp('^' + escapeRegExp(billNo) + '$', 'i') }).session(session);
             if (existingBill) {
+              existingBill.vendorId = vendor._id;
+              existingBill.firmId = firm._id;
+              existingBill.warehouseId = warehouse._id;
+              existingBill.importBatchId = historyId;
+              await existingBill.save({ session });
               purchaseBill = existingBill;
             } else {
               const created = await PurchaseBill.create([{

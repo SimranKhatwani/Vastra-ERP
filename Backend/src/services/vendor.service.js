@@ -28,6 +28,23 @@ class VendorService {
     return repo.findById(id, tenantId);
   }
 
+  static async getVendorHistory(id, tenantId) {
+    const PurchaseBill = require('../models/purchase/PurchaseBill');
+    const bills = await PurchaseBill.find({ vendorId: id, tenantId, isDeleted: false })
+      .sort({ billDate: -1, createdAt: -1 })
+      .lean();
+    
+    const invoices = bills.map(bill => ({
+      invoiceNo: bill.billNo,
+      date: bill.billDate ? bill.billDate.toISOString().split('T')[0] : bill.createdAt.toISOString().split('T')[0],
+      total: bill.totalAmount || 0,
+      status: bill.status || 'Completed',
+      paymentHistory: bill.paymentHistory || []
+    }));
+
+    return { invoices };
+  }
+
   static async updateVendor(id, data, tenantId) {
     const repo = new BaseRepository(Vendor);
     return repo.update(id, data, tenantId);

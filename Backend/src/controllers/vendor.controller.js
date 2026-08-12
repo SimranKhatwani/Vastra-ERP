@@ -18,6 +18,11 @@ class VendorController {
     return res.status(200).json(new ApiResponse(200, vendor, 'Vendor details fetched.'));
   });
 
+  static getVendorHistory = asyncHandler(async (req, res) => {
+    const history = await VendorService.getVendorHistory(req.params.id, req.tenantId);
+    return res.status(200).json({ success: true, ...history });
+  });
+
   static updateVendor = asyncHandler(async (req, res) => {
     const vendor = await VendorService.updateVendor(req.params.id, req.body, req.tenantId);
     return res.status(200).json(new ApiResponse(200, vendor, 'Vendor updated successfully.'));

@@ -73,15 +73,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (data.length < 2) throw new Error("Spreadsheet appears empty or has no data rows.");
         
-        // Extract Vendor Data sheet if present
-        const vendorSheetName = wb.SheetNames.find(n => n.toLowerCase().trim() === 'vendor data');
-        if (vendorSheetName) {
-           const vSheet = wb.Sheets[vendorSheetName];
-           const vData = XLSX.utils.sheet_to_json(vSheet, { defval: "" }); 
-           setVendorDataRows(vData);
-        } else {
-           setVendorDataRows([]);
+        // Extract Vendor Data from all subsequent sheets (Sheet 2, Sheet 3, etc.)
+        let allVendorData = [];
+        for (let i = 1; i < wb.SheetNames.length; i++) {
+            const vSheet = wb.Sheets[wb.SheetNames[i]];
+            const vData = XLSX.utils.sheet_to_json(vSheet, { defval: "" }); 
+            allVendorData = allVendorData.concat(vData);
         }
+        setVendorDataRows(allVendorData);
 
         const hdrs = data[0].map(h => String(h || "").trim());
         setHeaders(hdrs);

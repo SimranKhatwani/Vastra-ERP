@@ -13,6 +13,7 @@ router.use(authenticate, tenantContext);
 router.post('/', authorize(PERMISSIONS.VENDOR_CREATE), auditLog('CREATE_VENDOR', 'vendors'), VendorController.createVendor);
 router.get('/', authorize(PERMISSIONS.VENDOR_READ), VendorController.getVendors);
 router.get('/:id', authorize(PERMISSIONS.VENDOR_READ), VendorController.getVendorById);
+router.get('/:id/history', authorize(PERMISSIONS.VENDOR_READ), VendorController.getVendorHistory);
 router.put('/:id', authorize(PERMISSIONS.VENDOR_UPDATE), auditLog('UPDATE_VENDOR', 'vendors'), VendorController.updateVendor);
 router.delete('/:id', authorize(PERMISSIONS.VENDOR_DELETE), auditLog('DELETE_VENDOR', 'vendors'), VendorController.deleteVendor);
 

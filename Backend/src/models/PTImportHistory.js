@@ -15,7 +15,7 @@ const ptImportHistorySchema = new mongoose.Schema({
   errors: [{ row: Number, error: String }],
   importStatus: {
     type: String,
-    enum: ['COMPLETED', 'FAILED', 'ROLLED_BACK'],
+    enum: ['IN_PROGRESS', 'COMPLETED', 'PARTIAL', 'FAILED', 'ROLLED_BACK'],
     default: 'COMPLETED'
   },
   importedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
