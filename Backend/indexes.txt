@@ -1,7 +1,0 @@
-vendors: tenantId_1_phone_1
-purchasereturns: tenantId_1_returnNo_1
-tenants: businessName_1
-tenants: businessCode_1
-grns: tenantId_1_grnNo_1
-purchaseinvoices: tenantId_1_invoiceNo_1
-purchaseorders: tenantId_1_poNo_1
