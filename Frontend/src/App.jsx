@@ -342,6 +342,10 @@ export default function App() {
       }
     };
     fetchProducts();
+    
+    // Listen for global refresh events from downstream modules like PTImporter
+    window.addEventListener("vastra-data-refresh", fetchProducts);
+    return () => window.removeEventListener("vastra-data-refresh", fetchProducts);
   }, [isLoggedIn, currentUser?.id, currentUser?._id, currentUser?.email]);
 
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);

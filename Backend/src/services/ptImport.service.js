@@ -46,8 +46,12 @@ class PTImportService {
    */
   static async processImportWorkbook(workbookData, defaultWarehouseId, defaultFirmId, userId, tenantId) {
     let rows = [];
+    let vendorDataRows = [];
     if (workbookData) {
-      rows = workbookData['RE_350'] || Object.values(workbookData)[0] || [];
+      rows = workbookData['RE_350'] || workbookData['Default'] || Object.values(workbookData)[0] || [];
+      if (workbookData['Vendor Data']) {
+         vendorDataRows = workbookData['Vendor Data'];
+      }
     }
 
     if (!rows || !rows.length) {
@@ -143,6 +147,16 @@ class PTImportService {
         console.error(err);
         throw err;
       }
+      
+      // 1. Initialize PTImportHistory First for batch tracking
+      const importHistory = await PTImportHistory.create([{
+        tenantId,
+        fileName: 'Inline_Mapping_Import',
+        fileHash: `manual-import-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        importStatus: 'IN_PROGRESS',
+        importedBy: userId
+      }], { session });
+      const historyId = importHistory[0]._id;
 
       // Cache lookup maps for high performance inside transaction session
       const vendorCache = new Map();
@@ -214,7 +228,6 @@ class PTImportService {
         if (processedBarcodesSet.has(barcode)) {
           summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in batch. A new unique barcode was auto-generated.` });
           barcode = generateBarcode();
-          // Fallback to avoid extreme edge-case collision in the same ms
           while (processedBarcodesSet.has(barcode)) {
              barcode = generateBarcode();
           }
@@ -224,7 +237,6 @@ class PTImportService {
         let firm = defaultFirm;
         if (firmName) {
           try {
-            console.log(`BEFORE Firm lookup/creation: ${firmName}`);
             let cachedFirm = firmCache.get(firmName.toUpperCase());
             if (!cachedFirm) {
               cachedFirm = await Firm.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(firmName) + '$', 'i'), includeDeleted: true }).session(session);
@@ -232,7 +244,8 @@ class PTImportService {
                 const created = await Firm.create([{
                   tenantId,
                   name: firmName,
-                  code: firmName.substring(0, 6).toUpperCase()
+                  code: firmName.substring(0, 6).toUpperCase(),
+                  importBatchId: historyId
                 }], { session });
                 cachedFirm = created[0];
               } else if (cachedFirm.isDeleted) {
@@ -243,10 +256,8 @@ class PTImportService {
               firmCache.set(firmName.toUpperCase(), cachedFirm);
             }
             firm = cachedFirm;
-            console.log(`AFTER Firm lookup/creation: ${firm._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: Firm Management');
-            console.error(err);
             throw err;
           }
         }
@@ -255,15 +266,14 @@ class PTImportService {
         let vendor = vendorCache.get(vendorName.toUpperCase());
         if (!vendor) {
           try {
-            console.log(`BEFORE Vendor lookup/creation: ${vendorName}`);
             vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vendorName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!vendor) {
               const created = await Vendor.create([{
                 tenantId,
                 name: vendorName,
-                code: vendorCode,
-                phone: 'N/A',
-                gstin: vendorGst
+                vendorCode,
+                gstNumber: vendorGst,
+                importBatchId: historyId
               }], { session });
               vendor = created[0];
             } else if (vendor.isDeleted) {
@@ -271,11 +281,27 @@ class PTImportService {
               vendor.status = 'ACTIVE';
               await vendor.save({ session });
             }
+            
+            if (vendorDataRows && vendorDataRows.length > 0) {
+               const matchingVendorData = vendorDataRows.find(v => (v['VENDOR NAME'] || '').toLowerCase() === vendorName.toLowerCase());
+               if (matchingVendorData) {
+                 vendor.companyName = matchingVendorData['COMPANY NAME'] || vendor.companyName;
+                 vendor.address = matchingVendorData['OFFICE ADDRESS'] || vendor.address;
+                 vendor.city = matchingVendorData['CITY'] || vendor.city;
+                 vendor.state = matchingVendorData['STATE'] || vendor.state;
+                 vendor.pincode = String(matchingVendorData['PINCODE'] || vendor.pincode || '');
+                 vendor.panNumber = matchingVendorData['PAN NUMBER'] || vendor.panNumber;
+                 vendor.email = matchingVendorData['PRIMARY EMAIL'] || vendor.email;
+                 const phones = [matchingVendorData['SALES/GENERAL CONTACT'], matchingVendorData['LANDLINE CONTACT']].filter(Boolean).join(' / ');
+                 if (phones) vendor.phone = phones;
+                 vendor.gstin = matchingVendorData['GST NUMBER'] || vendor.gstin;
+                 await vendor.save({ session });
+               }
+            }
+            
             vendorCache.set(vendorName.toUpperCase(), vendor);
-            console.log(`AFTER Vendor lookup/creation: ${vendor._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: Vendor Management');
-            console.error(err);
             throw err;
           }
         }
@@ -284,10 +310,9 @@ class PTImportService {
         let brand = brandCache.get(brandName.toUpperCase());
         if (!brand) {
           try {
-            console.log(`BEFORE Brand lookup/creation: ${brandName}`);
             brand = await Brand.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(brandName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!brand) {
-              const created = await Brand.create([{ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() }], { session });
+              const created = await Brand.create([{ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase(), importBatchId: historyId }], { session });
               brand = created[0];
             } else if (brand.isDeleted) {
               brand.isDeleted = false;
@@ -295,10 +320,8 @@ class PTImportService {
               await brand.save({ session });
             }
             brandCache.set(brandName.toUpperCase(), brand);
-            console.log(`AFTER Brand lookup/creation: ${brand._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: Brand Management');
-            console.error(err);
             throw err;
           }
         }
@@ -307,10 +330,9 @@ class PTImportService {
         let category = categoryCache.get(categoryName.toUpperCase());
         if (!category) {
           try {
-            console.log(`BEFORE Category lookup/creation: ${categoryName}`);
             category = await Category.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(categoryName) + '$', 'i'), includeDeleted: true }).session(session);
             if (!category) {
-              const created = await Category.create([{ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() }], { session });
+              const created = await Category.create([{ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase(), importBatchId: historyId }], { session });
               category = created[0];
             } else if (category.isDeleted) {
               category.isDeleted = false;
@@ -318,20 +340,17 @@ class PTImportService {
               await category.save({ session });
             }
             categoryCache.set(categoryName.toUpperCase(), category);
-            console.log(`AFTER Category lookup/creation: ${category._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: Category Management');
-            console.error(err);
             throw err;
           }
         }
 
-        // Product Catalog Management (Keyed by unique itemCode constraint)
+        // Product Catalog Management
         const productKey = itemCode.toUpperCase();
         let product = productCache.get(productKey);
         if (!product) {
           try {
-            console.log(`BEFORE Product lookup/creation: ${itemCode}`);
             product = await Product.findOne({ tenantId, itemCode: new RegExp('^' + escapeRegExp(itemCode) + '$', 'i'), includeDeleted: true }).session(session);
             if (!product) {
               const created = await Product.create([{
@@ -344,7 +363,8 @@ class PTImportService {
                 categoryId: category._id,
                 gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
-                defaultMRP: mrp
+                defaultMRP: mrp,
+                importBatchId: historyId
               }], { session });
               product = created[0];
             } else if (product.isDeleted) {
@@ -353,40 +373,36 @@ class PTImportService {
               await product.save({ session });
             }
             productCache.set(productKey, product);
-            console.log(`AFTER Product lookup/creation: ${product._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: Product Management');
-            console.error(err);
             throw err;
           }
         }
 
-        // Purchase Bill Management - Each import upload session creates a distinct PurchaseBill
+        // Purchase Bill Management
         let purchaseBill = billCache.get(billNo.toUpperCase());
         if (!purchaseBill) {
           try {
-            console.log(`BEFORE PurchaseBill creation: ${billNo}`);
             const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp('^' + escapeRegExp(billNo) + '$', 'i') }).session(session);
-            let targetBillNo = billNo;
             if (existingBill) {
-              targetBillNo = `${billNo}-${Date.now().toString().slice(-4)}`;
+              purchaseBill = existingBill;
+            } else {
+              const created = await PurchaseBill.create([{
+                tenantId,
+                billNo: billNo,
+                vendorId: vendor._id,
+                firmId: firm._id,
+                warehouseId: warehouse._id,
+                billDate,
+                totalAmount: 0,
+                status: 'APPROVED',
+                importBatchId: historyId
+              }], { session });
+              purchaseBill = created[0];
             }
-            const created = await PurchaseBill.create([{
-              tenantId,
-              billNo: targetBillNo,
-              vendorId: vendor._id,
-              firmId: firm._id,
-              warehouseId: warehouse._id,
-              billDate,
-              totalAmount: 0,
-              status: 'APPROVED'
-            }], { session });
-            purchaseBill = created[0];
             billCache.set(billNo.toUpperCase(), purchaseBill);
-            console.log(`AFTER PurchaseBill creation: ${purchaseBill._id}. inTransaction: ${session.inTransaction()}`);
           } catch (err) {
             console.error('FAILED AT STEP: PurchaseBill Management');
-            console.error(err);
             throw err;
           }
         }
@@ -395,29 +411,10 @@ class PTImportService {
           purchaseBillIds.push(purchaseBill._id);
         }
 
-        // Barcode Check in DB
-        try {
-          console.log(`BEFORE InventoryPiece barcode check: ${barcode}`);
-          const existingBarcode = await InventoryPiece.findOne({ tenantId, barcode }).session(session);
-          console.log(`AFTER InventoryPiece barcode check: ${barcode}. inTransaction: ${session.inTransaction()}`);
-          if (existingBarcode) {
-            summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in DB. A new unique barcode was auto-generated.` });
-            barcode = generateBarcode();
-            while (processedBarcodesSet.has(barcode)) {
-               barcode = generateBarcode();
-            }
-          }
-        } catch (err) {
-          console.error('FAILED AT STEP: InventoryPiece barcode check');
-          console.error(err);
-          throw err;
-        }
-
         // Create Purchase Item
         let purchaseItem;
         try {
-          console.log(`BEFORE PurchaseItem.create: Barcode: ${barcode}, Product: ${product._id}`);
-          const created = await PurchaseItem.create([{
+          const createdItem = await PurchaseItem.create([{
             tenantId,
             purchaseBillId: purchaseBill._id,
             productId: product._id,
@@ -428,68 +425,83 @@ class PTImportService {
             discount,
             taxRate,
             color: primaryColor,
-            lineTotal
+            lineTotal,
+            importBatchId: historyId
           }], { session });
-          purchaseItem = created[0];
+          purchaseItem = createdItem[0];
           purchaseItemIds.push(purchaseItem._id);
-          console.log(`AFTER PurchaseItem.create: ${purchaseItem._id}. inTransaction: ${session.inTransaction()}`);
         } catch (err) {
           console.error('FAILED AT STEP: PurchaseItem.create');
-          console.error(err);
           throw err;
         }
 
-        // Create Inventory Piece
-        let inventoryPiece;
+        // Create Inventory Pieces
         try {
-          console.log(`BEFORE InventoryPiece.create: Barcode: ${barcode}`);
-          const created = await InventoryPiece.create([{
-            tenantId,
-            productId: product._id,
-            purchaseBillId: purchaseBill._id,
-            purchaseItemId: purchaseItem._id,
-            warehouseId: warehouse._id,
-            firmId: firm._id,
-            barcode,
-            uniqueCode,
-            batch,
-            ipn,
-            primaryColor,
-            secondaryColor,
-            size,
-            purchaseRate,
-            wspAfterGST,
-            mrp,
-            status: INVENTORY_STATUS.AVAILABLE,
-            sold: false
-          }], { session });
-          inventoryPiece = created[0];
-          inventoryPieceIds.push(inventoryPiece._id);
-          console.log(`AFTER InventoryPiece.create: ${inventoryPiece._id}. inTransaction: ${session.inTransaction()}`);
-        } catch (err) {
-          console.error('FAILED AT STEP: InventoryPiece.create');
-          console.error(err);
-          throw err;
-        }
+          const piecesToCreate = [];
+          for (let i = 0; i < qty; i++) {
+            let pieceBarcode = (i === 0) ? barcode : generateBarcode();
+            
+            let isUnique = false;
+            while (!isUnique) {
+              if (processedBarcodesSet.has(pieceBarcode)) {
+                pieceBarcode = generateBarcode();
+                continue;
+              }
+              const existingBarcode = await InventoryPiece.findOne({ tenantId, barcode: pieceBarcode }).session(session);
+              if (existingBarcode) {
+                pieceBarcode = generateBarcode();
+              } else {
+                isUnique = true;
+              }
+            }
+            
+            processedBarcodesSet.add(pieceBarcode);
+            
+            piecesToCreate.push({
+              tenantId,
+              productId: product._id,
+              purchaseBillId: purchaseBill._id,
+              purchaseItemId: purchaseItem._id,
+              warehouseId: warehouse._id,
+              firmId: firm._id,
+              barcode: pieceBarcode,
+              uniqueCode,
+              batch,
+              ipn,
+              primaryColor,
+              secondaryColor,
+              size,
+              purchaseRate,
+              wspAfterGST,
+              mrp,
+              status: INVENTORY_STATUS.AVAILABLE,
+              currentLocation: 'WAREHOUSE',
+              importBatchId: historyId
+            });
+          }
 
-        // Record Inventory Lifecycle Event
-        try {
-          console.log(`BEFORE InventoryLifecycle.create: Barcode: ${barcode}`);
-          await InventoryLifecycle.create([{
+          const createdPieces = await InventoryPiece.insertMany(piecesToCreate, { session });
+          for (const p of createdPieces) {
+            inventoryPieceIds.push(p._id);
+          }
+
+          const lifecycleEvents = createdPieces.map(p => ({
             tenantId,
-            inventoryPieceId: inventoryPiece._id,
-            barcode,
+            inventoryPieceId: p._id,
+            barcode: p.barcode,
             eventType: LIFECYCLE_EVENT.PURCHASE,
             fromLocation: `Vendor:${vendor.name}`,
             toLocation: `Warehouse:${warehouse.name}`,
             referenceId: purchaseBill._id,
             referenceModel: 'PurchaseBill',
             performedBy: userId,
-            notes: `PT Excel Import row ${rowNum}`
-          }], { session });
-          console.log(`AFTER InventoryLifecycle.create: Barcode: ${barcode}. inTransaction: ${session.inTransaction()}`);
+            notes: `PT Excel Import row ${rowNum}`,
+            importBatchId: historyId
+          }));
+          await InventoryLifecycle.insertMany(lifecycleEvents, { session });
+          console.log(`AFTER InventoryPiece and Lifecycle creation loop. inTransaction: ${session.inTransaction()}`);
         } catch (err) {
-          console.error('FAILED AT STEP: InventoryLifecycle.create');
+          console.error('FAILED AT STEP: InventoryPiece.create loop');
           console.error(err);
           throw err;
         }
@@ -514,24 +526,23 @@ class PTImportService {
       }
 
       // 5. Finalize & Save History
-      const importHistory = await PTImportHistory.create([{
-        tenantId,
-        fileName: 'Inline_Mapping_Import',
-        totalRows: summary.total,
-        inserted: summary.inserted,
-        updated: summary.updated,
-        skipped: summary.skipped,
-        failed: summary.failed,
-        errors: summary.errors,
-        importStatus: summary.failed > 0 ? (summary.inserted + summary.updated > 0 ? 'PARTIAL' : 'FAILED') : 'COMPLETED',
-        importedBy: userId,
-        purchaseBillIds,
-        inventoryPieceIds,
-        purchaseItemIds,
-        importedRows: rows
-      }], { session });
+      await PTImportHistory.updateOne({ _id: historyId }, {
+        $set: {
+          totalRows: summary.total,
+          inserted: summary.inserted,
+          updated: summary.updated,
+          skipped: summary.skipped,
+          failed: summary.failed,
+          errors: summary.errors,
+          importStatus: summary.failed > 0 ? (summary.inserted + summary.updated > 0 ? 'PARTIAL' : 'FAILED') : 'COMPLETED',
+          purchaseBillIds,
+          inventoryPieceIds,
+          purchaseItemIds,
+          importedRows: rows
+        }
+      }, { session });
 
-      summary.importId = importHistory[0]._id;
+      summary.importId = historyId;
 
       // Commit transaction if supported
       if (isTxnSupported && session && session.inTransaction()) {
@@ -611,6 +622,74 @@ class PTImportService {
     await record.save();
     
     return { message: 'Rollback successful' };
+  }
+
+  static async deleteImport(id, userId, tenantId) {
+    const isTxnSupported = await isTransactionSupported();
+    let session = null;
+
+    if (isTxnSupported) {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    }
+
+    try {
+      const history = await PTImportHistory.findOne({ _id: id, tenantId }).session(session);
+      if (!history) throw new ApiError(404, 'PT Import History record not found.');
+
+      // 1. Delete InventoryLifecycle
+      const InventoryLifecycle = require('../models/InventoryLifecycle');
+      await InventoryLifecycle.deleteMany({ importBatchId: id, tenantId }).session(session);
+
+      // 2. Delete InventoryPieces
+      const InventoryPiece = require('../models/InventoryPiece');
+      await InventoryPiece.deleteMany({ importBatchId: id, tenantId }).session(session);
+
+      // 3. Delete PurchaseItems
+      const PurchaseItem = require('../models/purchase/PurchaseItem');
+      await PurchaseItem.deleteMany({ importBatchId: id, tenantId }).session(session);
+
+      // 4. Delete PurchaseBills
+      const PurchaseBill = require('../models/purchase/PurchaseBill');
+      await PurchaseBill.deleteMany({ importBatchId: id, tenantId }).session(session);
+
+      // 5. Safe Delete Products (only if no pieces exist for it anymore)
+      const Product = require('../models/Product');
+      const productsFromBatch = await Product.find({ importBatchId: id, tenantId }).session(session);
+      for (const p of productsFromBatch) {
+        const remainingPieces = await InventoryPiece.countDocuments({ productId: p._id }).session(session);
+        if (remainingPieces === 0) {
+          await Product.deleteOne({ _id: p._id }).session(session);
+        }
+      }
+
+      // 6. Safe Delete Vendors
+      const Vendor = require('../models/masters/Vendor');
+      const vendorsFromBatch = await Vendor.find({ importBatchId: id, tenantId }).session(session);
+      for (const v of vendorsFromBatch) {
+        const remainingBills = await PurchaseBill.countDocuments({ vendorId: v._id }).session(session);
+        if (remainingBills === 0) {
+          await Vendor.deleteOne({ _id: v._id }).session(session);
+        }
+      }
+
+      // 7. Delete PT Import History
+      await PTImportHistory.deleteOne({ _id: id }).session(session);
+
+      if (isTxnSupported && session && session.inTransaction()) {
+        await session.commitTransaction();
+      }
+      return { success: true, message: 'PT Import fully rolled back and deleted.' };
+    } catch (err) {
+      if (isTxnSupported && session && session.inTransaction()) {
+        await session.abortTransaction();
+      }
+      throw err;
+    } finally {
+      if (session) {
+        await session.endSession();
+      }
+    }
   }
 }
 

@@ -18,7 +18,7 @@ class VendorService {
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 20;
     const skip = (page - 1) * limit;
-    const items = await Vendor.find(filter).skip(skip).limit(limit);
+    const items = await Vendor.find(filter).sort({ updatedAt: -1, createdAt: -1 }).skip(skip).limit(limit);
     const total = await Vendor.countDocuments(filter);
     return { items, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }

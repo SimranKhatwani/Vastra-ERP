@@ -204,15 +204,9 @@ class PurchaseService {
       InventoryPiece.find({ purchaseBillId: billId }).select('barcode uniqueCode status mrp purchaseRate size ipn primaryColor secondaryColor')
     ]);
 
-    // Deduplicate items to prevent duplicate rows if multiple submission APIs were called
-    const seenKeys = new Set();
-    const uniqueItems = items.filter(item => {
-      const prd = item.productId || {};
-      const key = `${prd._id || item.productId || ''}_${item.size || ''}_${item.color || ''}_${item.purchaseRate || ''}`;
-      if (seenKeys.has(key)) return false;
-      seenKeys.add(key);
-      return true;
-    });
+    // Deduplication check removed: We must return all legitimate PurchaseItems to the UI, 
+    // even if they share the same product, size, color, and rate (they represent separate variants).
+    const uniqueItems = items;
 
     const enrichedItems = uniqueItems.map(item => {
       const prd = item.productId || {};

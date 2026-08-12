@@ -8,80 +8,11 @@ import {
   Send, Lock, Bookmark, Paperclip, ChevronRight, X, Printer, ArrowLeft
 } from 'lucide-react';
 
-const DEFAULT_FALLBACK_VENDORS = [
-  {
-    _id: 'demo-v1',
-    vendorCode: 'VND-2026-001',
-    name: 'Raymond Textiles Pvt Ltd',
-    businessName: 'Raymond Manufacturing Co.',
-    phone: '9876543210',
-    secondaryPhone: '9876543211',
-    whatsappNumber: '9876543210',
-    email: 'orders@raymond.com',
-    accountsEmail: 'accounts@raymond.com',
-    businessType: 'Manufacturer',
-    category: 'Fabric & Materials',
-    rating: 4.8,
-    gstin: '27AABCU9603R1ZM',
-    panNumber: 'AABCU9603R',
-    brandsSupplied: ['Raymond', 'Park Avenue', 'Parx'],
-    preferredContactPerson: 'Mr. Ramesh Shah (Sales Head)',
-    preferredCallingTime: '10:00 AM - 06:00 PM',
-    qualityRemarks: 'High quality supplier with 98% on-time fabric delivery.',
-    address: 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002',
-    bankDetails: {
-      bankName: 'HDFC Bank Ltd',
-      accountHolder: 'Raymond Textiles Pvt Ltd',
-      accountNo: '50200049281920',
-      ifscCode: 'HDFC0000124',
-      branch: 'Ring Road Branch, Surat'
-    },
-    upiId: 'raymondtextiles@hdfcbank',
-    paymentTerms: 'Net 30',
-    creditDays: 30,
-    creditLimit: 250000,
-    currentOutstanding: 45000,
-    isActive: true
-  },
-  {
-    _id: 'demo-v2',
-    vendorCode: 'VND-2026-002',
-    name: 'Linen Club Wholesale',
-    businessName: 'Jaya Shree Textiles (Aditya Birla Group)',
-    phone: '9812345678',
-    whatsappNumber: '9812345678',
-    email: 'contact@linenclub.com',
-    businessType: 'Wholesaler',
-    category: 'Linen & Fine Fabrics',
-    rating: 4.6,
-    gstin: '24AAACJ1203P1Z2',
-    panNumber: 'AAACJ1203P',
-    brandsSupplied: ['Linen Club', 'Grasim'],
-    preferredContactPerson: 'Suresh Mehta (Dispatch Supervisor)',
-    preferredCallingTime: '11:00 AM - 05:00 PM',
-    qualityRemarks: 'Premium 100% pure linen yarn and shirting fabric.',
-    address: 'Industrial Area Phase 2, Ahmedabad, Gujarat - 380001',
-    bankDetails: {
-      bankName: 'ICICI Bank',
-      accountHolder: 'Jaya Shree Textiles',
-      accountNo: '000405019283',
-      ifscCode: 'ICIC0000004',
-      branch: 'CG Road, Ahmedabad'
-    },
-    paymentTerms: 'Net 15',
-    creditDays: 15,
-    creditLimit: 150000,
-    currentOutstanding: 18500,
-    isActive: true
-  }
-];
+const DEFAULT_FALLBACK_VENDORS = [];
+
 
 // ─── OutstandingTab Sub-Component ──────────────────────────────────────────
-const DEMO_INVOICES = [
-  { id: 'INV-2026-091', date: '18-Jul-2026', billAmount: 45000, amountPaid: 15000, outstanding: 30000, status: 'Partial' },
-  { id: 'INV-2026-084', date: '10-Jul-2026', billAmount: 15000, amountPaid: 0, outstanding: 15000, status: 'Unpaid' },
-  { id: 'INV-2026-072', date: '02-Jul-2026', billAmount: 22000, amountPaid: 22000, outstanding: 0, status: 'Paid' },
-];
+const DEMO_INVOICES = [];
 
 const INV_STATUS_STYLE = {
   Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -107,9 +38,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
   }));
 
   // Initial state: demo data for demo vendors, real data for real vendors
-  const [invoices, setInvoices] = useState(
-    isRealVendor ? [] : DEMO_INVOICES
-  );
+  const [invoices, setInvoices] = useState([]);
   const [payModal, setPayModal] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', mode: 'Bank Transfer', referenceNo: '', remarks: '' });
 
@@ -122,7 +51,6 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
     } else if (isRealVendor) {
       setInvoices([]); // Real vendor with no invoices → show empty state
     }
-    // Demo vendor with no API data → keep DEMO_INVOICES
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hubData]);
 
@@ -761,19 +689,19 @@ export default function VendorCommunicationCard({ currentUser }) {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await api.get(`/vendor-communication/list`);
+      const res = await api.get(`/vendors`);
       const data = res.data;
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         setVendorList(data.data);
         setSelectedVendorId(prev => prev || data.data[0]._id);
       } else {
-        setVendorList(DEFAULT_FALLBACK_VENDORS);
-        setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
+        setVendorList([]);
+        setSelectedVendorId(null);
       }
     } catch (err) {
       console.error('fetchVendors failed:', err);
-      setVendorList(DEFAULT_FALLBACK_VENDORS);
-      setSelectedVendorId(prev => prev || DEFAULT_FALLBACK_VENDORS[0]._id);
+      setVendorList([]);
+      setSelectedVendorId(null);
     } finally {
       setLoading(false);
     }
@@ -781,13 +709,16 @@ export default function VendorCommunicationCard({ currentUser }) {
 
   // 2. Fetch Selected Vendor Communication Record
   const fetchVendorHub = async (vId) => {
-    if (!vId) return;
-    const currentVendorDoc = vendorList.find(v => String(v._id) === String(vId)) || DEFAULT_FALLBACK_VENDORS[0];
+    if (!vId) {
+      setHubData(null);
+      return;
+    }
+    const currentVendorDoc = vendorList.find(v => String(v._id) === String(vId)) || {};
 
     try {
       const token = localStorage.getItem('token');
-      const res = await api.get(`/vendor-communication/${vId}`);
-      if (res.ok) {
+      const res = await api.get(`/vendors/${vId}`);
+      if (res.ok || res.status === 200) {
         const data = res.data;
         if (data.success && data.data) {
           setHubData({
@@ -799,42 +730,28 @@ export default function VendorCommunicationCard({ currentUser }) {
       }
     } catch (err) { }
 
-    // Fallback Hub State synced 1:1 with Vendor Document
+    // Fallback Hub State synced 1:1 with Vendor Document without dummy data
     setHubData({
       vendor: currentVendorDoc,
-      timeline: [
-        { activityType: 'Purchase Order Shared', channel: 'WhatsApp', remarks: 'Shared Purchase Order #PO-2026-9810 with vendor', employeeName: currentUser?.name || 'Admin', createdAt: new Date() },
-        { activityType: 'Call Initiated', channel: 'Call', remarks: 'Discussed rate inquiry and fabric delivery schedule', employeeName: currentUser?.name || 'Admin', createdAt: new Date(Date.now() - 7200000) }
-      ],
-      followUps: [
-        { _id: 'f1', title: 'Dispatch Confirmation Follow-up for Order #104', priority: 'High', expectedDate: new Date(Date.now() + 86400000 * 2), status: 'Pending', assignedEmployeeName: currentUser?.name || 'Admin' }
-      ],
-      documents: [
-        { title: 'GST Registration Certificate', documentType: 'GST Certificate', fileSize: '1.2 MB', uploadedAt: new Date() },
-        { title: 'Cancelled Cheque Copy', documentType: 'Cancelled Cheque', fileSize: '850 KB', uploadedAt: new Date() },
-        { title: 'Annual Supply Agreement 2026', documentType: 'Purchase Agreement', fileSize: '3.4 MB', uploadedAt: new Date() }
-      ],
-      notes: [
-        { content: 'Vendor offers 2% cash discount on invoices settled within 7 days.', employeeName: currentUser?.name || 'Admin', createdAt: new Date() }
-      ],
+      timeline: [],
+      followUps: [],
+      documents: [],
+      notes: [],
       purchaseHistory: {
-        totalPurchaseValue: 185000,
-        lastPurchaseDate: new Date(),
-        purchaseOrdersCount: 4,
-        purchaseInvoicesCount: 3,
-        returnsCount: 1,
-        grnCount: 4,
-        orders: [
-          { poNumber: 'PO-2026-081', createdAt: new Date(), grandTotal: 45000, status: 'Received' },
-          { poNumber: 'PO-2026-074', createdAt: new Date(Date.now() - 86400000 * 10), grandTotal: 62000, status: 'Received' }
-        ]
+        totalPurchaseValue: 0,
+        lastPurchaseDate: null,
+        purchaseOrdersCount: 0,
+        purchaseInvoicesCount: 0,
+        returnsCount: 0,
+        grnCount: 0,
+        orders: []
       },
       outstanding: {
-        totalOutstanding: currentVendorDoc.currentOutstanding || 45000,
-        creditLimit: currentVendorDoc.creditLimit || 250000,
+        totalOutstanding: currentVendorDoc.currentOutstanding || 0,
+        creditLimit: currentVendorDoc.creditLimit || 0,
         creditDays: currentVendorDoc.creditDays || 30,
         paymentTerms: currentVendorDoc.paymentTerms || 'Net 30',
-        lastPaymentDate: new Date(Date.now() - 86400000 * 5)
+        lastPaymentDate: null
       }
     });
   };

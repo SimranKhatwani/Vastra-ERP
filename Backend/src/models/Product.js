@@ -5,7 +5,9 @@ const baseSchemaPlugin = require('./plugins/baseSchema');
  * Product is MASTER only.
  * DO NOT STORE STOCK HERE.
  */
+
 const productSchema = new mongoose.Schema({
+  importBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PTImportHistory' },
   itemCode: {
     type: String,
     required: true,

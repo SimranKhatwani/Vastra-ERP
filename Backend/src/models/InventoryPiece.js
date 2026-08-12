@@ -6,7 +6,9 @@ const { INVENTORY_STATUS } = require('../constants/status');
  * InventoryPiece
  * CRITICAL RULE: One Barcode = One Inventory Document
  */
+
 const inventoryPieceSchema = new mongoose.Schema({
+  importBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PTImportHistory' },
   productId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',

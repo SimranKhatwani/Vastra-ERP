@@ -103,6 +103,10 @@ class ProductService {
 
       return {
         ...pObj,
+        name: pObj.itemName || '-',
+        sku: pObj.itemCode || '-',
+        category: pObj.categoryId?.name || '-',
+        brand: pObj.brandId?.name || '-',
         stock: calculatedStock,
         availableStock: calculatedStock,
         soldQuantity: pPieces.filter(pc => pc.status === 'SOLD').length || Number(pObj.soldQuantity || 0),

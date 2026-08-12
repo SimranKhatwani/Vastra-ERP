@@ -25,4 +25,5 @@ router.get('/template', authorize(PERMISSIONS.PT_IMPORT_READ), PTImportControlle
 router.get('/history', authorize(PERMISSIONS.PT_IMPORT_READ), PTImportController.getHistory);
 router.get('/:id', authorize(PERMISSIONS.PT_IMPORT_READ), PTImportController.getById);
 router.post('/:id/rollback', authorize(PERMISSIONS.PT_IMPORT_ROLLBACK), PTImportController.rollbackImport);
+router.delete('/:id', authorize(PERMISSIONS.PT_IMPORT_ROLLBACK), PTImportController.deleteImport);
 module.exports = router;

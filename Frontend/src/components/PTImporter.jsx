@@ -50,6 +50,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
   const [parsedRows, setParsedRows] = useState([]);
+  const [vendorDataRows, setVendorDataRows] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importLoaderMessage, setImportLoaderMessage] = useState("");
@@ -71,6 +72,17 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (data.length < 2) throw new Error("Spreadsheet appears empty or has no data rows.");
+        
+        // Extract Vendor Data sheet if present
+        const vendorSheetName = wb.SheetNames.find(n => n.toLowerCase().trim() === 'vendor data');
+        if (vendorSheetName) {
+           const vSheet = wb.Sheets[vendorSheetName];
+           const vData = XLSX.utils.sheet_to_json(vSheet, { defval: "" }); 
+           setVendorDataRows(vData);
+        } else {
+           setVendorDataRows([]);
+        }
+
         const hdrs = data[0].map(h => String(h || "").trim());
         setHeaders(hdrs);
         const rows = data.slice(1).filter(r => r.some(cell => cell !== undefined && cell !== ""));
@@ -348,7 +360,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       // Submit PT Excel rows to backend engine once (avoids duplicate item creation)
       try {
-        const res = await api.post(`/pt-import`, { rows: parsedRows });
+        const res = await api.post(`/pt-import`, { rows: parsedRows, vendorDataRows });
         if (res.data?.success) {
           if (onAddPurchaseOrder) {
             await onAddPurchaseOrder({ ...newVoucher, skipApiPost: true });
@@ -365,6 +377,10 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       setCreatedVoucher(newVoucher);
       setStep("success");
+      
+      // Dispatch global refresh event to update downstream modules (Products, Stock, Vendors)
+      window.dispatchEvent(new Event("vastra-data-refresh"));
+      
       if (onAddNotification) onAddNotification("PT File Generated", `Bill ${firstRow.billNo} compiled and added to Procurement list!`, "success");
     } catch (error) {
       if (onAddNotification) onAddNotification("Import Error", error.message || "Failed to process PT File.", "danger");

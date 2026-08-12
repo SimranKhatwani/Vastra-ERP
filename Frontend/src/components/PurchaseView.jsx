@@ -1754,6 +1754,32 @@ export const PurchaseView = ({
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
+                                {po.importBatchId && (
+                                  <button
+                                    onClick={async () => {
+                                      if (window.confirm("CRITICAL WARNING: You are about to delete an entire PT Excel Import. This will atomically remove ALL associated Purchase Bills, Products, Vendors, and Inventory records.\n\nAre you absolutely sure?")) {
+                                        try {
+                                          const res = await api.delete(`/pt-import/${po.importBatchId}`, { headers: authHeaders() });
+                                          if (res.data?.success) {
+                                            alert("PT Import deleted successfully.");
+                                            window.dispatchEvent(new Event("vastra-data-refresh"));
+                                            if (setPurchaseOrders) {
+                                              const refreshRes = await api.get('/purchase-orders');
+                                              const dataOrBills = Array.isArray(refreshRes.data?.data) ? refreshRes.data.data : (Array.isArray(refreshRes.data?.data?.bills) ? refreshRes.data.data.bills : []);
+                                              setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
+                                            }
+                                          }
+                                        } catch (err) {
+                                          alert("Failed to delete PT Import: " + (err.response?.data?.message || err.message));
+                                        }
+                                      }
+                                    }}
+                                    className="p-1.5 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors cursor-pointer border border-red-200 shadow-sm"
+                                    title="Delete ENTIRE PT Import Batch"
+                                  >
+                                    <Trash2 className="w-4 h-4" /> PT
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

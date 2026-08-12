@@ -46,8 +46,13 @@ class PTImportController {
 
     let summary;
     try {
+      const fallbackWorkbook = { Default: rows };
+      if (req.body?.vendorDataRows) {
+        fallbackWorkbook['Vendor Data'] = req.body.vendorDataRows;
+      }
+      
       summary = await PTImportService.processImportWorkbook(
-        workbookData || { Default: rows },
+        workbookData || fallbackWorkbook,
         defaultWarehouseId,
         defaultFirmId,
         req.user.id,
@@ -98,6 +103,11 @@ class PTImportController {
   static rollbackImport = asyncHandler(async (req, res) => {
     const result = await PTImportService.rollbackImport(req.params.id, req.user.id, req.tenantId);
     return res.status(200).json(new ApiResponse(200, result, 'PT Import rolled back successfully.'));
+  });
+
+  static deleteImport = asyncHandler(async (req, res) => {
+    const result = await PTImportService.deleteImport(req.params.id, req.user.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, result, 'PT Import deleted atomically.'));
   });
 }
 

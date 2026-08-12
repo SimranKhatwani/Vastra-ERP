@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 const baseSchemaPlugin = require('../plugins/baseSchema');
 
+
 const purchaseBillSchema = new mongoose.Schema({
+  importBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PTImportHistory' },
   billNo: {
     type: String,
     required: true,

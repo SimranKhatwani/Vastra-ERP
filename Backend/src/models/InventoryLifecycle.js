@@ -6,7 +6,9 @@ const { LIFECYCLE_EVENT } = require('../constants/status');
  * InventoryLifecycle
  * Every inventory movement creates an event.
  */
+
 const inventoryLifecycleSchema = new mongoose.Schema({
+  importBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PTImportHistory' },
   inventoryPieceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'InventoryPiece',
