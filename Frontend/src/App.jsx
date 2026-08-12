@@ -308,8 +308,13 @@ export default function App() {
                   (storedUser.name && e.name && e.name.toLowerCase() === storedUser.name.toLowerCase())
                 );
                 if (matchUser) {
-                  setCurrentUser(matchUser);
-                  localStorage.setItem("user", JSON.stringify(matchUser));
+                  const updatedUser = {
+                    ...storedUser,
+                    ...matchUser,
+                    role: matchUser.roleId?.name || matchUser.role || storedUser.role || 'Salesperson'
+                  };
+                  setCurrentUser(updatedUser);
+                  localStorage.setItem("user", JSON.stringify(updatedUser));
                 }
               } catch (err) {}
             }
@@ -1469,8 +1474,12 @@ export default function App() {
                     (emp) => (emp.id || emp._id) === e.target.value,
                   );
                   if (selectedEmp) {
-                    setCurrentUser(selectedEmp);
-                    localStorage.setItem("user", JSON.stringify(selectedEmp));
+                    const empWithRole = { 
+                      ...selectedEmp, 
+                      role: selectedEmp.roleId?.name || selectedEmp.role || 'Salesperson' 
+                    };
+                    setCurrentUser(empWithRole);
+                    localStorage.setItem("user", JSON.stringify(empWithRole));
                     addToastNotification(
                       "Role Swapped",
                       `Session context switched to ${selectedEmp.name} (${selectedEmp.role})`,

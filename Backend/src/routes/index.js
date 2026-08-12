@@ -33,6 +33,7 @@ router.use('/users', userRoutes);
 router.use('/employees', userRoutes); // Alias for frontend compatibility
 router.use('/staff', userRoutes); // Alias for frontend POS view compatibility
 router.use('/discounts', (req, res) => res.status(200).json({ success: true, data: [] })); // Mock discount rules
+router.use('/commissions', (req, res) => res.status(200).json({ success: true, data: {} })); // Mock commissions
 router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/masters', masterRoutes);
