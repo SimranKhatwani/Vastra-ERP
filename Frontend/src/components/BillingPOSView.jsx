@@ -322,6 +322,9 @@ export const BillingPOSView = ({
   const [itemCodeSearchInput, setItemCodeSearchInput] = useState("");
   const [isItemCodeDropdownOpen, setIsItemCodeDropdownOpen] = useState(false);
   const [itemCodeHighlightedIndex, setItemCodeHighlightedIndex] = useState(0);
+  const [designNoSearchInput, setDesignNoSearchInput] = useState("");
+  const [isDesignNoDropdownOpen, setIsDesignNoDropdownOpen] = useState(false);
+  const [designNoHighlightedIndex, setDesignNoHighlightedIndex] = useState(0);
   const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
@@ -355,28 +358,40 @@ export const BillingPOSView = ({
 
   const filteredItemCodeProducts = React.useMemo(() => {
     if (!products || products.length === 0) return [];
-    const q = (itemCodeSearchInput || "").trim().toLowerCase();
+    const q = String(itemCodeSearchInput || "").trim().toLowerCase();
     if (!q) return products.slice(0, 40);
     return products.filter(p => {
-      const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
-      const name = (p.itemName || p.name || "").toLowerCase();
-      const barcode = (p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
+      const code = String(p.itemCode || p.productCode || p.sku || "").toLowerCase();
+      const name = String(p.itemName || p.name || "").toLowerCase();
+      const barcode = String(p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
       return code.includes(q) || name.includes(q) || barcode.includes(q);
     }).slice(0, 60);
   }, [products, itemCodeSearchInput]);
 
   const filteredItemSearchProducts = React.useMemo(() => {
     if (!products || products.length === 0) return [];
-    const q = (itemSearchInputText || "").trim().toLowerCase();
+    const q = String(itemSearchInputText || "").trim().toLowerCase();
     if (!q) return products.slice(0, 40);
     return products.filter(p => {
-      const code = (p.itemCode || p.productCode || p.sku || "").toLowerCase();
-      const name = (p.itemName || p.name || "").toLowerCase();
-      const design = (p.designNo || "").toLowerCase();
-      const barcode = (p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
+      const code = String(p.itemCode || p.productCode || p.sku || "").toLowerCase();
+      const name = String(p.itemName || p.name || "").toLowerCase();
+      const design = String(p.designNo || "").toLowerCase();
+      const barcode = String(p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
       return name.includes(q) || code.includes(q) || design.includes(q) || barcode.includes(q);
     }).slice(0, 60);
   }, [products, itemSearchInputText]);
+
+  const filteredDesignNoProducts = React.useMemo(() => {
+    if (!products || products.length === 0) return [];
+    const q = String(designNoSearchInput || "").trim().toLowerCase();
+    if (!q) return products.slice(0, 40);
+    return products.filter(p => {
+      const design = String(p.designNo || p.sku || "").toLowerCase();
+      const name = String(p.itemName || p.name || "").toLowerCase();
+      return design.includes(q) || name.includes(q);
+    }).slice(0, 60);
+  }, [products, designNoSearchInput]);
+
 
   useEffect(() => {
     if (isItemSearchModalOpen && itemSearchResults.length > 0 && !selectedSearchItem) {
@@ -955,6 +970,15 @@ export const BillingPOSView = ({
     }
   };
 
+  const handleFocusDesignNoSearch = () => {
+    const input = document.getElementById("designNoSearchInput");
+    if (input) {
+      input.focus();
+      if (typeof input.select === "function") input.select();
+      setIsDesignNoDropdownOpen(true);
+    }
+  };
+
   // --- GLOBAL KEYBOARD LISTENERS ---
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1198,6 +1222,7 @@ export const BillingPOSView = ({
         setIsProductDropdownOpen(false);
         setIsCustomerDropdownOpen(false);
         setIsItemCodeDropdownOpen(false);
+        setIsDesignNoDropdownOpen(false);
         setVariantModalProduct(null);
         setShowPaymentModal(false);
         setShowAlterationModal(false);
@@ -1216,6 +1241,13 @@ export const BillingPOSView = ({
         }
         setIsAlterationModeActive(true);
         setFocusedAlterationIndex(prev => (prev >= 0 && prev < cart.length ? prev : 0));
+        return;
+      }
+
+      // Master Shortcut: Alt + D → Focus Design No Search
+      if (e.altKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        handleFocusDesignNoSearch();
         return;
       }
 
@@ -3116,35 +3148,52 @@ export const BillingPOSView = ({
 
 
   // --- REDESIGNED POS BILLING LOGIC ---
+  const executeSmartSearch = async (query, clearInputFn) => {
+    const q = query.trim();
+    if (!q) return;
+
+    try {
+      const res = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
+      if (res.data.success) {
+        const items = res.data.data;
+        if (items.length === 0) {
+          if (onAddNotification) onAddNotification("Not Found", "No product found for this code", "danger");
+        } else if (items.length === 1 || items.find(i => i.barcode === q)) {
+          // Auto add exact match or single result
+          const match = items.find(i => i.barcode === q) || items[0];
+          handleAddProductToCart(match);
+          if (onAddNotification) onAddNotification("Added", `${match.name} added to bill`, "success");
+          clearInputFn("");
+        } else {
+          // Multiple matches -> Open Selection Popup
+          setDesignSelectionItems(items);
+          setSelectedDesignItemIdx(0);
+          setIsDesignSelectionPopupOpen(true);
+        }
+      }
+    } catch (err) {
+      console.error("Smart barcode search failed:", err);
+    }
+  };
+
   const handleSmartBarcodeKeyDown = async (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      const q = barcodeInput.trim();
-      if (!q) return;
+      await executeSmartSearch(barcodeInput, setBarcodeInput);
+    }
+  };
 
-      try {
-        const token = localStorage.getItem('token');
-        const res = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
-        if (res.data.success) {
-          const items = res.data.data;
-          if (items.length === 0) {
-            if (onAddNotification) onAddNotification("Not Found", "No product found for this code", "danger");
-          } else if (items.length === 1 || items.find(i => i.barcode === q)) {
-            // Auto add exact match or single result
-            const match = items.find(i => i.barcode === q) || items[0];
-            handleAddProductToCart(match);
-            if (onAddNotification) onAddNotification("Added", `${match.name} added to bill`, "success");
-            setBarcodeInput("");
-          } else {
-            // Multiple matches -> Open Selection Popup
-            setDesignSelectionItems(items);
-            setSelectedDesignItemIdx(0);
-            setIsDesignSelectionPopupOpen(true);
-          }
-        }
-      } catch (err) {
-        console.error("Smart barcode search failed:", err);
-      }
+  const handleDesignNoKeyDown = async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      await executeSmartSearch(designNoSearchInput, setDesignNoSearchInput);
+    }
+  };
+
+  const handleItemCodeKeyDown = async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      await executeSmartSearch(itemCodeSearchInput, setItemCodeSearchInput);
     }
   };
 
@@ -3789,144 +3838,30 @@ export const BillingPOSView = ({
                         )}
                       </td>
 
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-
-                      {/* Item Code (Click to Search with SEARCH placeholder & Dropdown) */}
+                      {/* Design No Search Field */}
                       <td className="border-r border-slate-300 p-0.5 relative">
-                        <div className="flex items-center bg-white border border-blue-300 shadow-inner">
-                          <input
-                            id="itemCodeSearchInput"
-                            type="text"
-                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer"
-                            placeholder="SEARCH"
-                            value={itemCodeSearchInput}
-                            onChange={(e) => {
-                              setItemCodeSearchInput(e.target.value);
-                              handleOpenItemSearchModal();
-                            }}
-                            onFocus={() => handleOpenItemSearchModal()}
-                            onClick={() => handleOpenItemSearchModal()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === "ArrowDown") {
-                                e.preventDefault();
-                                handleOpenItemSearchModal();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="px-1.5 py-1 text-slate-500 hover:text-indigo-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenItemSearchModal();
-                            }}
-                            title="Open Detailed Item Search List (F2)"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <input
+                          id="designNoSearchInput"
+                          type="text"
+                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
+                          placeholder="SEARCH (D)"
+                          value={designNoSearchInput}
+                          onChange={(e) => setDesignNoSearchInput(e.target.value)}
+                          onKeyDown={handleDesignNoKeyDown}
+                        />
+                      </td>
 
-                        {/* Dropdown list for multiple products with same/matching Item Code */}
-                        {isItemCodeDropdownOpen && (
-                          <div className="absolute top-full left-0 w-[780px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-indigo-600">
-                            <div className="p-2 bg-gradient-to-r from-slate-900 to-indigo-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Item Code Search</span>
-                                <span>Found {filteredItemCodeProducts.length} Matching Items • Use ↑ ↓ & Enter</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsItemCodeDropdownOpen(false);
-                                }}
-                                className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                            {filteredItemCodeProducts.length === 0 ? (
-                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No items found matching item code</div>
-                            ) : (
-                              <table className="w-full text-left border-collapse text-xs">
-                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
-                                  <tr>
-                                    <th className="p-2 border-r border-slate-200">Item Code</th>
-                                    <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
-                                    <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Size</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Color</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Stock</th>
-                                    <th className="p-2 border-r border-slate-200 text-right">Price</th>
-                                    <th className="p-2 text-center">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 text-slate-700">
-                                  {filteredItemCodeProducts.map((p, pIdx) => {
-                                    const code = p.itemCode || p.productCode || p.sku || '-';
-                                    const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
-                                    const name = p.itemName || p.name || 'Unnamed Item';
-                                    const subItem = p.subCategory || p.subItem || p.category || '-';
-                                    const size = p.size || '-';
-                                    const color = p.primaryColor || p.color || '-';
-                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                    const stock = p.availableStock ?? p.stock ?? 0;
-                                    const isHighlighted = pIdx === itemCodeHighlightedIndex;
-
-                                    return (
-                                      <tr
-                                        id={`itemcode-opt-${pIdx}`}
-                                        key={p._id || p.id || pIdx}
-                                        className={`cursor-pointer transition-colors ${
-                                          isHighlighted
-                                            ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
-                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-50/60 hover:bg-indigo-50'
-                                        }`}
-                                        onClick={() => {
-                                          handleAddProductToCart(p);
-                                          setItemCodeSearchInput("");
-                                          setIsItemCodeDropdownOpen(false);
-                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                        }}
-                                      >
-                                        <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200">
-                                          <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{code}</span>
-                                        </td>
-                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
-                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
-                                        </td>
-                                        <td className="p-2 border-r border-slate-200">
-                                          <div className="font-bold text-slate-900">{name}</div>
-                                          {subItem !== '-' && <div className="text-[10px] text-slate-500 font-medium">{subItem}</div>}
-                                        </td>
-                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
-                                        <td className="p-2 text-center border-r border-slate-200">{color}</td>
-                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
-                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
-                                            {stock} pcs
-                                          </span>
-                                        </td>
-                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
-                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="p-2 text-center">
-                                          <button
-                                            type="button"
-                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${
-                                              isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                            }`}
-                                          >
-                                            + Select
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
-                          </div>
-                        )}
+                      {/* Item Code Search Field */}
+                      <td className="border-r border-slate-300 p-0.5 relative">
+                        <input
+                          id="itemCodeSearchInput"
+                          type="text"
+                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
+                          placeholder="SEARCH"
+                          value={itemCodeSearchInput}
+                          onChange={(e) => setItemCodeSearchInput(e.target.value)}
+                          onKeyDown={handleItemCodeKeyDown}
+                        />
                       </td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
@@ -4037,6 +3972,7 @@ export const BillingPOSView = ({
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
                     { id: "searchItem", label: "Search Item (F2/Space)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
                     { id: "itemCodeSearch", label: "Item Code (F4/I)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
+                    { id: "designNoSearch", label: "Design No (Alt+D)", icon: <Search className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: handleFocusDesignNoSearch },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
