@@ -214,7 +214,7 @@ export const ProductManagementView = ({
     const sizeVal = safeStr(p.size, 'FREE');
     const colorVal = safeStr(p.primaryColor, safeStr(p.color, '-'));
     const secondaryColorVal = safeStr(p.secondaryColor, '-');
-    const hsnVal = safeStr(p.hsnId, safeStr(p.hsn, 'N/A'));
+    const hsnVal = typeof p.hsnId === 'object' && p.hsnId?.hsnCode ? p.hsnId.hsnCode : safeStr(p.hsn, 'N/A');
 
     return {
       ...p,

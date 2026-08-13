@@ -11,6 +11,7 @@ const PurchaseItem = require('../models/purchase/PurchaseItem');
 const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
 const PTImportHistory = require('../models/PTImportHistory');
+const HSN = require('../models/masters/HSN');
 const { generateBarcode, generateUniqueCode } = require('../helpers/barcodeGenerator');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT } = require('../constants/status');
 
@@ -165,6 +166,7 @@ class PTImportService {
       const productCache = new Map();
       const billCache = new Map();
       const firmCache = new Map();
+      const hsnCache = new Map();
       const processedBarcodesSet = new Set();
 
       // Phase 1: Pre-process Vendors from Sheet 2/3 (vendorDataRows)
@@ -294,6 +296,8 @@ class PTImportService {
 
         const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
         const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
+        
+        const hsnCode = String(getVal(row, 'hsnCode', 'HSN CODE', 'HSN/SAC', 'HSN', 'HSN Code', 'HSN No', 'HSN No.', 'HSN NO', 'HSN NO.') || '').trim();
 
         currentRowCtx = { rowNum, barcode, itemCode, billNo, ipn };
 
@@ -419,6 +423,25 @@ class PTImportService {
           }
         }
 
+        // HSN Management
+        let hsn = null;
+        if (hsnCode) {
+          hsn = hsnCache.get(hsnCode.toUpperCase());
+          if (!hsn) {
+            try {
+              hsn = await HSN.findOne({ tenantId, hsnCode: new RegExp('^' + escapeRegExp(hsnCode) + '$', 'i') }).session(session);
+              if (!hsn) {
+                const created = await HSN.create([{ tenantId, hsnCode, description: 'Auto-imported HSN' }], { session });
+                hsn = created[0];
+              }
+              hsnCache.set(hsnCode.toUpperCase(), hsn);
+            } catch (err) {
+              console.error('FAILED AT STEP: HSN Management');
+              throw err;
+            }
+          }
+        }
+
         // Product Catalog Management
         const productKey = itemCode.toUpperCase();
         let product = productCache.get(productKey);
@@ -434,16 +457,28 @@ class PTImportService {
                 subItem,
                 brandId: brand._id,
                 categoryId: category._id,
+                hsnId: hsn ? hsn._id : undefined,
                 gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
                 defaultMRP: mrp,
                 importBatchId: historyId
               }], { session });
               product = created[0];
-            } else if (product.isDeleted) {
-              product.isDeleted = false;
-              product.status = 'ACTIVE';
-              await product.save({ session });
+            } else {
+              let updated = false;
+              if (product.isDeleted) {
+                product.isDeleted = false;
+                product.status = 'ACTIVE';
+                updated = true;
+              }
+              if (hsn && (!product.hsnId || product.hsnId.toString() !== hsn._id.toString())) {
+                product.hsnId = hsn._id;
+                product.markModified('hsnId');
+                updated = true;
+              }
+              if (updated) {
+                await product.save({ session });
+              }
             }
             productCache.set(productKey, product);
           } catch (err) {

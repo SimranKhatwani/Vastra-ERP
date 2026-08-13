@@ -2844,6 +2844,7 @@ export const BillingPOSView = ({
           <thead>
             <tr>
               <th>Item Description</th>
+              <th class="text-center">HSN/SAC</th>
               <th class="text-right">Qty</th>
               <th class="text-right">Price</th>
               <th class="text-right">Total</th>
@@ -2858,15 +2859,16 @@ export const BillingPOSView = ({
                     ${item.name} (${item.size}/${item.color})
                     ${item.uniqueCode ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode}</span>` : ''}
                   </td>
+                  <td class="text-center">${item.hsn || 'N/A'}</td>
                   <td class="text-right">${item.quantity}</td>
                   <td class="text-right">&#8377;${(Number(item.price) || 0).toLocaleString('en-IN')}</td>
                   <td class="text-right">&#8377;${(Number(item.totalPrice || item.price) || 0).toLocaleString('en-IN')}</td>
                 </tr>
-                ${item.isReturned ? `<tr><td colSpan="4" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
-                ${item.isExchanged ? `<tr><td colSpan="4" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
+                ${item.isReturned ? `<tr><td colSpan="5" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
+                ${item.isExchanged ? `<tr><td colSpan="5" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
                 ${!!(item.hasAlteration || item.alterationRecord) ? `
                   <tr>
-                    <td colSpan="4" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
+                    <td colSpan="5" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
                       <b>✂ ALTERATION:</b> ${item.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'} | <b>Tailor:</b> ${item.alterationRecord?.tailorName || 'Master Tailor'}<br/>
                       <b>Delivery:</b> ${item.alterationRecord?.deliveryDate || 'Scheduled'} ${item.alterationRecord?.deliveryTime || ''} [Trial: ${item.alterationRecord?.trialDate || 'N/A'}, Priority: ${item.alterationRecord?.priority || 'Normal'}]
                     </td>

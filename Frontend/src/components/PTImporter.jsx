@@ -32,7 +32,7 @@ const FIELDS_TO_MAP = [
   { key: "gstOnSalePrice", label: "GST on Sale", required: false, synonyms: ["gst on sale", "gst on sale price", "sale gst"] },
   { key: "discountStatus", label: "Discount Status", required: false, synonyms: ["discount status", "discount status (b/a/n)"] },
   { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["dis. on purchase", "discount on purchase", "discount", "disc", "dis."] },
-  { key: "hsnCode", label: "HSN Code", required: false, synonyms: ["hsn code", "hsn", "sac code"] },
+  { key: "hsnCode", label: "HSN Code", required: false, synonyms: ["hsn code", "hsn", "sac code", "hsn no", "hsn no.", "hsn number"] },
   { key: "firm", label: "Firm", required: false, synonyms: ["firm", "company", "firm name"] },
   { key: "uniqueCode", label: "Unique Code", required: false, synonyms: ["unique code"] },
   { key: "serialNumber", label: "S.No.", required: false, synonyms: ["s.no.", "s.no", "sr no", "serial", "sno", "serial number", "sl no"] },

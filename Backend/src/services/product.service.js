@@ -118,6 +118,7 @@ class ProductService {
         color: colors || '-',
         primaryColor: colors || '-',
         secondaryColor: secondaryColors || '-',
+        hsn: pObj.hsnId?.hsnCode || 'N/A',
         purchaseRate: pPieces[0]?.purchaseRate || 0,
         purchasePrice: pPieces[0]?.purchaseRate || 0,
         sellingPrice: pPieces[0]?.wspAfterGST || p.defaultMRP,
