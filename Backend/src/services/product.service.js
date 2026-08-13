@@ -79,7 +79,11 @@ class ProductService {
     const productIds = products.map(p => p._id);
     const InventoryPiece = require('../models/InventoryPiece');
     const pieces = await InventoryPiece.find({ productId: { $in: productIds }, tenantId, isDeleted: false })
-      .populate('firmId warehouseId');
+      .populate('firmId warehouseId')
+      .populate({
+        path: 'purchaseBillId',
+        populate: { path: 'vendorId' }
+      });
 
     const piecesByProduct = new Map();
     pieces.forEach(piece => {
@@ -124,6 +128,16 @@ class ProductService {
         hsn: pObj.hsnId?.hsnCode || 'N/A',
         purchaseRate: pPieces[0]?.purchaseRate || 0,
         purchasePrice: pPieces[0]?.purchaseRate || 0,
+        vendorName: pPieces[0]?.purchaseBillId?.vendorId?.name || 'N/A',
+        vendorCode: pPieces[0]?.purchaseBillId?.vendorId?.vendorCode || 'N/A',
+        purchaseDate: pPieces[0]?.purchaseBillId?.billDate 
+          ? new Date(pPieces[0].purchaseBillId.billDate).toLocaleDateString() 
+          : 'N/A',
+        lastPurchaseDate: pPieces[0]?.purchaseBillId?.billDate 
+          ? new Date(pPieces[0].purchaseBillId.billDate).toLocaleDateString() 
+          : 'N/A',
+        purchaseInvoice: pPieces[0]?.purchaseBillId?.billNo || 'N/A',
+        landedCost: pPieces[0]?.purchaseRate || 0,
         sellingPrice: pPieces[0]?.wspAfterGST || p.defaultMRP,
         company: pPieces[0]?.firmId?.name || 'Primary Store Firm',
         firmName: pPieces[0]?.firmId?.name || 'Primary Store Firm',

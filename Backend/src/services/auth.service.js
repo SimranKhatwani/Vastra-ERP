@@ -192,6 +192,27 @@ class AuthService {
   }
 
   /**
+   * Verify supervisor credentials
+   */
+  static async verifySupervisor(email, password) {
+    // Check SuperAdmin
+    const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
+    if (superAdmin) {
+      const isMatch = await comparePassword(password, superAdmin.password);
+      if (isMatch) return true;
+    }
+
+    // Check normal User across any tenant
+    const user = await User.findOne({ email: email.toLowerCase(), isDeleted: false });
+    if (user) {
+      const isMatch = await comparePassword(password, user.password);
+      if (isMatch) return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Refresh Access Token
    */
   static async refreshAccessToken(tokenStr) {

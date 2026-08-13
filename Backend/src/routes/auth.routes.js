@@ -10,6 +10,7 @@ const router = express.Router();
 
 router.post('/register-tenant', authLimiter, validate(registerTenantSchema), AuthController.registerTenant);
 router.post('/login', authLimiter, validate(loginSchema), auditLog('USER_LOGIN', 'Auth'), AuthController.login);
+router.post('/verify-supervisor', authLimiter, authenticate, AuthController.verifySupervisor);
 router.post('/refresh-token', AuthController.refreshToken);
 router.post('/logout', authenticate, AuthController.logout);
 router.get('/profile', authenticate, AuthController.getProfile);

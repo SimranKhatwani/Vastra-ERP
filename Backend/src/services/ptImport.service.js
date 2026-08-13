@@ -172,7 +172,7 @@ class PTImportService {
       // Phase 1: Pre-process Vendors from Sheet 2/3 (vendorDataRows)
       if (vendorDataRows && vendorDataRows.length > 0) {
         for (const vRow of vendorDataRows) {
-          const vName = String(getVal(vRow, 'VENDOR NAME', 'Vendor Name', 'Vendor') || '').trim();
+          const vName = String(getVal(vRow, 'PARTY NAME', 'Party Name', 'VENDOR NAME', 'Vendor Name', 'Vendor') || '').trim();
           if (!vName) continue;
           
           const vCode = String(getVal(vRow, 'VENDOR CODE', 'Vendor Code') || vName.substring(0, 8).toUpperCase()).trim();
@@ -251,7 +251,7 @@ class PTImportService {
         const rawBillDate = getVal(row, 'Bill date', 'Bill Date', 'billDate');
         const billDate = rawBillDate ? new Date(rawBillDate) : new Date();
 
-        const vendorName = String(getVal(row, 'vendor name', 'Vendor', 'vendor', 'Vendor Name', 'Supplier') || 'K.R CHHABRA AND CO.').trim();
+        const vendorName = String(getVal(row, 'Party', 'Party Name', 'vendor name', 'Vendor', 'vendor', 'Vendor Name', 'Supplier') || 'K.R CHHABRA AND CO.').trim();
         const vendorCode = String(getVal(row, 'Vendor Code', 'vendorCode', 'Vendor code') || vendorName.substring(0, 8).toUpperCase()).trim();
         const vendorGst = String(getVal(row, 'Vendor GST', 'vendorGst', 'Vendor GSTIN') || '').trim();
 

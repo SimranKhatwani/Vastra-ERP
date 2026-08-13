@@ -34,6 +34,15 @@ class AuthController {
     return res.status(200).json(new ApiResponse(200, result, 'Login successful.'));
   });
 
+  static verifySupervisor = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+    const isValid = await AuthService.verifySupervisor(email, password);
+    if (!isValid) {
+      throw new ApiError(401, 'Invalid supervisor credentials.');
+    }
+    return res.status(200).json(new ApiResponse(200, { verified: true }, 'Verified successfully.'));
+  });
+
   static refreshToken = asyncHandler(async (req, res) => {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     const result = await AuthService.refreshAccessToken(refreshToken);

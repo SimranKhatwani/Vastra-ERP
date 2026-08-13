@@ -3284,15 +3284,16 @@ export const BillingPOSView = ({
   const handlePurchaseAuth = async () => {
     if (purchaseAuthOwnerId && purchaseAuthPassword) {
       try {
-        // Authenticate (in real app, use auth API, here we simulate basic check based on Owner role)
-        // If successful, log audit:
-        await api.post('/audit-logs/purchase-view', {
-          itemViewed: infoPanelItem?.name || 'General Product',
-          device: navigator.userAgent
+        await api.post('/auth/verify-supervisor', {
+          email: purchaseAuthOwnerId,
+          password: purchaseAuthPassword
         });
+        
         setIsPurchaseTabUnlocked(true);
         setInfoPanelTab('Purchase');
         setIsPurchaseAuthModalOpen(false);
+        setPurchaseAuthOwnerId("");
+        setPurchaseAuthPassword("");
       } catch (err) {
         if (onAddNotification) onAddNotification("Auth Failed", "Invalid owner credentials", "danger");
       }
@@ -7839,13 +7840,16 @@ export const BillingPOSView = ({
                     return (
                       <div className="space-y-4">
                         {/* Tab buttons */}
-                        <div className="grid grid-cols-4 gap-1 bg-slate-200 p-0.5 rounded-lg">
+                        <div className={`grid ${String(currentUser?.role || "").toLowerCase().includes('sales') ? 'grid-cols-3' : 'grid-cols-4'} gap-1 bg-slate-200 p-0.5 rounded-lg`}>
                           {[
                             { id: 'General', label: '🛈 General' },
                             { id: 'Stock', label: '📦 Stock' },
                             { id: 'Purchase', label: '🛒 Purchase' },
                             { id: 'Sales', label: '📈 Sales' }
-                          ].map(t => (
+                          ].filter(t => {
+                            if (t.id === 'Sales' && String(currentUser?.role || "").toLowerCase().includes('sales')) return false;
+                            return true;
+                          }).map(t => (
                             <button
                               key={t.id}
                               onClick={() => {
@@ -9187,7 +9191,7 @@ export const BillingPOSView = ({
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Supervisor Username</label>
                 <input
-                  type="text"
+                  type="email"
                   required
                   value={purchaseAuthOwnerId}
                   onChange={(e) => setPurchaseAuthOwnerId(e.target.value)}
