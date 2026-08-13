@@ -3692,7 +3692,7 @@ export const BillingPOSView = ({
                         />
                       </td>
                       {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
-                      <td className="border-r border-slate-300 p-0.5 relative" colSpan={2}>
+                      <td className="border-r border-slate-300 p-0.5 relative">
                         <div className="flex items-center bg-white border border-blue-300 shadow-inner">
                           <input
                             type="text"
@@ -3837,6 +3837,9 @@ export const BillingPOSView = ({
                           </div>
                         )}
                       </td>
+                      
+                      {/* Empty Sub Item Cell */}
+                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
 
                       {/* Design No Search Field */}
                       <td className="border-r border-slate-300 p-0.5 relative">
