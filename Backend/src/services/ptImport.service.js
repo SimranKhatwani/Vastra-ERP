@@ -287,7 +287,7 @@ class PTImportService {
         if (!ipn) {
           ipn = `IPN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
         }
-        const batch = String(getVal(row, 'Batch', 'batch') || 'DEFAULT').trim();
+        const batch = String(getVal(row, 'Batch', 'batch') || '').trim();
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
         const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
@@ -296,6 +296,7 @@ class PTImportService {
 
         const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
         const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
+        const itemImage = String(getVal(row, 'itemImage', 'item image', 'image', 'photo') || '').trim();
         
         const hsnCode = String(getVal(row, 'hsnCode', 'HSN CODE', 'HSN/SAC', 'HSN', 'HSN Code', 'HSN No', 'HSN No.', 'HSN NO', 'HSN NO.') || '').trim();
 
@@ -461,6 +462,7 @@ class PTImportService {
                 gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
                 defaultMRP: mrp,
+                imageUrl: itemImage || undefined,
                 importBatchId: historyId
               }], { session });
               product = created[0];
@@ -474,6 +476,11 @@ class PTImportService {
               if (hsn && (!product.hsnId || product.hsnId.toString() !== hsn._id.toString())) {
                 product.hsnId = hsn._id;
                 product.markModified('hsnId');
+                updated = true;
+              }
+              if (itemImage && product.imageUrl !== itemImage) {
+                product.imageUrl = itemImage;
+                product.markModified('imageUrl');
                 updated = true;
               }
               if (updated) {

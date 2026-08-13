@@ -36,7 +36,8 @@ import {
   Info,
   Banknote,
   Wallet,
-  Loader2
+  Loader2,
+  ImageIcon
 } from "lucide-react";
 
 const generateUniqueItemCode = () => {
@@ -3485,11 +3486,8 @@ export const BillingPOSView = ({
                   </span>
                 </div>
 
-                {/* Blank Space on Row 2 */}
-                <div className="hidden md:block"></div>
-
                 {/* Customer Actions */}
-                <div className="flex gap-1.5 justify-end col-span-1 md:col-span-2">
+                <div className="flex gap-1.5 justify-start col-span-1 md:col-span-2">
                   <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={handleCustomerSave}>
                     <Save className="w-3.5 h-3.5 text-green-600" />
                     <span>Save Profile</span>
@@ -3503,6 +3501,9 @@ export const BillingPOSView = ({
                     <span>New Customer</span>
                   </button>
                 </div>
+
+                {/* Blank Space on Row 2 */}
+                <div className="hidden md:block"></div>
               </div>
             </div>
           </div>
@@ -4005,6 +4006,23 @@ export const BillingPOSView = ({
 
             {/* RIGHT COLUMN: ALTERATION PANEL */}
             <div className="w-[200px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400">
+              
+              {/* Selected Product Image (ABOVE ALTERATION) */}
+              <div className="bg-white border-b border-slate-400 p-2 flex flex-col items-center justify-center min-h-[160px]">
+                {(() => {
+                  const activeImgItem = selectedSearchItem || (focusedAlterationIndex >= 0 ? cart[focusedAlterationIndex] : null);
+                  if (activeImgItem?.imageUrl) {
+                    return <img src={activeImgItem.imageUrl} alt="Product" className="max-h-[150px] object-contain rounded shadow-sm" />;
+                  }
+                  return (
+                    <div className="text-slate-400 text-xs text-center flex flex-col items-center gap-2">
+                      <ImageIcon className="w-8 h-8 opacity-50" />
+                      <span>No Image</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="bg-[#555] text-center py-1.5 px-1 border-b border-slate-500 text-white shadow-inner flex flex-col items-center justify-center gap-1 uppercase tracking-wider" style={{ background: 'linear-gradient(to bottom, #6b7280, #4b5563)' }}>
                 <div className="flex items-center justify-center gap-1.5 text-[11px] font-extrabold text-white">
                   <Scissors className="w-3.5 h-3.5 text-white" />
@@ -7854,7 +7872,20 @@ export const BillingPOSView = ({
                         <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5 shadow-2xs">
                           {infoPanelTab === 'General' && (
                             <div className="space-y-2 text-slate-700">
-                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛈 General Details</div>
+                              <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1 mb-2">🛈 General Details</div>
+                              
+                              {/* Product Image Section */}
+                              <div className="flex justify-center border border-slate-200 rounded p-2 bg-slate-50 mb-3">
+                                {activeItem.imageUrl ? (
+                                  <img src={activeItem.imageUrl} alt="Product" className="max-h-[150px] object-contain rounded shadow-sm" />
+                                ) : (
+                                  <div className="text-slate-400 text-xs flex flex-col items-center gap-1 py-4">
+                                    <ImageIcon className="w-6 h-6 opacity-50" />
+                                    <span>No Image Available</span>
+                                  </div>
+                                )}
+                              </div>
+
                               <div><span className="text-slate-400 font-bold">Item Name:</span> <span className="text-slate-800 font-semibold">{activeItem.name || 'N/A'}</span></div>
                               <div><span className="text-slate-400 font-bold">Sub Item:</span> <span className="text-slate-800 font-semibold">{activeItem.subItem || 'N/A'}</span></div>
                               <div><span className="text-slate-400 font-bold">Design No.:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.designNo || activeItem.sku || 'N/A'}</span></div>

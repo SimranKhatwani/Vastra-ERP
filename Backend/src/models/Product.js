@@ -60,6 +60,10 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'GST'
   },
+  imageUrl: {
+    type: String,
+    trim: true
+  },
   defaultMRP: {
     type: Number,
     required: true,

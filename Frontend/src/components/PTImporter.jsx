@@ -59,9 +59,18 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   const fileInputRef = useRef(null);
   const invoiceRef = useRef(null);
 
-  const processFile = (file) => {
+  const processFile = async (file) => {
     setIsUploading(true);
     setUploadProgress(10);
+
+    let extractedImages = {};
+    try {
+      const { extractImagesFromExcel } = await import('../helpers/excelImageExtractor.js');
+      extractedImages = await extractImagesFromExcel(file);
+    } catch (e) {
+      console.warn("Failed to extract embedded images:", e);
+    }
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -72,13 +81,23 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (data.length < 2) throw new Error("Spreadsheet appears empty or has no data rows.");
-        
+
+        // Inject embedded images directly into the parsed data grid
+        for (let r = 1; r < data.length; r++) {
+          const rowImages = extractedImages[r];
+          if (rowImages) {
+            for (const col in rowImages) {
+              data[r][col] = rowImages[col]; // Replace empty cell with base64 string
+            }
+          }
+        }
+
         // Extract Vendor Data from all subsequent sheets (Sheet 2, Sheet 3, etc.)
         let allVendorData = [];
         for (let i = 1; i < wb.SheetNames.length; i++) {
-            const vSheet = wb.Sheets[wb.SheetNames[i]];
-            const vData = XLSX.utils.sheet_to_json(vSheet, { defval: "" }); 
-            allVendorData = allVendorData.concat(vData);
+          const vSheet = wb.Sheets[wb.SheetNames[i]];
+          const vData = XLSX.utils.sheet_to_json(vSheet, { defval: "" });
+          allVendorData = allVendorData.concat(vData);
         }
         setVendorDataRows(allVendorData);
 
@@ -135,8 +154,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const getVal = (key) => {
         const colIdx = columnMapping[key];
         if (colIdx !== undefined) {
-            const val = rawRow[colIdx];
-            if (val !== undefined && val !== null && String(val).trim() !== "") return String(val).trim();
+          const val = rawRow[colIdx];
+          if (val !== undefined && val !== null && String(val).trim() !== "") return String(val).trim();
         }
         if (globalValues[key]) return globalValues[key];
         return "";
@@ -206,15 +225,16 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const typeOfGst = getVal("typeOfGst") || "E";
       const discountStatus = getVal("discountStatus") || "N";
       const discountOnPurchase = getNum("discountOnPurchase");
+      const itemImage = getVal("itemImage");
 
       let wspAfterGst = getNum("wspAfterGst");
       if (!wspAfterGst) {
-          wspAfterGst = typeOfGst.toUpperCase() === "E" ? purchaseRate + (purchaseRate * (gstOnPurchase / 100)) : purchaseRate;
+        wspAfterGst = typeOfGst.toUpperCase() === "E" ? purchaseRate + (purchaseRate * (gstOnPurchase / 100)) : purchaseRate;
       }
 
       return {
         tempId: `row-${idx}-${Date.now()}`,
-        billNo, billDate, vendorName, brand, designNo, serialNumber, barcode, itemCode, itemName, subCategory, quantity, batch, topBottomSet, gender, colorPrimary, colorSecondary, size, purchaseRate, mrp, hsnCode, gstOnPurchase, gstOnSalePrice, firm, uniqueCode, typeOfGst, wspAfterGst, discountStatus, discountOnPurchase,
+        billNo, billDate, vendorName, brand, designNo, serialNumber, barcode, itemCode, itemName, subCategory, quantity, batch, topBottomSet, gender, colorPrimary, colorSecondary, size, purchaseRate, mrp, hsnCode, gstOnPurchase, gstOnSalePrice, firm, uniqueCode, typeOfGst, wspAfterGst, discountStatus, discountOnPurchase, itemImage,
         errors: [], warnings: [], status: "valid", resolution: "none"
       };
     });
@@ -270,7 +290,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       if (onAddNotification) onAddNotification("Import Blocked", "Please resolve errors first.", "danger");
       return;
     }
-    
+
     setIsImporting(true);
     setImportLoaderMessage("Import completed successfully. Preparing Purchase Voucher... Please wait.");
 
@@ -280,9 +300,9 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const uniqueVendors = Array.from(new Set(parsedRows.map(r => r.vendorName)));
       uniqueVendors.forEach(vendor => {
         if (!currentSuppliers.some(s => s.name?.toLowerCase() === vendor.toLowerCase())) {
-          currentSuppliers.push({ 
-            id: generateObjectId(), 
-            name: vendor, 
+          currentSuppliers.push({
+            id: generateObjectId(),
+            name: vendor,
             status: "Active",
             totalOrders: 0,
             outstandingBalance: 0,
@@ -296,35 +316,35 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       // Map parsed rows directly without grouping, so each imported row is a distinct item in the PO
       let currentProducts = [...(products || [])];
       const billItems = parsedRows.filter(r => r.status === "valid").map(row => {
-          const qty = row.quantity;
-          const rate = row.purchaseRate;
-          const itemSubTotal = qty * rate;
-          
-          let itemGst = 0;
-          let taxable = itemSubTotal;
-          let discAmt = row.discountOnPurchase || 0;
-          
-          if (row.typeOfGst?.toUpperCase() === "I") {
-              const baseRate = rate / (1 + (row.gstOnPurchase / 100));
-              taxable = qty * baseRate;
-              itemGst = itemSubTotal - taxable;
-          } else {
-              itemGst = (taxable - discAmt) * (row.gstOnPurchase / 100);
-          }
+        const qty = row.quantity;
+        const rate = row.purchaseRate;
+        const itemSubTotal = qty * rate;
 
-          const baseProductId = generateObjectId();
-          
-          return {
-              ...row,
-              productId: baseProductId,
-              name: `${row.itemName} (${row.designNo})`,
-              purchasePrice: rate,
-              totalPrice: taxable - discAmt + itemGst,
-              calculatedTaxable: taxable,
-              calculatedGst: itemGst,
-              calculatedTotal: taxable - discAmt + itemGst,
-              calculatedDisc: discAmt
-          };
+        let itemGst = 0;
+        let taxable = itemSubTotal;
+        let discAmt = row.discountOnPurchase || 0;
+
+        if (row.typeOfGst?.toUpperCase() === "I") {
+          const baseRate = rate / (1 + (row.gstOnPurchase / 100));
+          taxable = qty * baseRate;
+          itemGst = itemSubTotal - taxable;
+        } else {
+          itemGst = (taxable - discAmt) * (row.gstOnPurchase / 100);
+        }
+
+        const baseProductId = generateObjectId();
+
+        return {
+          ...row,
+          productId: baseProductId,
+          name: `${row.itemName} (${row.designNo})`,
+          purchasePrice: rate,
+          totalPrice: taxable - discAmt + itemGst,
+          calculatedTaxable: taxable,
+          calculatedGst: itemGst,
+          calculatedTotal: taxable - discAmt + itemGst,
+          calculatedDisc: discAmt
+        };
       });
 
       const subTotal = billItems.reduce((sum, r) => sum + r.calculatedTaxable, 0);
@@ -334,7 +354,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       const firstRow = parsedRows[0];
       const supplierObj = currentSuppliers.find(s => s.name?.toLowerCase() === firstRow.vendorName?.toLowerCase());
-      
+
       const getValidObjectId = (id) => {
         if (typeof id === 'string' && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) return id;
         return generateObjectId();
@@ -376,10 +396,10 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       setCreatedVoucher(newVoucher);
       setStep("success");
-      
+
       // Dispatch global refresh event to update downstream modules (Products, Stock, Vendors)
       window.dispatchEvent(new Event("vastra-data-refresh"));
-      
+
       if (onAddNotification) onAddNotification("PT File Generated", `Bill ${firstRow.billNo} compiled and added to Procurement list!`, "success");
     } catch (error) {
       if (onAddNotification) onAddNotification("Import Error", error.message || "Failed to process PT File.", "danger");
@@ -392,7 +412,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
   const handleDownloadHTML = () => {
     if (!invoiceRef.current || !createdVoucher) return;
-    
+
     // Create a standalone HTML string wrapping the invoice layout
     const htmlContent = `
       <!DOCTYPE html>
@@ -432,12 +452,12 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     if (!dateStr) return "";
     let d = new Date(dateStr);
     if (isNaN(d.getTime())) {
-        const serial = parseFloat(dateStr);
-        if (!isNaN(serial) && serial > 10000) {
-            d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
-        } else {
-            return dateStr;
-        }
+      const serial = parseFloat(dateStr);
+      if (!isNaN(serial) && serial > 10000) {
+        d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
+      } else {
+        return dateStr;
+      }
     }
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -460,11 +480,11 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                 <FileSpreadsheet className="w-6 h-6 animate-bounce" />
               </div>
             </div>
-            
+
             <h3 className="text-base font-black text-slate-800 mb-1 tracking-wider uppercase">
               PT File Import System
             </h3>
-            
+
             <p className="text-sm font-bold text-indigo-600 mb-4 animate-pulse">
               {importLoaderMessage || "Import completed successfully. Preparing Purchase Voucher... Please wait."}
             </p>
@@ -488,7 +508,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       )}
 
       {onClose && (
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors z-10"
           title="Cancel Import"
@@ -498,126 +518,126 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       )}
       <div className="flex flex-col md:flex-row md:items-center justify-between p-6 border-b border-slate-100 bg-slate-50 gap-4 pr-16">
         <div>
-          <h2 className="text-xl font-black text-slate-800 tracking-tight">PT File Importer (27 Columns)</h2>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">PT File Importer</h2>
           <p className="text-xs text-slate-500 mt-1">Import professional Vendor Invoices, auto-generate distinct barcodes per quantity, and raise bills.</p>
         </div>
       </div>
-      
+
       {step === "upload" && (
         <div className="p-8 space-y-6">
-            <div 
-                onDragOver={(e) => e.preventDefault()} 
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="max-w-2xl mx-auto border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/50 rounded-2xl p-12 text-center cursor-pointer transition-all"
-            >
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls, .csv" className="hidden" />
-                <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                <h3 className="text-base font-bold text-slate-700">Upload PT File</h3>
-                <p className="text-xs text-slate-500 mt-1">Drag & drop your Excel file here or click to browse</p>
-            </div>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className="max-w-2xl mx-auto border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/50 rounded-2xl p-12 text-center cursor-pointer transition-all"
+          >
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls, .csv" className="hidden" />
+            <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-base font-bold text-slate-700">Upload PT File</h3>
+            <p className="text-xs text-slate-500 mt-1">Drag & drop your Excel file here or click to browse</p>
+          </div>
         </div>
       )}
 
       {step === "mapping" && (
         <div className="p-6">
-            <div className="flex justify-between mb-4">
-                <h3 className="text-lg font-bold">Map Columns</h3>
-                <button onClick={handleConfirmMapping} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">Confirm Mapping</button>
-            </div>
-            <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
-                {FIELDS_TO_MAP.map((field) => (
-                    <div key={field.key} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="text-xs font-semibold w-1/3 truncate" title={field.label}>{field.label} {field.required && <span className="text-red-500">*</span>}</div>
-                        <div className="flex items-center gap-2 w-2/3">
-                            <select
-                                value={columnMapping[field.key] !== undefined ? columnMapping[field.key] : ""}
-                                onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value !== "" ? parseInt(e.target.value) : undefined })}
-                                className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
-                            >
-                                <option value="">- Column -</option>
-                                {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
-                            </select>
-                            <span className="text-[10px] text-slate-400 font-bold">OR</span>
-                            <input 
-                                type={field.key.toLowerCase().includes("date") ? "date" : "text"} 
-                                placeholder="Fixed Value" 
-                                value={globalValues[field.key] || ""} 
-                                onChange={(e) => setGlobalValues({...globalValues, [field.key]: e.target.value})}
-                                className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0" 
-                            />
-                        </div>
-                    </div>
-                ))}
-            </div>
+          <div className="flex justify-between mb-4">
+            <h3 className="text-lg font-bold">Map Columns</h3>
+            <button onClick={handleConfirmMapping} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">Confirm Mapping</button>
+          </div>
+          <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
+            {FIELDS_TO_MAP.map((field) => (
+              <div key={field.key} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="text-xs font-semibold w-1/3 truncate" title={field.label}>{field.label} {field.required && <span className="text-red-500">*</span>}</div>
+                <div className="flex items-center gap-2 w-2/3">
+                  <select
+                    value={columnMapping[field.key] !== undefined ? columnMapping[field.key] : ""}
+                    onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value !== "" ? parseInt(e.target.value) : undefined })}
+                    className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
+                  >
+                    <option value="">- Column -</option>
+                    {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                  </select>
+                  <span className="text-[10px] text-slate-400 font-bold">OR</span>
+                  <input
+                    type={field.key.toLowerCase().includes("date") ? "date" : "text"}
+                    placeholder="Fixed Value"
+                    value={globalValues[field.key] || ""}
+                    onChange={(e) => setGlobalValues({ ...globalValues, [field.key]: e.target.value })}
+                    className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {step === "preview" && (
-          <div className="p-6">
-            <div className="flex justify-between mb-4">
-                <h3 className="text-lg font-bold">Review Data</h3>
-                <button 
-                  onClick={handleImportPTFileSubmit} 
-                  disabled={isSubmitting}
-                  className={`px-4 py-2 text-white rounded-lg font-bold ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600'}`}
-                >
-                  {isSubmitting ? 'Compiling & Saving...' : 'Compile & Save Vouchers'}
-                </button>
-            </div>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 text-slate-600 uppercase font-bold">
-                        <tr>
-                            <th className="p-3">Status</th>
-                            <th className="p-3">Vendor</th>
-                            <th className="p-3">Date</th>
-                            <th className="p-3">Bill No</th>
-                            <th className="p-3">Item Name</th>
-                            <th className="p-3">Design No</th>
-                            <th className="p-3">Qty</th>
-                            <th className="p-3">Pur. Rate</th>
-                            <th className="p-3">GST %</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {parsedRows.map((r, i) => (
-                            <tr key={i} className="border-t border-slate-100">
-                                <td className="p-3">{r.status === "error" ? <XCircle className="text-red-500 w-4 h-4"/> : <CheckCircle2 className="text-emerald-500 w-4 h-4"/>}</td>
-                                <td className="p-1"><input value={r.vendorName} onChange={(e) => handleRowChange(i, 'vendorName', e.target.value)} className="w-24 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="date" value={r.billDate} onChange={(e) => handleRowChange(i, 'billDate', e.target.value)} className="w-28 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.billNo} onChange={(e) => handleRowChange(i, 'billNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.itemName} onChange={(e) => handleRowChange(i, 'itemName', e.target.value)} className="w-24 p-1 border rounded" /></td>
-                                <td className="p-1"><input value={r.designNo} onChange={(e) => handleRowChange(i, 'designNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.quantity} onChange={(e) => handleRowChange(i, 'quantity', e.target.value)} className="w-16 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.purchaseRate} onChange={(e) => handleRowChange(i, 'purchaseRate', e.target.value)} className="w-20 p-1 border rounded" /></td>
-                                <td className="p-1"><input type="number" value={r.gstOnPurchase} onChange={(e) => handleRowChange(i, 'gstOnPurchase', e.target.value)} className="w-16 p-1 border rounded" /></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+        <div className="p-6">
+          <div className="flex justify-between mb-4">
+            <h3 className="text-lg font-bold">Review Data</h3>
+            <button
+              onClick={handleImportPTFileSubmit}
+              disabled={isSubmitting}
+              className={`px-4 py-2 text-white rounded-lg font-bold ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600'}`}
+            >
+              {isSubmitting ? 'Compiling & Saving...' : 'Compile & Save Vouchers'}
+            </button>
           </div>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-100 text-slate-600 uppercase font-bold">
+                <tr>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Vendor</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Bill No</th>
+                  <th className="p-3">Item Name</th>
+                  <th className="p-3">Design No</th>
+                  <th className="p-3">Qty</th>
+                  <th className="p-3">Pur. Rate</th>
+                  <th className="p-3">GST %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parsedRows.map((r, i) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="p-3">{r.status === "error" ? <XCircle className="text-red-500 w-4 h-4" /> : <CheckCircle2 className="text-emerald-500 w-4 h-4" />}</td>
+                    <td className="p-1"><input value={r.vendorName} onChange={(e) => handleRowChange(i, 'vendorName', e.target.value)} className="w-24 p-1 border rounded" /></td>
+                    <td className="p-1"><input type="date" value={r.billDate} onChange={(e) => handleRowChange(i, 'billDate', e.target.value)} className="w-28 p-1 border rounded" /></td>
+                    <td className="p-1"><input value={r.billNo} onChange={(e) => handleRowChange(i, 'billNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
+                    <td className="p-1"><input value={r.itemName} onChange={(e) => handleRowChange(i, 'itemName', e.target.value)} className="w-24 p-1 border rounded" /></td>
+                    <td className="p-1"><input value={r.designNo} onChange={(e) => handleRowChange(i, 'designNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
+                    <td className="p-1"><input type="number" value={r.quantity} onChange={(e) => handleRowChange(i, 'quantity', e.target.value)} className="w-16 p-1 border rounded" /></td>
+                    <td className="p-1"><input type="number" value={r.purchaseRate} onChange={(e) => handleRowChange(i, 'purchaseRate', e.target.value)} className="w-20 p-1 border rounded" /></td>
+                    <td className="p-1"><input type="number" value={r.gstOnPurchase} onChange={(e) => handleRowChange(i, 'gstOnPurchase', e.target.value)} className="w-16 p-1 border rounded" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {step === "success" && createdVoucher && (
-          <InvoiceViewer 
-             createdVoucher={createdVoucher}
-             invoiceRef={invoiceRef}
-             handlePrint={() => window.print()}
-             handleDownloadHTML={handleDownloadHTML}
-             handleWhatsAppShare={handleWhatsAppShare}
-             onClose={() => {
-               // Full reset so the user can import the same or a new PT file immediately
-               setStep("upload");
-               setRawRows([]);
-               setHeaders([]);
-               setColumnMapping({});
-               setGlobalValues({});
-               setParsedRows([]);
-               setCreatedVoucher(null);
-             }}
-          />
+        <InvoiceViewer
+          createdVoucher={createdVoucher}
+          invoiceRef={invoiceRef}
+          handlePrint={() => window.print()}
+          handleDownloadHTML={handleDownloadHTML}
+          handleWhatsAppShare={handleWhatsAppShare}
+          onClose={() => {
+            // Full reset so the user can import the same or a new PT file immediately
+            setStep("upload");
+            setRawRows([]);
+            setHeaders([]);
+            setColumnMapping({});
+            setGlobalValues({});
+            setParsedRows([]);
+            setCreatedVoucher(null);
+          }}
+        />
       )}
     </div>
   );
@@ -628,12 +648,12 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     if (!dateStr) return new Date().toLocaleDateString('en-GB');
     let d = new Date(dateStr);
     if (isNaN(d.getTime())) {
-        const serial = parseFloat(dateStr);
-        if (!isNaN(serial) && serial > 10000) {
-            d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
-        } else {
-            return String(dateStr);
-        }
+      const serial = parseFloat(dateStr);
+      if (!isNaN(serial) && serial > 10000) {
+        d = new Date((Math.floor(serial - 25569)) * 86400 * 1000);
+      } else {
+        return String(dateStr);
+      }
     }
     if (d.getFullYear() <= 1970) return new Date().toLocaleDateString('en-GB');
     const day = String(d.getDate()).padStart(2, '0');
@@ -646,7 +666,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     if (isNaN(num) || num === null || num === undefined) return "ZERO";
     num = Math.round(Number(num));
     if (num <= 0) return "ZERO";
-    
+
     const a = ['', 'ONE ', 'TWO ', 'THREE ', 'FOUR ', 'FIVE ', 'SIX ', 'SEVEN ', 'EIGHT ', 'NINE ', 'TEN ', 'ELEVEN ', 'TWELVE ', 'THIRTEEN ', 'FOURTEEN ', 'FIFTEEN ', 'SIXTEEN ', 'SEVENTEEN ', 'EIGHTEEN ', 'NINETEEN '];
     const b = ['', '', 'TWENTY ', 'THIRTY ', 'FORTY ', 'FIFTY ', 'SIXTY ', 'SEVENTY ', 'EIGHTY ', 'NINETY '];
 
@@ -730,7 +750,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
       : `FANCY EMBROIDERED COTTON SUITS (INV ${invoiceNo})`;
     const fallbackQty = Number(voucher.quantity || voucher.totalQty || voucher.qty || 1);
     const fallbackRate = estimatedGrandTotal / fallbackQty;
-    
+
     rawItems = [{
       name: fallbackName,
       hsnCode: voucher.hsnCode || "5208",
@@ -770,7 +790,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
   // Financial Calculations
   const totalQty = itemsList.reduce((acc, item) => acc + (item.quantity || 0), 0);
   const calculatedSubTotal = itemsList.reduce((acc, item) => acc + (item.amount || 0), 0);
-  
+
   const subTotal = Number(voucher.subTotal ?? calculatedSubTotal);
   const rawGrandTotal = Number(voucher.grandTotal ?? voucher.totalAmount ?? voucher.amount ?? (subTotal + (Number(voucher.gstTotal) || 0)));
   const grandTotal = isNaN(rawGrandTotal) ? subTotal : rawGrandTotal;
@@ -782,155 +802,155 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen relative">
-       {onClose && (
-         <button 
-           onClick={onClose}
-           className="absolute top-4 right-4 p-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full transition-colors z-10"
-           title="Go Back"
-         >
-           <XCircle className="w-6 h-6" />
-         </button>
-       )}
-       <div ref={activeRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
-          <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
-              <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
-                  <span>GSTIN : 07ACAPC2634E1ZB</span>
-                  <div className="text-right">
-                      <span className="text-blue-600 block">Contact : Saurabh : 92108 20005</span>
-                      <span className="text-red-600 block">Sunny # : 96546 57012</span>
-                  </div>
-              </div>
-              
-              <h1 className="text-5xl font-bold text-red-600 tracking-wider" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</h1>
-              <p className="text-sm text-green-700 italic mt-1 font-semibold">A latest Trend of Design</p>
-              
-              <div className="bg-blue-800 text-white inline-block px-6 py-1 mt-3 mb-2 rounded-sm text-lg font-bold tracking-widest shadow-sm">
-                  FANCY EMBROIDRIES COTTON SUITS
-              </div>
-              
-              <div className="text-xs font-bold text-slate-800">
-                  <p>Head Office : 773, Gali Taliya Katra Neel, Chandni Chowk, Delhi-110006 Ph. : Shop : 011-42478096 # MANOJ JI : 96430 85400</p>
-                  <p className="text-red-600 mt-1 border-t border-slate-300 pt-1">Sale Office : 768, Ground Floor, Main Katra Neel, Chandni Chowk, Delhi-110006</p>
-              </div>
-          </div>
-          <div className="text-center mb-6">
-              <span className="inline-block border border-black px-6 py-1 italic font-bold text-sm tracking-wide">TAX INVOICE</span>
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full transition-colors z-10"
+          title="Go Back"
+        >
+          <XCircle className="w-6 h-6" />
+        </button>
+      )}
+      <div ref={activeRef} className="max-w-4xl mx-auto bg-white shadow-xl p-8 rounded-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <div className="text-center mb-4 border-b-2 border-red-600 pb-2">
+          <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
+            <span>GSTIN : 07ACAPC2634E1ZB</span>
+            <div className="text-right">
+              <span className="text-blue-600 block">Contact : Saurabh : 92108 20005</span>
+              <span className="text-red-600 block">Sunny # : 96546 57012</span>
+            </div>
           </div>
 
-          <div className="flex justify-between mb-4 text-xs font-bold">
-              <div className="w-1/2">
-                  <p className="border-b border-black inline-block mb-1">Details of Receiver | Billed To</p>
-                  <p>Name : <span className="ml-2 uppercase">{supplierName}</span></p>
-                  <p>GSTIN : <span className="ml-2">07AALPD0185E1Z1</span></p>
-                  <p className="flex"><span className="mr-2">Address :</span> <span className="uppercase">W Z 127, RAM CHOWK ,<br/>SADH NAGAR, PALAM COLONY ,<br/>NEW DELHI .</span></p>
-                  <p>State Name : <span className="uppercase">DELHI</span> <span className="ml-6">State Code : 07</span></p>
-                  <p>Transport : <span className="uppercase">SELF AMIT</span></p>
-              </div>
-              <div className="w-1/2 text-right">
-                  <p>Page No. 1 of 1</p>
-                  <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{invoiceNo}</span> <span className="ml-4">Date {formatDateForDisplay(voucherDate)}</span></p>
-                  <p className="mt-1">State Name : DELHI <span className="ml-4">State Code 07</span></p>
-                  <div className="mt-3 text-[10px] max-w-[250px] float-right leading-tight text-right">
-                     <span className="font-bold text-slate-800 mr-1">IRN No:</span>
-                     <span className="break-all text-slate-700">3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</span>
-                  </div>
-              </div>
+          <h1 className="text-5xl font-bold text-red-600 tracking-wider" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</h1>
+          <p className="text-sm text-green-700 italic mt-1 font-semibold">A latest Trend of Design</p>
+
+          <div className="bg-blue-800 text-white inline-block px-6 py-1 mt-3 mb-2 rounded-sm text-lg font-bold tracking-widest shadow-sm">
+            FANCY EMBROIDRIES COTTON SUITS
           </div>
 
-          <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2 mt-4 clear-both">
-              <span>Date of Supply : {formatDateForDisplay(voucherDate)}</span>
-              <span>Agent : </span>
+          <div className="text-xs font-bold text-slate-800">
+            <p>Head Office : 773, Gali Taliya Katra Neel, Chandni Chowk, Delhi-110006 Ph. : Shop : 011-42478096 # MANOJ JI : 96430 85400</p>
+            <p className="text-red-600 mt-1 border-t border-slate-300 pt-1">Sale Office : 768, Ground Floor, Main Katra Neel, Chandni Chowk, Delhi-110006</p>
           </div>
+        </div>
+        <div className="text-center mb-6">
+          <span className="inline-block border border-black px-6 py-1 italic font-bold text-sm tracking-wide">TAX INVOICE</span>
+        </div>
 
-          <table className="w-full text-[10px] text-center border-collapse border border-black font-bold">
-              <thead>
-                  <tr>
-                      <th className="border border-black p-1 w-8">SNo.</th>
-                      <th className="border border-black p-1">Description of Goods</th>
-                      <th className="border border-black p-1 w-16">HSN/SAC</th>
-                      <th className="border border-black p-1 w-12">Qty.</th>
-                      <th className="border border-black p-1 w-12">Rate</th>
-                      <th className="border border-black p-1 w-16">Amount</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  {itemsList.map((item, idx) => (
-                      <tr key={idx}>
-                          <td className="border-x border-black p-1">{idx + 1}</td>
-                          <td className="border-x border-black p-1 text-left uppercase">{item.name}</td>
-                          <td className="border-x border-black p-1">{item.hsnCode}</td>
-                          <td className="border-x border-black p-1">{item.quantity} SET</td>
-                          <td className="border-x border-black p-1">{item.rate.toFixed(2)}</td>
-                          <td className="border-x border-black p-1">{item.amount.toFixed(2)}</td>
-                      </tr>
-                  ))}
-                  {/* Empty rows filler for styling */}
-                  {[...Array(Math.max(0, 5 - itemsList.length))].map((_, i) => (
-                      <tr key={`empty-${i}`}>
-                          <td className="border-x border-black p-1 text-transparent">.</td>
-                          <td className="border-x border-black p-1"></td>
-                          <td className="border-x border-black p-1"></td>
-                          <td className="border-x border-black p-1"></td>
-                          <td className="border-x border-black p-1"></td>
-                          <td className="border-x border-black p-1"></td>
-                      </tr>
-                  ))}
-              </tbody>
-              <tfoot>
-                  <tr className="border-t border-black">
-                      <td colSpan="3" className="border-x border-black p-1 text-right">Total</td>
-                      <td className="border-x border-black p-1">{totalQty} SET</td>
-                      <td className="border-x border-black p-1"></td>
-                      <td className="border-x border-black p-1">{subTotal.toFixed(2)}</td>
-                  </tr>
-                  <tr>
-                      <td colSpan="5" className="border-x border-black p-1 text-right">CGST</td>
-                      <td className="border-x border-black p-1">{cgst.toFixed(2)}</td>
-                  </tr>
-                  <tr>
-                      <td colSpan="5" className="border-x border-black p-1 text-right">SGST</td>
-                      <td className="border-x border-black p-1">{sgst.toFixed(2)}</td>
-                  </tr>
-                  <tr className="border-t border-black bg-slate-100">
-                      <td colSpan="5" className="border-x border-black p-1 text-right text-sm">Grand Total</td>
-                      <td className="border-x border-black p-1 text-sm">₹{grandTotal.toFixed(2)}</td>
-                  </tr>
-              </tfoot>
-          </table>
-
-          <div className="flex justify-between mt-4 text-[10px] font-bold">
-              <div className="w-1/2">
-                  <p className="underline mb-1">Amount in Words :</p>
-                  <p className="uppercase italic">Rupees {numberToWords(grandTotal)} Only</p>
-                  
-                  <p className="underline mt-4 mb-1">Terms & Conditions :</p>
-                  <ol className="list-decimal pl-4 space-y-0.5">
-                      <li>Goods once sold will not be taken back.</li>
-                      <li>Interest @ 18% p.a. will be charged if the payment is not made within the stipulated time.</li>
-                      <li>Subject to 'Delhi' Jurisdiction only.</li>
-                  </ol>
-              </div>
-              <div className="w-1/3 border border-black p-2 flex flex-col justify-between min-h-[100px]">
-                  <p className="text-right">For <span className="text-red-600 font-extrabold" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</span></p>
-                  <p className="text-right mt-12">Authorised Signatory</p>
-              </div>
+        <div className="flex justify-between mb-4 text-xs font-bold">
+          <div className="w-1/2">
+            <p className="border-b border-black inline-block mb-1">Details of Receiver | Billed To</p>
+            <p>Name : <span className="ml-2 uppercase">{supplierName}</span></p>
+            <p>GSTIN : <span className="ml-2">07AALPD0185E1Z1</span></p>
+            <p className="flex"><span className="mr-2">Address :</span> <span className="uppercase">W Z 127, RAM CHOWK ,<br />SADH NAGAR, PALAM COLONY ,<br />NEW DELHI .</span></p>
+            <p>State Name : <span className="uppercase">DELHI</span> <span className="ml-6">State Code : 07</span></p>
+            <p>Transport : <span className="uppercase">SELF AMIT</span></p>
           </div>
-       </div>
+          <div className="w-1/2 text-right">
+            <p>Page No. 1 of 1</p>
+            <p className="mt-4">Invoice No. <span className="font-extrabold text-base ml-2">{invoiceNo}</span> <span className="ml-4">Date {formatDateForDisplay(voucherDate)}</span></p>
+            <p className="mt-1">State Name : DELHI <span className="ml-4">State Code 07</span></p>
+            <div className="mt-3 text-[10px] max-w-[250px] float-right leading-tight text-right">
+              <span className="font-bold text-slate-800 mr-1">IRN No:</span>
+              <span className="break-all text-slate-700">3afefab242d6f9fccb064bee6285ed7a23a9d9c19eb98230cdd1a288eff77f0e</span>
+            </div>
+          </div>
+        </div>
 
-       <div className="mt-8 flex justify-center gap-4 no-print pb-8">
-           <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
-               Print
-           </button>
-           <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
-               Download HTML
-           </button>
-           <button onClick={handleWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
-               Share on WhatsApp
-           </button>
-           <button onClick={onClose} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
-               Import Another PT File
-           </button>
-       </div>
+        <div className="w-full flex justify-between text-xs font-bold border-t border-b border-black py-1 mb-2 mt-4 clear-both">
+          <span>Date of Supply : {formatDateForDisplay(voucherDate)}</span>
+          <span>Agent : </span>
+        </div>
+
+        <table className="w-full text-[10px] text-center border-collapse border border-black font-bold">
+          <thead>
+            <tr>
+              <th className="border border-black p-1 w-8">SNo.</th>
+              <th className="border border-black p-1">Description of Goods</th>
+              <th className="border border-black p-1 w-16">HSN/SAC</th>
+              <th className="border border-black p-1 w-12">Qty.</th>
+              <th className="border border-black p-1 w-12">Rate</th>
+              <th className="border border-black p-1 w-16">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itemsList.map((item, idx) => (
+              <tr key={idx}>
+                <td className="border-x border-black p-1">{idx + 1}</td>
+                <td className="border-x border-black p-1 text-left uppercase">{item.name}</td>
+                <td className="border-x border-black p-1">{item.hsnCode}</td>
+                <td className="border-x border-black p-1">{item.quantity} SET</td>
+                <td className="border-x border-black p-1">{item.rate.toFixed(2)}</td>
+                <td className="border-x border-black p-1">{item.amount.toFixed(2)}</td>
+              </tr>
+            ))}
+            {/* Empty rows filler for styling */}
+            {[...Array(Math.max(0, 5 - itemsList.length))].map((_, i) => (
+              <tr key={`empty-${i}`}>
+                <td className="border-x border-black p-1 text-transparent">.</td>
+                <td className="border-x border-black p-1"></td>
+                <td className="border-x border-black p-1"></td>
+                <td className="border-x border-black p-1"></td>
+                <td className="border-x border-black p-1"></td>
+                <td className="border-x border-black p-1"></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-black">
+              <td colSpan="3" className="border-x border-black p-1 text-right">Total</td>
+              <td className="border-x border-black p-1">{totalQty} SET</td>
+              <td className="border-x border-black p-1"></td>
+              <td className="border-x border-black p-1">{subTotal.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td colSpan="5" className="border-x border-black p-1 text-right">CGST</td>
+              <td className="border-x border-black p-1">{cgst.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td colSpan="5" className="border-x border-black p-1 text-right">SGST</td>
+              <td className="border-x border-black p-1">{sgst.toFixed(2)}</td>
+            </tr>
+            <tr className="border-t border-black bg-slate-100">
+              <td colSpan="5" className="border-x border-black p-1 text-right text-sm">Grand Total</td>
+              <td className="border-x border-black p-1 text-sm">₹{grandTotal.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="flex justify-between mt-4 text-[10px] font-bold">
+          <div className="w-1/2">
+            <p className="underline mb-1">Amount in Words :</p>
+            <p className="uppercase italic">Rupees {numberToWords(grandTotal)} Only</p>
+
+            <p className="underline mt-4 mb-1">Terms & Conditions :</p>
+            <ol className="list-decimal pl-4 space-y-0.5">
+              <li>Goods once sold will not be taken back.</li>
+              <li>Interest @ 18% p.a. will be charged if the payment is not made within the stipulated time.</li>
+              <li>Subject to 'Delhi' Jurisdiction only.</li>
+            </ol>
+          </div>
+          <div className="w-1/3 border border-black p-2 flex flex-col justify-between min-h-[100px]">
+            <p className="text-right">For <span className="text-red-600 font-extrabold" style={{ fontFamily: '"Times New Roman", Times, serif' }}>K.R. Chhabra & Co.</span></p>
+            <p className="text-right mt-12">Authorised Signatory</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8 flex justify-center gap-4 no-print pb-8">
+        <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
+          Print
+        </button>
+        <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
+          Download HTML
+        </button>
+        <button onClick={handleWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
+          Share on WhatsApp
+        </button>
+        <button onClick={onClose} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
+          Import Another PT File
+        </button>
+      </div>
     </div>
   );
 };
