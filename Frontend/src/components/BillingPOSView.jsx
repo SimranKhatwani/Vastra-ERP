@@ -446,6 +446,7 @@ export const BillingPOSView = ({
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showChallanModal, setShowChallanModal] = useState(false);
   const [showOtherDetailsModal, setShowOtherDetailsModal] = useState(false);
+  const [showHoldListModal, setShowHoldListModal] = useState(false);
   const [otherBillDetails, setOtherBillDetails] = useState({
     transporter: '',
     trackingNo: '',
@@ -1001,10 +1002,15 @@ export const BillingPOSView = ({
       if (onAddNotification) onAddNotification("Resume Bill", "No bills on hold.", "warning");
       return;
     }
-    const lastBill = heldBills[heldBills.length - 1];
-    setCart(lastBill.cart);
-    setSelectedCustomerId(lastBill.customerId);
-    setHeldBills(prev => prev.slice(0, -1));
+    setShowHoldListModal(true);
+  };
+
+  const handleResumeSpecificBill = (index) => {
+    const selectedBill = heldBills[index];
+    setCart(selectedBill.cart);
+    setSelectedCustomerId(selectedBill.customerId);
+    setHeldBills(prev => prev.filter((_, i) => i !== index));
+    setShowHoldListModal(false);
     if (onAddNotification) onAddNotification("Resume Bill", "Bill resumed (F5).", "success");
   };
 
@@ -8683,6 +8689,60 @@ export const BillingPOSView = ({
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
                <button onClick={() => setShowOtherDetailsModal(false)} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors text-white rounded-xl text-xs font-bold shadow-sm shadow-purple-200">Save Details</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VIEW HOLDS */}
+      {showHoldListModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-up flex flex-col">
+            <div className="p-4 bg-orange-600 flex justify-between items-center shrink-0">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5" /> Parked Bills ({heldBills.length})
+              </h3>
+              <button onClick={() => setShowHoldListModal(false)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto">
+              {heldBills.length === 0 ? (
+                <div className="py-10 text-center text-slate-500">
+                  <Clock className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="font-bold text-sm">No parked bills found.</p>
+                </div>
+              ) : (
+                <div className="overflow-hidden border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="p-3">Time</th>
+                        <th className="p-3">Customer</th>
+                        <th className="p-3">Items Qty</th>
+                        <th className="p-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {heldBills.map((bill, idx) => {
+                        const custName = customers?.find(c => c.id === bill.customerId || c._id === bill.customerId)?.name || "Walk-in";
+                        const totalQty = bill.cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 font-medium text-slate-700">{new Date(bill.timestamp).toLocaleTimeString()}</td>
+                            <td className="p-3 font-bold text-slate-800">{custName}</td>
+                            <td className="p-3 font-medium text-slate-600">{totalQty} Items</td>
+                            <td className="p-3 flex gap-2">
+                              <button onClick={() => handleResumeSpecificBill(idx)} className="px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-xs font-bold transition-colors">Resume</button>
+                              <button onClick={() => setHeldBills(prev => prev.filter((_, i) => i !== idx))} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-bold transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
