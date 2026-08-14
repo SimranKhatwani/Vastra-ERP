@@ -894,6 +894,27 @@ export const BillingPOSView = ({
   const [infoPanelItem, setInfoPanelItem] = useState(null);
   const [infoPanelTab, setInfoPanelTab] = useState('General'); // General, Stock, Purchase, Sales
 
+  // Audit log tracking for POS Item View
+  React.useEffect(() => {
+    if (selectedSearchItem) {
+      const itemName = selectedSearchItem?.name || selectedSearchItem?.product?.name || selectedSearchItem?.itemCode || 'Unknown Item';
+      const code = selectedSearchItem?.designNo || selectedSearchItem?.itemCode || '';
+      const display = code ? `${itemName} (${code})` : itemName;
+      
+      const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
+      const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
+
+      api.post('/audit/track', {
+        action: 'VIEW',
+        item: `Item: ${display}`,
+        moduleName: 'POS',
+        entityType: 'POS_ITEM',
+        entityId: validEntityId,
+        displayName: `POS Item: ${display}`
+      }).catch(err => console.error("Failed to track audit log", err));
+    }
+  }, [selectedSearchItem]);
+
   const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
   const [focusedProductIndex, setFocusedProductIndex] = useState(-1);
   const [qtyModalProduct, setQtyModalProduct] = useState(null);

@@ -8,6 +8,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
+router.post('/track', AuditController.trackAuditLog);
 router.get('/', authorize([PERMISSIONS.AUDIT_READ, 'tenant.read']), AuditController.getAuditLogs);
 
 module.exports = router;

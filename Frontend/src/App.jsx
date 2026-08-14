@@ -58,6 +58,7 @@ import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { StaffManagementView } from "./components/StaffManagementView";
+import { AuditLogView } from "./components/AuditLogView";
 import AttendanceDashboardView from "./components/AttendanceDashboardView";
 import AttendancePolicySettings from "./components/AttendancePolicySettings";
 import ManagerReviewPanel from "./components/ManagerReviewPanel";
@@ -450,6 +451,7 @@ export default function App() {
           "settings",
           "permissions",
           "staff-activity",
+          "audit-log",
           "purchase",
           "vendor-communication",
           "financial-management",
@@ -483,6 +485,7 @@ export default function App() {
           "reports",
           "permissions",
           "staff-activity",
+          "audit-log",
           "integrations",
           "dev",
           "settings",
@@ -1279,6 +1282,7 @@ export default function App() {
     { id: "settings", label: "System Configurations", icon: Settings },
     { id: "permissions", label: "Permissions & Role Access", icon: ShieldCheck },
     { id: "staff-activity", label: "Staff Activity Audit", icon: ShieldAlert },
+    { id: "audit-log", label: "Audit Log", icon: ShieldCheck },
     { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
     { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
     { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
@@ -1803,6 +1807,16 @@ export default function App() {
             <DiscountManagementView
               onAddNotification={addToastNotification}
             />
+          )}
+
+          {activeModule === "staff-activity" && (
+            <StaffActivityView
+              onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "audit-log" && (
+            <AuditLogView />
           )}
 
           {activeModule === "purchase" && (

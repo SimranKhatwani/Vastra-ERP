@@ -21,6 +21,20 @@ const auditLogSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  item: String, // Legacy or fallback display text
+  entityType: {
+    type: String,
+    enum: ['PT_FILE', 'PURCHASE', 'PURCHASE_ITEM', 'POS_ITEM', null],
+    default: null
+  },
+  entityId: {
+    type: String, // Allow string to support mock IDs like "po-12345"
+    default: null
+  },
+  displayName: String,
+  date: String,
+  time: String,
+  deviceInfo: String,
   method: String,
   endpoint: String,
   ipAddress: String,

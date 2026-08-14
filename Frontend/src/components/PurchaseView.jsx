@@ -1413,6 +1413,50 @@ export const PurchaseView = ({
     fetchPOHistory();
   }, [setPurchaseOrders]);
 
+  // Audit Tracking
+  const auditTracked = React.useRef(false);
+  React.useEffect(() => {
+    if (!auditTracked.current) {
+      auditTracked.current = true;
+      api.post('/audit/track', {
+        action: 'Purchase Module Opened',
+        item: 'Purchase Module'
+      }).catch(err => console.error("Failed to track audit log", err));
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab && activeTab !== 'pos') {
+      api.post('/audit/track', {
+        action: 'Purchase History Viewed',
+        item: `Purchase Tab: ${activeTab}`
+      }).catch(err => console.error("Failed to track audit log", err));
+    }
+  }, [activeTab]);
+
+  // Track when a specific Purchase Bill/Order is viewed
+  React.useEffect(() => {
+    if (viewingPO) {
+      const firstItem = viewingPO.items?.[0];
+      const itemName = firstItem?.itemName || firstItem?.product?.name || 'Items';
+      const code = firstItem?.designNo || firstItem?.itemCode || '';
+      const display = code ? `${itemName} (${code})` : itemName;
+
+      const rawId = viewingPO._id || viewingPO.id;
+      const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
+
+      api.post('/audit/track', {
+        action: 'VIEW',
+        item: `Purchase Bill #${viewingPO.billNo || rawId}`, // Fallback for old logs
+        moduleName: 'PURCHASE',
+        entityType: 'PURCHASE',
+        entityId: validEntityId,
+        displayName: `Purchase: ${display} - ${viewingPO.billNo || rawId}`,
+        details: { purchaseId: validEntityId }
+      }).catch(err => console.error("Failed to track audit log", err));
+    }
+  }, [viewingPO]);
+
   // Quick Draft PO Modal State
   const [showPOModal, setShowPOModal] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState("");

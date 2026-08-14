@@ -1,6 +1,12 @@
 const AuditLog = require('../models/AuditLog');
 
 class AuditService {
+  static async trackAuditLog(logData) {
+    const audit = new AuditLog(logData);
+    await audit.save();
+    return audit;
+  }
+
   static async getAuditLogs(query = {}, tenantId) {
     const filter = {};
     if (tenantId) filter.tenantId = tenantId;

@@ -381,6 +381,22 @@ export const ProductManagementView = ({
 
   // Open Edit Modal
   const openEditModal = (prod) => {
+    // Track viewing a product in the Master List
+    const itemName = prod.itemName || prod.name || 'Unknown Item';
+    const code = prod.designNo || prod.itemCode || '';
+    const display = code ? `${itemName} (${code})` : itemName;
+    const rawId = prod.id || prod._id;
+    const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
+
+    api.post('/audit/track', {
+      action: 'VIEW',
+      item: `Product: ${display}`,
+      moduleName: 'INVENTORY',
+      entityType: 'POS_ITEM', // We can reuse POS_ITEM for products since it maps to the same Product details modal
+      entityId: validEntityId,
+      displayName: `Inventory Item: ${display}`
+    }).catch(err => console.error("Failed to track audit log", err));
+
     setModalMode("edit");
     setEditingProductId(prod.id);
     setFormName(prod.itemName || prod.name || '');

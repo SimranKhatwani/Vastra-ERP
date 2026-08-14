@@ -644,6 +644,21 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 };
 
 export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, onClose }) => {
+  // Audit Tracking
+  React.useEffect(() => {
+    if (createdVoucher && (createdVoucher.billNo || createdVoucher._id)) {
+      api.post('/audit/track', {
+        action: 'VIEW',
+        item: `Purchase Bill #${createdVoucher.billNo || createdVoucher._id}`, // Fallback for old logs
+        moduleName: 'PT_IMPORT',
+        entityType: 'PT_FILE',
+        entityId: createdVoucher._id,
+        displayName: `PT File: ${createdVoucher.billNo || createdVoucher._id} - ${createdVoucher.vendorName || 'Unknown Vendor'}`,
+        details: { purchaseId: createdVoucher._id }
+      }).catch(err => console.error("Failed to track audit log", err));
+    }
+  }, [createdVoucher]);
+
   const formatDateForDisplay = (dateStr) => {
     if (!dateStr) return new Date().toLocaleDateString('en-GB');
     let d = new Date(dateStr);

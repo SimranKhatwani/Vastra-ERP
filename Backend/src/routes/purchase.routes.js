@@ -20,7 +20,7 @@ const isValidObjectId = (req, res, next) => {
 router.use(authenticate, tenantContext);
 
 router.post('/', authorize(PERMISSIONS.PURCHASE_CREATE), validate(createPurchaseBillSchema), auditLog('CREATE_PURCHASE_BILL', 'purchase'), PurchaseController.createPurchaseBill);
-router.get('/', authorize(PERMISSIONS.PURCHASE_READ), auditLog('PURCHASE_VIEW', 'purchase'), PurchaseController.getPurchaseBills);
+router.get('/', authorize(PERMISSIONS.PURCHASE_READ), PurchaseController.getPurchaseBills);
 router.get('/export', authorize(PERMISSIONS.PURCHASE_READ), PurchaseController.exportPurchaseBills);
 router.get('/vendors', (req, res) => res.redirect(307, '/api/vendors'));
 
