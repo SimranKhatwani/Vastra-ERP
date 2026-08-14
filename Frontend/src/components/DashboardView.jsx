@@ -58,7 +58,7 @@ export const DashboardView = ({
       try {
         const token = localStorage.getItem('token');
         if (!token) { setFeedLoading(false); return; }
-        const res = await api.get(`/activity-feed?limit=20`);
+        const res = await api.get(`/audit?limit=20`);
         const data = res.data;
         if (data.success && data.data) {
           setActivityFeed(data.data);
@@ -1694,7 +1694,54 @@ export const DashboardView = ({
                 </div>
               </div>
             ) : (
-              activityFeed.map((item, idx) => {
+              activityFeed.map((log, idx) => {
+                let actionStr = (log.action || '').toUpperCase();
+                let icon = '⚡';
+                let color = 'indigo';
+                if (actionStr.includes('VIEW')) { icon = '👁️'; color = 'blue'; }
+                else if (actionStr.includes('CREATE') || actionStr.includes('ADD')) { icon = '➕'; color = 'emerald'; }
+                else if (actionStr.includes('DELETE') || actionStr.includes('REMOVE')) { icon = '🗑️'; color = 'red'; }
+                else if (actionStr.includes('UPDATE') || actionStr.includes('EDIT')) { icon = '✏️'; color = 'orange'; }
+                else if (actionStr.includes('LOGIN')) { icon = '🔑'; color = 'teal'; }
+                
+                if (actionStr.includes('EXCHANGE')) { icon = '🔄'; color = 'orange'; }
+                if (actionStr.includes('RETURN')) { icon = '↩️'; color = 'red'; }
+
+                let title = log.item;
+                let detailStr = '';
+                
+                if (!title || title.trim() === '') {
+                   if (actionStr === 'CREATE_EXCHANGE') {
+                      title = `Exchanged Item`;
+                      detailStr = `Bill ID: ${log.details?.body?.originalBillId?.toString().slice(-6) || 'Unknown'}`;
+                   } else if (actionStr === 'CREATE_RETURN') {
+                      title = `Returned Item(s)`;
+                      detailStr = `Bill: ${log.details?.body?.saleBillNo || 'Unknown'} - Mode: ${log.details?.body?.refundMode || 'N/A'}`;
+                   } else if (actionStr === 'CREATE_SALE_BILL') {
+                      title = `New Sale Bill generated`;
+                      detailStr = `Total: ₹${log.details?.body?.grandTotal || 0} - Mode: ${log.details?.body?.paymentMethod || 'Cash'}`;
+                   } else {
+                      title = log.action || 'System Action';
+                   }
+                }
+
+                if (!detailStr) {
+                   if (typeof log.details === 'string') detailStr = log.details;
+                   else if (log.details && Object.keys(log.details).length > 0) detailStr = `${log.module || 'System'} action performed.`;
+                   else detailStr = `${log.module || 'System'} Module`;
+                }
+
+                const item = {
+                  id: log._id || idx,
+                  action: log.action,
+                  title: title,
+                  detail: detailStr,
+                  user: log.userName || 'System',
+                  timestamp: log.timestamp || log.createdAt,
+                  icon: icon,
+                  color: color
+                };
+
                 const colorMap = {
                   emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
                   blue: { bg: 'bg-blue-50', border: 'border-blue-100', dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
@@ -1776,7 +1823,7 @@ export const DashboardView = ({
                   const token = localStorage.getItem('token');
                   if (!token) return;
                   setFeedLoading(true);
-                  api.get(`/activity-feed?limit=30`)
+                  api.get(`/audit?limit=30`)
                     .then(r => r.data)
                     .then(d => { if (d.success) setActivityFeed(d.data); })
                     .catch(() => { })

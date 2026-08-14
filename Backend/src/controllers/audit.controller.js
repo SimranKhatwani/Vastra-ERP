@@ -29,6 +29,12 @@ class AuditController {
     };
 
     const result = await AuditService.trackAuditLog(logData);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('activity.feed', result);
+    }
+
     return res.status(201).json(new ApiResponse(201, result, 'Audit log tracked successfully.'));
   });
 

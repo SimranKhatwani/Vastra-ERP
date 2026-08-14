@@ -49,7 +49,31 @@ connectDB().then(() => {
 
   // Handle Uncaught Exceptions
   process.on('uncaughtException', (err) => {
-    logger.error(`UNCAUGHT EXCEPTION! Shutting down... ${err.name}: ${err.message}`);
+    logger.error(`UNCAUGHT EXCEPTION! Shutting down... ${err}`);
     process.exit(1);
+  });
+
+  // Graceful shutdown for nodemon restarts
+  process.once('SIGUSR2', () => {
+    logger.info('SIGUSR2 received. Shutting down gracefully for nodemon restart...');
+    server.close(() => {
+      process.kill(process.pid, 'SIGUSR2');
+    });
+  });
+
+  // Graceful shutdown for Ctrl+C
+  process.on('SIGINT', () => {
+    logger.info('SIGINT received. Shutting down gracefully...');
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+
+  // Graceful shutdown for termination signals
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+      process.exit(0);
+    });
   });
 });

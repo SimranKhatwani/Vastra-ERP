@@ -29,6 +29,7 @@ class ExchangeService {
       tenantId,
       exchangeNo: exchangeData.exchangeNo || `EXC-${Date.now()}`,
       originalBillId: exchangeData.originalBillId,
+      newBillId: exchangeData.originalBillId,
       customerId: exchangeData.customerId,
       returnedValue,
       newItemValue,

@@ -24,6 +24,17 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response && error.response.status === 401) {
+      // Token expired or invalid
+      console.warn("Session expired. Logging out.");
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      
+      // Optionally notify the user before redirecting, or just redirect
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );

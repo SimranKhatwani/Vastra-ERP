@@ -7,7 +7,7 @@ const auditLog = (action, moduleName) => {
     res.on('finish', async () => {
       if (res.statusCode < 400 && req.user) {
         try {
-          await AuditLog.create({
+          const newAuditLog = await AuditLog.create({
             tenantId: req.tenantId || req.user?.tenantId || null,
             userId: req.user?.id || null,
             userName: req.user?.name || 'System',
@@ -24,6 +24,11 @@ const auditLog = (action, moduleName) => {
               body: req.body ? { ...req.body, password: '[REDACTED]' } : {}
             }
           });
+
+          const io = req.app.get('io');
+          if (io) {
+            io.emit('activity.feed', newAuditLog);
+          }
         } catch (err) {
           logger.error(`Failed to record audit log: ${err.message}`);
         }

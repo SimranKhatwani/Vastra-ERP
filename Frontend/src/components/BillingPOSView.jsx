@@ -412,6 +412,8 @@ export const BillingPOSView = ({
   const [isPreparingPayment, setIsPreparingPayment] = useState(false);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [paymentLoaderMessage, setPaymentLoaderMessage] = useState("Preparing Payment Details... Please wait.");
+  const [allocatedFullPaymentMode, setAllocatedFullPaymentMode] = useState(null);
+  const [confirmedPartPaymentModes, setConfirmedPartPaymentModes] = useState({});
   const [showAdvancePromptModal, setShowAdvancePromptModal] = useState(false);
   const [showOverpaymentModal, setShowOverpaymentModal] = useState(false);
   const [overpaidModalData, setOverpaidModalData] = useState({
@@ -474,7 +476,19 @@ export const BillingPOSView = ({
   });
   const [paymentWarning, setPaymentWarning] = useState("");
 
-  // Payment modal state is cleared manually in handleOpenPaymentFlow
+  // Auto-reset payment states only when the cart is emptied
+  useEffect(() => {
+    if (cart.length === 0) {
+      setPaymentType('Full Payment');
+      setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
+      setPartPaymentAmounts({
+        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+      });
+      setPaymentMethod("Cash");
+      setAllocatedFullPaymentMode(null);
+      setConfirmedPartPaymentModes({});
+    }
+  }, [cart]);
 
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
@@ -482,14 +496,13 @@ export const BillingPOSView = ({
 
   const handleStartNewBill = () => {
     setHistoryViewIndex(-1);
-    setCart([]);
+    setCart([]); // This now safely resets payment states via the useEffect
     setSelectedCustomerId("");
     setCustomerSearch("");
     setCouponCode("");
     setManualDiscountIds([]);
     setRejectedAutoDiscountIds([]);
     setSelectedLoyaltyRuleId("");
-    setPaymentMethod("Cash");
     if (onAddNotification) onAddNotification("New Bill", "Fresh POS billing session started.", "info");
   };
 
@@ -2028,13 +2041,13 @@ export const BillingPOSView = ({
       await new Promise(resolve => setTimeout(resolve, 300));
 
       if (activeCustomer && activeCustomer.id !== "c-walkin" && totalAdvance > 0) {
-        setShowAdvancePromptModal(true);
+        // If this is the FIRST time opening the payment flow and they haven't explicitly set states yet
+        if (!allocatedFullPaymentMode && Object.keys(confirmedPartPaymentModes).every(k => !confirmedPartPaymentModes[k])) {
+          setShowAdvancePromptModal(true);
+        } else {
+          setShowPaymentModal(true);
+        }
       } else {
-        setPaymentType('Full Payment');
-        setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
-        setPartPaymentAmounts({
-          Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
-        });
         setShowPaymentModal(true);
       }
     } catch (err) {
@@ -2125,6 +2138,8 @@ export const BillingPOSView = ({
       });
 
       await new Promise(resolve => setTimeout(resolve, 300));
+      setAllocatedFullPaymentMode(null);
+      setConfirmedPartPaymentModes({});
       setShowPaymentModal(true);
     } catch (err) {
       console.error("Error applying category advance:", err);
@@ -2666,7 +2681,7 @@ export const BillingPOSView = ({
       .reduce((sum, item) => sum + item.totalPrice, 0);
 
     if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
-      const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || 0), 0) || 1;
+      const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
       const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
       const proportionalAdjustment = refundTotal * adjustmentRatio;
 
@@ -2724,6 +2739,29 @@ export const BillingPOSView = ({
     const selectedSalesperson = staffList.find((e) => (e._id || e.id) === salespersonId);
     const finalEmployeeId = selectedSalesperson ? (selectedSalesperson._id || selectedSalesperson.id) : cashier.id;
 
+    const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+    const compiledTransactions = paymentType === "Part Payment"
+      ? [
+          ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
+          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+            .filter(m => Number(partPaymentAmounts[m]) > 0)
+            .map(m => {
+              let mode = m.toUpperCase().replace(/\s+/g, '_');
+              if (mode === 'POINTS_REDEEM') mode = 'POINTS';
+              return { mode, amount: Number(partPaymentAmounts[m]) };
+            })
+        ]
+      : [
+          {
+            mode: allocatedFullPaymentMode ? allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') : 'CASH',
+            amount: grandTotal
+          }
+        ];
+
+    const displayPaymentMode = paymentType === "Part Payment"
+      ? (compiledTransactions.length > 1 ? compiledTransactions.map(t => t.mode).join(' + ') : (compiledTransactions[0]?.mode || 'SPLIT'))
+      : (allocatedFullPaymentMode ? allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') : 'CASH');
+
     const previewInv = {
       invoiceNo: `INV-TEMP-${Date.now().toString().substring(6)}`,
       date: new Date().toISOString(),
@@ -2737,16 +2775,11 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal,
       grandTotal,
-      paymentMethod,
-      splitPayments: paymentMethod === "Split"
-        ? [
-          { method: "Cash", amount: splitCash },
-          { method: "Card", amount: splitCard },
-          { method: "UPI", amount: splitUPI },
-        ].filter((s) => s.amount > 0)
-        : undefined,
-      amountPaid: paymentMethod === "Credit" ? 0 : grandTotal,
-      status: paymentMethod === "Credit" ? "Unpaid" : "Paid",
+      paymentMethod: displayPaymentMode,
+      paymentMode: displayPaymentMode,
+      transactions: compiledTransactions,
+      amountPaid: displayPaymentMode === "DUE" ? 0 : grandTotal,
+      status: displayPaymentMode === "DUE" ? "Unpaid" : "Paid",
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
       salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
@@ -2832,6 +2865,21 @@ export const BillingPOSView = ({
   // Helper to generate the standardized receipt HTML template
   const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
+
+    let implicitDiscount = 0;
+    if (invoice.splitPayments && invoice.splitPayments.length > 0) {
+      const totalSplitPaid = invoice.splitPayments.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
+      const hasDue = invoice.splitPayments.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
+      if (totalSplitPaid < invoice.grandTotal && !hasDue && totalSplitPaid > 0) {
+        implicitDiscount = invoice.grandTotal - totalSplitPaid;
+      }
+    } else if (invoice.amountPaid !== undefined && invoice.amountPaid < invoice.grandTotal && invoice.amountPaid > 0) {
+      implicitDiscount = invoice.grandTotal - invoice.amountPaid;
+    }
+
+    const displayGrandTotal = implicitDiscount > 0 ? (invoice.grandTotal - implicitDiscount) : invoice.grandTotal;
+    const displayPaymentMode = (invoice.paymentMethod || 'Cash') + (implicitDiscount > 0 ? ' + ADJUSTMENT' : '');
+
     return `
       <!DOCTYPE html>
       <html>
@@ -2925,10 +2973,19 @@ export const BillingPOSView = ({
             `
         : ""
       }
+          ${implicitDiscount > 0
+        ? `
+              <tr>
+                <td>Manual Adj (Short Pay):</td>
+                <td class="text-right">-&#8377;${(Number(implicitDiscount) || 0).toLocaleString('en-IN')}</td>
+              </tr>
+            `
+        : ""
+      }
 
           <tr class="totals">
             <td>Grand Total:</td>
-            <td class="text-right">&#8377;${(Number(invoice.grandTotal) || 0).toLocaleString('en-IN')}</td>
+            <td class="text-right">&#8377;${(Number(displayGrandTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
         </table>
         ${invoice.items.some(i => i.hasAlteration || !!i.alterationRecord) ? `
@@ -2967,7 +3024,7 @@ export const BillingPOSView = ({
             </div>`
             : ''
           }
-          <div class="text-center"><b>Payment Mode:</b> ${invoice.paymentMethod || 'Cash'}</div>
+          <div class="text-center"><b>Payment Mode:</b> ${displayPaymentMode}</div>
           <div class="text-center">
             <b>Status:</b> ${(invoice.status || 'Paid').toUpperCase()}<br>
             Thank you for shopping with us!<br>
@@ -4434,6 +4491,23 @@ export const BillingPOSView = ({
               </p>
             </div>
           ) : (
+            (() => {
+              let implicitDiscount = 0;
+              if (selectedInvoiceForReturn.splitPayments && selectedInvoiceForReturn.splitPayments.length > 0) {
+                const totalSplitPaid = selectedInvoiceForReturn.splitPayments.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
+                const hasDue = selectedInvoiceForReturn.splitPayments.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
+                if (totalSplitPaid < selectedInvoiceForReturn.grandTotal && !hasDue && totalSplitPaid > 0) {
+                  implicitDiscount = selectedInvoiceForReturn.grandTotal - totalSplitPaid;
+                }
+              } else if (selectedInvoiceForReturn.amountPaid !== undefined && selectedInvoiceForReturn.amountPaid < selectedInvoiceForReturn.grandTotal && selectedInvoiceForReturn.amountPaid > 0) {
+                implicitDiscount = selectedInvoiceForReturn.grandTotal - selectedInvoiceForReturn.amountPaid;
+              }
+
+              const hasManualAdj = selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0;
+              const hasImplicitAdj = implicitDiscount > 0;
+              const totalAdjAmt = (hasManualAdj ? (selectedInvoiceForReturn.billAdjustment.operation === 'Charge' ? -selectedInvoiceForReturn.billAdjustment.amount : selectedInvoiceForReturn.billAdjustment.amount) : 0) + implicitDiscount;
+
+              return (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
 
               {/* LEFT COLUMN: SELECTED INVOICE DETAILS & MODE SWITCHER */}
@@ -4615,20 +4689,37 @@ export const BillingPOSView = ({
                       </div>
                     </div>
 
+                    {(hasManualAdj || hasImplicitAdj) && (
+                      <div className="bg-orange-50 p-3 rounded-xl border border-orange-200 flex items-start gap-2.5 animate-fade-in mb-3">
+                        <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-orange-800 font-bold text-xs block">Manual Bill Adjustment / Short Pay Applied</span>
+                          <span className="text-orange-600 text-[10.5px] font-medium leading-tight block mt-0.5">
+                            This bill had a net adjustment of -₹{totalAdjAmt}. The estimated refund amount is proportionally adjusted downwards.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Refund Estimate */}
                     <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
                       <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
                       <span className="font-mono font-black text-rose-600 text-base">
                         ₹{(() => {
-                          let rAmt = selectedInvoiceForReturn.items
+                        let rAmt = selectedInvoiceForReturn.items
                             .filter((item) => returnedItemIds.includes(item.productId || item.id))
                             .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
-                          if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
-                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || i.price * i.quantity), 0) || 1;
+                          if (totalAdjAmt > 0) {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                            const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                            const proportionalAdjustment = rAmt * adjustmentRatio;
+                            rAmt -= proportionalAdjustment;
+                            rAmt = Math.floor(rAmt);
+                          } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
                             const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
                             const proportionalAdjustment = rAmt * adjustmentRatio;
-                            if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') rAmt -= proportionalAdjustment;
-                            else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') rAmt += proportionalAdjustment;
+                            rAmt += proportionalAdjustment;
                             rAmt = Math.floor(rAmt);
                           }
                           return rAmt.toLocaleString();
@@ -4682,12 +4773,17 @@ export const BillingPOSView = ({
                         const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
                         let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
 
-                        if (selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0) {
-                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || i.price * i.quantity), 0) || 1;
+                        if (totalAdjAmt > 0) {
+                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                          const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                          const proportionalAdjustment = refundAmt * adjustmentRatio;
+                          refundAmt -= proportionalAdjustment;
+                          refundAmt = Math.floor(refundAmt);
+                        } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
                           const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
                           const proportionalAdjustment = refundAmt * adjustmentRatio;
-                          if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') refundAmt -= proportionalAdjustment;
-                          else if (selectedInvoiceForReturn.billAdjustment.operation === 'Charge') refundAmt += proportionalAdjustment;
+                          refundAmt += proportionalAdjustment;
                           refundAmt = Math.floor(refundAmt);
                         }
 
@@ -4716,11 +4812,37 @@ export const BillingPOSView = ({
                         try {
                           const token = localStorage.getItem("token");
                           const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          await api.post(`/invoices/${invId}/return`, {
-                            returnedItemIds,
-                            returnReason: finalReason,
-                            refundMethod: "Cash",
-                            advanceAmount: !returnRefundTotalAmount ? (Number(returnAdvanceAmount) || 0) : 0
+                          const returnItemsPayload = returnedItemIds.map(id => {
+                            const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
+                            let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+                            
+                            // Adjust for proportional short-pay/discounts if any
+                            if (totalAdjAmt > 0) {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                              const proportionalAdjustment = itemPrice * adjustmentRatio;
+                              itemPrice -= proportionalAdjustment;
+                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment?.operation === 'Charge') {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                              const proportionalAdjustment = itemPrice * adjustmentRatio;
+                              itemPrice += proportionalAdjustment;
+                            }
+                            
+                            return {
+                              barcode: item?.barcode || item?.designNo || item?.itemCode || '',
+                              refundRate: Math.floor(itemPrice),
+                              condition: 'RESELLABLE'
+                            };
+                          });
+
+                          await api.post(`/returns`, {
+                            saleBillId: invId,
+                            saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                            customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                            refundMode: "CREDIT_NOTE",
+                            reason: finalReason,
+                            items: returnItemsPayload
                           });
                         } catch (apiErr) {
                           console.warn("Backend return endpoint call error:", apiErr.message);
@@ -4892,9 +5014,26 @@ export const BillingPOSView = ({
                     {/* Price Difference Summary */}
                     {(() => {
                       const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                      const oldPrice = oldItem ? (oldItem.totalPrice || oldItem.price * oldItem.quantity) : 0;
-                      const newPrice = exchangeSelectedNewProduct ? (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0) : 0;
+                      if (!oldItem || !exchangeSelectedNewProduct) return null;
+                      
+                      let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                      if (totalAdjAmt > 0) {
+                        const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                        const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                        const proportionalAdjustment = oldPrice * adjustmentRatio;
+                        oldPrice -= proportionalAdjustment;
+                        oldPrice = Math.floor(oldPrice);
+                      } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                        const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                        const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                        const proportionalAdjustment = oldPrice * adjustmentRatio;
+                        oldPrice += proportionalAdjustment;
+                        oldPrice = Math.floor(oldPrice);
+                      }
+
+                      const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
                       const priceDiff = newPrice - oldPrice;
+                      
                       return (
                         <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono">
                           <div className="flex justify-between">
@@ -4922,7 +5061,21 @@ export const BillingPOSView = ({
                         const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
                         if (!oldItem || !exchangeSelectedNewProduct) return;
 
-                        const oldPrice = oldItem.totalPrice || (oldItem.price * oldItem.quantity);
+                        let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                        if (totalAdjAmt > 0) {
+                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                          const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                          const proportionalAdjustment = oldPrice * adjustmentRatio;
+                          oldPrice -= proportionalAdjustment;
+                          oldPrice = Math.floor(oldPrice);
+                        } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                          const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                          const proportionalAdjustment = oldPrice * adjustmentRatio;
+                          oldPrice += proportionalAdjustment;
+                          oldPrice = Math.floor(oldPrice);
+                        }
+
                         const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
                         const priceDiff = newPrice - oldPrice;
 
@@ -4975,10 +5128,15 @@ export const BillingPOSView = ({
                         try {
                           const token = localStorage.getItem("token");
                           const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          await api.post(`/invoices/${invId}/exchange`, {
-                            oldItemIdx: exchangeOldItemIdx,
-                            exchangeReason,
-                            newItem: exchangeSelectedNewProduct
+                          const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
+                          await api.post(`/exchanges`, {
+                            originalBillId: invId,
+                            customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                            returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
+                            newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
+                            returnedValue: oldPrice,
+                            newItemValue: newPrice,
+                            remarks: exchangeReason
                           });
                         } catch (apiErr) {
                           console.warn("Backend exchange endpoint call error:", apiErr.message);
@@ -5014,6 +5172,8 @@ export const BillingPOSView = ({
 
               </div>
             </div>
+            );
+            })()
           )}
         </div>
       )}
@@ -8773,7 +8933,10 @@ export const BillingPOSView = ({
                               type="number" min="0"
                               autoFocus
                               value={partPaymentAmounts["Advance"] || ''}
-                              onChange={(e) => setPartPaymentAmounts(p => ({ ...p, Advance: e.target.value }))}
+                              onChange={(e) => {
+                                setPartPaymentAmounts(p => ({ ...p, Advance: e.target.value }));
+                                setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
+                              }}
                               className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
                               placeholder="0"
                             />
@@ -8805,6 +8968,7 @@ export const BillingPOSView = ({
                                 handlePrintConfirm();
                               } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
                                 setPartPaymentAmounts(p => ({ ...p, Advance: (p.Advance?.toString() || '') + btn }));
+                                setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
                               }
                             }}
                             className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' :
@@ -8832,11 +8996,12 @@ export const BillingPOSView = ({
                                 if (advVal <= 0 && remainingUnpaidAdv > 0) {
                                   setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaidAdv.toString() }));
                                 }
+                                setConfirmedPartPaymentModes(p => ({ ...p, Advance: true }));
                               }
                             }}
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            className={`w-full py-3 ${paymentType === 'Part Payment' && confirmedPartPaymentModes['Advance'] ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'} text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
                           >
-                            <CheckCircle className="w-4 h-4" /> Pay Advance (&#8377;{displayAdvVal.toLocaleString('en-IN')})
+                            <CheckCircle className="w-4 h-4" /> {paymentType === 'Part Payment' && confirmedPartPaymentModes['Advance'] ? `PAID ADVANCE` : `PAY ADVANCE`} (&#8377;{displayAdvVal.toLocaleString('en-IN')})
                           </button>
                         );
                       })()}
@@ -8863,7 +9028,10 @@ export const BillingPOSView = ({
                               type="number" step="any" min="0"
                               autoFocus
                               value={partPaymentAmounts[paymentMethod] || ''}
-                              onChange={(e) => setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: e.target.value }))}
+                              onChange={(e) => {
+                                setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: e.target.value }));
+                                setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
+                              }}
                               className="text-2xl font-black font-mono text-slate-800 bg-transparent text-right outline-none w-32 border-b-2 border-transparent focus:border-indigo-400"
                               placeholder="0"
                             />
@@ -8881,8 +9049,7 @@ export const BillingPOSView = ({
                             onClick={() => {
                               if (btn === 'Pay') {
                                 if (paymentType === 'Full Payment') {
-                                  setShowPaymentModal(false);
-                                  handlePrintConfirm();
+                                  setAllocatedFullPaymentMode(paymentMethod);
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -8891,14 +9058,14 @@ export const BillingPOSView = ({
                                   setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
                                 }
-                                setShowPaymentModal(false);
-                                handlePrintConfirm();
+                                setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
                               } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
                                 setPartPaymentAmounts(p => {
                                   const curr = p[paymentMethod]?.toString() || '';
                                   if (btn === '.' && curr.includes('.')) return p;
                                   return { ...p, [paymentMethod]: curr + btn };
                                 });
+                                setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
                               }
                             }}
                             className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' :
@@ -8928,16 +9095,22 @@ export const BillingPOSView = ({
                                   newPart[paymentMethod] = remainingUnpaidMode.toString();
                                   setPartPaymentAmounts(newPart);
                                 }
-                                const currentAllocated = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(newPart[m]) || 0), 0);
-                                if (currentAllocated >= grandTotal) {
-                                  setShowPaymentModal(false);
-                                  handlePrintConfirm();
-                                }
+                                setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
+                              } else if (paymentType === 'Full Payment') {
+                                setAllocatedFullPaymentMode(paymentMethod);
                               }
                             }}
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            className={`w-full py-3 ${
+                              (paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) || 
+                              (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
+                                ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'
+                            } text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
                           >
-                            <CheckCircle className="w-4 h-4" /> Pay {paymentMethod} (&#8377;{displayVal.toLocaleString('en-IN')})
+                            <CheckCircle className="w-4 h-4" /> {
+                              (paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) || 
+                              (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
+                                ? `PAID VIA ${paymentMethod}` : `PAY ${paymentMethod}`
+                            } (&#8377;{displayVal.toLocaleString('en-IN')})
                           </button>
                         );
                       })()}
@@ -8986,12 +9159,12 @@ export const BillingPOSView = ({
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const rows = [
-                        { label: "Cash", val: paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : 0) : cashTotal },
-                        { label: "Card", val: paymentType === 'Full Payment' ? (paymentMethod === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
-                        { label: "UPI", val: paymentType === 'Full Payment' ? (paymentMethod === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
-                        { label: "Advance Used", val: paymentType === 'Full Payment' ? (paymentMethod === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
-                        { label: "Points Redeem", val: paymentType === 'Full Payment' ? (paymentMethod === 'Points Redeem' ? grandTotal : 0) : (Number(partPaymentAmounts['Points Redeem']) || 0) },
-                        { label: "Due Balance", val: paymentType === 'Full Payment' ? (paymentMethod === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
+                        { label: "Cash", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Cash' ? cashTotal : 0) : cashTotal },
+                        { label: "Card", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
+                        { label: "UPI", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
+                        { label: "Advance Used", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
+                        { label: "Points Redeem", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Points Redeem' ? grandTotal : 0) : (Number(partPaymentAmounts['Points Redeem']) || 0) },
+                        { label: "Due Balance", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
                         { label: "Gift Voucher / Other", val: (Number(partPaymentAmounts['Gift Voucher']) || 0) + (Number(partPaymentAmounts['Credit Note']) || 0) + (Number(partPaymentAmounts['Other']) || 0) },
                       ];
                       return rows.map((row, idx) => (
@@ -9008,7 +9181,7 @@ export const BillingPOSView = ({
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                       const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                      const totalPaidDisplay = paymentType === 'Full Payment' ? (paymentMethod === 'Cash' ? cashTotal : grandTotal) : partTotal;
+                      const totalPaidDisplay = paymentType === 'Full Payment' ? (allocatedFullPaymentMode ? (allocatedFullPaymentMode === 'Cash' ? cashTotal : grandTotal) : 0) : partTotal;
                       const remainingDue = Math.max(0, grandTotal - totalPaidDisplay);
                       const changeReturn = Math.max(0, totalPaidDisplay - grandTotal);
                       return (
@@ -9043,7 +9216,7 @@ export const BillingPOSView = ({
 
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
                   <button
-                    disabled={isSavingPayment}
+                    disabled={isSavingPayment || (paymentType === 'Full Payment' && !allocatedFullPaymentMode)}
                     onClick={async () => {
                       if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -9069,7 +9242,7 @@ export const BillingPOSView = ({
                     <Save className="w-4 h-4 inline mr-2" /> {isSavingPayment ? "Saving Payment..." : "Save Payment"}
                   </button>
                   <button
-                    disabled={isSavingPayment}
+                    disabled={isSavingPayment || (paymentType === 'Full Payment' && !allocatedFullPaymentMode)}
                     onClick={async () => {
                       if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
