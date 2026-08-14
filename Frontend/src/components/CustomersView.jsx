@@ -424,25 +424,81 @@ export const CustomersView = ({
               </button>
             </div>
 
-            {/* Single Prepaid Value Header */}
-            <div className="px-5 py-3 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
-              <span className="text-xs font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Gift className="w-4 h-4 text-indigo-600" /> Prepaid Value
-              </span>
-              <span className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-0.5 rounded-full font-mono">
-                Current Prepaid: &#8377;{(selectedCustomerModal.cust.prepaidAdvance || 0).toLocaleString('en-IN')}
-              </span>
+            {/* Modal Body: Tabs Header */}
+            <div className="flex border-b border-slate-200">
+              <button
+                onClick={() => setSelectedCustomerModal(prev => ({ ...prev, tab: 'invoices' }))}
+                className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${selectedCustomerModal.tab === 'invoices' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
+              >
+                Invoice History
+              </button>
+              <button
+                onClick={() => setSelectedCustomerModal(prev => ({ ...prev, tab: 'advance' }))}
+                className={`flex-1 py-3 px-4 text-xs font-bold transition-all ${selectedCustomerModal.tab === 'advance' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
+              >
+                Prepaid Advance & Details
+              </button>
             </div>
 
-            {/* Modal Body: Prepaid Value & Edit */}
+            {/* Modal Body */}
             <div className="overflow-y-auto flex-1 p-5 space-y-4">
               {(() => {
                 const cust = selectedCustomerModal.cust;
                 const history = cust.advanceHistory || [];
+                const invoicesList = selectedCustomerModal.customerInvoices || [];
+                
+                if (selectedCustomerModal.tab === 'invoices') {
+                  return (
+                    <div className="space-y-3">
+                      {invoicesList.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                          <FileText className="w-10 h-10 text-slate-300 mb-3" />
+                          <p className="text-sm font-bold text-slate-500">No invoices found for this customer.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold">
+                              <tr>
+                                <th className="p-3">Invoice No</th>
+                                <th className="p-3">Date</th>
+                                <th className="p-3">Status</th>
+                                <th className="p-3 text-right">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {invoicesList.map(inv => (
+                                <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="p-3 font-mono font-bold text-indigo-600">{inv.invoiceNo}</td>
+                                  <td className="p-3 text-slate-600 font-medium">{new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                  <td className="p-3">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : inv.status === 'Returned' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                                      {inv.status || 'Unpaid'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-slate-800">&#8377;{(inv.grandTotal || 0).toLocaleString('en-IN')}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
-                  <>
-                        <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
+                  <div className="space-y-4">
+                    <div className="px-5 py-3 border border-indigo-100 bg-indigo-50/50 flex items-center justify-between rounded-xl">
+                      <span className="text-xs font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Gift className="w-4 h-4 text-indigo-600" /> Prepaid Value
+                      </span>
+                      <span className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-0.5 rounded-full font-mono">
+                        Current Prepaid: &#8377;{(cust.prepaidAdvance || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
                           <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
                             <div>
                               <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 uppercase tracking-wider">
@@ -542,9 +598,9 @@ export const CustomersView = ({
                             </div>
                           )}
                         </div>
-                      </>
-                    );
-                  })()}
+                      </div>
+                );
+              })()}
             </div>
           </div>
         </div>

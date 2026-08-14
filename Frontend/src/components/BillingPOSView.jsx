@@ -2867,18 +2867,27 @@ export const BillingPOSView = ({
     const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
 
     let implicitDiscount = 0;
-    if (invoice.splitPayments && invoice.splitPayments.length > 0) {
-      const totalSplitPaid = invoice.splitPayments.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
-      const hasDue = invoice.splitPayments.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
+    let overpaidAmount = 0;
+    const paymentSplits = invoice.transactions || invoice.splitPayments || [];
+    
+    if (paymentSplits.length > 0) {
+      const totalSplitPaid = paymentSplits.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
+      const hasDue = paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
       if (totalSplitPaid < invoice.grandTotal && !hasDue && totalSplitPaid > 0) {
         implicitDiscount = invoice.grandTotal - totalSplitPaid;
+      } else if (totalSplitPaid > invoice.grandTotal && !hasDue) {
+        overpaidAmount = totalSplitPaid - invoice.grandTotal;
       }
-    } else if (invoice.amountPaid !== undefined && invoice.amountPaid < invoice.grandTotal && invoice.amountPaid > 0) {
-      implicitDiscount = invoice.grandTotal - invoice.amountPaid;
+    } else if (invoice.amountPaid !== undefined && invoice.amountPaid > 0) {
+      if (invoice.amountPaid < invoice.grandTotal) {
+        implicitDiscount = invoice.grandTotal - invoice.amountPaid;
+      } else if (invoice.amountPaid > invoice.grandTotal) {
+        overpaidAmount = invoice.amountPaid - invoice.grandTotal;
+      }
     }
 
     const displayGrandTotal = implicitDiscount > 0 ? (invoice.grandTotal - implicitDiscount) : invoice.grandTotal;
-    const displayPaymentMode = (invoice.paymentMethod || 'Cash') + (implicitDiscount > 0 ? ' + ADJUSTMENT' : '');
+    const displayPaymentMode = (invoice.paymentMethod || invoice.paymentMode || 'Cash') + (implicitDiscount > 0 ? ' + ADJUSTMENT' : '');
 
     return `
       <!DOCTYPE html>
@@ -3006,21 +3015,27 @@ export const BillingPOSView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="details">
-          ${(invoice.advanceApplied > 0 || (invoice.splitPayments && invoice.splitPayments.some(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE' && s.amount > 0))) ?
+          ${(invoice.advanceApplied > 0 || (paymentSplits.some(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE' && s.amount > 0))) ?
             `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
-              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (invoice.splitPayments?.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0)).toLocaleString('en-IN')}
+              ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (paymentSplits.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0)).toLocaleString('en-IN')}
             </div>`
             : ''
           }
-          ${invoice.splitPayments && invoice.splitPayments.length > 0 ?
+          ${paymentSplits.length > 0 ?
             `<div style="background:#f8fafc; padding:6px; border:1px solid #e2e8f0; border-radius:4px; font-size:11px; margin-bottom:8px;">
               <div style="font-weight:bold; text-align:center; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">PAYMENT BREAKDOWN</div>
-              ${invoice.splitPayments.map(sp => `
+              ${paymentSplits.map(sp => `
                 <div style="display:flex; justify-content:space-between; padding:2px 0;">
                   <span>${sp.method || sp.mode}:</span>
                   <b>&#8377;${(Number(sp.amount) || 0).toLocaleString('en-IN')}</b>
                 </div>
               `).join('')}
+              ${overpaidAmount > 0 ? `
+                <div style="display:flex; justify-content:space-between; padding:4px 0 2px 0; border-top:1px dashed #cbd5e1; margin-top:2px; font-weight:bold; color:#0f766e;">
+                  <span>EXCESS (OVERPAID / ADVANCE):</span>
+                  <span>&#8377;${overpaidAmount.toLocaleString('en-IN')}</span>
+                </div>
+              ` : ''}
             </div>`
             : ''
           }
