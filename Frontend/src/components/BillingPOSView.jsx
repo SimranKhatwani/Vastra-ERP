@@ -440,6 +440,18 @@ export const BillingPOSView = ({
   const [showOwnerApprovalModal, setShowOwnerApprovalModal] = useState(false);
   const [ownerPin, setOwnerPin] = useState("");
   const [activePOSMode, setActivePOSMode] = useState("billing");
+
+  // New POS Quick Action Tab States
+  const [showTotalsModal, setShowTotalsModal] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showChallanModal, setShowChallanModal] = useState(false);
+  const [showOtherDetailsModal, setShowOtherDetailsModal] = useState(false);
+  const [otherBillDetails, setOtherBillDetails] = useState({
+    transporter: '',
+    trackingNo: '',
+    shippingAddress: ''
+  });
+
   const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] =
     useState(null);
   const [returnedItemIds, setReturnedItemIds] = useState([]);
@@ -2336,6 +2348,8 @@ export const BillingPOSView = ({
         employeeName: cashier.name,
         salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
         billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
+        notes: [otherBillDetails.transporter && `Transporter: ${otherBillDetails.transporter}`, otherBillDetails.trackingNo && `LR: ${otherBillDetails.trackingNo}`, otherBillDetails.shippingAddress && `Shipping: ${otherBillDetails.shippingAddress}`].filter(Boolean).join(' | ') || undefined,
+        shippingDetails: (otherBillDetails.transporter || otherBillDetails.trackingNo || otherBillDetails.shippingAddress) ? otherBillDetails : undefined,
       };
 
       // If Credit, add outstanding balance to Customer's profile
@@ -2397,6 +2411,7 @@ export const BillingPOSView = ({
       setSelectedCustomerId("");
       setCustomerSearch("");
       setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '' });
+      setOtherBillDetails({ transporter: '', trackingNo: '', shippingAddress: '' });
 
       setSelectedLoyaltyRuleId("");
       setCancelAutoDiscount(false);
@@ -2783,7 +2798,9 @@ export const BillingPOSView = ({
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
       salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
-      isDraftPreview: true
+      isDraftPreview: true,
+      notes: [otherBillDetails.transporter && `Transporter: ${otherBillDetails.transporter}`, otherBillDetails.trackingNo && `LR: ${otherBillDetails.trackingNo}`, otherBillDetails.shippingAddress && `Shipping: ${otherBillDetails.shippingAddress}`].filter(Boolean).join(' | ') || undefined,
+      shippingDetails: (otherBillDetails.transporter || otherBillDetails.trackingNo || otherBillDetails.shippingAddress) ? otherBillDetails : undefined
     };
     setShowBillPreviewInvoice(previewInv);
   };
@@ -2917,6 +2934,8 @@ export const BillingPOSView = ({
           <b>Receipt No:</b> ${invoice.invoiceNo || 'DRAFT'}<br>
           <b>Date:</b> ${receiptDate}<br>
           <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
+          ${invoice.shippingDetails ? `<br><b>Transporter:</b> ${invoice.shippingDetails.transporter || 'N/A'} (LR: ${invoice.shippingDetails.trackingNo || 'N/A'})` : ''}
+          ${invoice.shippingDetails?.shippingAddress ? `<br><b>Shipping:</b> ${invoice.shippingDetails.shippingAddress}` : ''}
         </div>
         <div class="divider"></div>
         <table>
@@ -4070,17 +4089,21 @@ export const BillingPOSView = ({
                     { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
-                    { id: "searchItem", label: "Search Item (F2/Space)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
-                    { id: "itemCodeSearch", label: "Item Code (F4/I)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
+                    { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
+                    { id: "itemCodeSearch", label: "Item Code (F4)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
                     { id: "designNoSearch", label: "Design No (Alt+D)", icon: <Search className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: handleFocusDesignNoSearch },
+                    { id: "viewTotals", label: "View Totals", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
                     { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
                     { id: "adjustments", label: "Adjustments (A)", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
-                    { id: "close", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
-                    { id: "viewHolds", label: "Resume (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
+                    { id: "clearBill", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
+                    { id: "viewHolds", label: "View Holds (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
+                    { id: "challanModal", label: "Retv Challans", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowChallanModal(true) },
+                    { id: "otherDetails", label: "Other Details", icon: <FileText className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowOtherDetailsModal(true) },
+                    { id: "closePos", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => { if(window.confirm('Close POS?')) window.location.href = '/'; } },
                     { id: "loyaltyCustomer", label: "Loyalty (L)", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
                   ].map(btn => (
                     <button key={btn.id} onClick={btn.onClick || (() => { })} className="w-[68px] h-[58px] flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-slate-300 hover:to-white shadow-sm text-[9px] leading-[1.1] text-center p-1 rounded-sm">
@@ -8477,7 +8500,194 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* PROFESSIONAL PAYMENT QUICK TAB LOADER OVERLAY */}
+      {/* MODAL: VIEW TOTALS */}
+      {showTotalsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-up">
+            <div className="p-4 bg-blue-600 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Search className="w-5 h-5" /> Today's Totals
+              </h3>
+              <button onClick={() => setShowTotalsModal(false)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {(() => {
+                const todayStr = new Date().toDateString();
+                const todaysInvoices = invoices.filter(inv => new Date(inv.date).toDateString() === todayStr && inv.status !== 'Returned');
+                const totalSales = todaysInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+                const billCount = todaysInvoices.length;
+                const avgBill = billCount > 0 ? (totalSales / billCount) : 0;
+                return (
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center shadow-inner">
+                      <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Total Sales</p>
+                      <p className="text-3xl font-black text-blue-600 font-mono">&#8377;{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col items-center">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Bill Count</p>
+                        <p className="text-xl font-black text-slate-700">{billCount}</p>
+                      </div>
+                      <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col items-center">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Average Bill</p>
+                        <p className="text-xl font-black text-slate-700">&#8377;{avgBill.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIGURATIONS */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-up">
+            <div className="p-4 bg-slate-800 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" /> POS Configurations
+              </h3>
+              <button onClick={() => setShowConfigModal(false)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5 text-sm font-medium text-slate-700">
+              <div className="flex items-center justify-between">
+                <span>Default Print Format</span>
+                <select className="border border-slate-300 rounded-lg p-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-500 bg-slate-50">
+                  <option>Thermal (80mm)</option>
+                  <option>A4 Size</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Auto-Print Receipt</span>
+                <input type="checkbox" defaultChecked className="w-4 h-4 accent-slate-800" />
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Tax Inclusive Billing</span>
+                <input type="checkbox" defaultChecked className="w-4 h-4 accent-slate-800" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-4 text-center font-semibold bg-slate-50 p-2 rounded-lg border border-slate-100">Settings are saved locally for this session.</p>
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+               <button onClick={() => setShowConfigModal(false)} className="px-5 py-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white rounded-lg text-xs font-bold shadow-sm">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RETRIEVE CHALLAN */}
+      {showChallanModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[80vh] overflow-hidden animate-scale-up flex flex-col">
+            <div className="p-4 bg-indigo-600 flex justify-between items-center shrink-0">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5" /> Alteration Challans
+              </h3>
+              <button onClick={() => setShowChallanModal(false)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto">
+              {(() => {
+                const alterationInvoices = invoices.filter(inv => inv.items && inv.items.some(item => item.hasAlteration));
+                if (alterationInvoices.length === 0) {
+                  return (
+                    <div className="py-10 text-center text-slate-500">
+                      <AlertCircle className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="font-bold text-sm">No alteration challans found.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="overflow-hidden border border-slate-200 rounded-xl">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                        <tr>
+                          <th className="p-3">Invoice No</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Customer</th>
+                          <th className="p-3">Tailor Name</th>
+                          <th className="p-3">Delivery Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {alterationInvoices.map(inv => {
+                          const alteredItem = inv.items.find(i => i.hasAlteration);
+                          return (
+                            <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-3 font-mono font-bold text-indigo-600">{inv.invoiceNo}</td>
+                              <td className="p-3 font-medium text-slate-700">{new Date(inv.date).toLocaleDateString()}</td>
+                              <td className="p-3 font-bold text-slate-800">{inv.customerName || 'Walk-in'}</td>
+                              <td className="p-3 font-medium text-slate-600">{alteredItem?.alterationRecord?.tailorName || 'N/A'}</td>
+                              <td className="p-3 font-bold text-amber-600">{alteredItem?.alterationRecord?.deliveryDate ? new Date(alteredItem.alterationRecord.deliveryDate).toLocaleDateString() : 'N/A'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: OTHER DETAILS */}
+      {showOtherDetailsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-scale-up">
+            <div className="p-4 bg-purple-600 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5" /> Other Bill Details
+              </h3>
+              <button onClick={() => setShowOtherDetailsModal(false)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Transporter / Courier Name</label>
+                <input
+                  type="text"
+                  value={otherBillDetails.transporter}
+                  onChange={(e) => setOtherBillDetails({...otherBillDetails, transporter: e.target.value})}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow"
+                  placeholder="e.g. DTDC, BlueDart"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Tracking / L.R. Number</label>
+                <input
+                  type="text"
+                  value={otherBillDetails.trackingNo}
+                  onChange={(e) => setOtherBillDetails({...otherBillDetails, trackingNo: e.target.value})}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-mono font-bold text-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow"
+                  placeholder="e.g. LR-12345678"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Shipping Address / Notes</label>
+                <textarea
+                  value={otherBillDetails.shippingAddress}
+                  onChange={(e) => setOtherBillDetails({...otherBillDetails, shippingAddress: e.target.value})}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-medium text-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow min-h-[80px]"
+                  placeholder="Shipping notes or destination address..."
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+               <button onClick={() => setShowOtherDetailsModal(false)} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors text-white rounded-xl text-xs font-bold shadow-sm shadow-purple-200">Save Details</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isPreparingPayment && (
         <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in">
           <div className="bg-white rounded-3xl p-8 shadow-2xl border border-slate-100 flex flex-col items-center text-center max-w-md w-full animate-scale-up relative overflow-hidden">
