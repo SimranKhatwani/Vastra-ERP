@@ -64,12 +64,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     setUploadProgress(10);
 
     let extractedImages = {};
-    try {
-      const { extractImagesFromExcel } = await import('../helpers/excelImageExtractor.js');
-      extractedImages = await extractImagesFromExcel(file);
-    } catch (e) {
-      console.warn("Failed to extract embedded images:", e);
-    }
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -82,15 +76,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (data.length < 2) throw new Error("Spreadsheet appears empty or has no data rows.");
 
-        // Inject embedded images directly into the parsed data grid
-        for (let r = 1; r < data.length; r++) {
-          const rowImages = extractedImages[r];
-          if (rowImages) {
-            for (const col in rowImages) {
-              data[r][col] = rowImages[col]; // Replace empty cell with base64 string
-            }
-          }
-        }
+        // Image extraction logic removed as requested by user
 
         // Extract Vendor Data from all subsequent sheets (Sheet 2, Sheet 3, etc.)
         let allVendorData = [];

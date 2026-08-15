@@ -8541,6 +8541,59 @@ export const BillingPOSView = ({
                         <p className="text-xl font-black text-slate-700">&#8377;{avgBill.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
                       </div>
                     </div>
+                    {/* Collection Breakdown */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1.5">Collection Summary</p>
+                      {(() => {
+                        let tCash = 0, tCard = 0, tUPI = 0, tDue = 0, tAdvance = 0;
+                        todaysInvoices.forEach(inv => {
+                          const splits = inv.transactions || inv.splitPayments || [];
+                          if (splits.length > 0) {
+                            splits.forEach(t => {
+                              const m = (t.mode || t.method || '').toUpperCase();
+                              const amt = Number(t.amount) || 0;
+                              if (m === 'CASH') tCash += amt;
+                              else if (m === 'CARD') tCard += amt;
+                              else if (m === 'UPI') tUPI += amt;
+                              else if (m === 'DUE') tDue += amt;
+                              else if (m === 'ADVANCE') tAdvance += amt;
+                            });
+                          } else {
+                            const pm = (inv.paymentMethod || inv.paymentMode || '').toUpperCase();
+                            const amt = inv.grandTotal || 0;
+                            if (pm.includes('CASH')) tCash += amt;
+                            else if (pm.includes('CARD')) tCard += amt;
+                            else if (pm.includes('UPI')) tUPI += amt;
+                            else if (pm.includes('DUE') || pm.includes('CREDIT')) tDue += amt;
+                            else if (pm.includes('ADVANCE')) tAdvance += amt;
+                          }
+                        });
+                        return (
+                          <>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-semibold text-slate-600">Cash</span>
+                              <span className="font-bold font-mono text-emerald-600">&#8377;{tCash.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-semibold text-slate-600">UPI</span>
+                              <span className="font-bold font-mono text-blue-600">&#8377;{tUPI.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-semibold text-slate-600">Card</span>
+                              <span className="font-bold font-mono text-indigo-600">&#8377;{tCard.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs pt-1.5 mt-1.5 border-t border-slate-200">
+                              <span className="font-semibold text-slate-600">Due (Credit)</span>
+                              <span className="font-bold font-mono text-amber-600">&#8377;{tDue.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-semibold text-slate-600">Advance Adjusted</span>
+                              <span className="font-bold font-mono text-slate-700">&#8377;{tAdvance.toLocaleString('en-IN')}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 );
               })()}
