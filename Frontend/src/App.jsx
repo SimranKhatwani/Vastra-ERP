@@ -89,8 +89,8 @@ const normalizeInvoice = (b) => {
   const rawItems = (Array.isArray(b.items) && b.items.length > 0)
     ? b.items
     : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
-  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in Customer";
-  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "9999999999";
+  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in";
+  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "";
 
   return {
     ...b,
@@ -268,7 +268,7 @@ export default function App() {
         } catch (e) {}
 
         try {
-          const resInvoices = await api.get(`/billing`);
+          const resInvoices = await api.get(`/billing?limit=2000`);
           const fetchedInvoices = extractBillsArray(resInvoices.data);
           setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
         } catch (e) {
@@ -807,7 +807,7 @@ export default function App() {
       };
 
       const walkinCust = customers.find(c =>
-        (c.phone === "9999999999") ||
+        (c.phone === "") ||
         (c.name && c.name.toLowerCase().includes("walk-in"))
       );
       const defaultCustId = walkinCust ? (walkinCust._id || walkinCust.id) : null;
@@ -886,7 +886,7 @@ export default function App() {
         // Refetch invoices, customer lists, and products catalog directly from backend DB
         try {
           const [resInvoices, resCustomers, resProducts] = await Promise.all([
-            api.get(`/billing`),
+            api.get(`/billing?limit=2000`),
             api.get(`/customers`),
             api.get(`/products`)
           ]);
@@ -931,7 +931,7 @@ export default function App() {
       if (data.success) {
         addToastNotification("WhatsApp", "Invoice dispatched to WhatsApp successfully.", "success");
         // Refresh invoices list so status updates reflect in history
-        const resInvoices = await api.get(`/billing`);
+        const resInvoices = await api.get(`/billing?limit=2000`);
         const fetchedInvoices = extractBillsArray(resInvoices.data);
         if (fetchedInvoices.length > 0) {
           setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
@@ -1229,6 +1229,13 @@ export default function App() {
     } catch (error) {
       addToastNotification("Error", "Failed to connect to API", "danger");
     }
+  };
+
+  const [posInitialMode, setPosInitialMode] = useState("billing");
+
+  const openPOSWithDefaults = (mode = "billing") => {
+    setPosInitialMode(mode);
+    setActiveModule("billing");
   };
 
   const openArticulationWithDefaults = (options = {}) => {
@@ -1713,6 +1720,7 @@ export default function App() {
               auditLogs={auditLogs}
               setActiveTab={setActiveModule}
               openArticulationWithDefaults={openArticulationWithDefaults}
+              openPOSWithDefaults={openPOSWithDefaults}
               socket={socket}
               socketConnected={connected}
             />
@@ -1720,6 +1728,7 @@ export default function App() {
 
           <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
             <BillingPOSView
+              posInitialMode={posInitialMode}
               activeModule={activeModule}
               currentUser={currentUser}
               products={products}

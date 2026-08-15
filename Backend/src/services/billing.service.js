@@ -16,9 +16,9 @@ class BillingService {
    */
   static async createSaleBill(billData, userId, tenantId) {
     let customer = null;
-    if (billData.customerId) {
+    if (billData.customerId && billData.customerId !== 'c-walkin') {
       customer = await Customer.findOne({ _id: billData.customerId, tenantId });
-    } else if (billData.customerPhone) {
+    } else if (billData.customerPhone && billData.customerPhone !== 'N/A' && billData.customerPhone !== '9999999999') {
       customer = await Customer.findOne({ phone: billData.customerPhone, tenantId });
       if (!customer) {
         customer = await Customer.create({
@@ -30,18 +30,8 @@ class BillingService {
       }
     }
 
-    if (!customer) {
-      // Default cash walk-in customer
-      customer = await Customer.findOne({ tenantId, phone: '9999999999' });
-      if (!customer) {
-        customer = await Customer.create({
-          tenantId,
-          name: 'Walk-in Customer',
-          phone: '9999999999',
-          createdBy: userId
-        });
-      }
-    }
+    // We no longer create a dummy 9999999999 customer if missing.
+    // customer will simply remain null for true walk-ins.
 
     let subTotal = 0;
     let totalDiscount = 0;
@@ -326,7 +316,7 @@ class BillingService {
       payment = await Payment.create({
         tenantId,
         saleBillId: saleBill._id,
-        customerId: customer._id,
+        customerId: customer ? customer._id : undefined,
         receiptNo: `PAY-${saleBill.billNo}`,
         totalAmount: totalPaid,
         advanceApplied: totalAdvanceApplied,
@@ -364,6 +354,7 @@ class BillingService {
 
       // Ledger entry
       if (dueAmount > 0) {
+        if (!customer) throw new ApiError(400, 'Customer details are required for bills with due amounts.');
         customer.dueBalance += dueAmount;
         await customer.save();
 
@@ -377,7 +368,7 @@ class BillingService {
           remarks: `Due created for Bill No: ${saleBill.billNo}`,
           createdBy: userId
         });
-      } else {
+      } else if (customer) {
         await CustomerLedger.create({
           tenantId,
           customerId: customer._id,

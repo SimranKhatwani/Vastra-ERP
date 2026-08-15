@@ -12,6 +12,9 @@ const exchangeSchema = new mongoose.Schema({
     ref: 'SaleBill',
     required: true
   },
+  originalBillNo: {
+    type: String
+  },
   newBillId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SaleBill',

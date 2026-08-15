@@ -53,6 +53,7 @@ const generateUniqueItemCode = () => {
 
 export const BillingPOSView = ({
   activeModule,
+  posInitialMode,
   currentUser,
   products = [],
   customers = [],
@@ -441,6 +442,12 @@ export const BillingPOSView = ({
   const [ownerPin, setOwnerPin] = useState("");
   const [activePOSMode, setActivePOSMode] = useState("billing");
 
+  useEffect(() => {
+    if (posInitialMode) {
+      setActivePOSMode(posInitialMode);
+    }
+  }, [posInitialMode]);
+
   // New POS Quick Action Tab States
   const [showTotalsModal, setShowTotalsModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -465,8 +472,10 @@ export const BillingPOSView = ({
   const [returnReason, setReturnReason] = useState("");
   const [returnCustomReason, setReturnCustomReason] = useState("");
   const [returnApprovedCheckbox, setReturnApprovedCheckbox] = useState(false);
-  const [returnRefundTotalAmount, setReturnRefundTotalAmount] = useState(true);
-  const [returnAdvanceAmount, setReturnAdvanceAmount] = useState("");
+  const [returnRefundMode, setReturnRefundMode] = useState("DIRECT_REFUND");
+  const [returnCustomerName, setReturnCustomerName] = useState("");
+  const [returnCustomerPhone, setReturnCustomerPhone] = useState("");
+  const [showReturnCustomerModal, setShowReturnCustomerModal] = useState(false);
 
   const [exchangeReason, setExchangeReason] = useState("");
   const [exchangeCustomReason, setExchangeCustomReason] = useState("");
@@ -842,9 +851,9 @@ export const BillingPOSView = ({
     const payload = {
       invoiceId: previewInvNo,
       invoiceNumber: previewInvNo,
-      customerId: activeCustomer.id || activeCustomer._id || "c-walkin",
-      customerName: activeCustomer.name,
-      customerPhone: activeCustomer.phone,
+      customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
+      customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
+      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
       productId: selectedAlterationCartItem.productId || selectedAlterationCartItem.id || "p-gen",
       productName: selectedAlterationCartItem.name,
       sku: selectedAlterationCartItem.sku || "SKU-001",
@@ -930,14 +939,7 @@ export const BillingPOSView = ({
       const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
       const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
 
-      api.post('/audit/track', {
-        action: 'VIEW',
-        item: `Item: ${display}`,
-        moduleName: 'POS',
-        entityType: 'POS_ITEM',
-        entityId: validEntityId,
-        displayName: `POS Item: ${display}`
-      }).catch(err => console.error("Failed to track audit log", err));
+      // Audit log moved to handlePurchaseAuth
     }
   }, [selectedSearchItem]);
 
@@ -1564,7 +1566,7 @@ export const BillingPOSView = ({
   ) || {
     id: "c-walkin",
     name: "Walk-in Customer",
-    phone: "N/A",
+    phone: "",
     email: "",
     outstandingBalance: 0,
     membership: "Bronze",
@@ -2333,9 +2335,9 @@ export const BillingPOSView = ({
       const newInvoice = {
         invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
         date: new Date().toISOString(),
-        customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
-        customerName: activeCustomer.name,
-        customerPhone: activeCustomer.phone,
+        customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
+        customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
+        customerPhone: (activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
         items: [...cart],
         subTotal,
         discountTotal,
@@ -2786,9 +2788,9 @@ export const BillingPOSView = ({
     const previewInv = {
       invoiceNo: `INV-TEMP-${Date.now().toString().substring(6)}`,
       date: new Date().toISOString(),
-      customerId: selectedCustomerId && selectedCustomerId.length === 24 ? selectedCustomerId : undefined,
-      customerName: activeCustomer.name,
-      customerPhone: activeCustomer.phone,
+      customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
+      customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
+      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
       items: [...cart],
       subTotal,
       discountTotal,
@@ -3059,6 +3061,12 @@ export const BillingPOSView = ({
                 <div style="display:flex; justify-content:space-between; padding:4px 0 2px 0; border-top:1px dashed #cbd5e1; margin-top:2px; font-weight:bold; color:#0f766e;">
                   <span>EXCESS (OVERPAID / ADVANCE):</span>
                   <span>&#8377;${overpaidAmount.toLocaleString('en-IN')}</span>
+                </div>
+              ` : ''}
+              ${(invoice.customer?.walletAdvance > 0 || invoice.customer?.prepaidAdvance > 0) ? `
+                <div style="display:flex; justify-content:space-between; padding:4px 0 2px 0; border-top:1px dashed #cbd5e1; margin-top:2px; font-weight:bold; color:#b45309;">
+                  <span>CURRENT WALLET BALANCE:</span>
+                  <span>&#8377;${(invoice.customer?.walletAdvance || invoice.customer?.prepaidAdvance || 0).toLocaleString('en-IN')}</span>
                 </div>
               ` : ''}
             </div>`
@@ -3412,6 +3420,21 @@ export const BillingPOSView = ({
         setIsPurchaseAuthModalOpen(false);
         setPurchaseAuthOwnerId("");
         setPurchaseAuthPassword("");
+
+        const itemName = selectedSearchItem?.name || selectedSearchItem?.product?.name || selectedSearchItem?.itemCode || 'Unknown Item';
+        const code = selectedSearchItem?.designNo || selectedSearchItem?.itemCode || '';
+        const display = code ? `${itemName} (${code})` : itemName;
+        const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
+        const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
+
+        api.post('/audit/track', {
+          action: 'VIEW',
+          item: `Purchase Info Unlocked: ${display}`,
+          moduleName: 'POS',
+          entityType: 'POS_ITEM',
+          entityId: validEntityId,
+          displayName: `Purchase Tab Unlocked: ${display}`
+        }).catch(err => console.error("Failed to track audit log", err));
       } catch (err) {
         if (onAddNotification) onAddNotification("Auth Failed", "Invalid owner credentials", "danger");
       }
@@ -4772,34 +4795,40 @@ export const BillingPOSView = ({
                     </div>
 
                     {/* Advance / Wallet Logic */}
-                    <label className="flex items-center gap-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-slate-800 text-xs font-semibold cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={returnRefundTotalAmount}
-                        onChange={(e) => {
-                          setReturnRefundTotalAmount(e.target.checked);
-                          if (e.target.checked) setReturnAdvanceAmount("");
-                        }}
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0"
-                      />
-                      <span>Refund total amount? (Untick to save partially to Customer Advance/Wallet)</span>
-                    </label>
+                    <div className="flex flex-col gap-3 mt-4">
+                      <label className="text-xs font-bold text-slate-700 uppercase">Select Refund Destination:</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div 
+                          onClick={() => setReturnRefundMode('DIRECT_REFUND')}
+                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'DIRECT_REFUND' ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'DIRECT_REFUND' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
+                            {returnRefundMode === 'DIRECT_REFUND' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                          </div>
+                          <div>
+                            <p className={`text-sm font-bold ${returnRefundMode === 'DIRECT_REFUND' ? 'text-indigo-900' : 'text-slate-700'}`}>Refund to Customer</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Give money back directly</p>
+                          </div>
+                        </div>
 
-                    {!returnRefundTotalAmount && (
-                      <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex items-center justify-between animate-fade-in">
-                        <span className="text-xs font-bold text-indigo-900">Advance Amount (Save to Wallet)</span>
-                        <input
-                          type="number"
-                          value={returnAdvanceAmount}
-                          onChange={(e) => setReturnAdvanceAmount(e.target.value)}
-                          placeholder="0"
-                          className="w-32 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 text-right font-mono font-bold text-indigo-700 outline-none focus:border-indigo-500"
-                        />
+                        <div 
+                          onClick={() => setReturnRefundMode('ADD_TO_ADVANCE')}
+                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'bg-amber-50 border-amber-500 shadow-sm' : 'bg-white border-slate-200 hover:border-amber-300'}`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
+                            {returnRefundMode === 'ADD_TO_ADVANCE' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                          </div>
+                          <div>
+                            <p className={`text-sm font-bold ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'text-amber-900' : 'text-slate-700'}`}>Save to Wallet</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Keep as advance for future</p>
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </div>
 
                     {/* Mandatory Approval Checkbox */}
-                    <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer">
+
+                    <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer mt-4">
                       <input
                         type="checkbox"
                         checked={returnApprovedCheckbox}
@@ -4852,6 +4881,14 @@ export const BillingPOSView = ({
                           items: updatedItems
                         };
 
+                        let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
+                        if (finalCustomerId === "c-walkin") finalCustomerId = null;
+
+                        if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
+                          setShowReturnCustomerModal(true);
+                          return;
+                        }
+
                         // Call Backend API to update MongoDB invoice, inventory & customer ledger
                         try {
                           const token = localStorage.getItem("token");
@@ -4861,18 +4898,15 @@ export const BillingPOSView = ({
                             let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
                             
                             // Adjust for proportional short-pay/discounts if any
-                            if (totalAdjAmt > 0) {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                              const proportionalAdjustment = itemPrice * adjustmentRatio;
-                              itemPrice -= proportionalAdjustment;
-                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment?.operation === 'Charge') {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                            if (selectedInvoiceForReturn.billAdjustment) {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
                               const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                              const proportionalAdjustment = itemPrice * adjustmentRatio;
-                              itemPrice += proportionalAdjustment;
+                              if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                                itemPrice -= (itemPrice * adjustmentRatio);
+                              } else {
+                                itemPrice += (itemPrice * adjustmentRatio);
+                              }
                             }
-                            
                             return {
                               barcode: item?.barcode || item?.designNo || item?.itemCode || '',
                               refundRate: Math.floor(itemPrice),
@@ -4883,13 +4917,16 @@ export const BillingPOSView = ({
                           await api.post(`/returns`, {
                             saleBillId: invId,
                             saleBillNo: selectedInvoiceForReturn.invoiceNo,
-                            customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
-                            refundMode: "CREDIT_NOTE",
+                            customerId: finalCustomerId,
+                            refundMode: returnRefundMode,
                             reason: finalReason,
-                            items: returnItemsPayload
+                            items: returnItemsPayload,
+                            forceApprove: true
                           });
                         } catch (apiErr) {
                           console.warn("Backend return endpoint call error:", apiErr.message);
+                          if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
+                          return; // Stop execution to prevent desync
                         }
 
                         // Update local invoices list so Invoice History reflects returned status immediately
@@ -5175,15 +5212,19 @@ export const BillingPOSView = ({
                           const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
                           await api.post(`/exchanges`, {
                             originalBillId: invId,
+                            originalBillNo: selectedInvoiceForReturn.invoiceNo,
                             customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
                             returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
                             newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
                             returnedValue: oldPrice,
                             newItemValue: newPrice,
-                            remarks: exchangeReason
+                            remarks: exchangeReason,
+                            forceApprove: true
                           });
                         } catch (apiErr) {
                           console.warn("Backend exchange endpoint call error:", apiErr.message);
+                          if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
+                          return; // Stop execution to prevent desync
                         }
 
                         // Update local invoices list so Invoice History reflects exchanged status immediately
@@ -5992,6 +6033,131 @@ export const BillingPOSView = ({
             >
               Add to Cart
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DUE CUSTOMER MANDATORY */}
+      {showReturnCustomerModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[130]">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl border border-slate-100 animate-scale-up">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                Customer Details Required
+              </h4>
+              <button
+                onClick={() => setShowReturnCustomerModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-100">
+              Customer details are mandatory to save the returned amount as an advance in their wallet.
+            </p>
+
+            <form 
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!returnCustomerName || !returnCustomerPhone) return;
+                
+                try {
+                  const custRes = await api.post('/crm/customers', { name: returnCustomerName, phone: returnCustomerPhone });
+                  
+                  // Now trigger the return logic with the newly created customer
+                  setShowReturnCustomerModal(false);
+                  
+                  // Re-trigger the Approve Return manually but bypassing the check since we have the new customer ID
+                  const finalCustomerId = custRes.data.customer._id;
+                  
+                  const token = localStorage.getItem("token");
+                  const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                  const finalReason = returnCustomReason.trim() !== "" ? returnCustomReason : returnReason;
+                  
+                  const returnItemsPayload = returnedItemIds.map(id => {
+                    const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
+                    let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+                    if (selectedInvoiceForReturn.billAdjustment) {
+                      const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
+                      const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                      if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                        itemPrice -= (itemPrice * adjustmentRatio);
+                      } else {
+                        itemPrice += (itemPrice * adjustmentRatio);
+                      }
+                    }
+                    return {
+                      barcode: item?.barcode || item?.designNo || item?.itemCode || '',
+                      refundRate: Math.floor(itemPrice),
+                      condition: 'RESELLABLE'
+                    };
+                  });
+
+                  await api.post(`/returns`, {
+                    saleBillId: invId,
+                    saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                    customerId: finalCustomerId,
+                    refundMode: 'ADD_TO_ADVANCE',
+                    reason: finalReason,
+                    items: returnItemsPayload,
+                    forceApprove: true
+                  }, { headers: { Authorization: `Bearer ${token}` } });
+
+                  if (onAddNotification) onAddNotification("Success", "Return processed successfully & Customer created", "success");
+                  
+                  setSelectedInvoiceForReturn(null);
+                  setReturnedItemIds([]);
+                  setReturnApprovedCheckbox(false);
+                  setReturnRefundMode('DIRECT_REFUND');
+                  setReturnSearchQuery("");
+
+                } catch (err) {
+                  if (onAddNotification) onAddNotification("Error", "Failed to create customer and process return", "danger");
+                }
+              }} 
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Customer Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={returnCustomerName}
+                  onChange={(e) => setReturnCustomerName(e.target.value)}
+                  placeholder="Enter name"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number <span className="text-red-500">*</span></label>
+                <input
+                  type="tel"
+                  required
+                  pattern="[0-9]*"
+                  maxLength="10"
+                  value={returnCustomerPhone}
+                  onChange={(e) => setReturnCustomerPhone(e.target.value)}
+                  placeholder="Enter 10-digit number"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReturnCustomerModal(false)}
+                  className="px-4 py-2 text-slate-500 font-semibold bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shadow-md flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" /> Save & Continue
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

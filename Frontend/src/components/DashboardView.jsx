@@ -43,6 +43,7 @@ export const DashboardView = ({
   auditLogs = [],
   setActiveTab = (_tab) => { },
   openArticulationWithDefaults = () => { },
+  openPOSWithDefaults = () => { },
   currentUser = {},
   socket = null,
   socketConnected = false,
@@ -241,6 +242,10 @@ export const DashboardView = ({
   if (todayProfit === 0 && todaySales > 0) todayProfit = Math.floor(todaySales * 0.45);
 
   const todayBillsCount = todayInvoices.length;
+
+  const todayReturnsCount = invoices.filter(
+    (inv) => toDateStr(inv.date || inv.createdAt) === todayStr && (inv.hasReturn || inv.hasExchange || (inv.items && inv.items.some(i => i.isReturned || i.isExchanged)))
+  ).length;
 
   // Average basket size (today)
   const todayTotalItems = todayInvoices.reduce(
@@ -887,7 +892,7 @@ export const DashboardView = ({
       />
 
       {/* KPI Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
         {/* Today's Sales */}
         <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
           <div className="space-y-2">
@@ -994,6 +999,48 @@ export const DashboardView = ({
           </div>
           <div className="bg-fuchsia-50 p-2.5 rounded-lg text-fuchsia-600">
             <Sparkles className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Today's Returns */}
+        <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+              Today's Returns
+            </span>
+            <div className="text-2xl font-bold text-slate-800 font-sans">
+              {todayReturnsCount} items
+            </div>
+            <div className="flex items-center gap-1 text-xs text-rose-500 font-medium cursor-pointer hover:underline" onClick={() => {
+              if (typeof openPOSWithDefaults === "function") openPOSWithDefaults("returns");
+              else setActiveTab("billing");
+            }}>
+              <span>Manage Returns ➔</span>
+            </div>
+          </div>
+          <div className="bg-rose-50 p-2.5 rounded-lg text-rose-600">
+            <RefreshCw className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Outstanding Due Collections */}
+        <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+              Outstanding Dues
+            </span>
+            <div className="text-2xl font-bold text-slate-800 font-sans">
+              ₹
+              {Number(pendingCustomerCredit || 0).toLocaleString("en-IN", {
+                maximumFractionDigits: 0,
+              })}
+            </div>
+            <div className="flex items-center gap-1 text-xs text-amber-600 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab("customers")}>
+              <span>Collect dues ➔</span>
+            </div>
+          </div>
+          <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600">
+            <AlertTriangle className="w-5 h-5" />
           </div>
         </div>
       </div>

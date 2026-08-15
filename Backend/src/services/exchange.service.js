@@ -2,6 +2,8 @@ const ApiError = require('../helpers/ApiError');
 const Exchange = require('../models/exchange/Exchange');
 const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
+const SaleBill = require('../models/billing/SaleBill');
+const SaleItem = require('../models/billing/SaleItem');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
 
@@ -29,6 +31,7 @@ class ExchangeService {
       tenantId,
       exchangeNo: exchangeData.exchangeNo || `EXC-${Date.now()}`,
       originalBillId: exchangeData.originalBillId,
+      originalBillNo: exchangeData.originalBillNo,
       newBillId: exchangeData.originalBillId,
       customerId: exchangeData.customerId,
       returnedValue,
@@ -74,6 +77,29 @@ class ExchangeService {
       performedBy: userId,
       notes: `Issued in exchange for barcode ${returnedPiece.barcode}`
     });
+
+    if (exchangeData.originalBillId) {
+      const saleBill = await SaleBill.findOne({ _id: exchangeData.originalBillId, tenantId });
+      if (saleBill) {
+        saleBill.hasExchange = true;
+        saleBill.exchangedAmount = (saleBill.exchangedAmount || 0) + returnedValue;
+        
+        let allExchanged = true;
+        const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: returnedPiece._id, tenantId });
+        if (saleItem) {
+          saleItem.isExchanged = true;
+          saleItem.exchangedFor = newPiece.barcode;
+          saleItem.exchangeReason = exchangeData.remarks;
+          saleItem.exchangedAt = new Date();
+          await saleItem.save();
+        }
+        
+        const allSaleItems = await SaleItem.find({ saleBillId: saleBill._id, tenantId });
+        allExchanged = allSaleItems.length > 0 && allSaleItems.every(si => si.isExchanged);
+        saleBill.status = allExchanged ? 'EXCHANGED' : 'PARTIALLY_EXCHANGED';
+        await saleBill.save();
+      }
+    }
 
     return {
       exchange,

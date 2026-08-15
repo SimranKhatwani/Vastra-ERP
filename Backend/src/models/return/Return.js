@@ -12,10 +12,12 @@ const returnSchema = new mongoose.Schema({
     ref: 'SaleBill',
     required: true
   },
+  saleBillNo: {
+    type: String
+  },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customer',
-    required: true
+    ref: 'Customer'
   },
   refundAmount: {
     type: Number,
@@ -24,7 +26,7 @@ const returnSchema = new mongoose.Schema({
   },
   refundMode: {
     type: String,
-    enum: ['CASH', 'CREDIT_NOTE', 'BANK', 'LOYALTY_POINTS'],
+    enum: ['CASH', 'CREDIT_NOTE', 'BANK', 'LOYALTY_POINTS', 'ADD_TO_ADVANCE', 'DIRECT_REFUND'],
     default: 'CREDIT_NOTE'
   },
   reason: String,

@@ -14,8 +14,7 @@ const saleBillSchema = new mongoose.Schema({
   },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customer',
-    required: true
+    ref: 'Customer'
   },
   firmId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -60,6 +59,25 @@ const saleBillSchema = new mongoose.Schema({
   advanceApplied: {
     type: Number,
     default: 0
+  },
+  hasReturn: {
+    type: Boolean,
+    default: false
+  },
+  returnedAmount: {
+    type: Number,
+    default: 0
+  },
+  hasExchange: {
+    type: Boolean,
+    default: false
+  },
+  exchangedAmount: {
+    type: Number,
+    default: 0
+  },
+  exchangeSlip: {
+    type: String
   },
   status: {
     type: String,

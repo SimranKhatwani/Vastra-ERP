@@ -78,6 +78,7 @@ class ReturnService {
       tenantId,
       returnNo: returnData.returnNo || `RET-${Date.now()}`,
       saleBillId: returnData.saleBillId,
+      saleBillNo: returnData.saleBillNo,
       customerId: returnData.customerId,
       refundAmount,
       refundMode: returnData.refundMode || 'CREDIT_NOTE',
@@ -123,10 +124,19 @@ class ReturnService {
       });
     }
 
-    if (returnData.customerId) {
+    if (returnData.customerId && returnData.refundMode === 'ADD_TO_ADVANCE') {
       const customer = await Customer.findOne({ _id: returnData.customerId, tenantId });
       if (customer) {
-        customer.advanceBalance += refundAmount;
+        customer.walletAdvance = (customer.walletAdvance || 0) + refundAmount;
+        customer.advanceBalance = (customer.advanceBalance || 0) + refundAmount; // Sync legacy field
+        
+        if (!customer.advanceHistory) customer.advanceHistory = [];
+        customer.advanceHistory.push({
+          amount: refundAmount,
+          reason: `Added from Return No: ${returnDoc.returnNo}`,
+          date: new Date()
+        });
+        
         await customer.save();
 
         await CustomerLedger.create({
@@ -134,10 +144,37 @@ class ReturnService {
           customerId: customer._id,
           type: LEDGER_TYPE.REFUND,
           amount: refundAmount,
-          balanceAfter: customer.advanceBalance,
-          remarks: `Refund / Credit Note issued for Return No: ${returnDoc.returnNo}`,
+          balanceAfter: customer.walletAdvance,
+          remarks: `Added to Wallet Advance for Return No: ${returnDoc.returnNo}`,
           createdBy: userId
         });
+      }
+    }
+
+    if (returnData.saleBillId) {
+      const saleBill = await SaleBill.findOne({ _id: returnData.saleBillId, tenantId });
+      if (saleBill) {
+        saleBill.hasReturn = true;
+        saleBill.returnedAmount = (saleBill.returnedAmount || 0) + refundAmount;
+        
+        let allReturned = true;
+        for (const item of returnData.items) {
+          const piece = await InventoryPiece.findOne({ barcode: item.barcode, tenantId });
+          if (piece) {
+            const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: piece._id, tenantId });
+            if (saleItem) {
+              saleItem.isReturned = true;
+              saleItem.returnReason = returnData.reason;
+              saleItem.returnedAt = new Date();
+              await saleItem.save();
+            }
+          }
+        }
+        
+        const allSaleItems = await SaleItem.find({ saleBillId: saleBill._id, tenantId });
+        allReturned = allSaleItems.length > 0 && allSaleItems.every(si => si.isReturned);
+        saleBill.status = allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED';
+        await saleBill.save();
       }
     }
 

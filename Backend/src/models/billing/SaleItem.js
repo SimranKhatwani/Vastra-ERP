@@ -43,6 +43,29 @@ const saleItemSchema = new mongoose.Schema({
   finalPrice: {
     type: Number,
     required: true
+  },
+  isReturned: {
+    type: Boolean,
+    default: false
+  },
+  returnReason: {
+    type: String
+  },
+  returnedAt: {
+    type: Date
+  },
+  isExchanged: {
+    type: Boolean,
+    default: false
+  },
+  exchangedFor: {
+    type: String
+  },
+  exchangeReason: {
+    type: String
+  },
+  exchangedAt: {
+    type: Date
   }
 });
 
