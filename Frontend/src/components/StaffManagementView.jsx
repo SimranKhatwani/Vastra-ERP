@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, ShieldBan, CheckCircle, User, Phone, Mail, MapPin } from "lucide-react";
 import api from '../api/axios';
-import { generateDemoEmployees } from "../data/demoData";
+
 
 export function StaffManagementView() {
   const [staff, setStaff] = useState([]);

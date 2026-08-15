@@ -13,6 +13,11 @@ router.use(authenticate, tenantContext);
 router.post('/', authorize(PERMISSIONS.CRM_CREATE), auditLog('CREATE_CUSTOMER', 'crm'), CustomerController.createCustomer);
 router.get('/', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomers);
 router.get('/export', authorize(PERMISSIONS.CRM_READ), CustomerController.exportCustomers);
+
+// Mock endpoints for loyalty-settings
+router.get('/loyalty-settings', (req, res) => res.status(200).json({ success: true, data: { enabled: true, rupeesPerPoint: 20 } }));
+router.put('/loyalty-settings', (req, res) => res.status(200).json({ success: true, data: req.body }));
+
 router.get('/:id', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomerById);
 router.get('/:id/history', authorize(PERMISSIONS.CRM_READ), CustomerController.getPurchaseHistory);
 router.put('/:id', authorize(PERMISSIONS.CRM_UPDATE), auditLog('UPDATE_CUSTOMER', 'crm'), CustomerController.updateCustomer);

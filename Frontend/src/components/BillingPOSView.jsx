@@ -851,9 +851,9 @@ export const BillingPOSView = ({
     const payload = {
       invoiceId: previewInvNo,
       invoiceNumber: previewInvNo,
-      customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
+      customerId: ((activeCustomer.id || activeCustomer._id) === "c-walkin" || activeCustomer.phone === "") ? null : (activeCustomer.id || activeCustomer._id),
       customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
-      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
+      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
       productId: selectedAlterationCartItem.productId || selectedAlterationCartItem.id || "p-gen",
       productName: selectedAlterationCartItem.name,
       sku: selectedAlterationCartItem.sku || "SKU-001",
@@ -935,7 +935,7 @@ export const BillingPOSView = ({
       const itemName = selectedSearchItem?.name || selectedSearchItem?.product?.name || selectedSearchItem?.itemCode || 'Unknown Item';
       const code = selectedSearchItem?.designNo || selectedSearchItem?.itemCode || '';
       const display = code ? `${itemName} (${code})` : itemName;
-      
+
       const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
       const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
 
@@ -2047,13 +2047,13 @@ export const BillingPOSView = ({
       );
       return;
     }
-    
+
     setPaymentLoaderMessage("Preparing Payment Details... Please wait.");
     setIsPreparingPayment(true);
 
     try {
       // Refresh discounts & active rules to ensure latest calculation
-      await fetchActiveRules().catch(() => {});
+      await fetchActiveRules().catch(() => { });
 
       const totalAdvance = (activeCustomer?.walletAdvance || 0) + (activeCustomer?.loyaltyPoints || 0);
 
@@ -2228,7 +2228,7 @@ export const BillingPOSView = ({
   };
 
   // Handle checkout
-  const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false, skipOverpaymentPrompt = false) => {
+  const handleCheckoutSubmit = async (overrideCustomerDue = false, skipBillPreview = false, skipOverpaymentPrompt = false, forcedCustomer = null) => {
     if (isGeneratingBill) return false;
     setIsGeneratingBill(true);
 
@@ -2242,11 +2242,13 @@ export const BillingPOSView = ({
         return false;
       }
 
+      const currentActiveCustomer = forcedCustomer || activeCustomer;
+
       const computedDueAmount = paymentType === "Full Payment"
         ? (paymentMethod === "Due" ? grandTotal : 0)
         : (Number(partPaymentAmounts["Due"]) || 0);
 
-      const isCustomerMissing = !selectedCustomerId || activeCustomer.id === "c-walkin" || !activeCustomer.name;
+      const isCustomerMissing = (!selectedCustomerId && !forcedCustomer) || currentActiveCustomer.id === "c-walkin" || !currentActiveCustomer.name;
       if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
         setShowDueCustomerModal(true);
         return false;
@@ -2307,26 +2309,26 @@ export const BillingPOSView = ({
 
       const compiledTransactions = paymentType === "Part Payment"
         ? [
-            ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
-            ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
-              .filter(m => Number(partPaymentAmounts[m]) > 0)
-              .map(m => {
-                let mode = m.toUpperCase().replace(/\s+/g, '_');
-                if (mode === 'POINTS_REDEEM') mode = 'POINTS';
-                return { mode, amount: Number(partPaymentAmounts[m]) };
-              })
-          ]
+          ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
+          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+            .filter(m => Number(partPaymentAmounts[m]) > 0)
+            .map(m => {
+              let mode = m.toUpperCase().replace(/\s+/g, '_');
+              if (mode === 'POINTS_REDEEM') mode = 'POINTS';
+              return { mode, amount: Number(partPaymentAmounts[m]) };
+            })
+        ]
         : [
-            {
-              mode: paymentMethod === 'Cash' ? 'CASH'
-                : (paymentMethod === 'Card' ? 'CARD'
+          {
+            mode: paymentMethod === 'Cash' ? 'CASH'
+              : (paymentMethod === 'Card' ? 'CARD'
                 : (paymentMethod === 'UPI' ? 'UPI'
-                : (paymentMethod === 'Advance' ? 'ADVANCE'
-                : (paymentMethod === 'Points Redeem' ? 'POINTS'
-                : (paymentMethod === 'Due' ? 'DUE' : paymentMethod.toUpperCase()))))),
-              amount: grandTotal
-            }
-          ];
+                  : (paymentMethod === 'Advance' ? 'ADVANCE'
+                    : (paymentMethod === 'Points Redeem' ? 'POINTS'
+                      : (paymentMethod === 'Due' ? 'DUE' : paymentMethod.toUpperCase()))))),
+            amount: grandTotal
+          }
+        ];
 
       const displayPaymentMode = paymentType === "Part Payment"
         ? (compiledTransactions.length > 1 ? compiledTransactions.map(t => t.mode).join(' + ') : (compiledTransactions[0]?.mode || 'Split'))
@@ -2335,9 +2337,9 @@ export const BillingPOSView = ({
       const newInvoice = {
         invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
         date: new Date().toISOString(),
-        customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
-        customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
-        customerPhone: (activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
+        customerId: ((currentActiveCustomer.id || currentActiveCustomer._id) === "c-walkin" || currentActiveCustomer.phone === "") ? null : (currentActiveCustomer.id || currentActiveCustomer._id),
+        customerName: currentActiveCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : currentActiveCustomer.name,
+        customerPhone: (currentActiveCustomer.phone === "" || (currentActiveCustomer.id || currentActiveCustomer._id) === "c-walkin") ? "" : currentActiveCustomer.phone,
         items: [...cart],
         subTotal,
         discountTotal,
@@ -2486,44 +2488,32 @@ export const BillingPOSView = ({
 
     // Check if customer already exists by phone
     const existingCustomer = (customers || []).find(c => c.phone === dueCustPhone);
-    let targetId;
+    let targetCust;
 
     if (existingCustomer) {
-      targetId = existingCustomer.id || existingCustomer._id;
+      targetCust = existingCustomer;
     } else {
-      targetId = `c-${(customers || []).length + 1}`;
-      const newCust = {
-        id: targetId,
-        name: dueCustName,
-        phone: dueCustPhone,
-        email: `${dueCustName.toLowerCase().replace(/\s+/g, "")}@example.com`,
-        whatsappNumber: dueCustPhone,
-        outstandingBalance: 0,
-        membership: "Bronze",
-        walletAdvance: 0,
-        loyaltyPoints: 10,
-        birthday: "1995-01-01",
-        createdAt: new Date().toISOString().split('T')[0],
-        totalInvoices: 0,
-        totalSpent: 0,
-      };
-
-      if (onAddCustomer) {
-        onAddCustomer(newCust);
-      } else {
-        (customers || []).push(newCust);
+      try {
+        const custRes = await api.post('/customers', { name: dueCustName, phone: dueCustPhone });
+        targetCust = custRes.data.data;
+        if (onAddCustomer) {
+          onAddCustomer(targetCust);
+        } else {
+          (customers || []).push(targetCust);
+        }
+      } catch (err) {
+        if (onAddNotification) onAddNotification("Error", "Failed to create customer", "danger");
+        return;
       }
     }
 
-    setSelectedCustomerId(targetId);
+    setSelectedCustomerId(targetCust.id || targetCust._id);
     setDueCustName("");
     setDueCustPhone("");
     setShowDueCustomerModal(false);
 
-    // Slight delay to allow state to settle before checking out
-    setTimeout(() => {
-      handleCheckoutSubmit(true);
-    }, 100);
+    // Call checkout directly with forced customer to bypass closure stale state
+    handleCheckoutSubmit(true, false, false, targetCust);
   };
 
   const handleCreateCustomer = (e) => {
@@ -2765,21 +2755,21 @@ export const BillingPOSView = ({
     const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
     const compiledTransactions = paymentType === "Part Payment"
       ? [
-          ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
-          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
-            .filter(m => Number(partPaymentAmounts[m]) > 0)
-            .map(m => {
-              let mode = m.toUpperCase().replace(/\s+/g, '_');
-              if (mode === 'POINTS_REDEEM') mode = 'POINTS';
-              return { mode, amount: Number(partPaymentAmounts[m]) };
-            })
-        ]
+        ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
+        ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+          .filter(m => Number(partPaymentAmounts[m]) > 0)
+          .map(m => {
+            let mode = m.toUpperCase().replace(/\s+/g, '_');
+            if (mode === 'POINTS_REDEEM') mode = 'POINTS';
+            return { mode, amount: Number(partPaymentAmounts[m]) };
+          })
+      ]
       : [
-          {
-            mode: allocatedFullPaymentMode ? allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') : 'CASH',
-            amount: grandTotal
-          }
-        ];
+        {
+          mode: allocatedFullPaymentMode ? allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') : 'CASH',
+          amount: grandTotal
+        }
+      ];
 
     const displayPaymentMode = paymentType === "Part Payment"
       ? (compiledTransactions.length > 1 ? compiledTransactions.map(t => t.mode).join(' + ') : (compiledTransactions[0]?.mode || 'SPLIT'))
@@ -2788,9 +2778,9 @@ export const BillingPOSView = ({
     const previewInv = {
       invoiceNo: `INV-TEMP-${Date.now().toString().substring(6)}`,
       date: new Date().toISOString(),
-      customerId: (activeCustomer.id || activeCustomer._id) === "c-walkin" ? null : (activeCustomer.id || activeCustomer._id),
+      customerId: ((activeCustomer.id || activeCustomer._id) === "c-walkin" || activeCustomer.phone === "") ? null : (activeCustomer.id || activeCustomer._id),
       customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
-      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "9999999999" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
+      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
       items: [...cart],
       subTotal,
       discountTotal,
@@ -2894,7 +2884,7 @@ export const BillingPOSView = ({
     let implicitDiscount = 0;
     let overpaidAmount = 0;
     const paymentSplits = invoice.transactions || invoice.splitPayments || [];
-    
+
     if (paymentSplits.length > 0) {
       const totalSplitPaid = paymentSplits.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
       const hasDue = paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
@@ -3043,13 +3033,13 @@ export const BillingPOSView = ({
         <div class="divider"></div>
         <div class="details">
           ${(invoice.advanceApplied > 0 || (paymentSplits.some(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE' && s.amount > 0))) ?
-            `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
+        `<div style="font-weight:bold; color:#047857; text-align:center; margin-bottom:6px;">
               ADVANCE AMOUNT USED: &#8377;${((invoice.advanceApplied || 0) || (paymentSplits.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0)).toLocaleString('en-IN')}
             </div>`
-            : ''
-          }
+        : ''
+      }
           ${paymentSplits.length > 0 ?
-            `<div style="background:#f8fafc; padding:6px; border:1px solid #e2e8f0; border-radius:4px; font-size:11px; margin-bottom:8px;">
+        `<div style="background:#f8fafc; padding:6px; border:1px solid #e2e8f0; border-radius:4px; font-size:11px; margin-bottom:8px;">
               <div style="font-weight:bold; text-align:center; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">PAYMENT BREAKDOWN</div>
               ${paymentSplits.map(sp => `
                 <div style="display:flex; justify-content:space-between; padding:2px 0;">
@@ -3070,8 +3060,8 @@ export const BillingPOSView = ({
                 </div>
               ` : ''}
             </div>`
-            : ''
-          }
+        : ''
+      }
           <div class="text-center"><b>Payment Mode:</b> ${displayPaymentMode}</div>
           <div class="text-center">
             <b>Status:</b> ${(invoice.status || 'Paid').toUpperCase()}<br>
@@ -3097,10 +3087,10 @@ export const BillingPOSView = ({
   const handleDirectPrint = (invoice) => {
     if (!invoice) return;
     const htmlContent = generateReceiptHTMLContent(invoice, false);
-    
+
     let iframe = document.getElementById("print-iframe");
     if (iframe) {
-      try { document.body.removeChild(iframe); } catch (e) {}
+      try { document.body.removeChild(iframe); } catch (e) { }
     }
     iframe = document.createElement("iframe");
     iframe.id = "print-iframe";
@@ -3149,14 +3139,14 @@ export const BillingPOSView = ({
     link.download = filename;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
-    
+
     setTimeout(() => {
       link.click();
       setTimeout(() => {
         try {
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
-        } catch (e) {}
+        } catch (e) { }
       }, 100);
     }, 50);
 
@@ -3414,7 +3404,7 @@ export const BillingPOSView = ({
           email: purchaseAuthOwnerId,
           password: purchaseAuthPassword
         });
-        
+
         setIsPurchaseTabUnlocked(true);
         setInfoPanelTab('Purchase');
         setIsPurchaseAuthModalOpen(false);
@@ -3934,11 +3924,10 @@ export const BillingPOSView = ({
                                       <tr
                                         id={`itemsearch-opt-${pIdx}`}
                                         key={p._id || p.id || pIdx}
-                                        className={`cursor-pointer transition-colors ${
-                                          isHighlighted
+                                        className={`cursor-pointer transition-colors ${isHighlighted
                                             ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
                                             : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
-                                        }`}
+                                          }`}
                                         onClick={() => {
                                           handleAddProductToCart(p);
                                           setItemSearchInputText("");
@@ -3966,9 +3955,8 @@ export const BillingPOSView = ({
                                         <td className="p-2 text-center">
                                           <button
                                             type="button"
-                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${
-                                              isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                            }`}
+                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                              }`}
                                           >
                                             + Add
                                           </button>
@@ -3982,7 +3970,7 @@ export const BillingPOSView = ({
                           </div>
                         )}
                       </td>
-                      
+
                       {/* Empty Sub Item Cell */}
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
 
@@ -4132,7 +4120,7 @@ export const BillingPOSView = ({
                     { id: "viewHolds", label: "View Holds (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
                     { id: "challanModal", label: "Retv Challans", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowChallanModal(true) },
                     { id: "otherDetails", label: "Other Details", icon: <FileText className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowOtherDetailsModal(true) },
-                    { id: "closePos", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => { if(window.confirm('Close POS?')) window.location.href = '/'; } },
+                    { id: "closePos", label: "Close", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => { if (window.confirm('Close POS?')) window.location.href = '/'; } },
                     { id: "loyaltyCustomer", label: "Loyalty (L)", icon: <User className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => document.getElementById("mobileSearchInput")?.focus() }
                   ].map(btn => (
                     <button key={btn.id} onClick={btn.onClick || (() => { })} className="w-[68px] h-[58px] flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#e5e5e5] border border-slate-300 hover:to-white shadow-sm text-[9px] leading-[1.1] text-center p-1 rounded-sm">
@@ -4152,7 +4140,7 @@ export const BillingPOSView = ({
 
             {/* RIGHT COLUMN: ALTERATION PANEL */}
             <div className="w-[200px] flex-shrink-0 flex flex-col bg-[#e1e1e1] border border-slate-400">
-              
+
               {/* Selected Product Image (ABOVE ALTERATION) */}
               <div className="bg-white border-b border-slate-400 p-2 flex flex-col items-center justify-center min-h-[160px]">
                 {(() => {
@@ -4192,11 +4180,11 @@ export const BillingPOSView = ({
 
                     const cardStyle = isFocused
                       ? (hasAlt
-                          ? 'bg-emerald-100/90 border-2 border-indigo-600 ring-2 ring-indigo-500/40 shadow-md font-bold'
-                          : 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md font-bold')
+                        ? 'bg-emerald-100/90 border-2 border-indigo-600 ring-2 ring-indigo-500/40 shadow-md font-bold'
+                        : 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md font-bold')
                       : (hasAlt
-                          ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400'
-                          : 'bg-white border-slate-300 hover:border-slate-400');
+                        ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400'
+                        : 'bg-white border-slate-300 hover:border-slate-400');
 
                     return (
                       <div
@@ -4575,689 +4563,689 @@ export const BillingPOSView = ({
               const totalAdjAmt = (hasManualAdj ? (selectedInvoiceForReturn.billAdjustment.operation === 'Charge' ? -selectedInvoiceForReturn.billAdjustment.amount : selectedInvoiceForReturn.billAdjustment.amount) : 0) + implicitDiscount;
 
               return (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
 
-              {/* LEFT COLUMN: SELECTED INVOICE DETAILS & MODE SWITCHER */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-5 space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Selected Invoice Details
-                  </h4>
-                  <span className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
-                    {selectedInvoiceForReturn.invoiceNo}
-                  </span>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs font-medium">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Customer Name:</span>
-                    <span className="font-bold text-slate-800">{selectedInvoiceForReturn.customerName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Customer Phone:</span>
-                    <span className="font-mono text-slate-700">{selectedInvoiceForReturn.customerPhone || 'Walk-in'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Date Issued:</span>
-                    <span className="font-mono text-slate-700">
-                      {selectedInvoiceForReturn.date ? new Date(selectedInvoiceForReturn.date).toLocaleString('en-IN') : '-'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Grand Total:</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      ₹{selectedInvoiceForReturn.grandTotal.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Payment Route:</span>
-                    <span className="font-bold text-emerald-600">{selectedInvoiceForReturn.paymentMethod}</span>
-                  </div>
-                  <div className="pt-2 mt-2 border-t border-slate-200">
-                    <button
-                      onClick={() => handleDownloadReceiptHTML(selectedInvoiceForReturn)}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                    >
-                      <FileText className="w-4 h-4" />
-                      View Full Original Receipt
-                    </button>
-                  </div>
-                </div>
-
-                {/* MODE SELECTION BUTTONS: RETURN vs EXCHANGE */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Choose Workflow Action:
-                  </label>
-                  <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setReturnActionType('return')}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'return' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      <span>RETURN ITEMS</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReturnActionType('exchange')}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'exchange' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>EXCHANGE ITEMS</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: ACTION PANELS */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-7 space-y-5">
-
-                {/* ─── RETURN PANEL WORKFLOW ─── */}
-                {returnActionType === 'return' && (
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                      <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <RotateCcw className="w-4 h-4" />
-                        <span>Process Item Return & Credit Refund</span>
+                  {/* LEFT COLUMN: SELECTED INVOICE DETAILS & MODE SWITCHER */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-5 space-y-4">
+                    <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Selected Invoice Details
                       </h4>
-                    </div>
-
-                    {/* Reason for Return */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        Reason for Return:
-                      </label>
-                      <select
-                        value={returnReason}
-                        onChange={(e) => setReturnReason(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
-                      >
-                        <option value="">None / Optional (Fast Checkout)</option>
-                        <option value="Defective / Damaged">Defective / Damaged Garment</option>
-                        <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
-                        <option value="Customer Changed Mind">Customer Changed Mind</option>
-                        <option value="Quality Dissatisfaction">Quality Dissatisfaction</option>
-                        <option value="Other">Other (Specify Custom Text)</option>
-                      </select>
-                      {returnReason === "Other" && (
-                        <input
-                          type="text"
-                          value={returnCustomReason}
-                          onChange={(e) => setReturnCustomReason(e.target.value)}
-                          placeholder="Enter specific return reason details..."
-                          className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium"
-                        />
-                      )}
-                    </div>
-
-                    {/* Select Items to Return */}
-                    <div className="space-y-2">
-                      <label className="block text-xs font-bold text-slate-700 uppercase">
-                        Select Items to Return:
-                      </label>
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
-                        {selectedInvoiceForReturn.items.map((item, idx) => {
-                          const isChecked = returnedItemIds.includes(item.productId || item.id);
-                          return (
-                            <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
-                                      setReturnWarning({
-                                        show: true,
-                                        title: "Alteration Detected",
-                                        message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
-                                      });
-                                    }
-                                    const targetId = item.productId || item.id;
-                                    setReturnedItemIds((prev) =>
-                                      isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
-                                    );
-                                  }}
-                                  className="w-4 h-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
-                                />
-                                <div>
-                                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                    <span>{item.name}</span>
-                                    {item.isReturned && (
-                                      <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
-                                        RETURNED
-                                      </span>
-                                    )}
-                                    {item.isExchanged && (
-                                      <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
-                                        EXCHANGED
-                                      </span>
-                                    )}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 font-mono">
-                                    Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity}
-                                  </p>
-                                  {!!(item.hasAlteration || item.alterationRecord) && (
-                                    <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
-                                      <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                                      <span>
-                                        <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <span className="text-xs font-bold font-mono text-slate-800">
-                                ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {(hasManualAdj || hasImplicitAdj) && (
-                      <div className="bg-orange-50 p-3 rounded-xl border border-orange-200 flex items-start gap-2.5 animate-fade-in mb-3">
-                        <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="text-orange-800 font-bold text-xs block">Manual Bill Adjustment / Short Pay Applied</span>
-                          <span className="text-orange-600 text-[10.5px] font-medium leading-tight block mt-0.5">
-                            This bill had a net adjustment of -₹{totalAdjAmt}. The estimated refund amount is proportionally adjusted downwards.
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Refund Estimate */}
-                    <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
-                      <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
-                      <span className="font-mono font-black text-rose-600 text-base">
-                        ₹{(() => {
-                        let rAmt = selectedInvoiceForReturn.items
-                            .filter((item) => returnedItemIds.includes(item.productId || item.id))
-                            .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
-                          if (totalAdjAmt > 0) {
-                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                            const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                            const proportionalAdjustment = rAmt * adjustmentRatio;
-                            rAmt -= proportionalAdjustment;
-                            rAmt = Math.floor(rAmt);
-                          } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                            const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                            const proportionalAdjustment = rAmt * adjustmentRatio;
-                            rAmt += proportionalAdjustment;
-                            rAmt = Math.floor(rAmt);
-                          }
-                          return rAmt.toLocaleString();
-                        })()}
+                      <span className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                        {selectedInvoiceForReturn.invoiceNo}
                       </span>
                     </div>
 
-                    {/* Advance / Wallet Logic */}
-                    <div className="flex flex-col gap-3 mt-4">
-                      <label className="text-xs font-bold text-slate-700 uppercase">Select Refund Destination:</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div 
-                          onClick={() => setReturnRefundMode('DIRECT_REFUND')}
-                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'DIRECT_REFUND' ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
-                        >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'DIRECT_REFUND' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
-                            {returnRefundMode === 'DIRECT_REFUND' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                          </div>
-                          <div>
-                            <p className={`text-sm font-bold ${returnRefundMode === 'DIRECT_REFUND' ? 'text-indigo-900' : 'text-slate-700'}`}>Refund to Customer</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Give money back directly</p>
-                          </div>
-                        </div>
-
-                        <div 
-                          onClick={() => setReturnRefundMode('ADD_TO_ADVANCE')}
-                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'bg-amber-50 border-amber-500 shadow-sm' : 'bg-white border-slate-200 hover:border-amber-300'}`}
-                        >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
-                            {returnRefundMode === 'ADD_TO_ADVANCE' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                          </div>
-                          <div>
-                            <p className={`text-sm font-bold ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'text-amber-900' : 'text-slate-700'}`}>Save to Wallet</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Keep as advance for future</p>
-                          </div>
-                        </div>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs font-medium">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Customer Name:</span>
+                        <span className="font-bold text-slate-800">{selectedInvoiceForReturn.customerName}</span>
                       </div>
-                    </div>
-
-                    {/* Mandatory Approval Checkbox */}
-
-                    <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer mt-4">
-                      <input
-                        type="checkbox"
-                        checked={returnApprovedCheckbox}
-                        onChange={(e) => setReturnApprovedCheckbox(e.target.checked)}
-                        className="w-4 h-4 text-rose-600 rounded border-amber-300 focus:ring-rose-500 cursor-pointer shrink-0"
-                      />
-                      <span>I approve this return request & confirm physical garment condition has been verified.</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
-                      onClick={async () => {
-                        const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
-                        const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
-                        let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
-
-                        if (totalAdjAmt > 0) {
-                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                          const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                          const proportionalAdjustment = refundAmt * adjustmentRatio;
-                          refundAmt -= proportionalAdjustment;
-                          refundAmt = Math.floor(refundAmt);
-                        } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                          const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                          const proportionalAdjustment = refundAmt * adjustmentRatio;
-                          refundAmt += proportionalAdjustment;
-                          refundAmt = Math.floor(refundAmt);
-                        }
-
-                        const updatedItems = selectedInvoiceForReturn.items.map(item => {
-                          if (returnedItemIds.includes(item.productId || item.id)) {
-                            return {
-                              ...item,
-                              isReturned: true,
-                              returnReason: finalReason,
-                              returnedAt: new Date().toISOString()
-                            };
-                          }
-                          return item;
-                        });
-
-                        const allRet = updatedItems.every(i => i.isReturned);
-                        const updatedInvoice = {
-                          ...selectedInvoiceForReturn,
-                          hasReturn: true,
-                          returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
-                          status: allRet ? 'Returned' : 'Partially Returned',
-                          items: updatedItems
-                        };
-
-                        let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
-                        if (finalCustomerId === "c-walkin") finalCustomerId = null;
-
-                        if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
-                          setShowReturnCustomerModal(true);
-                          return;
-                        }
-
-                        // Call Backend API to update MongoDB invoice, inventory & customer ledger
-                        try {
-                          const token = localStorage.getItem("token");
-                          const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          const returnItemsPayload = returnedItemIds.map(id => {
-                            const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
-                            let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
-                            
-                            // Adjust for proportional short-pay/discounts if any
-                            if (selectedInvoiceForReturn.billAdjustment) {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
-                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                              if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
-                                itemPrice -= (itemPrice * adjustmentRatio);
-                              } else {
-                                itemPrice += (itemPrice * adjustmentRatio);
-                              }
-                            }
-                            return {
-                              barcode: item?.barcode || item?.designNo || item?.itemCode || '',
-                              refundRate: Math.floor(itemPrice),
-                              condition: 'RESELLABLE'
-                            };
-                          });
-
-                          await api.post(`/returns`, {
-                            saleBillId: invId,
-                            saleBillNo: selectedInvoiceForReturn.invoiceNo,
-                            customerId: finalCustomerId,
-                            refundMode: returnRefundMode,
-                            reason: finalReason,
-                            items: returnItemsPayload,
-                            forceApprove: true
-                          });
-                        } catch (apiErr) {
-                          console.warn("Backend return endpoint call error:", apiErr.message);
-                          if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
-                          return; // Stop execution to prevent desync
-                        }
-
-                        // Update local invoices list so Invoice History reflects returned status immediately
-                        setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
-
-                        if (invoices) {
-                          const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                          if (idx !== -1) invoices[idx] = updatedInvoice;
-                        }
-
-                        if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
-                          onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
-                        }
-
-                        if (onAddNotification) {
-                          onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
-                        }
-
-                        // Auto-clear data and reset selection
-                        setSelectedInvoiceForReturn(null);
-                        setReturnedItemIds([]);
-                        setReturnApprovedCheckbox(false);
-                        setReturnSearchQuery("");
-                        setReturnReason("Defective / Damaged");
-                        setReturnCustomReason("");
-                      }}
-                      className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${returnApprovedCheckbox && returnedItemIds.length > 0 ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                    >
-                      Approve Return & Credit Customer Wallet
-                    </button>
-                  </div>
-                )}
-
-                {/* ─── EXCHANGE PANEL WORKFLOW ─── */}
-                {returnActionType === 'exchange' && (
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                      <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
-                        <RefreshCw className="w-4 h-4" />
-                        <span>Process Product Exchange & Issue Docket</span>
-                      </h4>
-                    </div>
-
-                    {/* Reason for Exchange */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        Reason for Exchange:
-                      </label>
-                      <select
-                        value={exchangeReason}
-                        onChange={(e) => setExchangeReason(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        <option value="Size / Fit Swap">Size / Fit Swap</option>
-                        <option value="Color Swap">Color / Hue Swap</option>
-                        <option value="Defective Replacement">Defective Item Replacement</option>
-                        <option value="Product Upgrade">Product Upgrade / Variant Change</option>
-                        <option value="Customer Preference">Customer Preference Change</option>
-                      </select>
-                    </div>
-
-                    {/* Step A: Select Item from Original Invoice to Exchange */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        1. Select Item from Invoice to Return / Swap Out:
-                      </label>
-                      <select
-                        value={exchangeOldItemIdx}
-                        onChange={(e) => {
-                          const idx = Number(e.target.value);
-                          const item = selectedInvoiceForReturn.items[idx];
-                          if (item && (item.hasAlteration || !!item.alterationRecord)) {
-                            setReturnWarning({
-                              show: true,
-                              title: "Alteration Detected",
-                              message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
-                            });
-                          }
-                          setExchangeOldItemIdx(idx);
-                        }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        {selectedInvoiceForReturn.items.map((item, idx) => (
-                          <option key={idx} value={idx}>
-                            {item.name} ({item.size || 'M'}/{item.color || 'Std'}) — ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Step B: Search/Enter Product ID or Barcode for New Product */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        2. Search or Enter Product ID / Barcode for New Exchanged Item:
-                      </label>
-                      <div className="relative">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
-                        <input
-                          type="text"
-                          value={exchangeNewSearchQuery}
-                          onChange={(e) => {
-                            setExchangeNewSearchQuery(e.target.value);
-                            const q = e.target.value.trim().toLowerCase();
-                            const match = products.find(p =>
-                              (p._id && p._id.toLowerCase() === q) ||
-                              (p.id && p.id.toLowerCase() === q) ||
-                              (p.barcode && p.barcode.toLowerCase() === q) ||
-                              (p.productCode && p.productCode.toLowerCase() === q) ||
-                              (p.name && p.name.toLowerCase() === q)
-                            );
-                            if (match) setExchangeSelectedNewProduct(match);
-                          }}
-                          placeholder="Enter product ID, barcode (e.g. BAR-001) or product name..."
-                          className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Customer Phone:</span>
+                        <span className="font-mono text-slate-700">{selectedInvoiceForReturn.customerPhone || 'Walk-in'}</span>
                       </div>
-
-                      {/* Matching Product Dropdown */}
-                      {exchangeNewSearchQuery && (
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs font-sans">
-                          {products
-                            .filter(p =>
-                              (p.name || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) ||
-                              (p.productCode || p.barcode || p.sku || p.id || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase())
-                            )
-                            .map(p => (
-                              <div
-                                key={p._id || p.id}
-                                onClick={() => {
-                                  setExchangeSelectedNewProduct(p);
-                                  setExchangeNewSearchQuery(`${p.name} (${p.size || 'M'}/${p.color || 'Std'})`);
-                                }}
-                                className="p-2.5 hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors"
-                              >
-                                <div>
-                                  <p className="font-bold text-slate-800">{p.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-mono">
-                                    ID/Barcode: {p.productCode || p.barcode || p.id} | Size: {p.size || 'M'} | Stock: {p.stock || p.stockQuantity || 10}
-                                  </p>
-                                </div>
-                                <span className="font-mono font-bold text-indigo-600">
-                                  ₹{(p.sellingPrice || p.price || 0).toLocaleString()}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Selected New Product Card */}
-                    {exchangeSelectedNewProduct && (
-                      <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex justify-between items-center text-xs">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Item:</p>
-                          <p className="font-extrabold text-slate-900">{exchangeSelectedNewProduct.name}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            SKU/ID: {exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.id} | Size: {exchangeSelectedNewProduct.size || 'M'} / {exchangeSelectedNewProduct.color || 'Std'}
-                          </p>
-                        </div>
-                        <span className="font-mono font-black text-indigo-700 text-sm">
-                          ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Date Issued:</span>
+                        <span className="font-mono text-slate-700">
+                          {selectedInvoiceForReturn.date ? new Date(selectedInvoiceForReturn.date).toLocaleString('en-IN') : '-'}
                         </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Grand Total:</span>
+                        <span className="font-mono font-bold text-slate-900">
+                          ₹{selectedInvoiceForReturn.grandTotal.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Payment Route:</span>
+                        <span className="font-bold text-emerald-600">{selectedInvoiceForReturn.paymentMethod}</span>
+                      </div>
+                      <div className="pt-2 mt-2 border-t border-slate-200">
+                        <button
+                          onClick={() => handleDownloadReceiptHTML(selectedInvoiceForReturn)}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        >
+                          <FileText className="w-4 h-4" />
+                          View Full Original Receipt
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* MODE SELECTION BUTTONS: RETURN vs EXCHANGE */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                        Choose Workflow Action:
+                      </label>
+                      <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setReturnActionType('return')}
+                          className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'return' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span>RETURN ITEMS</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReturnActionType('exchange')}
+                          className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${returnActionType === 'exchange' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          <span>EXCHANGE ITEMS</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN: ACTION PANELS */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:col-span-7 space-y-5">
+
+                    {/* ─── RETURN PANEL WORKFLOW ─── */}
+                    {returnActionType === 'return' && (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                          <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Process Item Return & Credit Refund</span>
+                          </h4>
+                        </div>
+
+                        {/* Reason for Return */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Reason for Return:
+                          </label>
+                          <select
+                            value={returnReason}
+                            onChange={(e) => setReturnReason(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
+                          >
+                            <option value="">None / Optional (Fast Checkout)</option>
+                            <option value="Defective / Damaged">Defective / Damaged Garment</option>
+                            <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
+                            <option value="Customer Changed Mind">Customer Changed Mind</option>
+                            <option value="Quality Dissatisfaction">Quality Dissatisfaction</option>
+                            <option value="Other">Other (Specify Custom Text)</option>
+                          </select>
+                          {returnReason === "Other" && (
+                            <input
+                              type="text"
+                              value={returnCustomReason}
+                              onChange={(e) => setReturnCustomReason(e.target.value)}
+                              placeholder="Enter specific return reason details..."
+                              className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium"
+                            />
+                          )}
+                        </div>
+
+                        {/* Select Items to Return */}
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-700 uppercase">
+                            Select Items to Return:
+                          </label>
+                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
+                            {selectedInvoiceForReturn.items.map((item, idx) => {
+                              const isChecked = returnedItemIds.includes(item.productId || item.id);
+                              return (
+                                <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                          setReturnWarning({
+                                            show: true,
+                                            title: "Alteration Detected",
+                                            message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
+                                          });
+                                        }
+                                        const targetId = item.productId || item.id;
+                                        setReturnedItemIds((prev) =>
+                                          isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+                                        );
+                                      }}
+                                      className="w-4 h-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+                                    />
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                        <span>{item.name}</span>
+                                        {item.isReturned && (
+                                          <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            RETURNED
+                                          </span>
+                                        )}
+                                        {item.isExchanged && (
+                                          <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            EXCHANGED
+                                          </span>
+                                        )}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity}
+                                      </p>
+                                      {!!(item.hasAlteration || item.alterationRecord) && (
+                                        <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
+                                          <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                          <span>
+                                            <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-bold font-mono text-slate-800">
+                                    ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {(hasManualAdj || hasImplicitAdj) && (
+                          <div className="bg-orange-50 p-3 rounded-xl border border-orange-200 flex items-start gap-2.5 animate-fade-in mb-3">
+                            <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-orange-800 font-bold text-xs block">Manual Bill Adjustment / Short Pay Applied</span>
+                              <span className="text-orange-600 text-[10.5px] font-medium leading-tight block mt-0.5">
+                                This bill had a net adjustment of -₹{totalAdjAmt}. The estimated refund amount is proportionally adjusted downwards.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Refund Estimate */}
+                        <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
+                          <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
+                          <span className="font-mono font-black text-rose-600 text-base">
+                            ₹{(() => {
+                              let rAmt = selectedInvoiceForReturn.items
+                                .filter((item) => returnedItemIds.includes(item.productId || item.id))
+                                .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = rAmt * adjustmentRatio;
+                                rAmt -= proportionalAdjustment;
+                                rAmt = Math.floor(rAmt);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = rAmt * adjustmentRatio;
+                                rAmt += proportionalAdjustment;
+                                rAmt = Math.floor(rAmt);
+                              }
+                              return rAmt.toLocaleString();
+                            })()}
+                          </span>
+                        </div>
+
+                        {/* Advance / Wallet Logic */}
+                        <div className="flex flex-col gap-3 mt-4">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Select Refund Destination:</label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div
+                              onClick={() => setReturnRefundMode('DIRECT_REFUND')}
+                              className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'DIRECT_REFUND' ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'DIRECT_REFUND' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
+                                {returnRefundMode === 'DIRECT_REFUND' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                              </div>
+                              <div>
+                                <p className={`text-sm font-bold ${returnRefundMode === 'DIRECT_REFUND' ? 'text-indigo-900' : 'text-slate-700'}`}>Refund to Customer</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Give money back directly</p>
+                              </div>
+                            </div>
+
+                            <div
+                              onClick={() => setReturnRefundMode('ADD_TO_ADVANCE')}
+                              className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'bg-amber-50 border-amber-500 shadow-sm' : 'bg-white border-slate-200 hover:border-amber-300'}`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
+                                {returnRefundMode === 'ADD_TO_ADVANCE' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                              </div>
+                              <div>
+                                <p className={`text-sm font-bold ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'text-amber-900' : 'text-slate-700'}`}>Save to Wallet</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Keep as advance for future</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Mandatory Approval Checkbox */}
+
+                        <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer mt-4">
+                          <input
+                            type="checkbox"
+                            checked={returnApprovedCheckbox}
+                            onChange={(e) => setReturnApprovedCheckbox(e.target.checked)}
+                            className="w-4 h-4 text-rose-600 rounded border-amber-300 focus:ring-rose-500 cursor-pointer shrink-0"
+                          />
+                          <span>I approve this return request & confirm physical garment condition has been verified.</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
+                          onClick={async () => {
+                            const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
+                            const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
+                            let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+
+                            if (totalAdjAmt > 0) {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                              const proportionalAdjustment = refundAmt * adjustmentRatio;
+                              refundAmt -= proportionalAdjustment;
+                              refundAmt = Math.floor(refundAmt);
+                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                              const proportionalAdjustment = refundAmt * adjustmentRatio;
+                              refundAmt += proportionalAdjustment;
+                              refundAmt = Math.floor(refundAmt);
+                            }
+
+                            const updatedItems = selectedInvoiceForReturn.items.map(item => {
+                              if (returnedItemIds.includes(item.productId || item.id)) {
+                                return {
+                                  ...item,
+                                  isReturned: true,
+                                  returnReason: finalReason,
+                                  returnedAt: new Date().toISOString()
+                                };
+                              }
+                              return item;
+                            });
+
+                            const allRet = updatedItems.every(i => i.isReturned);
+                            const updatedInvoice = {
+                              ...selectedInvoiceForReturn,
+                              hasReturn: true,
+                              returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                              status: allRet ? 'Returned' : 'Partially Returned',
+                              items: updatedItems
+                            };
+
+                            let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
+                            if (finalCustomerId === "c-walkin") finalCustomerId = null;
+
+                            if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
+                              setShowReturnCustomerModal(true);
+                              return;
+                            }
+
+                            // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                            try {
+                              const token = localStorage.getItem("token");
+                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                              const returnItemsPayload = returnedItemIds.map(id => {
+                                const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
+                                let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+
+                                // Adjust for proportional short-pay/discounts if any
+                                if (selectedInvoiceForReturn.billAdjustment) {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
+                                  const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                  if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                                    itemPrice -= (itemPrice * adjustmentRatio);
+                                  } else {
+                                    itemPrice += (itemPrice * adjustmentRatio);
+                                  }
+                                }
+                                return {
+                                  barcode: item?.barcode || item?.designNo || item?.itemCode || '',
+                                  refundRate: Math.floor(itemPrice),
+                                  condition: 'RESELLABLE'
+                                };
+                              });
+
+                              await api.post(`/returns`, {
+                                saleBillId: invId,
+                                saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                                customerId: finalCustomerId,
+                                refundMode: returnRefundMode,
+                                reason: finalReason,
+                                items: returnItemsPayload,
+                                forceApprove: true
+                              });
+                            } catch (apiErr) {
+                              console.warn("Backend return endpoint call error:", apiErr.message);
+                              if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
+                              return; // Stop execution to prevent desync
+                            }
+
+                            // Update local invoices list so Invoice History reflects returned status immediately
+                            setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                            if (invoices) {
+                              const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                              if (idx !== -1) invoices[idx] = updatedInvoice;
+                            }
+
+                            if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
+                              onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
+                            }
+
+                            if (onAddNotification) {
+                              onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
+                            }
+
+                            // Auto-clear data and reset selection
+                            setSelectedInvoiceForReturn(null);
+                            setReturnedItemIds([]);
+                            setReturnApprovedCheckbox(false);
+                            setReturnSearchQuery("");
+                            setReturnReason("Defective / Damaged");
+                            setReturnCustomReason("");
+                          }}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${returnApprovedCheckbox && returnedItemIds.length > 0 ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                        >
+                          Approve Return & Credit Customer Wallet
+                        </button>
                       </div>
                     )}
 
-                    {/* Price Difference Summary */}
-                    {(() => {
-                      const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                      if (!oldItem || !exchangeSelectedNewProduct) return null;
-                      
-                      let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
-                      if (totalAdjAmt > 0) {
-                        const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                        const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                        const proportionalAdjustment = oldPrice * adjustmentRatio;
-                        oldPrice -= proportionalAdjustment;
-                        oldPrice = Math.floor(oldPrice);
-                      } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                        const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                        const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                        const proportionalAdjustment = oldPrice * adjustmentRatio;
-                        oldPrice += proportionalAdjustment;
-                        oldPrice = Math.floor(oldPrice);
-                      }
+                    {/* ─── EXCHANGE PANEL WORKFLOW ─── */}
+                    {returnActionType === 'exchange' && (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                          <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <RefreshCw className="w-4 h-4" />
+                            <span>Process Product Exchange & Issue Docket</span>
+                          </h4>
+                        </div>
 
-                      const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
-                      const priceDiff = newPrice - oldPrice;
-                      
-                      return (
-                        <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Original Item Value:</span>
-                            <span>- ₹{oldPrice.toLocaleString()}</span>
+                        {/* Reason for Exchange */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Reason for Exchange:
+                          </label>
+                          <select
+                            value={exchangeReason}
+                            onChange={(e) => setExchangeReason(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="Size / Fit Swap">Size / Fit Swap</option>
+                            <option value="Color Swap">Color / Hue Swap</option>
+                            <option value="Defective Replacement">Defective Item Replacement</option>
+                            <option value="Product Upgrade">Product Upgrade / Variant Change</option>
+                            <option value="Customer Preference">Customer Preference Change</option>
+                          </select>
+                        </div>
+
+                        {/* Step A: Select Item from Original Invoice to Exchange */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            1. Select Item from Invoice to Return / Swap Out:
+                          </label>
+                          <select
+                            value={exchangeOldItemIdx}
+                            onChange={(e) => {
+                              const idx = Number(e.target.value);
+                              const item = selectedInvoiceForReturn.items[idx];
+                              if (item && (item.hasAlteration || !!item.alterationRecord)) {
+                                setReturnWarning({
+                                  show: true,
+                                  title: "Alteration Detected",
+                                  message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                                });
+                              }
+                              setExchangeOldItemIdx(idx);
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            {selectedInvoiceForReturn.items.map((item, idx) => (
+                              <option key={idx} value={idx}>
+                                {item.name} ({item.size || 'M'}/{item.color || 'Std'}) — ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Step B: Search/Enter Product ID or Barcode for New Product */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            2. Search or Enter Product ID / Barcode for New Exchanged Item:
+                          </label>
+                          <div className="relative">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+                            <input
+                              type="text"
+                              value={exchangeNewSearchQuery}
+                              onChange={(e) => {
+                                setExchangeNewSearchQuery(e.target.value);
+                                const q = e.target.value.trim().toLowerCase();
+                                const match = products.find(p =>
+                                  (p._id && p._id.toLowerCase() === q) ||
+                                  (p.id && p.id.toLowerCase() === q) ||
+                                  (p.barcode && p.barcode.toLowerCase() === q) ||
+                                  (p.productCode && p.productCode.toLowerCase() === q) ||
+                                  (p.name && p.name.toLowerCase() === q)
+                                );
+                                if (match) setExchangeSelectedNewProduct(match);
+                              }}
+                              placeholder="Enter product ID, barcode (e.g. BAR-001) or product name..."
+                              className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">New Item Value:</span>
-                            <span>+ ₹{newPrice.toLocaleString()}</span>
-                          </div>
-                          <div className="border-t border-slate-700 pt-2 flex justify-between font-bold text-sm">
-                            <span className="font-sans">Net Adjustment:</span>
-                            <span className={priceDiff > 0 ? 'text-amber-400' : priceDiff < 0 ? 'text-emerald-400' : 'text-white'}>
-                              {priceDiff > 0 ? `+ ₹${priceDiff.toLocaleString()} (Payable)` : priceDiff < 0 ? `- ₹${Math.abs(priceDiff).toLocaleString()} (Refund)` : '₹0 (Even Swap)'}
+
+                          {/* Matching Product Dropdown */}
+                          {exchangeNewSearchQuery && (
+                            <div className="bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs font-sans">
+                              {products
+                                .filter(p =>
+                                  (p.name || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) ||
+                                  (p.productCode || p.barcode || p.sku || p.id || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase())
+                                )
+                                .map(p => (
+                                  <div
+                                    key={p._id || p.id}
+                                    onClick={() => {
+                                      setExchangeSelectedNewProduct(p);
+                                      setExchangeNewSearchQuery(`${p.name} (${p.size || 'M'}/${p.color || 'Std'})`);
+                                    }}
+                                    className="p-2.5 hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors"
+                                  >
+                                    <div>
+                                      <p className="font-bold text-slate-800">{p.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        ID/Barcode: {p.productCode || p.barcode || p.id} | Size: {p.size || 'M'} | Stock: {p.stock || p.stockQuantity || 10}
+                                      </p>
+                                    </div>
+                                    <span className="font-mono font-bold text-indigo-600">
+                                      ₹{(p.sellingPrice || p.price || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Selected New Product Card */}
+                        {exchangeSelectedNewProduct && (
+                          <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex justify-between items-center text-xs">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Item:</p>
+                              <p className="font-extrabold text-slate-900">{exchangeSelectedNewProduct.name}</p>
+                              <p className="text-[10px] text-slate-500 font-mono">
+                                SKU/ID: {exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.id} | Size: {exchangeSelectedNewProduct.size || 'M'} / {exchangeSelectedNewProduct.color || 'Std'}
+                              </p>
+                            </div>
+                            <span className="font-mono font-black text-indigo-700 text-sm">
+                              ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}
                             </span>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        )}
 
-                    <button
-                      type="button"
-                      disabled={!exchangeSelectedNewProduct}
-                      onClick={async () => {
-                        const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                        if (!oldItem || !exchangeSelectedNewProduct) return;
+                        {/* Price Difference Summary */}
+                        {(() => {
+                          const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
+                          if (!oldItem || !exchangeSelectedNewProduct) return null;
 
-                        let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
-                        if (totalAdjAmt > 0) {
-                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                          const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                          const proportionalAdjustment = oldPrice * adjustmentRatio;
-                          oldPrice -= proportionalAdjustment;
-                          oldPrice = Math.floor(oldPrice);
-                        } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                          const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                          const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                          const proportionalAdjustment = oldPrice * adjustmentRatio;
-                          oldPrice += proportionalAdjustment;
-                          oldPrice = Math.floor(oldPrice);
-                        }
-
-                        const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
-                        const priceDiff = newPrice - oldPrice;
-
-                        const docket = {
-                          docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
-                          originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
-                          customerName: selectedInvoiceForReturn.customerName,
-                          customerPhone: selectedInvoiceForReturn.customerPhone,
-                          reason: exchangeReason,
-                          oldItem: {
-                            name: oldItem.name,
-                            size: oldItem.size || 'Std',
-                            color: oldItem.color || 'Std',
-                            price: oldPrice
-                          },
-                          newItem: {
-                            name: exchangeSelectedNewProduct.name,
-                            sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
-                            size: exchangeSelectedNewProduct.size || 'M',
-                            color: exchangeSelectedNewProduct.color || 'Standard',
-                            price: newPrice
-                          },
-                          priceDiff,
-                          cashierName: currentUser ? currentUser.name : "Store Cashier",
-                          createdAt: new Date().toISOString()
-                        };
-
-                        const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
-                          if (idx === exchangeOldItemIdx) {
-                            return {
-                              ...item,
-                              isExchanged: true,
-                              exchangedFor: exchangeSelectedNewProduct.name,
-                              exchangeReason
-                            };
+                          let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                          if (totalAdjAmt > 0) {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                            const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                            const proportionalAdjustment = oldPrice * adjustmentRatio;
+                            oldPrice -= proportionalAdjustment;
+                            oldPrice = Math.floor(oldPrice);
+                          } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                            const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                            const proportionalAdjustment = oldPrice * adjustmentRatio;
+                            oldPrice += proportionalAdjustment;
+                            oldPrice = Math.floor(oldPrice);
                           }
-                          return item;
-                        });
 
-                        const allEx = updatedItems.every(i => i.isExchanged);
-                        const updatedInvoice = {
-                          ...selectedInvoiceForReturn,
-                          hasExchange: true,
-                          exchangeSlip: docket,
-                          status: allEx ? 'Exchanged' : 'Partially Exchanged',
-                          items: updatedItems
-                        };
+                          const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                          const priceDiff = newPrice - oldPrice;
 
-                        // Call Backend API to process exchange in MongoDB
-                        try {
-                          const token = localStorage.getItem("token");
-                          const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                          const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
-                          await api.post(`/exchanges`, {
-                            originalBillId: invId,
-                            originalBillNo: selectedInvoiceForReturn.invoiceNo,
-                            customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
-                            returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
-                            newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
-                            returnedValue: oldPrice,
-                            newItemValue: newPrice,
-                            remarks: exchangeReason,
-                            forceApprove: true
-                          });
-                        } catch (apiErr) {
-                          console.warn("Backend exchange endpoint call error:", apiErr.message);
-                          if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
-                          return; // Stop execution to prevent desync
-                        }
+                          return (
+                            <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Original Item Value:</span>
+                                <span>- ₹{oldPrice.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">New Item Value:</span>
+                                <span>+ ₹{newPrice.toLocaleString()}</span>
+                              </div>
+                              <div className="border-t border-slate-700 pt-2 flex justify-between font-bold text-sm">
+                                <span className="font-sans">Net Adjustment:</span>
+                                <span className={priceDiff > 0 ? 'text-amber-400' : priceDiff < 0 ? 'text-emerald-400' : 'text-white'}>
+                                  {priceDiff > 0 ? `+ ₹${priceDiff.toLocaleString()} (Payable)` : priceDiff < 0 ? `- ₹${Math.abs(priceDiff).toLocaleString()} (Refund)` : '₹0 (Even Swap)'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
-                        // Update local invoices list so Invoice History reflects exchanged status immediately
-                        setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+                        <button
+                          type="button"
+                          disabled={!exchangeSelectedNewProduct}
+                          onClick={async () => {
+                            const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
+                            if (!oldItem || !exchangeSelectedNewProduct) return;
 
-                        if (invoices) {
-                          const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                          if (idx !== -1) invoices[idx] = updatedInvoice;
-                        }
+                            let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                            if (totalAdjAmt > 0) {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                              const proportionalAdjustment = oldPrice * adjustmentRatio;
+                              oldPrice -= proportionalAdjustment;
+                              oldPrice = Math.floor(oldPrice);
+                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                              const proportionalAdjustment = oldPrice * adjustmentRatio;
+                              oldPrice += proportionalAdjustment;
+                              oldPrice = Math.floor(oldPrice);
+                            }
 
-                        setCompletedExchangeSlip(docket);
-                        setShowExchangeSlipModal(true);
+                            const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                            const priceDiff = newPrice - oldPrice;
 
-                        if (onAddNotification) {
-                          onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
-                        }
+                            const docket = {
+                              docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+                              originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
+                              customerName: selectedInvoiceForReturn.customerName,
+                              customerPhone: selectedInvoiceForReturn.customerPhone,
+                              reason: exchangeReason,
+                              oldItem: {
+                                name: oldItem.name,
+                                size: oldItem.size || 'Std',
+                                color: oldItem.color || 'Std',
+                                price: oldPrice
+                              },
+                              newItem: {
+                                name: exchangeSelectedNewProduct.name,
+                                sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
+                                size: exchangeSelectedNewProduct.size || 'M',
+                                color: exchangeSelectedNewProduct.color || 'Standard',
+                                price: newPrice
+                              },
+                              priceDiff,
+                              cashierName: currentUser ? currentUser.name : "Store Cashier",
+                              createdAt: new Date().toISOString()
+                            };
 
-                        // Auto-clear search & selection data after completing exchange
-                        setSelectedInvoiceForReturn(null);
-                        setExchangeSelectedNewProduct(null);
-                        setExchangeNewSearchQuery("");
-                        setReturnSearchQuery("");
-                      }}
-                      className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${exchangeSelectedNewProduct ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                    >
-                      Generate Exchange Slip & Invoice
-                    </button>
+                            const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                              if (idx === exchangeOldItemIdx) {
+                                return {
+                                  ...item,
+                                  isExchanged: true,
+                                  exchangedFor: exchangeSelectedNewProduct.name,
+                                  exchangeReason
+                                };
+                              }
+                              return item;
+                            });
+
+                            const allEx = updatedItems.every(i => i.isExchanged);
+                            const updatedInvoice = {
+                              ...selectedInvoiceForReturn,
+                              hasExchange: true,
+                              exchangeSlip: docket,
+                              status: allEx ? 'Exchanged' : 'Partially Exchanged',
+                              items: updatedItems
+                            };
+
+                            // Call Backend API to process exchange in MongoDB
+                            try {
+                              const token = localStorage.getItem("token");
+                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                              const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
+                              await api.post(`/exchanges`, {
+                                originalBillId: invId,
+                                originalBillNo: selectedInvoiceForReturn.invoiceNo,
+                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                                returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
+                                newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
+                                returnedValue: oldPrice,
+                                newItemValue: newPrice,
+                                remarks: exchangeReason,
+                                forceApprove: true
+                              });
+                            } catch (apiErr) {
+                              console.warn("Backend exchange endpoint call error:", apiErr.message);
+                              if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
+                              return; // Stop execution to prevent desync
+                            }
+
+                            // Update local invoices list so Invoice History reflects exchanged status immediately
+                            setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                            if (invoices) {
+                              const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                              if (idx !== -1) invoices[idx] = updatedInvoice;
+                            }
+
+                            setCompletedExchangeSlip(docket);
+                            setShowExchangeSlipModal(true);
+
+                            if (onAddNotification) {
+                              onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
+                            }
+
+                            // Auto-clear search & selection data after completing exchange
+                            setSelectedInvoiceForReturn(null);
+                            setExchangeSelectedNewProduct(null);
+                            setExchangeNewSearchQuery("");
+                            setReturnSearchQuery("");
+                          }}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${exchangeSelectedNewProduct ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                        >
+                          Generate Exchange Slip & Invoice
+                        </button>
+                      </div>
+                    )}
+
                   </div>
-                )}
-
-              </div>
-            </div>
-            );
+                </div>
+              );
             })()
           )}
         </div>
@@ -6057,24 +6045,24 @@ export const BillingPOSView = ({
               Customer details are mandatory to save the returned amount as an advance in their wallet.
             </p>
 
-            <form 
+            <form
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (!returnCustomerName || !returnCustomerPhone) return;
-                
+
                 try {
-                  const custRes = await api.post('/crm/customers', { name: returnCustomerName, phone: returnCustomerPhone });
-                  
+                  const custRes = await api.post('/customers', { name: returnCustomerName, phone: returnCustomerPhone });
+
                   // Now trigger the return logic with the newly created customer
                   setShowReturnCustomerModal(false);
-                  
+
                   // Re-trigger the Approve Return manually but bypassing the check since we have the new customer ID
-                  const finalCustomerId = custRes.data.customer._id;
-                  
+                  const finalCustomerId = custRes.data.data._id;
+
                   const token = localStorage.getItem("token");
                   const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
                   const finalReason = returnCustomReason.trim() !== "" ? returnCustomReason : returnReason;
-                  
+
                   const returnItemsPayload = returnedItemIds.map(id => {
                     const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
                     let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
@@ -6105,7 +6093,7 @@ export const BillingPOSView = ({
                   }, { headers: { Authorization: `Bearer ${token}` } });
 
                   if (onAddNotification) onAddNotification("Success", "Return processed successfully & Customer created", "success");
-                  
+
                   setSelectedInvoiceForReturn(null);
                   setReturnedItemIds([]);
                   setReturnApprovedCheckbox(false);
@@ -6115,7 +6103,7 @@ export const BillingPOSView = ({
                 } catch (err) {
                   if (onAddNotification) onAddNotification("Error", "Failed to create customer and process return", "danger");
                 }
-              }} 
+              }}
               className="space-y-4"
             >
               <div>
@@ -8254,8 +8242,8 @@ export const BillingPOSView = ({
                                 }
                               }}
                               className={`py-1.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${infoPanelTab === t.id
-                                  ? 'bg-white text-slate-800 shadow-xs'
-                                  : 'text-slate-500 hover:text-slate-700'
+                                ? 'bg-white text-slate-800 shadow-xs'
+                                : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
                               {t.label}
@@ -8268,7 +8256,7 @@ export const BillingPOSView = ({
                           {infoPanelTab === 'General' && (
                             <div className="space-y-2 text-slate-700">
                               <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1 mb-2">🛈 General Details</div>
-                              
+
                               {/* Product Image Section */}
                               <div className="flex justify-center border border-slate-200 rounded p-2 bg-slate-50 mb-3">
                                 {activeItem.imageUrl ? (
@@ -8799,7 +8787,7 @@ export const BillingPOSView = ({
               <p className="text-[10px] text-slate-400 mt-4 text-center font-semibold bg-slate-50 p-2 rounded-lg border border-slate-100">Settings are saved locally for this session.</p>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-               <button onClick={() => setShowConfigModal(false)} className="px-5 py-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white rounded-lg text-xs font-bold shadow-sm">Save Changes</button>
+              <button onClick={() => setShowConfigModal(false)} className="px-5 py-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white rounded-lg text-xs font-bold shadow-sm">Save Changes</button>
             </div>
           </div>
         </div>
@@ -8881,7 +8869,7 @@ export const BillingPOSView = ({
                 <input
                   type="text"
                   value={otherBillDetails.transporter}
-                  onChange={(e) => setOtherBillDetails({...otherBillDetails, transporter: e.target.value})}
+                  onChange={(e) => setOtherBillDetails({ ...otherBillDetails, transporter: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow"
                   placeholder="e.g. DTDC, BlueDart"
                 />
@@ -8891,7 +8879,7 @@ export const BillingPOSView = ({
                 <input
                   type="text"
                   value={otherBillDetails.trackingNo}
-                  onChange={(e) => setOtherBillDetails({...otherBillDetails, trackingNo: e.target.value})}
+                  onChange={(e) => setOtherBillDetails({ ...otherBillDetails, trackingNo: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-mono font-bold text-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow"
                   placeholder="e.g. LR-12345678"
                 />
@@ -8900,14 +8888,14 @@ export const BillingPOSView = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Shipping Address / Notes</label>
                 <textarea
                   value={otherBillDetails.shippingAddress}
-                  onChange={(e) => setOtherBillDetails({...otherBillDetails, shippingAddress: e.target.value})}
+                  onChange={(e) => setOtherBillDetails({ ...otherBillDetails, shippingAddress: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl p-2.5 text-sm font-medium text-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-shadow min-h-[80px]"
                   placeholder="Shipping notes or destination address..."
                 />
               </div>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-               <button onClick={() => setShowOtherDetailsModal(false)} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors text-white rounded-xl text-xs font-bold shadow-sm shadow-purple-200">Save Details</button>
+              <button onClick={() => setShowOtherDetailsModal(false)} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors text-white rounded-xl text-xs font-bold shadow-sm shadow-purple-200">Save Details</button>
             </div>
           </div>
         </div>
@@ -8981,11 +8969,11 @@ export const BillingPOSView = ({
                 <CreditCard className="w-6 h-6 animate-pulse" />
               </div>
             </div>
-            
+
             <h3 className="text-base font-black text-slate-800 mb-1 tracking-wider uppercase">
               Payment Quick Tab Initialization
             </h3>
-            
+
             <p className="text-sm font-bold text-indigo-600 mb-4 animate-pulse">
               {paymentLoaderMessage}
             </p>
@@ -9251,7 +9239,7 @@ export const BillingPOSView = ({
                         {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
                           <button
                             key={i}
-                            onClick={() => {
+                            onClick={async () => {
                               if (btn === 'Pay') {
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
                                 if (paymentType === 'Full Payment' && cashTot < grandTotal) {
@@ -9259,13 +9247,14 @@ export const BillingPOSView = ({
                                   return;
                                 }
                                 setShowPaymentModal(false);
-                                handlePrintConfirm();
+                                const saved = await handleCheckoutSubmit(false, true, true);
+                                if (saved) handleDirectPrint(saved);
                               } else if (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00'].includes(btn)) {
                                 setCashDenominations(p => ({ ...p, [activeDenomination]: (p[activeDenomination]?.toString() || '') + btn }));
                               }
                             }}
                             className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' :
-                                ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
+                              ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
                               }`}
                           >
                             {btn}
@@ -9455,11 +9444,12 @@ export const BillingPOSView = ({
                         {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
                           <button
                             key={i}
-                            onClick={() => {
+                            onClick={async () => {
                               if (btn === 'Pay') {
                                 if (paymentType === 'Full Payment') {
                                   setShowPaymentModal(false);
-                                  handlePrintConfirm();
+                                  const saved = await handleCheckoutSubmit(false, true, true);
+                                  if (saved) handleDirectPrint(saved);
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -9469,14 +9459,15 @@ export const BillingPOSView = ({
                                   return;
                                 }
                                 setShowPaymentModal(false);
-                                handlePrintConfirm();
+                                const saved = await handleCheckoutSubmit(false, true, true);
+                                if (saved) handleDirectPrint(saved);
                               } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
                                 setPartPaymentAmounts(p => ({ ...p, Advance: (p.Advance?.toString() || '') + btn }));
                                 setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
                               }
                             }}
                             className={`py-3 bg-white hover:bg-slate-50 border border-slate-300 rounded font-bold text-slate-700 shadow-sm active:scale-95 transition-transform text-xl cursor-pointer ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base' :
-                                ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
+                              ['+', '-', '='].includes(btn) ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''
                               }`}
                           >
                             {btn}
@@ -9573,7 +9564,7 @@ export const BillingPOSView = ({
                               }
                             }}
                             className={`py-3 bg-white border border-slate-300 rounded font-bold text-slate-700 shadow-sm transition-transform text-xl ${btn === 'Pay' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 text-base active:scale-95 cursor-pointer' :
-                                paymentType === 'Part Payment' ? 'hover:bg-slate-50 active:scale-95 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                              paymentType === 'Part Payment' ? 'hover:bg-slate-50 active:scale-95 cursor-pointer' : 'opacity-60 cursor-not-allowed'
                               } ${['+', '-', '='].includes(btn) && paymentType === 'Part Payment' ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300' : ''}`}
                           >
                             {btn}
@@ -9604,15 +9595,14 @@ export const BillingPOSView = ({
                                 setAllocatedFullPaymentMode(paymentMethod);
                               }
                             }}
-                            className={`w-full py-3 ${
-                              (paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) || 
-                              (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
+                            className={`w-full py-3 ${(paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) ||
+                                (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
                                 ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'
-                            } text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
+                              } text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
                           >
                             <CheckCircle className="w-4 h-4" /> {
-                              (paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) || 
-                              (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
+                              (paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) ||
+                                (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
                                 ? `PAID VIA ${paymentMethod}` : `PAY ${paymentMethod}`
                             } (&#8377;{displayVal.toLocaleString('en-IN')})
                           </button>
@@ -9736,7 +9726,7 @@ export const BillingPOSView = ({
                       setIsSavingPayment(true);
                       try {
                         setShowPaymentModal(false);
-                        await handlePrintConfirm();
+                        await handleCheckoutSubmit(false, true, true);
                       } finally {
                         setIsSavingPayment(false);
                       }
@@ -9762,7 +9752,8 @@ export const BillingPOSView = ({
                       setIsSavingPayment(true);
                       try {
                         setShowPaymentModal(false);
-                        await handlePrintConfirm();
+                        const saved = await handleCheckoutSubmit(false, true, true);
+                        if (saved) handleDirectPrint(saved);
                       } finally {
                         setIsSavingPayment(false);
                       }

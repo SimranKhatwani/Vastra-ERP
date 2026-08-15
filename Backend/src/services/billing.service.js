@@ -18,7 +18,7 @@ class BillingService {
     let customer = null;
     if (billData.customerId && billData.customerId !== 'c-walkin') {
       customer = await Customer.findOne({ _id: billData.customerId, tenantId });
-    } else if (billData.customerPhone && billData.customerPhone !== 'N/A' && billData.customerPhone !== '9999999999') {
+    } else if (billData.customerPhone && billData.customerPhone !== 'N/A' && billData.customerPhone !== '') {
       customer = await Customer.findOne({ phone: billData.customerPhone, tenantId });
       if (!customer) {
         customer = await Customer.create({
@@ -30,7 +30,7 @@ class BillingService {
       }
     }
 
-    // We no longer create a dummy 9999999999 customer if missing.
+
     // customer will simply remain null for true walk-ins.
 
     let subTotal = 0;
@@ -141,12 +141,12 @@ class BillingService {
         const prd = targetProductId
           ? await Product.findOne({ _id: targetProductId, tenantId })
           : await Product.findOne({
-              tenantId,
-              $or: [
-                { barcode: fallbackBarcode },
-                { itemCode: fallbackBarcode }
-              ]
-            }) || defaultPrd;
+            tenantId,
+            $or: [
+              { barcode: fallbackBarcode },
+              { itemCode: fallbackBarcode }
+            ]
+          }) || defaultPrd;
 
         piece = await InventoryPiece.create({
           tenantId,
@@ -170,13 +170,13 @@ class BillingService {
         const prd = targetProductId
           ? await Product.findOne({ _id: targetProductId, tenantId })
           : await Product.findOne({
-              tenantId,
-              $or: [
-                { barcode: itemBarcode },
-                { itemCode: itemBarcode },
-                { uniqueCode: itemBarcode }
-              ]
-            }) || defaultPrd;
+            tenantId,
+            $or: [
+              { barcode: itemBarcode },
+              { itemCode: itemBarcode },
+              { uniqueCode: itemBarcode }
+            ]
+          }) || defaultPrd;
         if (prd) {
           piece.productId = prd._id;
           await piece.save();
@@ -226,7 +226,7 @@ class BillingService {
       tenantId,
       billNo: billData.billNo || `BILL-${Date.now()}`,
       billDate: billData.billDate || new Date(),
-      customerId: customer._id,
+      customerId: customer ? customer._id : undefined,
       firmId,
       warehouseId,
       salesmanId,
