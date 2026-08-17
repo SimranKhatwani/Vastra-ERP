@@ -166,27 +166,103 @@ class AlterationService {
     return { alteration, items };
   }
 
-  static async getAlterationDashboard(tenantId) {
+  static async getAlterationDashboard(tenantId, dateRange) {
+    const filter = { tenantId, isDeleted: false };
+    
+    if (dateRange && dateRange !== 'All Time' && dateRange !== 'All') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let startDate = new Date(today);
+      let endDate = new Date(today);
+      endDate.setHours(23, 59, 59, 999);
+
+      if (dateRange === 'Today') {
+        filter.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (dateRange === 'Yesterday') {
+        startDate.setDate(startDate.getDate() - 1);
+        endDate.setDate(endDate.getDate() - 1);
+        filter.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (dateRange === 'Last 7 Days') {
+        startDate.setDate(startDate.getDate() - 6);
+        filter.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (dateRange === 'Last 30 Days') {
+        startDate.setDate(startDate.getDate() - 29);
+        filter.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (dateRange === 'This Month') {
+        startDate.setDate(1);
+        filter.createdAt = { $gte: startDate, $lte: endDate };
+      }
+    }
+
     const totalPending = await Alteration.countDocuments({
-      tenantId,
-      status: { $in: [ALTERATION_STATUS.RECEIVED, ALTERATION_STATUS.IN_PROGRESS] },
-      isDeleted: false
+      ...filter,
+      status: { $in: [ALTERATION_STATUS.RECEIVED, ALTERATION_STATUS.IN_PROGRESS] }
     });
     const totalCompleted = await Alteration.countDocuments({
-      tenantId,
-      status: ALTERATION_STATUS.COMPLETED,
-      isDeleted: false
+      ...filter,
+      status: ALTERATION_STATUS.COMPLETED
     });
     const totalDelivered = await Alteration.countDocuments({
-      tenantId,
-      status: ALTERATION_STATUS.DELIVERED,
-      isDeleted: false
+      ...filter,
+      status: ALTERATION_STATUS.DELIVERED
     });
+
+    const alterations = await Alteration.find(filter).select('_id');
+    const alterationIds = alterations.map(a => a._id);
+    
+    const items = await AlterationItem.find({ alterationId: { $in: alterationIds }, tenantId });
+    
+    const typesCount = {
+      Sleeve: 0,
+      Length: 0,
+      Waist: 0,
+      Bottom: 0,
+      Shoulder: 0,
+      Neck: 0,
+      Others: 0
+    };
+    let totalTypeCount = 0;
+
+    items.forEach(item => {
+      const instr = item.instructions || "";
+      const parts = instr.split(/[,|]/).map(s => s.trim());
+      let hasStandard = false;
+
+      let added = { Sleeve: false, Length: false, Waist: false, Bottom: false, Shoulder: false, Neck: false, Others: false };
+
+      parts.forEach(part => {
+        const lower = part.toLowerCase();
+        if (lower.includes("sleeve")) { added.Sleeve = true; hasStandard = true; }
+        else if (lower.includes("length shortening")) { added.Length = true; hasStandard = true; } 
+        else if (lower.includes("waist")) { added.Waist = true; hasStandard = true; }
+        else if (lower.includes("bottom")) { added.Bottom = true; hasStandard = true; }
+        else if (lower.includes("shoulder")) { added.Shoulder = true; hasStandard = true; }
+        else if (lower.includes("neck")) { added.Neck = true; hasStandard = true; }
+      });
+      
+      if (instr.toLowerCase().includes("chest") || (!hasStandard && instr.trim().length > 0)) { 
+        added.Others = true; 
+      }
+      
+      if (added.Sleeve) typesCount.Sleeve++;
+      if (added.Length) typesCount.Length++;
+      if (added.Waist) typesCount.Waist++;
+      if (added.Bottom) typesCount.Bottom++;
+      if (added.Shoulder) typesCount.Shoulder++;
+      if (added.Neck) typesCount.Neck++;
+      if (added.Others) typesCount.Others++;
+    });
+
+    totalTypeCount = Object.values(typesCount).reduce((a, b) => a + b, 0);
 
     return {
       pending: totalPending,
       completed: totalCompleted,
-      delivered: totalDelivered
+      delivered: totalDelivered,
+      typeSummary: {
+        totalAlterations: totalTypeCount,
+        alterationTypes: typesCount
+      }
     };
   }
 }

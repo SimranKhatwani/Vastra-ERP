@@ -28,6 +28,12 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  Shirt,
+  Ruler,
+  User,
+  Briefcase,
+  MoreHorizontal,
+  ChevronRight,
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -91,6 +97,8 @@ export const DashboardView = ({
   const [commStats, setCommStats] = React.useState(null);
   const [attendanceStats, setAttendanceStats] = React.useState(null);
   const [alterationStats, setAlterationStats] = React.useState(null);
+  const [altTypeSummary, setAltTypeSummary] = React.useState(null);
+  const [altSummaryDate, setAltSummaryDate] = React.useState("Today");
   const [dbStaffList, setDbStaffList] = React.useState([]);
   const [dbEmployeesList, setDbEmployeesList] = React.useState([]);
   const [dbInvoicesList, setDbInvoicesList] = React.useState([]);
@@ -212,6 +220,21 @@ export const DashboardView = ({
       fetchStaffSummary();
     }
   }, [currentUser]);
+
+  React.useEffect(() => {
+    const fetchAlterationTypeSummary = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
+        if (res.data.success) {
+          setAltTypeSummary(res.data.data.typeSummary);
+        }
+      } catch (error) {
+        console.error("Failed to fetch alteration type summary", error);
+      }
+    };
+    fetchAlterationTypeSummary();
+  }, [altSummaryDate]);
 
   // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
   const now = new Date();
@@ -1306,6 +1329,77 @@ export const DashboardView = ({
           </div>
         );
       })()}
+
+      {/* ─── ALTERATION TYPE SUMMARY WIDGET (DASHBOARD SYNC) ─── */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4 mt-6">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">Alteration Type Summary</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Distribution of alterations by component type</p>
+          </div>
+          <div className="relative">
+            <select
+              value={altSummaryDate}
+              onChange={(e) => setAltSummaryDate(e.target.value)}
+              className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none hover:bg-slate-100 cursor-pointer shadow-xs appearance-none pr-9 transition-colors"
+            >
+              <option value="Today">Today</option>
+              <option value="Yesterday">Yesterday</option>
+              <option value="Last 7 Days">Last 7 Days</option>
+              <option value="Last 30 Days">Last 30 Days</option>
+              <option value="This Month">This Month</option>
+              <option value="All Time">All Time</option>
+            </select>
+            <ChevronRight className="w-4 h-4 absolute right-3 top-2.5 text-slate-400 rotate-90 pointer-events-none" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          {[
+            { key: "Sleeve", icon: <Shirt className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Length", icon: <Ruler className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Waist", icon: <User className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Bottom", icon: <Layers className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Shoulder", icon: <Briefcase className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Neck", icon: <UserCheck className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> },
+            { key: "Others", icon: <MoreHorizontal className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" /> }
+          ].map((type) => {
+            const count = altTypeSummary?.alterationTypes?.[type.key] || 0;
+            const total = altTypeSummary?.totalAlterations || 1;
+            const percent = ((count / total) * 100).toFixed(2);
+
+            return (
+              <button
+                key={type.key}
+                onClick={() => {
+                  if (typeof openArticulationWithDefaults === "function") {
+                    openArticulationWithDefaults({ tab: "dashboard", filterStatus: "All" });
+                  } else {
+                    setActiveTab("articulation");
+                  }
+                }}
+                className="group flex flex-col items-center justify-center p-4 rounded-xl border border-indigo-100/50 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5"
+              >
+                <div className="flex flex-col items-center gap-2 mb-2">
+                  {type.icon}
+                  <span className="text-xs font-bold text-indigo-900">{type.key}</span>
+                </div>
+                <span className="text-2xl font-black text-slate-900 font-mono mb-1">{count}</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-100">{count > 0 ? percent : "0.00"}%</span>
+              </button>
+            );
+          })}
+          
+          {/* TOTAL CARD */}
+          <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-indigo-200 bg-indigo-100/50 shadow-xs">
+            <div className="flex flex-col items-center gap-2 mb-2 text-indigo-900">
+              <span className="text-[11px] font-black uppercase tracking-widest mt-1">Total</span>
+            </div>
+            <span className="text-2xl font-black text-slate-900 font-mono mb-1">{altTypeSummary?.totalAlterations || 0}</span>
+            <span className="text-[10px] font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-full border border-indigo-100">100%</span>
+          </div>
+        </div>
+      </div>
 
       {/* Alert Banners & Second Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">

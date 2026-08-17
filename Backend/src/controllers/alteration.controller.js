@@ -26,7 +26,7 @@ class AlterationController {
   });
 
   static getDashboard = asyncHandler(async (req, res) => {
-    const dashboard = await AlterationService.getAlterationDashboard(req.tenantId);
+    const dashboard = await AlterationService.getAlterationDashboard(req.tenantId, req.query.dateRange);
     return res.status(200).json(new ApiResponse(200, dashboard, 'Alteration dashboard metrics fetched.'));
   });
 }

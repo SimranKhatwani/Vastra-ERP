@@ -40,6 +40,8 @@ import {
   Phone,
   Star,
   RefreshCw,
+  Shirt,
+  MoreHorizontal
 } from "lucide-react";
 
 export const ArticulationView = ({
@@ -249,6 +251,9 @@ export const ArticulationView = ({
   const [alterationRecords, setAlterationRecords] = useState(defaultAlterationsList);
   const [alterationsFilterStatus, setAlterationsFilterStatus] = useState(initialFilterStatus || "All");
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
+  const [alterationsFilterType, setAlterationsFilterType] = useState("All");
+  const [altSummaryDate, setAltSummaryDate] = useState("Today");
+  const [altTypeSummary, setAltTypeSummary] = useState(null);
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
 
@@ -615,6 +620,22 @@ export const ArticulationView = ({
     const interval = setInterval(fetchAlterations, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchAlterationDashboard = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
+      if (res.data.success) {
+        setAltTypeSummary(res.data.data.typeSummary);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard summary:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAlterationDashboard();
+  }, [altSummaryDate]);
 
   // ─── CENTER PANEL STATE ───
   // Section 3: Garments
@@ -1308,6 +1329,76 @@ export const ArticulationView = ({
               </div>
             </div>
 
+            {/* ALTERATION TYPE SUMMARY */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Alteration Type Summary</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Count of alterations by type</p>
+                </div>
+                <div className="relative">
+                  <select
+                    value={altSummaryDate}
+                    onChange={(e) => setAltSummaryDate(e.target.value)}
+                    className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 outline-none hover:bg-slate-50 cursor-pointer shadow-xs appearance-none pr-8"
+                  >
+                    <option value="Today">Today</option>
+                    <option value="Yesterday">Yesterday</option>
+                    <option value="Last 7 Days">Last 7 Days</option>
+                    <option value="Last 30 Days">Last 30 Days</option>
+                    <option value="This Month">This Month</option>
+                    <option value="All Time">All Time</option>
+                  </select>
+                  <ChevronRight className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 rotate-90 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2">
+                {[
+                  { key: "Sleeve", icon: <Shirt className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Length", icon: <Ruler className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Waist", icon: <User className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Bottom", icon: <Layers className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Shoulder", icon: <Briefcase className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Neck", icon: <UserCheck className="w-4 h-4 text-indigo-600" /> },
+                  { key: "Others", icon: <MoreHorizontal className="w-4 h-4 text-indigo-600" /> }
+                ].map((type) => {
+                  const count = altTypeSummary?.alterationTypes?.[type.key] || 0;
+                  const total = altTypeSummary?.totalAlterations || 1;
+                  const percent = ((count / total) * 100).toFixed(2);
+                  const isSelected = alterationsFilterType === type.key;
+
+                  return (
+                    <button
+                      key={type.key}
+                      onClick={() => setAlterationsFilterType(isSelected ? "All" : type.key)}
+                      className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
+                        isSelected 
+                          ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20 shadow-sm" 
+                          : "bg-indigo-50/30 border-indigo-100 hover:bg-indigo-50 hover:border-indigo-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1 text-indigo-900">
+                        {type.icon}
+                        <span className="text-[11px] font-bold">{type.key}</span>
+                      </div>
+                      <span className="text-xl font-black text-slate-900 font-mono mb-1">{count}</span>
+                      <span className="text-[10px] font-bold text-slate-500">{count > 0 ? percent : "0.00"}%</span>
+                    </button>
+                  );
+                })}
+                
+                {/* TOTAL CARD */}
+                <div className="flex-1 min-w-[100px] flex flex-col items-center justify-center p-3 rounded-xl border border-indigo-100 bg-indigo-50/50">
+                  <div className="flex items-center gap-1.5 mb-1 text-indigo-900">
+                    <span className="text-[11px] font-black uppercase tracking-widest">Total</span>
+                  </div>
+                  <span className="text-xl font-black text-slate-900 font-mono mb-1">{altTypeSummary?.totalAlterations || 0}</span>
+                  <span className="text-[10px] font-bold text-slate-500">100%</span>
+                </div>
+              </div>
+            </div>
+
             {/* SEARCH & FILTER BAR */}
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
               <div className="relative flex-1">
@@ -1407,6 +1498,31 @@ export const ArticulationView = ({
                       .filter(a => {
                         const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
                         if (!matchesStatus) return false;
+
+                        if (alterationsFilterType !== "All") {
+                          const detailsStr = ((a.alterationDetails || []).join(" ") + " " + (a.instructions || "")).toLowerCase();
+                          if (alterationsFilterType === "Others") {
+                            // "Others" matches if it includes chest or has something that isn't one of the main categories
+                            let isOther = false;
+                            if (detailsStr.includes("chest")) isOther = true;
+                            if (!isOther && detailsStr.length > 0) {
+                              const hasStd = ["sleeve", "length shortening", "waist", "bottom", "shoulder", "neck"].some(std => detailsStr.includes(std));
+                              if (!hasStd) isOther = true;
+                            }
+                            if (!isOther) return false;
+                          } else {
+                            const searchMap = {
+                              "Sleeve": "sleeve",
+                              "Length": "length shortening",
+                              "Waist": "waist",
+                              "Bottom": "bottom",
+                              "Shoulder": "shoulder",
+                              "Neck": "neck"
+                            };
+                            if (!detailsStr.includes(searchMap[alterationsFilterType])) return false;
+                          }
+                        }
+
                         if (!alterationSearchQuery.trim()) return true;
                         const q = alterationSearchQuery.toLowerCase().trim();
                         return (
