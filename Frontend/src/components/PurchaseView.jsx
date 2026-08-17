@@ -1318,7 +1318,7 @@ const VendorOutstandingReports = ({ vendorOutstanding, setVendorOutstanding, onA
           <div className="mb-4 bg-slate-50 rounded-xl p-3 grid grid-cols-3 gap-2 text-xs">
             <div><p className="text-slate-400">Bill Amount</p><p className="font-black text-slate-800">₹{fmt(payModal.billAmount)}</p></div>
             <div><p className="text-slate-400">Already Paid</p><p className="font-black text-emerald-600">₹{fmt(payModal.amountPaid)}</p></div>
-            <div><p className="text-slate-400">Outstanding</p><p className="font-black text-red-600">₹{fmt(payModal.outstandingAmount)}</p></div>
+            <div><p className="text-slate-400">Due Amount</p><p className="font-black text-red-600">₹{fmt(payModal.outstandingAmount)}</p></div>
           </div>
           <form onSubmit={handlePayment} className="space-y-3">
             <InputRow label="Payment Amount (₹)" required>

@@ -204,7 +204,7 @@ export const CustomersView = ({
         ? new Date(invoice.date).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })
         : "-";
       const advAmt = invoice.advanceApplied || (invoice.splitPayments?.find(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE')?.amount || 0);
-      const htmlContent = `<!DOCTYPE html><html><head><title>Receipt ${invoice.invoiceNo}</title><style>body{font-family:'Courier New',Courier,monospace;color:#000;padding:20px;max-width:380px;margin:0 auto}.text-center{text-align:center}.header{font-size:14px;font-weight:bold;margin-bottom:5px}.details{font-size:11px;line-height:1.4;margin-bottom:10px}.divider{border-bottom:1px dashed #000;margin:10px 0}table{width:100%;font-size:11px}th{text-align:left}.text-right{text-align:right}.totals{font-weight:bold}</style></head><body><div class="text-center header">GarmentFlow ERP</div><div class="divider"></div><div class="details"><b>Receipt No:</b> ${invoice.invoiceNo}<br><b>Date:</b> ${receiptDate}<br><b>Customer:</b> ${invoice.customerName || "-"} ${invoice.customerPhone ? "(" + invoice.customerPhone + ")" : ""}</div><div class="divider"></div><table><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead><tbody>${(invoice.items || []).map(item => "<tr><td>" + (item.name||"") + "</td><td class=\"text-right\">" + item.quantity + "</td><td class=\"text-right\">&#8377;" + item.price + "</td><td class=\"text-right\">&#8377;" + item.totalPrice + "</td></tr>").join("")}</tbody></table><div class="divider"></div><table><tr><td>Grand Total:</td><td class="text-right"><b>&#8377;${invoice.grandTotal}</b></td></tr>${advAmt > 0 ? `<tr><td style="color:#047857;font-weight:bold;">Advance Applied:</td><td class="text-right" style="color:#047857;font-weight:bold;">-&#8377;${advAmt}</td></tr>` : ''}<tr><td>Payment Mode:</td><td class="text-right">${invoice.paymentMethod || "-"}</td></tr>${walletAdvance > 0 ? `<tr><td style="color:#b45309;font-weight:bold;">CURRENT WALLET BALANCE:</td><td class="text-right" style="color:#b45309;font-weight:bold;">&#8377;${walletAdvance.toLocaleString('en-IN')}</td></tr>` : ''}</table><div class="divider"></div><div class="text-center" style="font-size:10px">Thank you for shopping with us!</div></body></html>`;
+      const htmlContent = `<!DOCTYPE html><html><head><title>Receipt ${invoice.invoiceNo}</title><style>body{font-family:'Courier New',Courier,monospace;color:#000;padding:20px;max-width:380px;margin:0 auto}.text-center{text-align:center}.header{font-size:14px;font-weight:bold;margin-bottom:5px}.details{font-size:11px;line-height:1.4;margin-bottom:10px}.divider{border-bottom:1px dashed #000;margin:10px 0}table{width:100%;font-size:11px}th{text-align:left}.text-right{text-align:right}.totals{font-weight:bold}</style></head><body><div class="text-center header">GarmentFlow ERP</div><div class="divider"></div><div class="details"><b>Receipt No:</b> ${invoice.invoiceNo}<br><b>Date:</b> ${receiptDate}<br><b>Customer:</b> ${invoice.customerName || "-"} ${invoice.customerPhone ? "(" + invoice.customerPhone + ")" : ""}</div><div class="divider"></div><table><thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead><tbody>${(invoice.items || []).map(item => "<tr><td>" + (item.name || "") + "</td><td class=\"text-right\">" + item.quantity + "</td><td class=\"text-right\">&#8377;" + item.price + "</td><td class=\"text-right\">&#8377;" + item.totalPrice + "</td></tr>").join("")}</tbody></table><div class="divider"></div><table><tr><td>Grand Total:</td><td class="text-right"><b>&#8377;${invoice.grandTotal}</b></td></tr>${advAmt > 0 ? `<tr><td style="color:#047857;font-weight:bold;">Advance Applied:</td><td class="text-right" style="color:#047857;font-weight:bold;">-&#8377;${advAmt}</td></tr>` : ''}<tr><td>Payment Mode:</td><td class="text-right">${invoice.paymentMethod || "-"}</td></tr>${walletAdvance > 0 ? `<tr><td style="color:#b45309;font-weight:bold;">CURRENT WALLET BALANCE:</td><td class="text-right" style="color:#b45309;font-weight:bold;">&#8377;${walletAdvance.toLocaleString('en-IN')}</td></tr>` : ''}</table><div class="divider"></div><div class="text-center" style="font-size:10px">Thank you for shopping with us!</div></body></html>`;
       const blob = new Blob([htmlContent], { type: "text/html" });
       window.open(URL.createObjectURL(blob), "_blank");
     } catch (err) {
@@ -309,7 +309,7 @@ export const CustomersView = ({
                     <th className="p-3.5 text-center font-mono">Loyalty Points</th>
                     <th className="p-3.5 text-right font-mono text-amber-600">Prepaid Advance</th>
                     <th className="p-3.5 text-right font-mono">Total Advance</th>
-                    <th className="p-3.5 text-right">Outstanding Balance</th>
+                    <th className="p-3.5 text-right">Due Amount</th>
                     <th className="p-3.5 text-center">Manage Prepaid</th>
                     <th className="p-3.5 text-center">Actions</th>
                   </tr>
@@ -333,15 +333,15 @@ export const CustomersView = ({
                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
                               {cust.name.split(" ").map((n) => n[0]).join("")}
                             </div>
-                              <p
-                                className="font-bold text-indigo-600 leading-tight cursor-pointer hover:underline"
-                                onClick={() => {
-                                  setSelectedCustomerModal({ cust, customerInvoices, tab: 'invoices' });
-                                  setEditGstin(cust.gstin || cust.gstNo || "");
-                                }}
-                              >
-                                {cust.name}
-                              </p>
+                            <p
+                              className="font-bold text-indigo-600 leading-tight cursor-pointer hover:underline"
+                              onClick={() => {
+                                setSelectedCustomerModal({ cust, customerInvoices, tab: 'invoices' });
+                                setEditGstin(cust.gstin || cust.gstNo || "");
+                              }}
+                            >
+                              {cust.name}
+                            </p>
                           </div>
                         </td>
                         <td className="p-3.5">
@@ -522,7 +522,7 @@ export const CustomersView = ({
                 const cust = selectedCustomerModal.cust;
                 const history = cust.advanceHistory || [];
                 const invoicesList = selectedCustomerModal.customerInvoices || [];
-                
+
                 if (selectedCustomerModal.tab === 'invoices') {
                   return (
                     <div className="space-y-3">
@@ -545,7 +545,7 @@ export const CustomersView = ({
                             <tbody className="divide-y divide-slate-100">
                               {invoicesList.map(inv => (
                                 <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                                  <td 
+                                  <td
                                     className="p-3 font-mono font-bold text-indigo-600 cursor-pointer hover:underline"
                                     onClick={() => handleOpenInvoice(inv, cust.walletAdvance || cust.prepaidAdvance || 0)}
                                   >
@@ -580,106 +580,106 @@ export const CustomersView = ({
                     </div>
 
                     <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
-                          <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
-                            <div>
-                              <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 uppercase tracking-wider">
-                                <Gift className="w-4 h-4 text-amber-600" /> Edit Customer Prepaid Advance
-                              </h4>
-                              <p className="text-[11px] text-amber-700 font-medium">Update prepaid balance synced directly to Database & POS</p>
-                            </div>
-                            <span className="text-xs font-black text-amber-800 bg-amber-100/90 px-3 py-1 rounded-full font-mono">
-                              Current: &#8377;{(cust.prepaidAdvance || 0).toLocaleString('en-IN')}
-                            </span>
-                          </div>
+                      <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
+                        <div>
+                          <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Gift className="w-4 h-4 text-amber-600" /> Edit Customer Prepaid Advance
+                          </h4>
+                          <p className="text-[11px] text-amber-700 font-medium">Update prepaid balance synced directly to Database & POS</p>
+                        </div>
+                        <span className="text-xs font-black text-amber-800 bg-amber-100/90 px-3 py-1 rounded-full font-mono">
+                          Current: &#8377;{(cust.prepaidAdvance || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {/* Field 1: Enter Value */}
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Enter Value (&#8377;)</label>
-                              <div className="relative">
-                                <span className="absolute left-2.5 top-2 text-xs font-bold text-slate-400">&#8377;</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  placeholder="0"
-                                  value={editPrepaidAmount}
-                                  onChange={(e) => setEditPrepaidAmount(e.target.value)}
-                                  className="w-full pl-6 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Field 2: Reason (Optional) */}
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Reason (Optional)</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Booking Advance"
-                                value={editPrepaidReason}
-                                onChange={(e) => setEditPrepaidReason(e.target.value)}
-                                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                              />
-                            </div>
-
-                            {/* Field 3: Date */}
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Date</label>
-                              <input
-                                type="date"
-                                value={editPrepaidDate}
-                                onChange={(e) => setEditPrepaidDate(e.target.value)}
-                                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Field 4: GST No. */}
-                          <div className="pt-1">
-                            <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">GST No. (Optional)</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Field 1: Enter Value */}
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Enter Value (&#8377;)</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-2 text-xs font-bold text-slate-400">&#8377;</span>
                             <input
-                              type="text"
-                              placeholder="e.g. 07ABCDE1234F1Z5"
-                              value={editGstin}
-                              onChange={(e) => setEditGstin(e.target.value)}
-                              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 uppercase outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={editPrepaidAmount}
+                              onChange={(e) => setEditPrepaidAmount(e.target.value)}
+                              className="w-full pl-6 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                             />
                           </div>
-
-                          <div className="flex justify-end pt-1">
-                            <button
-                              onClick={() => handleSavePrepaidAdvance(cust)}
-                              disabled={isSavingPrepaid}
-                              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                            >
-                              {isSavingPrepaid ? "Saving..." : "Save Customer Info"}
-                            </button>
-                          </div>
                         </div>
 
-                        <div className="pt-2">
-                          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Detailed Advance Ledger</h4>
-                          {history.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                              <FileText className="w-8 h-8 mb-2 opacity-30" />
-                              <p className="text-xs font-semibold">No transactions recorded yet.</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
-                              {history.slice().reverse().map((entry, i) => (
-                                <div key={i} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-700">{entry.reason}</p>
-                                    <p className="text-[10px] text-slate-400">{new Date(entry.date).toLocaleString('en-IN')}</p>
-                                  </div>
-                                  <div className={`font-mono font-bold text-xs ${entry.amount > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                    {entry.amount > 0 ? '+' : ''}&#8377;{Math.abs(entry.amount)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        {/* Field 2: Reason (Optional) */}
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Reason (Optional)</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Booking Advance"
+                            value={editPrepaidReason}
+                            onChange={(e) => setEditPrepaidReason(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        {/* Field 3: Date */}
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">Date</label>
+                          <input
+                            type="date"
+                            value={editPrepaidDate}
+                            onChange={(e) => setEditPrepaidDate(e.target.value)}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          />
                         </div>
                       </div>
+
+                      {/* Field 4: GST No. */}
+                      <div className="pt-1">
+                        <label className="block text-[10px] font-extrabold text-slate-600 mb-1 uppercase tracking-wider">GST No. (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 07ABCDE1234F1Z5"
+                          value={editGstin}
+                          onChange={(e) => setEditGstin(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 uppercase outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          onClick={() => handleSavePrepaidAdvance(cust)}
+                          disabled={isSavingPrepaid}
+                          className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                          {isSavingPrepaid ? "Saving..." : "Save Customer Info"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Detailed Advance Ledger</h4>
+                      {history.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                          <FileText className="w-8 h-8 mb-2 opacity-30" />
+                          <p className="text-xs font-semibold">No transactions recorded yet.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                          {history.slice().reverse().map((entry, i) => (
+                            <div key={i} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                              <div>
+                                <p className="text-xs font-bold text-slate-700">{entry.reason}</p>
+                                <p className="text-[10px] text-slate-400">{new Date(entry.date).toLocaleString('en-IN')}</p>
+                              </div>
+                              <div className={`font-mono font-bold text-xs ${entry.amount > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {entry.amount > 0 ? '+' : ''}&#8377;{Math.abs(entry.amount)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
               })()}
             </div>

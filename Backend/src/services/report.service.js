@@ -181,6 +181,39 @@ class ReportService {
     ]);
     return returns;
   }
+
+  /**
+   * Manual Adjustments Report
+   */
+  static async getManualAdjustmentsReport(startDate, endDate, tenantId) {
+    const filter = { tenantId, isDeleted: false };
+    if (startDate || endDate) {
+      filter.billDate = {};
+      if (startDate) filter.billDate.$gte = new Date(startDate);
+      if (endDate) filter.billDate.$lte = new Date(endDate);
+    }
+    filter.$or = [
+      { manualDiscountAmount: { $gt: 0 } },
+      { manualChargeAmount: { $gt: 0 } }
+    ];
+
+    const bills = await SaleBill.find(filter)
+      .populate('customerId')
+      .sort({ billDate: -1 })
+      .select('billNo billDate grandTotal manualDiscountAmount manualChargeAmount manualAdjustmentReason customerId');
+
+    const totalManualDiscounts = bills.reduce((sum, b) => sum + (b.manualDiscountAmount || 0), 0);
+    const totalManualCharges = bills.reduce((sum, b) => sum + (b.manualChargeAmount || 0), 0);
+
+    return {
+      summary: {
+        totalAdjustedBills: bills.length,
+        totalManualDiscounts,
+        totalManualCharges
+      },
+      bills
+    };
+  }
 }
 
 module.exports = ReportService;

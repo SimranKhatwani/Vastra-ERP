@@ -121,7 +121,14 @@ const normalizeInvoice = (b) => {
     paymentMethod: b.paymentMethod || (b.dueAmount > 0 ? "Credit" : "Cash"),
     splitPayments: b.splitPayments || (b.paymentTransactions ? b.paymentTransactions.map(t => ({ method: t.mode, amount: t.amount })) : undefined),
     paymentTransactions: b.paymentTransactions,
-    status: b.status || "Completed"
+    status: b.status || "Completed",
+    billAdjustment: b.billAdjustment || (
+      (b.manualDiscountAmount || b.manualChargeAmount) ? {
+        amount: b.manualDiscountAmount ? b.manualDiscountAmount : b.manualChargeAmount,
+        operation: b.manualDiscountAmount ? 'Discount' : 'Charge',
+        reason: b.manualAdjustmentReason || ''
+      } : undefined
+    )
   };
 };
 
@@ -881,7 +888,8 @@ export default function App() {
         paymentMethod: inv.paymentMethod || (paymentTransactionsList.length > 0 ? paymentTransactionsList.map(t => t.mode).join(' + ') : 'CASH'),
         advanceApplied: Number(inv.advanceApplied || 0),
         remarks: inv.remarks || null,
-        alterations: alterationsList
+        alterations: alterationsList,
+        billAdjustment: inv.billAdjustment || null
       };
 
       const res = await api.post(`/billing`, billingPayload);

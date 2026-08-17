@@ -528,7 +528,7 @@ export const InventoryArticulationWindow = ({
     // Save PO
     setPurchaseOrders((prev) => [newPO, ...prev]);
 
-    // Update supplier ledger outstanding balance
+    // Update supplier ledger due amount
     setSuppliers((prev) =>
       prev.map((s) => {
         if (s.id === supplierObj.id) {
@@ -2278,7 +2278,7 @@ export const InventoryArticulationWindow = ({
                 >
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} (Balance: ₹{s.outstandingBalance})
+                      {s.name} (Due Amount: ₹{s.outstandingBalance})
                     </option>
                   ))}
                 </select>

@@ -46,6 +46,12 @@ class ReportController {
     const report = await ReportService.getReturnReport(req.tenantId);
     return res.status(200).json(new ApiResponse(200, report, 'Return report generated.'));
   });
+
+  static getManualAdjustmentsReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getManualAdjustmentsReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Manual adjustments report generated.'));
+  });
 }
 
 module.exports = ReportController;

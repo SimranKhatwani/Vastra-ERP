@@ -17,5 +17,5 @@ router.get('/customer', authorize(PERMISSIONS.CRM_READ), ReportController.getCus
 router.get('/payment', authorize(PERMISSIONS.PAYMENT_READ), ReportController.getPaymentReport);
 router.get('/alteration', authorize(PERMISSIONS.ALTERATION_READ), ReportController.getAlterationReport);
 router.get('/return', authorize(PERMISSIONS.RETURN_READ), ReportController.getReturnReport);
-
+router.get('/manual-adjustments', authorize(PERMISSIONS.REPORTS_SALES), ReportController.getManualAdjustmentsReport);
 module.exports = router;

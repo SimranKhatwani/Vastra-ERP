@@ -74,7 +74,7 @@ export const BillingPOSView = ({
     try {
       const saved = localStorage.getItem("pos_saved_cart");
       if (saved) return JSON.parse(saved);
-    } catch(e) {}
+    } catch (e) { }
     return [];
   });
 
@@ -200,7 +200,7 @@ export const BillingPOSView = ({
     try {
       const saved = localStorage.getItem("pos_saved_customer_form");
       if (saved) return JSON.parse(saved);
-    } catch(e) {}
+    } catch (e) { }
     return { phone: '', name: '', customerId: '', gstin: '', lf: '2588' };
   });
 
@@ -497,6 +497,7 @@ export const BillingPOSView = ({
   const [returnCustomerName, setReturnCustomerName] = useState("");
   const [returnCustomerPhone, setReturnCustomerPhone] = useState("");
   const [showReturnCustomerModal, setShowReturnCustomerModal] = useState(false);
+  const [isProcessingReturn, setIsProcessingReturn] = useState(false);
 
   const [exchangeReason, setExchangeReason] = useState("");
   const [exchangeCustomReason, setExchangeCustomReason] = useState("");
@@ -938,7 +939,7 @@ export const BillingPOSView = ({
           (item.productId && selectedAlterationCartItem.productId && item.productId === selectedAlterationCartItem.productId && item.size === selectedAlterationCartItem.size && item.color === selectedAlterationCartItem.color) ||
           (item.name === selectedAlterationCartItem.name && item.size === selectedAlterationCartItem.size);
       }
-      
+
       if (isMatch) {
         return { ...item, hasAlteration: true, alterationRecord: savedRecord };
       }
@@ -2501,7 +2502,7 @@ export const BillingPOSView = ({
       setCustomerSearchQuery("");
       setCouponCode("");
       setRightColumnTab("catalog");
-      
+
       setTimeout(() => {
         barcodeInputRef.current?.focus();
       }, 100);
@@ -3138,10 +3139,10 @@ export const BillingPOSView = ({
           </thead>
           <tbody>
             ${invoice.items.filter(i => i.hasAlteration || !!i.alterationRecord).map(item => {
-              const pieceName = item.name || 'Altered Item';
-              const altRec = item.alterationRecord || {};
-              const instructions = altRec.specialInstructions || altRec.customAlterationText || altRec.alterationDetails?.join(', ') || 'Custom Fit';
-              return `
+      const pieceName = item.name || 'Altered Item';
+      const altRec = item.alterationRecord || {};
+      const instructions = altRec.specialInstructions || altRec.customAlterationText || altRec.alterationDetails?.join(', ') || 'Custom Fit';
+      return `
                 <tr>
                   <td>
                     <b>${pieceName}</b> (${item.size || '-'}/${item.color || '-'})<br/>
@@ -3149,7 +3150,7 @@ export const BillingPOSView = ({
                   </td>
                 </tr>
               `;
-            }).join("")}
+    }).join("")}
           </tbody>
         </table>
         <div class="details">
@@ -3164,7 +3165,7 @@ export const BillingPOSView = ({
 
   const handleDirectPrint = (invoice) => {
     if (!invoice) return;
-    
+
     const printHTML = (html, delay, iframeId) => {
       let iframe = document.getElementById(iframeId);
       if (iframe) {
@@ -3196,16 +3197,16 @@ export const BillingPOSView = ({
     };
 
     let mainHtml = generateReceiptHTMLContent(invoice, false);
-    
+
     // Check if there are actual alteration items
     const hasAlterations = invoice.items && invoice.items.some(i => i.hasAlteration || !!i.alterationRecord);
-    
+
     if (hasAlterations) {
       // Inject the alteration HTML before the closing </body> tag of the main HTML
       const altHtml = generateAlterationReceiptHTMLContent(invoice);
       mainHtml = mainHtml.replace('</body>', altHtml + '</body>');
     }
-    
+
     printHTML(mainHtml, 250, "print-iframe-main");
   };
 
@@ -3568,12 +3569,7 @@ export const BillingPOSView = ({
           >
             Credit Notes
           </button>
-          <button
-            onClick={() => setActivePOSMode("debit_notes")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "debit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Debit Notes
-          </button>
+
         </div>
 
         {activePOSMode !== "billing" && (
@@ -4027,8 +4023,8 @@ export const BillingPOSView = ({
                                         id={`itemsearch-opt-${pIdx}`}
                                         key={p._id || p.id || pIdx}
                                         className={`cursor-pointer transition-colors ${isHighlighted
-                                            ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
-                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
+                                          ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
+                                          : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
                                           }`}
                                         onClick={() => {
                                           handleAddProductToCart(p);
@@ -4673,7 +4669,7 @@ export const BillingPOSView = ({
                       <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                         Selected Invoice Details
                       </h4>
-                      <span 
+                      <span
                         className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors"
                         onClick={() => setShowBillPreviewInvoice(selectedInvoiceForReturn)}
                         title="Click to view full receipt"
@@ -4936,120 +4932,134 @@ export const BillingPOSView = ({
                           type="button"
                           disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
                           onClick={async () => {
-                            const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
-                            const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
-                            let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
-
-                            if (totalAdjAmt > 0) {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                              const proportionalAdjustment = refundAmt * adjustmentRatio;
-                              refundAmt -= proportionalAdjustment;
-                              refundAmt = Math.floor(refundAmt);
-                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                              const proportionalAdjustment = refundAmt * adjustmentRatio;
-                              refundAmt += proportionalAdjustment;
-                              refundAmt = Math.floor(refundAmt);
-                            }
-
-                            const updatedItems = selectedInvoiceForReturn.items.map(item => {
-                              if (returnedItemIds.includes(item.productId || item.id)) {
-                                return {
-                                  ...item,
-                                  isReturned: true,
-                                  returnReason: finalReason,
-                                  returnedAt: new Date().toISOString()
-                                };
-                              }
-                              return item;
-                            });
-
-                            const allRet = updatedItems.every(i => i.isReturned);
-                            const updatedInvoice = {
-                              ...selectedInvoiceForReturn,
-                              hasReturn: true,
-                              returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
-                              status: allRet ? 'Returned' : 'Partially Returned',
-                              items: updatedItems
-                            };
-
-                            let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
-                            if (finalCustomerId === "c-walkin") finalCustomerId = null;
-
-                            if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
-                              setShowReturnCustomerModal(true);
-                              return;
-                            }
-
-                            // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                            if (isProcessingReturn) return;
+                            setIsProcessingReturn(true);
                             try {
-                              const token = localStorage.getItem("token");
-                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                              const returnItemsPayload = returnedItemIds.map(id => {
-                                const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
-                                let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+                              const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
+                              const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
+                              let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
 
-                                // Adjust for proportional short-pay/discounts if any
-                                if (selectedInvoiceForReturn.billAdjustment) {
-                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
-                                  const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                                  if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
-                                    itemPrice -= (itemPrice * adjustmentRatio);
-                                  } else {
-                                    itemPrice += (itemPrice * adjustmentRatio);
-                                  }
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                refundAmt -= proportionalAdjustment;
+                                refundAmt = Math.floor(refundAmt);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                refundAmt += proportionalAdjustment;
+                                refundAmt = Math.floor(refundAmt);
+                              }
+
+                              const updatedItems = selectedInvoiceForReturn.items.map(item => {
+                                if (returnedItemIds.includes(item.productId || item.id)) {
+                                  return {
+                                    ...item,
+                                    isReturned: true,
+                                    returnReason: finalReason,
+                                    returnedAt: new Date().toISOString()
+                                  };
                                 }
-                                return {
-                                  barcode: item?.barcode || item?.designNo || item?.itemCode || '',
-                                  refundRate: Math.floor(itemPrice),
-                                  condition: 'RESELLABLE'
-                                };
+                                return item;
                               });
 
-                              await api.post(`/returns`, {
-                                saleBillId: invId,
-                                saleBillNo: selectedInvoiceForReturn.invoiceNo,
-                                customerId: finalCustomerId,
-                                refundMode: returnRefundMode,
-                                reason: finalReason,
-                                items: returnItemsPayload,
-                                forceApprove: true
-                              });
-                            } catch (apiErr) {
-                              console.warn("Backend return endpoint call error:", apiErr.message);
-                              if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
-                              return; // Stop execution to prevent desync
+                              const allRet = updatedItems.every(i => i.isReturned);
+                              const updatedInvoice = {
+                                ...selectedInvoiceForReturn,
+                                hasReturn: true,
+                                returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                                status: allRet ? 'Returned' : 'Partially Returned',
+                                items: updatedItems
+                              };
+
+                              let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
+                              if (finalCustomerId === "c-walkin") finalCustomerId = null;
+
+                              if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
+                                setShowReturnCustomerModal(true);
+                                return;
+                              }
+
+                              // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                              try {
+                                const token = localStorage.getItem("token");
+                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                const returnItemsPayload = returnedItemIds.map(id => {
+                                  const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
+                                  let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+
+                                  // Adjust for proportional short-pay/discounts if any
+                                  if (selectedInvoiceForReturn.billAdjustment) {
+                                    const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
+                                    const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                    if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                                      itemPrice -= (itemPrice * adjustmentRatio);
+                                    } else {
+                                      itemPrice += (itemPrice * adjustmentRatio);
+                                    }
+                                  }
+                                  return {
+                                    barcode: item?.barcode || item?.designNo || item?.itemCode || '',
+                                    refundRate: Math.floor(itemPrice),
+                                    condition: 'RESELLABLE'
+                                  };
+                                });
+
+                                await api.post(`/returns`, {
+                                  saleBillId: invId,
+                                  saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                                  customerId: finalCustomerId,
+                                  refundMode: returnRefundMode,
+                                  reason: finalReason,
+                                  items: returnItemsPayload,
+                                  forceApprove: true
+                                });
+                              } catch (apiErr) {
+                                console.warn("Backend return endpoint call error:", apiErr.message);
+                                if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
+                                return; // Stop execution to prevent desync
+                              }
+
+                              // Update local invoices list so Invoice History reflects returned status immediately
+                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                              if (invoices) {
+                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                if (idx !== -1) invoices[idx] = updatedInvoice;
+                              }
+
+                              if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
+                                onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
+                              }
+
+                              if (onAddNotification) {
+                                onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
+                              }
+
+                              // Auto-clear data and reset selection
+                              setSelectedInvoiceForReturn(null);
+                              setReturnedItemIds([]);
+                              setReturnApprovedCheckbox(false);
+                              setReturnSearchQuery("");
+                              setReturnReason("Defective / Damaged");
+                              setReturnCustomReason("");
+                            } finally {
+                              setIsProcessingReturn(false);
                             }
-
-                            // Update local invoices list so Invoice History reflects returned status immediately
-                            setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
-
-                            if (invoices) {
-                              const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                              if (idx !== -1) invoices[idx] = updatedInvoice;
-                            }
-
-                            if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
-                              onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
-                            }
-
-                            if (onAddNotification) {
-                              onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
-                            }
-
-                            // Auto-clear data and reset selection
-                            setSelectedInvoiceForReturn(null);
-                            setReturnedItemIds([]);
-                            setReturnApprovedCheckbox(false);
-                            setReturnSearchQuery("");
-                            setReturnReason("Defective / Damaged");
-                            setReturnCustomReason("");
                           }}
-                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${returnApprovedCheckbox && returnedItemIds.length > 0 ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          disabled={isProcessingReturn || (!returnApprovedCheckbox || returnedItemIds.length === 0)}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                         >
-                          Approve Return & Credit Customer Wallet
+                          {isProcessingReturn ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Processing Return...
+                            </>
+                          ) : (
+                            "Approve Return & Credit Customer Wallet"
+                          )}
                         </button>
                       </div>
                     )}
@@ -5231,120 +5241,132 @@ export const BillingPOSView = ({
 
                         <button
                           type="button"
-                          disabled={!exchangeSelectedNewProduct}
                           onClick={async () => {
-                            const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                            if (!oldItem || !exchangeSelectedNewProduct) return;
-
-                            let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
-                            if (totalAdjAmt > 0) {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                              const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                              const proportionalAdjustment = oldPrice * adjustmentRatio;
-                              oldPrice -= proportionalAdjustment;
-                              oldPrice = Math.floor(oldPrice);
-                            } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                              const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                              const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                              const proportionalAdjustment = oldPrice * adjustmentRatio;
-                              oldPrice += proportionalAdjustment;
-                              oldPrice = Math.floor(oldPrice);
-                            }
-
-                            const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
-                            const priceDiff = newPrice - oldPrice;
-
-                            const docket = {
-                              docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
-                              originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
-                              customerName: selectedInvoiceForReturn.customerName,
-                              customerPhone: selectedInvoiceForReturn.customerPhone,
-                              reason: exchangeReason,
-                              oldItem: {
-                                name: oldItem.name,
-                                size: oldItem.size || 'Std',
-                                color: oldItem.color || 'Std',
-                                price: oldPrice
-                              },
-                              newItem: {
-                                name: exchangeSelectedNewProduct.name,
-                                sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
-                                size: exchangeSelectedNewProduct.size || 'M',
-                                color: exchangeSelectedNewProduct.color || 'Standard',
-                                price: newPrice
-                              },
-                              priceDiff,
-                              cashierName: currentUser ? currentUser.name : "Store Cashier",
-                              createdAt: new Date().toISOString()
-                            };
-
-                            const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
-                              if (idx === exchangeOldItemIdx) {
-                                return {
-                                  ...item,
-                                  isExchanged: true,
-                                  exchangedFor: exchangeSelectedNewProduct.name,
-                                  exchangeReason
-                                };
-                              }
-                              return item;
-                            });
-
-                            const allEx = updatedItems.every(i => i.isExchanged);
-                            const updatedInvoice = {
-                              ...selectedInvoiceForReturn,
-                              hasExchange: true,
-                              exchangeSlip: docket,
-                              status: allEx ? 'Exchanged' : 'Partially Exchanged',
-                              items: updatedItems
-                            };
-
-                            // Call Backend API to process exchange in MongoDB
+                            if (isProcessingReturn) return;
+                            setIsProcessingReturn(true);
                             try {
-                              const token = localStorage.getItem("token");
-                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                              const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
-                              await api.post(`/exchanges`, {
-                                originalBillId: invId,
-                                originalBillNo: selectedInvoiceForReturn.invoiceNo,
-                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
-                                returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
-                                newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
-                                returnedValue: oldPrice,
-                                newItemValue: newPrice,
-                                remarks: exchangeReason,
-                                forceApprove: true
+                              const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
+                              if (!oldItem || !exchangeSelectedNewProduct) return;
+
+                              let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                oldPrice -= proportionalAdjustment;
+                                oldPrice = Math.floor(oldPrice);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                oldPrice += proportionalAdjustment;
+                                oldPrice = Math.floor(oldPrice);
+                              }
+
+                              const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                              const priceDiff = newPrice - oldPrice;
+
+                              const docket = {
+                                docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+                                originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
+                                customerName: selectedInvoiceForReturn.customerName,
+                                customerPhone: selectedInvoiceForReturn.customerPhone,
+                                reason: exchangeReason,
+                                oldItem: {
+                                  name: oldItem.name,
+                                  size: oldItem.size || 'Std',
+                                  color: oldItem.color || 'Std',
+                                  price: oldPrice
+                                },
+                                newItem: {
+                                  name: exchangeSelectedNewProduct.name,
+                                  sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
+                                  size: exchangeSelectedNewProduct.size || 'M',
+                                  color: exchangeSelectedNewProduct.color || 'Standard',
+                                  price: newPrice
+                                },
+                                priceDiff,
+                                cashierName: currentUser ? currentUser.name : "Store Cashier",
+                                createdAt: new Date().toISOString()
+                              };
+
+                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                if (idx === exchangeOldItemIdx) {
+                                  return {
+                                    ...item,
+                                    isExchanged: true,
+                                    exchangedFor: exchangeSelectedNewProduct.name,
+                                    exchangeReason
+                                  };
+                                }
+                                return item;
                               });
-                            } catch (apiErr) {
-                              console.warn("Backend exchange endpoint call error:", apiErr.message);
-                              if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
-                              return; // Stop execution to prevent desync
+
+                              const allEx = updatedItems.every(i => i.isExchanged);
+                              const updatedInvoice = {
+                                ...selectedInvoiceForReturn,
+                                hasExchange: true,
+                                exchangeSlip: docket,
+                                status: allEx ? 'Exchanged' : 'Partially Exchanged',
+                                items: updatedItems
+                              };
+
+                              // Call Backend API to process exchange in MongoDB
+                              try {
+                                const token = localStorage.getItem("token");
+                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
+                                await api.post(`/exchanges`, {
+                                  originalBillId: invId,
+                                  originalBillNo: selectedInvoiceForReturn.invoiceNo,
+                                  customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                                  returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
+                                  newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
+                                  returnedValue: oldPrice,
+                                  newItemValue: newPrice,
+                                  remarks: exchangeReason,
+                                  forceApprove: true
+                                });
+                              } catch (apiErr) {
+                                console.warn("Backend exchange endpoint call error:", apiErr.message);
+                                if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
+                                return; // Stop execution to prevent desync
+                              }
+
+                              // Update local invoices list so Invoice History reflects exchanged status immediately
+                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                              if (invoices) {
+                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                if (idx !== -1) invoices[idx] = updatedInvoice;
+                              }
+
+                              setCompletedExchangeSlip(docket);
+                              setShowExchangeSlipModal(true);
+
+                              if (onAddNotification) {
+                                onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
+                              }
+
+                              // Auto-clear search & selection data after completing exchange
+                              setSelectedInvoiceForReturn(null);
+                              setExchangeSelectedNewProduct(null);
+                              setExchangeNewSearchQuery("");
+                              setReturnSearchQuery("");
+                            } finally {
+                              setIsProcessingReturn(false);
                             }
-
-                            // Update local invoices list so Invoice History reflects exchanged status immediately
-                            setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
-
-                            if (invoices) {
-                              const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                              if (idx !== -1) invoices[idx] = updatedInvoice;
-                            }
-
-                            setCompletedExchangeSlip(docket);
-                            setShowExchangeSlipModal(true);
-
-                            if (onAddNotification) {
-                              onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
-                            }
-
-                            // Auto-clear search & selection data after completing exchange
-                            setSelectedInvoiceForReturn(null);
-                            setExchangeSelectedNewProduct(null);
-                            setExchangeNewSearchQuery("");
-                            setReturnSearchQuery("");
                           }}
-                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${exchangeSelectedNewProduct ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeSelectedNewProduct && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                         >
-                          Generate Exchange Slip & Invoice
+                          {isProcessingReturn ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Processing Exchange...
+                            </>
+                          ) : (
+                            "Confirm Exchange & Deduct Difference"
+                          )}
                         </button>
                       </div>
                     )}
@@ -5635,71 +5657,7 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* Mode: Debit Notes */}
-      {activePOSMode === "debit_notes" && (
-        <div className="space-y-4 text-xs animate-fade-in">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
-            <div>
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Debit Notes Ledger
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Levy charges, freight costs, or bespoke alterations additions to
-                ledger balance.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setDebitInvoiceNo("");
-                setDebitAmt(500);
-                setDebitReason("Custom fit alteration surcharge");
-                setShowDebitModal(true);
-              }}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Issue Debit Note</span>
-            </button>
-          </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                    <th className="p-3.5">Note ID</th>
-                    <th className="p-3.5">Date</th>
-                    <th className="p-3.5">Link Invoice</th>
-                    <th className="p-3.5">Client / Buyer</th>
-                    <th className="p-3.5">Debit Surcharge Reason</th>
-                    <th className="p-3.5 text-right">Debited Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                  {debitNotes.map((dn, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3.5 font-mono font-bold text-indigo-600">
-                        {dn.noteNo}
-                      </td>
-                      <td className="p-3.5 font-mono">{dn.date}</td>
-                      <td className="p-3.5 font-mono text-slate-500">
-                        {dn.invoiceNo}
-                      </td>
-                      <td className="p-3.5 font-bold text-slate-800">
-                        {dn.customerName}
-                      </td>
-                      <td className="p-3.5 text-slate-500">{dn.reason}</td>
-                      <td className="p-3.5 text-right font-mono font-bold text-slate-800">
-                        ₹{dn.amount.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ======================= BILLING MODALS ======================= */}
 
@@ -6155,6 +6113,8 @@ export const BillingPOSView = ({
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (!returnCustomerName || !returnCustomerPhone) return;
+                if (isProcessingReturn) return;
+                setIsProcessingReturn(true);
 
                 try {
                   const custRes = await api.post('/customers', { name: returnCustomerName, phone: returnCustomerPhone });
@@ -6208,6 +6168,8 @@ export const BillingPOSView = ({
 
                 } catch (err) {
                   if (onAddNotification) onAddNotification("Error", "Failed to create customer and process return", "danger");
+                } finally {
+                  setIsProcessingReturn(false);
                 }
               }}
               className="space-y-4"
@@ -6378,7 +6340,7 @@ export const BillingPOSView = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             {loadingCustomerHistory ? (
               <div className="flex justify-center items-center p-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -6421,7 +6383,7 @@ export const BillingPOSView = ({
                         <tbody className="divide-y divide-slate-100">
                           {customerHistoryData.bills.map((bill, i) => (
                             <tr key={i} className="hover:bg-slate-50">
-                              <td 
+                              <td
                                 className="p-3 font-mono font-bold text-indigo-600 cursor-pointer hover:underline"
                                 onClick={() => handleDownloadReceiptHTML(bill)}
                               >
@@ -6466,7 +6428,7 @@ export const BillingPOSView = ({
                         <tbody className="divide-y divide-slate-100">
                           {customerHistoryData.alterations.map((alt, i) => (
                             <tr key={i} className="hover:bg-slate-50">
-                              <td className="p-3 font-mono font-bold text-slate-700">{alt.jobId || alt._id.substring(0,8)}</td>
+                              <td className="p-3 font-mono font-bold text-slate-700">{alt.jobId || alt._id.substring(0, 8)}</td>
                               <td className="p-3">{new Date(alt.createdAt).toLocaleDateString()}</td>
                               <td className="p-3">{alt.alterationType} - {alt.garmentType}</td>
                               <td className="p-3 text-center">
@@ -9824,8 +9786,8 @@ export const BillingPOSView = ({
                               }
                             }}
                             className={`w-full py-3 ${(paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) ||
-                                (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
-                                ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'
+                              (paymentType === 'Part Payment' && confirmedPartPaymentModes[paymentMethod])
+                              ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'
                               } text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
                           >
                             <CheckCircle className="w-4 h-4" /> {

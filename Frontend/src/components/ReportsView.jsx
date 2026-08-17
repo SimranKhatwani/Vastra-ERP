@@ -74,10 +74,10 @@ export const ReportsView = ({ onAddNotification }) => {
   const loadDashboard = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/analytics/dashboard`, { headers: getAuthHeaders() });
+      const res = await api.get(`/dashboard`);
       const data = res.data;
       if (data.success) {
-        setDashboardData(data);
+        setDashboardData(data.data || data); // handle different response wrappers
       }
     } catch (e) {
       console.error(e);
@@ -90,14 +90,28 @@ export const ReportsView = ({ onAddNotification }) => {
   const loadSectionReport = async (section, reportType) => {
     setLoading(true);
     try {
-      let endpoint = `${API}/analytics/${section}?reportType=${reportType || ""}`;
-      if (dateRange.start && dateRange.end) {
-        endpoint += `&startDate=${dateRange.start}&endDate=${dateRange.end}`;
+      let endpoint = `/reports/${reportType || section}`;
+      let queryParams = [];
+      if (dateRange.start) queryParams.push(`startDate=${dateRange.start}`);
+      if (dateRange.end) queryParams.push(`endDate=${dateRange.end}`);
+      
+      if (queryParams.length > 0) {
+        endpoint += `?${queryParams.join('&')}`;
       }
-      const res = await fetch(endpoint, { headers: getAuthHeaders() });
-      const data = res.data;
-      if (data.success) {
-        setReportData(data);
+
+      const res = await api.get(endpoint);
+      const resData = res.data;
+      if (resData.success) {
+        const d = resData.data;
+        const normalizedData = Array.isArray(d) ? d : (d.data || d.bills || d.transactions || d.topCustomers || []);
+        const summary = d.summary || (Array.isArray(d) ? null : { ...d, data: undefined, bills: undefined, topCustomers: undefined, transactions: undefined });
+        if (summary) {
+          delete summary.data;
+          delete summary.bills;
+          delete summary.topCustomers;
+          delete summary.transactions;
+        }
+        setReportData({ summary, data: normalizedData });
       }
     } catch (e) {
       console.error(e);
@@ -307,8 +321,8 @@ export const ReportsView = ({ onAddNotification }) => {
               <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
               <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("expenses"); loadSectionReport("financial", "expenses"); }} />
 
-              <KPISmall label="Outstanding Receivables" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
-              <KPISmall label="Outstanding Payables" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
+              <KPISmall label="Due Amount (Receivables)" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
+              <KPISmall label="Due Amount (Payables)" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
               <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
               <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
               <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
@@ -653,9 +667,10 @@ function getSectionReportCards(section) {
       return [
         { id: "sales_summary", label: "Sales Reports", desc: "Detailed sales revenue by invoice, payment mode & customer" },
         { id: "purchase", label: "Purchase Reports", desc: "Vendor purchase invoices, tax & GRN breakdown" },
-        { id: "customer", label: "Customer Reports", desc: "Customer lifetime spend & outstanding receivables" },
+        { id: "customer", label: "Customer Reports", desc: "Customer lifetime spend & due receivables" },
         { id: "vendor", label: "Vendor Reports", desc: "Vendor payout summary & current payables" },
         { id: "gst", label: "GST Audit Reports", desc: "Output GST vs Input GST Tax Liability statement" },
+        { id: "manual-adjustments", label: "Manual Adjustments", desc: "Report of all manual discounts and charges applied to POS bills" },
       ];
     case "inventory":
       return [

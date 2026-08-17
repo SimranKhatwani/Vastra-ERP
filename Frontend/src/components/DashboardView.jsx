@@ -183,21 +183,21 @@ export const DashboardView = ({
       fetchMorningActions();
     }
 
-    // Fetch Commission Stats
-    const fetchCommStats = async () => {
+    // Fetch Manual Adjustments Stats
+    const fetchManualAdjustments = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await api.get(`/commissions/staff/stats`);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const res = await api.get(`/reports/manual-adjustments?startDate=${today.toISOString()}`);
         const data = res.data;
-        console.log("Commission stats:", data);
         if (data.success) {
-          setCommStats(data.data);
+          setCommStats(data.data.summary); // Reusing commStats state variable for simplicity
         }
       } catch (error) {
-        console.error("Failed to fetch commission stats", error);
+        console.error("Failed to fetch manual adjustments stats", error);
       }
     };
-    fetchCommStats();
+    fetchManualAdjustments();
 
     // Fetch Staff Summary stats directly from Backend API
     const userObj = currentUser?.user || currentUser || {};
@@ -1004,24 +1004,19 @@ export const DashboardView = ({
           </div>
         </div>
 
-        {/* Staff Commissions Today */}
+        {/* Manual Adjustments Today */}
         <div className="bg-white p-5 rounded-xl shadow-xs border border-slate-200/80 flex justify-between items-start">
           <div className="space-y-2">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Staff Commissions
+              Manual Adjustments Today
             </span>
-            <div className="text-2xl font-bold text-slate-800 font-sans">
-              ₹
-              {(commStats?.totalToday || 0).toLocaleString("en-IN", {
-                maximumFractionDigits: 0,
-              })}
-            </div>
-            <div className="flex items-center gap-1 text-xs text-indigo-500 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab("commissions")}>
-              <span>View full ledger ➔</span>
+            <div className="text-2xl font-bold text-slate-800 font-sans flex flex-col">
+              <span className="text-sm text-red-500 font-medium">Discounts: ₹{(commStats?.totalManualDiscounts || 0).toLocaleString("en-IN")}</span>
+              <span className="text-sm text-emerald-500 font-medium">Charges: ₹{(commStats?.totalManualCharges || 0).toLocaleString("en-IN")}</span>
             </div>
           </div>
-          <div className="bg-fuchsia-50 p-2.5 rounded-lg text-fuchsia-600">
-            <Sparkles className="w-5 h-5" />
+          <div className="bg-slate-50 p-2.5 rounded-lg text-slate-600">
+            <TrendingUp className="w-5 h-5" />
           </div>
         </div>
 

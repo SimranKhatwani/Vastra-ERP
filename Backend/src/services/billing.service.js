@@ -199,7 +199,22 @@ class BillingService {
       });
     }
 
-    const grandTotal = Math.max(0, subTotal - totalDiscount);
+    let grandTotal = Math.max(0, subTotal - totalDiscount);
+
+    let manualDiscountAmount = 0;
+    let manualChargeAmount = 0;
+    let manualAdjustmentReason = '';
+
+    if (billData.billAdjustment && billData.billAdjustment.amount > 0) {
+      if (billData.billAdjustment.operation === 'Discount') {
+        manualDiscountAmount = Number(billData.billAdjustment.amount);
+        grandTotal = Math.max(0, grandTotal - manualDiscountAmount);
+      } else if (billData.billAdjustment.operation === 'Charge') {
+        manualChargeAmount = Number(billData.billAdjustment.amount);
+        grandTotal += manualChargeAmount;
+      }
+      manualAdjustmentReason = billData.billAdjustment.reason || '';
+    }
 
     let totalPaid = 0;
     let dueAmount = 0;
@@ -233,6 +248,9 @@ class BillingService {
       salesmanId,
       subTotal,
       discountAmount: totalDiscount,
+      manualDiscountAmount,
+      manualChargeAmount,
+      manualAdjustmentReason,
       grandTotal,
       paidAmount: totalPaid,
       dueAmount,

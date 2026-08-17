@@ -65,7 +65,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
     e.preventDefault();
     const paid = Number(payForm.amount);
     if (!paid || paid <= 0) { showToast('Enter a valid payment amount', 'error'); return; }
-    if (paid > payModal.outstanding) { showToast('Amount exceeds outstanding balance', 'error'); return; }
+    if (paid > payModal.outstanding) { showToast('Amount exceeds due amount', 'error'); return; }
 
     setInvoices(prev => prev.map(inv => {
       if (inv.id !== payModal.id) return inv;
@@ -84,7 +84,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-2 gap-2">
         <h3 className="text-xs font-black text-slate-800 uppercase font-mono tracking-wider">
-          Financial Outstanding & Settlement Ledger
+          Financial Due Amount & Settlement Ledger
         </h3>
         <button
           onClick={() => handleOpenShareModal('Ledger Statement', 'STMT-2026-001')}
@@ -97,7 +97,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
       {/* KPI Tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-1">
-          <span className="text-red-500 font-bold block">Total Outstanding</span>
+          <span className="text-red-500 font-bold block">Total Due Amount</span>
           <span className="text-xl font-black text-red-600 font-mono">₹{(hubData?.outstanding?.totalOutstanding ?? totalOutstanding).toLocaleString('en-IN')}</span>
         </div>
         <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-1">
@@ -129,7 +129,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
                 <th className="p-3">Date</th>
                 <th className="p-3 text-right">Bill Amount</th>
                 <th className="p-3 text-right">Paid Amount</th>
-                <th className="p-3 text-right">Outstanding</th>
+                <th className="p-3 text-right">Due Amount</th>
                 <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Action</th>
               </tr>
@@ -176,7 +176,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-200">
               <tr>
-                <td colSpan={4} className="p-3 text-right font-black text-slate-700">Total Outstanding Balance:</td>
+                <td colSpan={4} className="p-3 text-right font-black text-slate-700">Total Due Amount:</td>
                 <td className="p-3 text-right font-black text-red-600 font-mono">₹{totalOutstanding.toLocaleString('en-IN')}</td>
                 <td colSpan={2}></td>
               </tr>
@@ -216,7 +216,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
                 <span className="font-black text-emerald-600 text-sm">₹{payModal.amountPaid.toLocaleString('en-IN')}</span>
               </div>
               <div>
-                <span className="text-slate-400 block font-medium">Outstanding</span>
+                <span className="text-slate-400 block font-medium">Due Amount</span>
                 <span className="font-black text-red-600 text-sm">₹{payModal.outstanding.toLocaleString('en-IN')}</span>
               </div>
             </div>
@@ -899,7 +899,7 @@ export default function VendorCommunicationCard({ currentUser }) {
   const handleOpenShareModal = (docCategory, defaultDocNumber = '') => {
     const v = hubData?.vendor || vendorList.find(x => String(x._id) === String(selectedVendorId)) || DEFAULT_FALLBACK_VENDORS[0];
     const docNo = defaultDocNumber || `${docCategory.substring(0, 2).toUpperCase()}-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const outstanding = hubData?.outstanding?.totalOutstanding || v.currentOutstanding || 45000;
+    const outstanding = hubData?.outstanding?.totalOutstanding || v.currentOutstanding || 0;
 
     let summaryText = '';
     if (docCategory.includes('Purchase Order') || docCategory.includes('PO')) {
@@ -909,7 +909,7 @@ export default function VendorCommunicationCard({ currentUser }) {
     } else if (docCategory.includes('Payment Advice')) {
       summaryText = `Greetings ${v.name},\n\nPayment Advice #${docNo}: Payment of ₹25,000 has been credited to your Bank A/C ${v.bankDetails?.accountNo || '50200049281920'} via NEFT/UPI.`;
     } else {
-      summaryText = `Greetings ${v.name},\n\nPlease review your Outstanding Ledger Statement #${docNo} as of ${new Date().toLocaleDateString()}.\nCurrent Balance Due: ₹${outstanding.toLocaleString('en-IN')}.`;
+      summaryText = `Greetings ${v.name},\n\nPlease review your Due Amount Ledger Statement #${docNo} as of ${new Date().toLocaleDateString()}.\nCurrent Balance Due: ₹${outstanding.toLocaleString('en-IN')}.`;
     }
 
     setShareModalData({
@@ -1358,7 +1358,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                 { id: 'timeline', label: '6. Timeline' },
                 { id: 'followups', label: '7. Follow-ups' },
                 { id: 'purchase_history', label: '8. Purchases' },
-                { id: 'outstanding', label: '9. Outstanding' },
+                { id: 'outstanding', label: '9. Due Amount' },
                 { id: 'internal', label: '10. Internal Info' },
                 { id: 'primary_uses', label: '11. Uses & Actions' },
                 { id: 'notes', label: '12. Notes' },
@@ -1654,8 +1654,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                         <span className="font-black text-emerald-700 text-sm font-mono">₹{(vendor.creditLimit || 250000).toLocaleString('en-IN')}</span>
                       </div>
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                        <span className="text-slate-400 font-medium block">Current Outstanding</span>
-                        <span className="font-black text-red-600 text-sm font-mono">₹{(vendor.currentOutstanding || 45000).toLocaleString('en-IN')}</span>
+                        <span className="text-slate-400 font-medium block">Current Due Amount</span>
+                        <span className="font-black text-red-600 text-sm font-mono">₹{(vendor.currentOutstanding || 0).toLocaleString('en-IN')}</span>
                       </div>
                     </div>
 
@@ -1944,7 +1944,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                       {[
-                        { label: 'Send Outstanding Statement', icon: FileCheck, action: () => setActiveTab('outstanding') },
+                        { label: 'Send Due Amount Statement', icon: FileCheck, action: () => setActiveTab('outstanding') },
                         { label: 'Send Purchase Statement', icon: Paperclip, action: () => setActiveTab('purchase_history') },
                         { label: 'Share Ledger Statement', icon: FileCheck, action: () => handleOpenShareModal('Ledger Statement', 'STMT-2026-001') },
                       ].map((item, i) => (

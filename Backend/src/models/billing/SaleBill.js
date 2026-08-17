@@ -60,6 +60,17 @@ const saleBillSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  manualDiscountAmount: {
+    type: Number,
+    default: 0
+  },
+  manualChargeAmount: {
+    type: Number,
+    default: 0
+  },
+  manualAdjustmentReason: {
+    type: String
+  },
   hasReturn: {
     type: Boolean,
     default: false
