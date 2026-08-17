@@ -215,6 +215,9 @@ export const BillingPOSView = ({
         });
         if (newCust && (newCust.id || newCust._id)) {
           setSelectedCustomerId(newCust.id || newCust._id);
+          if (newCust.customerId) {
+            setCustomerForm(prev => ({ ...prev, customerId: newCust.customerId }));
+          }
           if (onAddNotification) onAddNotification("Success", "Customer Created & Saved", "success");
         }
       } catch (err) {
