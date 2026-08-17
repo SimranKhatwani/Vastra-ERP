@@ -56,11 +56,12 @@ const LEDGER_TYPE = {
 };
 
 const ALTERATION_STATUS = {
-  RECEIVED: 'RECEIVED',
-  IN_PROGRESS: 'IN_PROGRESS',
-  COMPLETED: 'COMPLETED',
-  DELIVERED: 'DELIVERED',
-  CANCELLED: 'CANCELLED'
+  RECEIVED: 'Pending',
+  IN_PROGRESS: 'In Progress',
+  READY_FOR_TRIAL: 'Ready for Trial',
+  READY_FOR_DELIVERY: 'Ready for Delivery',
+  DELIVERED: 'Delivered',
+  CANCELLED: 'Cancelled'
 };
 
 const TENANT_STATUS = {

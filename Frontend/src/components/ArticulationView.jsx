@@ -594,27 +594,27 @@ export const ArticulationView = ({
     }
   };
 
+  const handleUpdateAlterationStatus = async (alterationId, newStatus) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.patch(`/alterations/${alterationId}/status`, { status: newStatus });
+      if (res.data.success) {
+        if (onAddNotification) onAddNotification("Status Updated", `Status changed to ${newStatus}`, "success");
+        fetchAlterations();
+      } else {
+        if (onAddNotification) onAddNotification("Error", res.data.message || "Failed to update status", "danger");
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      if (onAddNotification) onAddNotification("Error", "Network or server failure.", "danger");
+    }
+  };
+
   useEffect(() => {
     fetchAlterations();
     const interval = setInterval(fetchAlterations, 8000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleUpdateAlterationStatus = async (altId, newStatus) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await api.patch(`/alterations/${altId}`, { status: newStatus });
-      const data = res.data;
-      if (data.success) {
-        if (onAddNotification) {
-          onAddNotification("Status Updated", `Alteration ticket status set to "${newStatus}".`, "success");
-        }
-        fetchAlterations();
-      }
-    } catch (err) {
-      console.error("Failed to update status:", err);
-    }
-  };
 
   // ─── CENTER PANEL STATE ───
   // Section 3: Garments

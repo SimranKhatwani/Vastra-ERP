@@ -825,7 +825,8 @@ export default function App() {
         itemCode: item.itemCode,
         uniqueCode: item.uniqueCode,
         sellingPrice: Number(item.price || item.sellingPrice || 0),
-        discountAmount: Number(item.discountAmount || 0)
+        discountAmount: Number(item.discountAmount || 0),
+        cartItemId: item.cartItemId
       }));
 
       const paymentTransactionsList = (() => {
@@ -854,6 +855,20 @@ export default function App() {
         }];
       })();
 
+      const alterationsList = (inv.items || []).filter(item => item.hasAlteration && item.alterationRecord).map(item => ({
+        barcode: item.barcode || item.itemCode || item.uniqueCode || `BC-${Date.now()}`,
+        cartItemId: item.cartItemId,
+        instructions: item.alterationRecord.specialInstructions || item.alterationRecord.customAlterationText || item.alterationRecord.alterationDetails?.join(', '),
+        charge: 0,
+        expectedDeliveryDate: item.alterationRecord.deliveryDate,
+        tailorName: item.alterationRecord.tailorName,
+        priority: item.alterationRecord.priority,
+        remarks: item.alterationRecord.specialInstructions,
+        trialDate: item.alterationRecord.trialDate,
+        measurements: item.alterationRecord.measurements,
+        alterationDetails: item.alterationRecord.alterationDetails
+      }));
+
       const billingPayload = {
         billNo: inv.invoiceNo || inv.billNo || `BILL-${Date.now()}`,
         billDate: inv.date || new Date().toISOString(),
@@ -865,7 +880,8 @@ export default function App() {
         paymentTransactions: paymentTransactionsList,
         paymentMethod: inv.paymentMethod || (paymentTransactionsList.length > 0 ? paymentTransactionsList.map(t => t.mode).join(' + ') : 'CASH'),
         advanceApplied: Number(inv.advanceApplied || 0),
-        remarks: inv.remarks || null
+        remarks: inv.remarks || null,
+        alterations: alterationsList
       };
 
       const res = await api.post(`/billing`, billingPayload);
@@ -880,7 +896,8 @@ export default function App() {
           _id: rawBill._id || rawBill.id,
           invoiceNo: rawBill.billNo || inv.invoiceNo,
           billNo: rawBill.billNo || inv.invoiceNo,
-          items: inv.items || []
+          items: inv.items || [],
+          alterationBill: data.data.alteration || null
         });
 
         // Refetch invoices, customer lists, and products catalog directly from backend DB

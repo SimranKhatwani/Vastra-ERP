@@ -878,24 +878,20 @@ export const BillingPOSView = ({
       createdBy: currentUser ? currentUser.name : "Cashier"
     };
 
-    let savedRecord = payload;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(`/alterations`, payload);
-      const data = res.data;
-      if (data.success && data.data) {
-        savedRecord = data.data;
-      }
-    } catch (err) {
-      console.error("Save alteration error:", err);
-    }
+    const savedRecord = payload;
 
     // Attach alteration record to target item in cart
     setCart(prev => prev.map(item => {
-      const isMatch = (item === selectedAlterationCartItem) ||
-        (item.id && selectedAlterationCartItem.id && item.id === selectedAlterationCartItem.id) ||
-        (item.productId && selectedAlterationCartItem.productId && item.productId === selectedAlterationCartItem.productId && item.size === selectedAlterationCartItem.size && item.color === selectedAlterationCartItem.color) ||
-        (item.name === selectedAlterationCartItem.name && item.size === selectedAlterationCartItem.size);
+      let isMatch = false;
+      if (item.cartItemId && selectedAlterationCartItem.cartItemId) {
+        isMatch = item.cartItemId === selectedAlterationCartItem.cartItemId;
+      } else {
+        isMatch = (item === selectedAlterationCartItem) ||
+          (item.id && selectedAlterationCartItem.id && item.id === selectedAlterationCartItem.id) ||
+          (item.productId && selectedAlterationCartItem.productId && item.productId === selectedAlterationCartItem.productId && item.size === selectedAlterationCartItem.size && item.color === selectedAlterationCartItem.color) ||
+          (item.name === selectedAlterationCartItem.name && item.size === selectedAlterationCartItem.size);
+      }
+      
       if (isMatch) {
         return { ...item, hasAlteration: true, alterationRecord: savedRecord };
       }
@@ -1765,6 +1761,7 @@ export const BillingPOSView = ({
 
       for (let i = 0; i < customQty; i++) {
         newItems.push({
+          cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}-${i}`,
           productId: prod._id || prod.id,
           name: itemNameVal,
           itemName: itemNameVal,
@@ -1791,7 +1788,9 @@ export const BillingPOSView = ({
           workerId: wId,
           workerName: wName,
           quantity: 1,
-          uniqueCode: generateUniqueItemCode()
+          uniqueCode: generateUniqueItemCode(),
+          hasAlteration: false,
+          alterationRecord: null
         });
       }
       return [...prev, ...newItems];
@@ -2249,6 +2248,18 @@ export const BillingPOSView = ({
         : (Number(partPaymentAmounts["Due"]) || 0);
 
       const isCustomerMissing = (!selectedCustomerId && !forcedCustomer) || currentActiveCustomer.id === "c-walkin" || !currentActiveCustomer.name;
+
+      const requiresCustomerForAlteration = cart.some(item => item.hasAlteration);
+      if (requiresCustomerForAlteration && isCustomerMissing) {
+        onAddNotification(
+          "Customer Details Required",
+          "Customer details are mandatory because this bill includes an item requiring alteration.",
+          "warning"
+        );
+        setShowDueCustomerModal(true);
+        return false;
+      }
+
       if (computedDueAmount > 0 && isCustomerMissing && overrideCustomerDue !== true) {
         setShowDueCustomerModal(true);
         return false;
@@ -2952,7 +2963,7 @@ export const BillingPOSView = ({
           (item) => `
                 <tr>
                   <td>
-                    ${item.name} (${item.size}/${item.color})
+                    ${item.name} (${item.size}/${item.color}) ${!!(item.hasAlteration || item.alterationRecord) ? '<b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
                     ${item.uniqueCode ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode}</span>` : ''}
                   </td>
                   <td class="text-center">${item.hsn || 'N/A'}</td>
@@ -2962,14 +2973,6 @@ export const BillingPOSView = ({
                 </tr>
                 ${item.isReturned ? `<tr><td colSpan="5" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">↩ [RETURNED ITEM]</td></tr>` : ''}
                 ${item.isExchanged ? `<tr><td colSpan="5" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">🔁 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
-                ${!!(item.hasAlteration || item.alterationRecord) ? `
-                  <tr>
-                    <td colSpan="5" style="font-size:9.5px; color:#be123c; background:#fff1f2; padding:4px 6px; border-radius:4px; margin-bottom:4px;">
-                      <b>✂ ALTERATION:</b> ${item.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'} | <b>Tailor:</b> ${item.alterationRecord?.tailorName || 'Master Tailor'}<br/>
-                      <b>Delivery:</b> ${item.alterationRecord?.deliveryDate || 'Scheduled'} ${item.alterationRecord?.deliveryTime || ''} [Trial: ${item.alterationRecord?.trialDate || 'N/A'}, Priority: ${item.alterationRecord?.priority || 'Normal'}]
-                    </td>
-                  </tr>
-                ` : ''}
               `,
         )
         .join("")}
@@ -3014,22 +3017,7 @@ export const BillingPOSView = ({
             <td class="text-right">&#8377;${(Number(displayGrandTotal) || 0).toLocaleString('en-IN')}</td>
           </tr>
         </table>
-        ${invoice.items.some(i => i.hasAlteration || !!i.alterationRecord) ? `
-          <div class="divider"></div>
-          <div style="font-size:11px; font-weight:bold; text-align:center; color:#be123c; margin-bottom:4px;">
-            *** ALTERATION & DELIVERY SLIP ***
-          </div>
-          ${invoice.items.filter(i => i.hasAlteration || !!i.alterationRecord).map(i => `
-            <div style="font-size:10px; line-height:1.4; background:#fff1f2; padding:6px; margin-bottom:4px; border:1px solid #fecdd3; border-radius:4px;">
-              <b>Item:</b> ${i.name} (${i.size}/${i.color})<br/>
-              <b>Tailor:</b> ${i.alterationRecord?.tailorName || 'Master Tailor'}<br/>
-              <b>Alterations:</b> ${i.alterationRecord?.alterationDetails?.join(', ') || 'Custom Fit'}<br/>
-              <b>Delivery Date & Time:</b> ${i.alterationRecord?.deliveryDate || 'Scheduled'} ${i.alterationRecord?.deliveryTime || ''}<br/>
-              <b>Trial Date:</b> ${i.alterationRecord?.trialDate || 'N/A'} (Priority: ${i.alterationRecord?.priority || 'Normal'})<br/>
-              ${i.alterationRecord?.specialInstructions ? `<b>Notes:</b> ${i.alterationRecord.specialInstructions}<br/>` : ''}
-            </div>
-          `).join('')}
-        ` : ''}
+        
         <div class="divider"></div>
         <div class="details">
           ${(invoice.advanceApplied > 0 || (paymentSplits.some(s => (s.method || s.mode || '').toUpperCase() === 'ADVANCE' && s.amount > 0))) ?
@@ -3084,51 +3072,117 @@ export const BillingPOSView = ({
   };
 
   // Direct print trigger using a hidden iframe to prevent blank browser tabs
+  const generateAlterationReceiptHTMLContent = (invoice) => {
+    const alteration = invoice.alterationBill || {};
+    const receiptDate = new Date(alteration.createdAt || new Date()).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+
+    return `
+      <div style="page-break-before: always; padding-top: 20px;">
+        <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
+        <div class="text-center" style="font-size: 16px; font-weight: bold; margin: 10px 0;">ALTERATION BILL</div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Alt Bill No:</b> ${alteration.alterationNo || 'ALT-DRAFT'}<br>
+          <b>Ref Sale Bill:</b> ${invoice.invoiceNo || invoice.billNo}<br>
+          <b>Date:</b> ${receiptDate}<br>
+          <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
+        </div>
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Item / Instructions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoice.items.filter(i => i.hasAlteration || !!i.alterationRecord).map(item => {
+              const pieceName = item.name || 'Altered Item';
+              const altRec = item.alterationRecord || {};
+              const instructions = altRec.specialInstructions || altRec.customAlterationText || altRec.alterationDetails?.join(', ') || 'Custom Fit';
+              return `
+                <tr>
+                  <td>
+                    <b>${pieceName}</b> (${item.size || '-'}/${item.color || '-'})<br/>
+                    <b>Instructions:</b> ${instructions}
+                  </td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+        <div class="details">
+          <b>Tailor:</b> ${alteration.tailorName || 'Master Tailor'}<br>
+          <b>Expected Delivery:</b> ${alteration.expectedDeliveryDate ? new Date(alteration.expectedDeliveryDate).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'As requested'}
+        </div>
+        <div class="divider"></div>
+        <div class="footer">Please bring this slip for collection.</div>
+      </div>
+    `;
+  };
+
   const handleDirectPrint = (invoice) => {
     if (!invoice) return;
-    const htmlContent = generateReceiptHTMLContent(invoice, false);
-
-    let iframe = document.getElementById("print-iframe");
-    if (iframe) {
-      try { document.body.removeChild(iframe); } catch (e) { }
-    }
-    iframe = document.createElement("iframe");
-    iframe.id = "print-iframe";
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0px";
-    iframe.style.height = "0px";
-    iframe.style.border = "none";
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-
-    setTimeout(() => {
-      try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-      } catch (e) {
-        console.error("Iframe print error:", e);
-        const win = window.open('', '_blank', 'width=400,height=600');
-        if (win) {
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          win.print();
-          win.close();
-        }
+    
+    const printHTML = (html, delay, iframeId) => {
+      let iframe = document.getElementById(iframeId);
+      if (iframe) {
+        try { document.body.removeChild(iframe); } catch (e) { }
       }
-    }, 250);
+      iframe = document.createElement("iframe");
+      iframe.id = iframeId;
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0px";
+      iframe.style.height = "0px";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (e) {
+          console.error("Iframe print error:", e);
+        }
+      }, delay);
+    };
+
+    let mainHtml = generateReceiptHTMLContent(invoice, false);
+    
+    // Check if there are actual alteration items
+    const hasAlterations = invoice.items && invoice.items.some(i => i.hasAlteration || !!i.alterationRecord);
+    
+    if (hasAlterations) {
+      // Inject the alteration HTML before the closing </body> tag of the main HTML
+      const altHtml = generateAlterationReceiptHTMLContent(invoice);
+      mainHtml = mainHtml.replace('</body>', altHtml + '</body>');
+    }
+    
+    printHTML(mainHtml, 250, "print-iframe-main");
+  };
+
+  const generateFullPreviewHTML = (invoice) => {
+    if (!invoice) return "";
+    let htmlContent = generateReceiptHTMLContent(invoice, false);
+    const hasAlterations = invoice.items && invoice.items.some(i => i.hasAlteration || !!i.alterationRecord);
+    if (hasAlterations) {
+      const altHtml = generateAlterationReceiptHTMLContent(invoice);
+      htmlContent = htmlContent.replace('</body>', altHtml + '</body>');
+    }
+    return htmlContent;
   };
 
   // Direct download trigger as HTML file
   const handleDownloadOnly = (invoice) => {
     if (!invoice) return;
-    const htmlContent = generateReceiptHTMLContent(invoice, false);
+    const htmlContent = generateFullPreviewHTML(invoice);
+
     const invoiceNoStr = (invoice.invoiceNo || invoice.billNo || 'DRAFT').replace(/[^a-z0-9_]/gi, '_');
     const filename = `Invoice_${invoiceNoStr}.html`;
 
@@ -7600,7 +7654,7 @@ export const BillingPOSView = ({
             <div className="flex-1 border border-slate-200 rounded-xl overflow-hidden bg-slate-100 shadow-inner">
               <iframe
                 title="Invoice Print Preview"
-                srcDoc={generateReceiptHTMLContent(showBillPreviewInvoice, false)}
+                srcDoc={generateFullPreviewHTML(showBillPreviewInvoice)}
                 className="w-full h-[58vh] border-none bg-white"
               />
             </div>

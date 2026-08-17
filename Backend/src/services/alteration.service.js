@@ -112,8 +112,40 @@ class AlterationService {
 
     const total = await Alteration.countDocuments(filter);
 
+    // Flatten data for frontend ArticulationView
+    const formattedAlterations = await Promise.all(alterations.map(async (alt) => {
+      const items = await AlterationItem.find({ alterationId: alt._id }).populate({
+        path: 'inventoryPieceId',
+        populate: { path: 'productId' }
+      });
+
+      const firstItem = items[0] || {};
+      const piece = firstItem.inventoryPieceId || {};
+      const product = piece.productId || {};
+
+      return {
+        _id: alt._id,
+        alterationId: alt.alterationNo,
+        invoiceNumber: alt.saleBillId ? alt.saleBillId.billNo : '',
+        customerName: alt.customerId ? alt.customerId.name : 'Walk-in',
+        customerPhone: alt.customerId ? alt.customerId.phone : '',
+        productName: firstItem.pieceName || product.name || 'Altered Garment',
+        sku: piece.barcode || piece.uniqueCode || product.sku || '',
+        size: piece.size || product.size || 'N/A',
+        color: piece.primaryColor || product.color || 'N/A',
+        tailorName: alt.tailorName,
+        priority: alt.priority || 'Normal',
+        status: alt.status,
+        deliveryDate: alt.expectedDeliveryDate ? alt.expectedDeliveryDate.toISOString().split('T')[0] : '',
+        trialDate: alt.trialDate ? alt.trialDate.toISOString().split('T')[0] : '',
+        alterationDetails: firstItem.alterationDetails || (firstItem.instructions ? firstItem.instructions.split(',') : []),
+        measurements: firstItem.measurements || {},
+        createdBy: alt.createdBy
+      };
+    }));
+
     return {
-      alterations,
+      alterations: formattedAlterations,
       pagination: {
         total,
         page,

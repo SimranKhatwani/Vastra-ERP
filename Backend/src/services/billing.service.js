@@ -192,6 +192,7 @@ class BillingService {
 
       validatedPieces.push({
         piece,
+        cartItemId: item.cartItemId,
         sellingPrice,
         discountAmount: discount,
         finalPrice
@@ -382,11 +383,67 @@ class BillingService {
       }
     }
 
+    // 5. Generate Alteration Bill if requested
+    let alteration = null;
+    if (billData.alterations && billData.alterations.length > 0) {
+      const Alteration = require('../models/alteration/Alteration');
+      const AlterationItem = require('../models/alteration/AlterationItem');
+      const { ALTERATION_STATUS } = require('../constants/status');
+
+      // Take details from the first alteration request for the header
+      const altReq = billData.alterations[0];
+      
+      alteration = await Alteration.create({
+        tenantId,
+        alterationNo: `ALT-${saleBill.billNo.split('-')[1] || Date.now()}`,
+        saleBillId: saleBill._id,
+        customerId: customer ? customer._id : undefined,
+        expectedDeliveryDate: altReq.expectedDeliveryDate,
+        tailorName: altReq.tailorName || 'Default Tailor',
+        priority: altReq.priority || 'Normal',
+        trialDate: altReq.trialDate,
+        totalCharges: billData.alterations.reduce((sum, a) => sum + (Number(a.charge) || 0), 0),
+        status: ALTERATION_STATUS.RECEIVED,
+        remarks: altReq.remarks,
+        createdBy: userId
+      });
+
+      for (const altReqItem of billData.alterations) {
+        // Find matching piece from validatedPieces
+        const matchingVal = validatedPieces.find(v => 
+          (altReqItem.cartItemId && v.cartItemId === altReqItem.cartItemId) ||
+          v.piece.barcode === altReqItem.barcode || 
+          v.piece.uniqueCode === altReqItem.barcode || 
+          v.piece.itemCode === altReqItem.barcode
+        );
+        
+        if (matchingVal) {
+          await AlterationItem.create({
+            tenantId,
+            alterationId: alteration._id,
+            inventoryPieceId: matchingVal.piece._id,
+            pieceName: matchingVal.piece.product?.name || 'Altered Item',
+            instructions: altReqItem.instructions,
+            charge: altReqItem.charge || 0,
+            alterationDetails: altReqItem.alterationDetails || [],
+            measurements: altReqItem.measurements || {},
+            createdBy: userId
+          });
+
+          // Also update inventory piece to show it's altered/at tailor
+          matchingVal.piece.altered = true;
+          matchingVal.piece.currentLocation = 'TAILOR_SHOP';
+          await matchingVal.piece.save();
+        }
+      }
+    }
+
     return {
       saleBill,
       customer,
       saleItemsCount: createdSaleItems.length,
-      payment
+      payment,
+      alteration
     };
   }
 
@@ -510,20 +567,61 @@ class BillingService {
       }
     });
 
+    // Fetch Alterations for all bills
+    const Alteration = require('../models/alteration/Alteration');
+    const AlterationItem = require('../models/alteration/AlterationItem');
+    const alterations = billIds.length > 0 ? await Alteration.find({ saleBillId: { $in: billIds }, tenantId }) : [];
+    const alterationIds = alterations.map(a => a._id);
+    const alterationItems = alterationIds.length > 0 ? await AlterationItem.find({ alterationId: { $in: alterationIds }, tenantId }) : [];
+
+    const alterationByBill = new Map();
+    alterations.forEach(alt => {
+      const bId = alt.saleBillId.toString();
+      const items = alterationItems.filter(ai => ai.alterationId.toString() === alt._id.toString());
+      alterationByBill.set(bId, { alt, items });
+    });
+
     const enrichedBills = bills.map(b => {
       const bObj = b.toObject();
-      const pInfo = paymentByBill.get(b._id.toString());
+      const bIdStr = b._id.toString();
+      const pInfo = paymentByBill.get(bIdStr);
       let computedMode = bObj.paymentMethod;
       if (pInfo && pInfo.modeStr) {
         computedMode = pInfo.modeStr;
       } else if (bObj.advanceApplied > 0) {
         computedMode = `ADVANCE + ${bObj.paymentMethod || 'CASH'}`;
       }
+
+      const altInfo = alterationByBill.get(bIdStr);
+      let billItems = itemsByBill.get(bIdStr) || bObj.items || [];
+
+      if (altInfo) {
+        billItems = billItems.map(item => {
+          const altItem = altInfo.items.find(ai => ai.inventoryPieceId.toString() === item.inventoryPieceId?.toString());
+          if (altItem) {
+            return {
+              ...item,
+              hasAlteration: true,
+              alterationRecord: {
+                tailorName: altInfo.alt.tailorName,
+                deliveryDate: altInfo.alt.expectedDeliveryDate ? altInfo.alt.expectedDeliveryDate.toISOString().split('T')[0] : '',
+                trialDate: altInfo.alt.trialDate ? altInfo.alt.trialDate.toISOString().split('T')[0] : '',
+                priority: altInfo.alt.priority || 'Normal',
+                alterationDetails: altItem.alterationDetails && altItem.alterationDetails.length > 0 ? altItem.alterationDetails : (altItem.instructions ? altItem.instructions.split(',') : []),
+                measurements: altItem.measurements || {},
+                specialInstructions: altInfo.alt.remarks
+              }
+            };
+          }
+          return item;
+        });
+      }
+
       return {
         ...bObj,
         paymentMethod: computedMode || (bObj.dueAmount > 0 ? "Credit" : "Cash"),
         paymentTransactions: pInfo?.txs || bObj.paymentTransactions,
-        items: itemsByBill.get(b._id.toString()) || bObj.items || []
+        items: billItems
       };
     });
 

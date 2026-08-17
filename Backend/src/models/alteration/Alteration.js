@@ -28,6 +28,11 @@ const alterationSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  priority: {
+    type: String,
+    default: 'Normal'
+  },
+  trialDate: Date,
   remarks: String
 });
 

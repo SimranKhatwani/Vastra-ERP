@@ -24,7 +24,10 @@ const alterationItemSchema = new mongoose.Schema({
     type: String,
     enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED'],
     default: 'PENDING'
-  }
+  },
+  pieceName: String,
+  alterationDetails: [String],
+  measurements: mongoose.Schema.Types.Mixed
 });
 
 alterationItemSchema.plugin(baseSchemaPlugin);
