@@ -8,6 +8,7 @@ const customerSchema = new mongoose.Schema({
   gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'] },
   anniversary: Date,
   gstin: { type: String, uppercase: true, trim: true, default: '' },
+  address: { type: String, trim: true, default: '' },
   loyaltyPoints: { type: Number, default: 0 },
   dueBalance: { type: Number, default: 0 },
   advanceBalance: { type: Number, default: 0 },

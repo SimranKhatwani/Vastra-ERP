@@ -28,7 +28,7 @@ class CustomerService {
 
     const customer = await Customer.create(payload);
 
-    if (customerData.address) {
+    if (customerData.address && typeof customerData.address === 'object') {
       await CustomerAddress.create({
         tenantId,
         customerId: customer._id,
@@ -159,7 +159,9 @@ class CustomerService {
   }
 
   static async deleteCustomer(customerId, userId, tenantId) {
-    return customerRepo.softDelete(customerId, userId, tenantId);
+    const customer = await Customer.findOneAndDelete({ _id: customerId, tenantId });
+    if (!customer) throw new ApiError(404, 'Customer not found.');
+    return customer;
   }
 
   static async restoreCustomer(customerId, tenantId) {

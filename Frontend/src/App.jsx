@@ -1902,6 +1902,9 @@ export default function App() {
               onSettleCustomerBalance={handleSettleCustomerBalance}
               onAddNotification={addToastNotification}
               onAddCustomer={handleAddCustomer}
+              onDeleteCustomer={(deletedCustId) => {
+                setCustomers(prev => prev.filter(c => (c.id || c._id) !== deletedCustId));
+              }}
               onUpdateCustomerPrepaidAdvance={(updatedCustId, updatedCustData) => {
                 setCustomers(prev => prev.map(c => ((c.id || c._id) === updatedCustId ? { ...c, ...updatedCustData, id: updatedCustData._id || updatedCustId } : c)));
               }}

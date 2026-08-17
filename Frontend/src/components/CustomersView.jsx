@@ -8,7 +8,8 @@ export const CustomersView = ({
   onSettleCustomerBalance,
   onAddNotification,
   onUpdateCustomerPrepaidAdvance,
-  onAddCustomer
+  onAddCustomer,
+  onDeleteCustomer
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [membershipFilter, setMembershipFilter] = useState("All");
@@ -27,8 +28,13 @@ export const CustomersView = ({
 
   // Add Customer Modal State
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", gstin: "" });
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", gstin: "", address: "" });
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+
+  // Edit Customer Modal State
+  const [showEditCustomerModal, setShowEditCustomerModal] = useState(false);
+  const [editCustomerForm, setEditCustomerForm] = useState({ id: "", name: "", phone: "", gstin: "", address: "" });
+  const [isUpdatingCustomer, setIsUpdatingCustomer] = useState(false);
 
   const handleCreateCustomerSubmit = async (e) => {
     e.preventDefault();
@@ -50,12 +56,51 @@ export const CustomersView = ({
         onAddNotification("Customer Created", `${newCustomerForm.name} saved successfully.`, "success");
       }
       setShowAddCustomerModal(false);
-      setNewCustomerForm({ name: "", phone: "", gstin: "" });
+      setNewCustomerForm({ name: "", phone: "", gstin: "", address: "" });
     } catch (err) {
       console.error("Failed to create customer:", err);
       onAddNotification("Error", "Failed to create customer: " + (err.response?.data?.message || err.message), "error");
     } finally {
       setIsCreatingCustomer(false);
+    }
+  };
+
+  const handleEditCustomerSubmit = async (e) => {
+    e.preventDefault();
+    if (!editCustomerForm.name || !editCustomerForm.phone) {
+      onAddNotification("Required Fields Missing", "Please enter customer name and phone number.", "error");
+      return;
+    }
+    setIsUpdatingCustomer(true);
+    try {
+      const res = await api.put(`/customers/${editCustomerForm.id}`, editCustomerForm);
+      if (res.data && res.data.success) {
+        onAddNotification("Success", "Customer details updated", "success");
+        // Update local state if needed (optional since parent might refetch)
+      }
+      setShowEditCustomerModal(false);
+    } catch (err) {
+      console.error("Failed to update customer:", err);
+      onAddNotification("Error", "Failed to update customer", "error");
+    } finally {
+      setIsUpdatingCustomer(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (cust) => {
+    const custId = cust._id || cust.id;
+    if (!window.confirm(`Are you sure you want to permanently delete customer ${cust.name}? This will remove all their details.`)) return;
+    try {
+      const res = await api.delete(`/customers/${custId}`);
+      if (res.data && res.data.success) {
+        onAddNotification("Deleted", "Customer permanently deleted", "success");
+        if (onDeleteCustomer) {
+          onDeleteCustomer(custId);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete customer:", err);
+      onAddNotification("Error", "Failed to delete customer", "error");
     }
   };
 
@@ -266,6 +311,7 @@ export const CustomersView = ({
                     <th className="p-3.5 text-right font-mono">Total Advance</th>
                     <th className="p-3.5 text-right">Outstanding Balance</th>
                     <th className="p-3.5 text-center">Manage Prepaid</th>
+                    <th className="p-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
@@ -323,6 +369,35 @@ export const CustomersView = ({
                             className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                           >
                             Edit Prepaid
+                          </button>
+                        </td>
+                        <td className="p-3.5 text-center flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditCustomerForm({
+                                id: cust._id || cust.id,
+                                name: cust.name || "",
+                                phone: cust.phone || "",
+                                gstin: cust.gstin || cust.gstNo || "",
+                                address: cust.address || ""
+                              });
+                              setShowEditCustomerModal(true);
+                            }}
+                            className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded cursor-pointer transition-colors"
+                            title="Edit Customer"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCustomer(cust)}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded cursor-pointer transition-colors"
+                            title="Delete Customer"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </button>
                         </td>
                       </tr>
@@ -659,6 +734,15 @@ export const CustomersView = ({
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono uppercase font-bold text-slate-800 outline-none focus:border-indigo-500"
                 />
               </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Address (Optional)</label>
+                <textarea
+                  placeholder="e.g. 123 Main St, City"
+                  value={newCustomerForm.address || ''}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500 min-h-[60px]"
+                />
+              </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
@@ -676,6 +760,82 @@ export const CustomersView = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT CUSTOMER */}
+      {showEditCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up border border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Edit Customer</h3>
+              <button onClick={() => setShowEditCustomerModal(false)} className="p-1 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleEditCustomerSubmit} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Customer Name <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  value={editCustomerForm.name}
+                  onChange={(e) => setEditCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Phone (10 digits) <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  maxLength={10}
+                  pattern="\d{10}"
+                  placeholder="e.g. 9876543210"
+                  value={editCustomerForm.phone}
+                  onChange={(e) => setEditCustomerForm(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">GST No. (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="E.G. 07ABCDE1234F1Z5"
+                  value={editCustomerForm.gstin || ''}
+                  onChange={(e) => setEditCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500 uppercase"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Address (Optional)</label>
+                <textarea
+                  placeholder="e.g. 123 Main St, City"
+                  value={editCustomerForm.address || ''}
+                  onChange={(e) => setEditCustomerForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold outline-none focus:border-indigo-500 min-h-[60px]"
+                />
+              </div>
+            </form>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEditCustomerModal(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleEditCustomerSubmit}
+                disabled={isUpdatingCustomer}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-70 flex items-center gap-2"
+              >
+                {isUpdatingCustomer ? 'Saving...' : 'Save Customer'}
+              </button>
+            </div>
           </div>
         </div>
       )}
