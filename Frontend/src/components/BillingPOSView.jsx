@@ -70,7 +70,13 @@ export const BillingPOSView = ({
   clearQuickArticulateItem,
 }) => {
   // Cart state
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pos_saved_cart");
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return [];
+  });
 
   // GST & SGST Configurations
   const [cgstRate, setCgstRate] = useState(0);
@@ -103,6 +109,7 @@ export const BillingPOSView = ({
     fetchTaxConfig();
     fetchActiveRules();
   }, []);
+
 
   // Product Configuration Modal state
   const [configModalProduct, setConfigModalProduct] = useState(null);
@@ -186,8 +193,23 @@ export const BillingPOSView = ({
       return e.isActive !== false && !r.includes("cashier") && !des.includes("cashier") && n !== "mahesh";
     });
   }, [employees]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+  const [selectedCustomerId, setSelectedCustomerId] = useState(() => {
+    return localStorage.getItem("pos_saved_customer_id") || "";
+  });
+  const [customerForm, setCustomerForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pos_saved_customer_form");
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return { phone: '', name: '', customerId: '', gstin: '', lf: '2588' };
+  });
+
+  // Persist POS state to localStorage
+  React.useEffect(() => {
+    localStorage.setItem("pos_saved_cart", JSON.stringify(cart));
+    localStorage.setItem("pos_saved_customer_id", selectedCustomerId);
+    localStorage.setItem("pos_saved_customer_form", JSON.stringify(customerForm));
+  }, [cart, selectedCustomerId, customerForm]);
 
   const handleCustomerPhoneChange = (e) => {
     const val = e.target.value;
@@ -2471,6 +2493,19 @@ export const BillingPOSView = ({
         reason: '',
         isApproved: false
       });
+      setPaymentType('Full Payment');
+      setPartPaymentAmounts({ Cash: 0, Card: 0, UPI: 0, Cheque: 0, Wallet: 0, Due: 0 });
+      setManualDiscountIds([]);
+      setRejectedAutoDiscountIds([]);
+      setProductSearch("");
+      setCustomerSearchQuery("");
+      setCouponCode("");
+      setRightColumnTab("catalog");
+      
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 100);
+
       if (!skipBillPreview) {
         setShowBillPreviewInvoice(mergedInvoice);
       }
@@ -2825,6 +2860,9 @@ export const BillingPOSView = ({
       const saved = await handleCheckoutSubmit(false, true);
       if (saved) {
         setShowBillPreviewInvoice(null);
+        setTimeout(() => {
+          barcodeInputRef.current?.focus();
+        }, 150);
         if (typeof onAddNotification === 'function') {
           onAddNotification("Success", "Bill generated successfully.", "success");
         }
@@ -4635,7 +4673,11 @@ export const BillingPOSView = ({
                       <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                         Selected Invoice Details
                       </h4>
-                      <span className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                      <span 
+                        className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors"
+                        onClick={() => setShowBillPreviewInvoice(selectedInvoiceForReturn)}
+                        title="Click to view full receipt"
+                      >
                         {selectedInvoiceForReturn.invoiceNo}
                       </span>
                     </div>
@@ -4667,7 +4709,7 @@ export const BillingPOSView = ({
                       </div>
                       <div className="pt-2 mt-2 border-t border-slate-200">
                         <button
-                          onClick={() => handleDownloadReceiptHTML(selectedInvoiceForReturn)}
+                          onClick={() => setShowBillPreviewInvoice(selectedInvoiceForReturn)}
                           className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                         >
                           <FileText className="w-4 h-4" />
