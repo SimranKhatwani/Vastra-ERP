@@ -627,6 +627,8 @@ export default function VendorCommunicationCard({ currentUser }) {
 
   // Modals
   const [showAddVendorModal, setShowAddVendorModal] = useState(false);
+  const [isEditingVendor, setIsEditingVendor] = useState(false);
+  const [editingVendorId, setEditingVendorId] = useState(null);
   const [newVendorForm, setNewVendorForm] = useState({
     name: '',
     businessName: '',
@@ -634,15 +636,15 @@ export default function VendorCommunicationCard({ currentUser }) {
     email: '',
     gstin: '',
     panNumber: '',
-    category: 'Fabric & Materials',
-    businessType: 'Manufacturer',
-    rating: 4.5,
-    brandsSuppliedStr: 'Raymond, Linen Club',
+    businessType: '',
+    rating: 0,
+    brandsSuppliedStr: '',
     address: '',
-    city: 'Surat',
-    state: 'Gujarat',
-    pinCode: '395002',
-    bankName: 'HDFC Bank',
+    city: '',
+    state: '',
+    stateCode: '',
+    pincode: '',
+    bankName: '',
     accountHolder: '',
     accountNo: '',
     ifscCode: '',
@@ -835,7 +837,7 @@ export default function VendorCommunicationCard({ currentUser }) {
       </div>
       <div class="meta-item">
         <span class="meta-label">GSTIN Number</span>
-        <span class="meta-mono">${v.gstin || '27AABCU9603R1ZM'}</span>
+        <span class="meta-mono">${v.gstin || 'N/A'}</span>
       </div>
       <div class="meta-item">
         <span class="meta-label">Date & Time</span>
@@ -997,13 +999,13 @@ export default function VendorCommunicationCard({ currentUser }) {
       email: newVendorForm.email,
       gstin: newVendorForm.gstin,
       panNumber: newVendorForm.panNumber,
-      category: newVendorForm.category,
       businessType: newVendorForm.businessType,
       rating: newVendorForm.rating,
       address: newVendorForm.address,
       city: newVendorForm.city,
       state: newVendorForm.state,
-      pinCode: newVendorForm.pinCode,
+      stateCode: newVendorForm.stateCode,
+      pincode: newVendorForm.pincode,
       upiId: newVendorForm.upiId,
       paymentTerms: newVendorForm.paymentTerms,
       creditDays: newVendorForm.creditDays,
@@ -1014,24 +1016,32 @@ export default function VendorCommunicationCard({ currentUser }) {
         : [],
       bankDetails: {
         bankName: newVendorForm.bankName,
-        accountHolder: newVendorForm.accountHolder || newVendorForm.name,
-        accountNo: newVendorForm.accountNo,
+        accountNumber: newVendorForm.accountNo,
         ifscCode: newVendorForm.ifscCode,
-        branch: `${newVendorForm.city || ''} Branch`
+        branchName: newVendorForm.branch || `${newVendorForm.city || ''} Branch`.trim(),
+        upiId: newVendorForm.upiId
       }
     };
 
     try {
       const token = localStorage.getItem('token');
-      const res = await api.post(`/vendor-communication`, payload);
+      let res;
+      if (isEditingVendor && editingVendorId) {
+        res = await api.put(`/vendors/${editingVendorId}`, payload);
+      } else {
+        res = await api.post(`/vendors`, payload);
+      }
+      
       const data = res.data;
       if (data.success && data.data) {
-        showToast(`✅ Vendor "${data.data.name}" created successfully!`);
+        showToast(`✅ Vendor "${data.data.name}" ${isEditingVendor ? 'updated' : 'created'} successfully!`);
         setShowAddVendorModal(false);
+        setIsEditingVendor(false);
+        setEditingVendorId(null);
         setNewVendorForm({
           name: '', businessName: '', phone: '', email: '', gstin: '', panNumber: '',
-          category: 'Fabric & Materials', businessType: 'Manufacturer', rating: 4.5,
-          brandsSuppliedStr: '', address: '', city: '', state: 'Gujarat', pinCode: '',
+          businessType: '', rating: 0,
+          brandsSuppliedStr: '', address: '', city: '', state: '', stateCode: '', pincode: '',
           bankName: '', accountHolder: '', accountNo: '', ifscCode: '', upiId: '',
           paymentTerms: 'Net 30', creditDays: 30, creditLimit: 100000, outstandingBalance: 0
         });
@@ -1046,6 +1056,57 @@ export default function VendorCommunicationCard({ currentUser }) {
     } catch (err) {
       console.error('createVendor network error:', err);
       showToast('Network error — is the backend server running?', 'error');
+    }
+  };
+
+  const handleEditVendorClick = (e, vendor) => {
+    e.stopPropagation();
+    setIsEditingVendor(true);
+    setEditingVendorId(vendor._id);
+    setNewVendorForm({
+      name: vendor.name || '',
+      businessName: vendor.companyName || '',
+      phone: vendor.phone || '',
+      email: vendor.email || '',
+      gstin: vendor.gstin || '',
+      panNumber: vendor.panNumber || '',
+      businessType: vendor.businessType || '',
+      rating: vendor.rating || 4.5,
+      brandsSuppliedStr: vendor.brandsSupplied ? vendor.brandsSupplied.join(', ') : '',
+      address: vendor.address || '',
+      city: vendor.city || '',
+      state: vendor.state || '',
+      stateCode: vendor.stateCode || '',
+      pincode: vendor.pincode || '',
+      bankName: vendor.bankDetails?.bankName || '',
+      accountNo: vendor.bankDetails?.accountNumber || '',
+      ifscCode: vendor.bankDetails?.ifscCode || '',
+      branch: vendor.bankDetails?.branchName || '',
+      upiId: vendor.bankDetails?.upiId || '',
+      paymentTerms: vendor.paymentTerms || 'Net 30',
+      creditDays: vendor.creditDays || 30,
+      creditLimit: vendor.creditLimit || 100000,
+      outstandingBalance: vendor.openingBalance || 0
+    });
+    setShowAddVendorModal(true);
+  };
+
+  const handleDeleteVendor = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this vendor? This cannot be undone.')) return;
+    try {
+      const res = await api.delete(`/vendors/${id}`);
+      if (res.data.success) {
+        showToast('Vendor deleted successfully', 'success');
+        setVendors(vendors.filter(v => v._id !== id));
+        if (selectedVendorId === id) {
+          setViewMode('directory');
+          setSelectedVendorId(null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to delete vendor', 'error');
     }
   };
 
@@ -1205,7 +1266,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold text-xs uppercase tracking-wider">
                     <th className="p-4 w-28">Vendor Code</th>
                     <th className="p-4 w-56">Supplier Name</th>
-                    <th className="p-4 w-44">Category</th>
                     <th className="p-4 w-52">Primary Contact</th>
                     <th className="p-4">Registered Office Address</th>
                     <th className="p-4 text-center w-36">Action</th>
@@ -1222,11 +1282,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <td className="p-4 font-bold text-indigo-600 group-hover:text-indigo-800 group-hover:underline text-[15px]">
                         {v.name}
                       </td>
-                      <td className="p-4">
-                        <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded border border-slate-200 uppercase">
-                          {v.category}
-                        </span>
-                      </td>
                       <td className="p-4 text-slate-600">
                         <div>{v.phone}</div>
                         <div className="text-xs text-slate-400 font-normal">{v.email}</div>
@@ -1234,13 +1289,30 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <td className="p-4 text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[280px]" title={v.address}>
                         {v.address}
                       </td>
-                      <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleSelectVendor(v._id)}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition text-xs flex items-center gap-1 mx-auto"
-                        >
-                          Open Profile ➜
-                        </button>
+                      <td className="p-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleSelectVendor(v._id)}
+                            className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 font-bold rounded-lg transition text-xs flex items-center shadow-sm"
+                            title="View Profile"
+                          >
+                            Profile ➜
+                          </button>
+                          <button
+                            onClick={(e) => handleEditVendorClick(e, v)}
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition shadow-sm border border-transparent hover:border-indigo-100"
+                            title="Edit Vendor"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteVendor(e, v._id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition shadow-sm border border-transparent hover:border-red-100"
+                            title="Delete Vendor"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1368,39 +1440,35 @@ export default function VendorCommunicationCard({ currentUser }) {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-xs">
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
-                      <span className="text-slate-400 font-medium">Category</span>
-                      <span className="font-bold text-slate-800 block">{vendor.category || 'Fabric & Materials'}</span>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Business Type</span>
-                      <span className="font-bold text-slate-800 block">{vendor.businessType || 'Manufacturer'}</span>
+                      <span className="font-bold text-slate-800 block">{vendor.businessType || 'N/A'}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">GSTIN</span>
-                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.gstin || '27AABCU9603R1ZM', 'GSTIN')}>{vendor.gstin || '27AABCU9603R1ZM'} <Copy className="w-3 h-3" /></span>
+                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.gstin, 'GSTIN')}>{vendor.gstin || 'N/A'} {vendor.gstin && <Copy className="w-3 h-3" />}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">PAN Number</span>
-                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.panNumber || 'AABCU9603R', 'PAN')}>{vendor.panNumber || 'AABCU9603R'} <Copy className="w-3 h-3" /></span>
+                      <span className="font-mono font-bold text-indigo-600 flex items-center gap-1 cursor-pointer" onClick={() => copyToClipboard(vendor.panNumber, 'PAN Number')}>{vendor.panNumber || 'N/A'} {vendor.panNumber && <Copy className="w-3 h-3" />}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Supplied Brands</span>
-                      <span className="font-bold text-slate-700 block">{(vendor.brandsSupplied || ['Raymond', 'Linen Club']).join(', ')}</span>
+                      <span className="font-bold text-slate-700 block">{(vendor.brandsSupplied || []).join(', ') || 'N/A'}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
                       <span className="text-slate-400 font-medium">Preferred Contact</span>
-                      <span className="font-bold text-slate-700 block">{vendor.preferredContactPerson || 'Mr. Ramesh Shah (Sales Head)'}</span>
+                      <span className="font-bold text-slate-700 block">{vendor.preferredContactPerson || 'N/A'}</span>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1 col-span-2">
                       <span className="text-slate-400 font-medium">Calling Window</span>
-                      <span className="font-bold text-emerald-600 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || '10:00 AM - 06:00 PM'}</span>
+                      <span className="font-bold text-emerald-600 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {vendor.preferredCallingTime || 'N/A'}</span>
                     </div>
                   </div>
 
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
                     <span className="text-xs font-bold text-slate-700 block">Quality & Performance Remarks:</span>
                     <p className="text-xs text-slate-600 italic bg-white p-3 rounded-lg border border-slate-200">
-                      "{vendor.qualityRemarks || 'Vendor maintains 98% quality compliance and on-time order fulfillment.'}"
+                      "{vendor.qualityRemarks || 'No remarks provided.'}"
                     </p>
                   </div>
                 </div>
@@ -1417,21 +1485,32 @@ export default function VendorCommunicationCard({ currentUser }) {
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">Primary Mobile</span>
-                        <span className="font-mono font-bold text-slate-800 text-sm">{vendor.phone || '9876543210'}</span>
+                        <span className="font-mono font-bold text-slate-800 text-sm">{vendor.phone || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button onClick={() => copyToClipboard(vendor.phone || '9876543210', 'Mobile')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => copyToClipboard(vendor.phone, 'Mobile')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
                         <button onClick={() => handleOpenShareModal('Call')} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Call</button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <span className="text-slate-400 block font-medium">Email Address</span>
+                        <span className="font-bold text-slate-800 text-sm">{vendor.email || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => copyToClipboard(vendor.email, 'Email')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleOpenShareModal('Email')} className="p-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 font-bold flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> Email</button>
                       </div>
                     </div>
 
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">WhatsApp Number</span>
-                        <span className="font-mono font-bold text-emerald-600 text-sm">{vendor.whatsappNumber || vendor.phone || '9876543210'}</span>
+                        <span className="font-mono font-bold text-emerald-600 text-sm">{vendor.whatsappNumber || vendor.phone || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button onClick={() => copyToClipboard(vendor.whatsappNumber || vendor.phone || '9876543210', 'WhatsApp')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => copyToClipboard(vendor.whatsappNumber || vendor.phone, 'WhatsApp')} className="p-2 bg-white text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-100"><Copy className="w-3.5 h-3.5" /></button>
                         <button onClick={() => handleOpenShareModal('WhatsApp Message')} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Message</button>
                       </div>
                     </div>
@@ -1459,92 +1538,38 @@ export default function VendorCommunicationCard({ currentUser }) {
                           <span className="font-black text-slate-800">Office Address</span>
                         </div>
                         <button
-                          onClick={() => copyToClipboard(vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002', 'Office Address')}
+                          onClick={() => copyToClipboard(vendor.address, 'Office Address')}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                         ><Copy className="w-3.5 h-3.5" /></button>
                       </div>
                       <p className="text-slate-600 leading-relaxed font-medium pl-1">
-                        {vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002'}
+                        {vendor.address || 'N/A'}
                       </p>
-                      <a
-                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.address || 'Plot 45, Textile Industrial Park, Ring Road, Surat, Gujarat - 395002')}`}
-                        target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline text-[11px]"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
-                      </a>
-                    </div>
-
-                    {/* Factory Address */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 bg-amber-50 rounded-xl text-amber-600"><Building2 className="w-4 h-4" /></div>
-                          <span className="font-black text-slate-800">Factory Address</span>
+                      
+                      <div className="grid grid-cols-3 gap-2 mt-2 pt-3 border-t border-slate-100">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">State</span>
+                          <span className="text-xs font-bold text-slate-700">{vendor.state || 'N/A'}</span>
                         </div>
-                        <button
-                          onClick={() => copyToClipboard(vendor.factoryAddress || 'Survey No. 112, GIDC Estate, Pandesara, Surat, Gujarat - 394221', 'Factory Address')}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
-                        ><Copy className="w-3.5 h-3.5" /></button>
-                      </div>
-                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
-                        {vendor.factoryAddress || 'Survey No. 112, GIDC Industrial Estate, Pandesara, Surat, Gujarat - 394221'}
-                      </p>
-                      <a
-                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.factoryAddress || 'Survey No. 112, GIDC Industrial Estate, Pandesara, Surat')}`}
-                        target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-amber-600 font-bold hover:underline text-[11px]"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
-                      </a>
-                    </div>
-
-                    {/* Warehouse Address */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><Bookmark className="w-4 h-4" /></div>
-                          <span className="font-black text-slate-800">Warehouse Address</span>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">State Code</span>
+                          <span className="text-xs font-bold text-slate-700">{vendor.stateCode || 'N/A'}</span>
                         </div>
-                        <button
-                          onClick={() => copyToClipboard(vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat, Gujarat - 394120', 'Warehouse Address')}
-                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                        ><Copy className="w-3.5 h-3.5" /></button>
-                      </div>
-                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
-                        {vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat, Gujarat - 394120'}
-                      </p>
-                      <a
-                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.warehouseAddress || 'Warehouse No. 7-B, Logistics Park, Kosamba Road, Surat')}`}
-                        target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-emerald-600 font-bold hover:underline text-[11px]"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
-                      </a>
-                    </div>
-
-                    {/* Pickup Address */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:shadow-md transition">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 bg-purple-50 rounded-xl text-purple-600"><Paperclip className="w-4 h-4" /></div>
-                          <span className="font-black text-slate-800">Pickup Address</span>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">Pincode</span>
+                          <span className="text-xs font-bold text-slate-700">{vendor.pincode || 'N/A'}</span>
                         </div>
-                        <button
-                          onClick={() => copyToClipboard(vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin, Surat, Gujarat - 394230', 'Pickup Address')}
-                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
-                        ><Copy className="w-3.5 h-3.5" /></button>
                       </div>
-                      <p className="text-slate-600 leading-relaxed font-medium pl-1">
-                        {vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin Industrial Area, Surat, Gujarat - 394230'}
-                      </p>
-                      <a
-                        href={`https://maps.google.com?q=${encodeURIComponent(vendor.pickupAddress || 'Gate 3, GIDC Phase-2, Sachin Industrial Area, Surat')}`}
-                        target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-purple-600 font-bold hover:underline text-[11px]"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
-                      </a>
+
+                      {vendor.address && (
+                        <a
+                          href={`https://maps.google.com?q=${encodeURIComponent(vendor.address)}`}
+                          target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline text-[11px] mt-2 block"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open in Google Maps
+                        </a>
+                      )}
                     </div>
 
                   </div>
@@ -1568,21 +1593,21 @@ export default function VendorCommunicationCard({ currentUser }) {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 text-xs">
                       <div>
                         <span className="text-slate-400 font-medium block mb-1">Bank Name</span>
-                        <span className="font-black text-slate-800 text-sm">{vendor.bankDetails?.bankName || 'HDFC Bank Ltd.'}</span>
+                        <span className="font-black text-slate-800 text-sm">{vendor.bankDetails?.bankName || 'N/A'}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 font-medium block mb-1">Account Holder Name</span>
-                        <span className="font-bold text-slate-700">{vendor.bankDetails?.accountHolder || vendor.name}</span>
+                        <span className="font-bold text-slate-700">{vendor.bankDetails?.accountHolder || vendor.name || 'N/A'}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 font-medium block mb-1">Branch Name</span>
-                        <span className="font-bold text-slate-700">{vendor.bankDetails?.branch || 'Ring Road, Surat Branch'}</span>
+                        <span className="font-bold text-slate-700">{vendor.bankDetails?.branchName || 'N/A'}</span>
                       </div>
                       <div className="col-span-2 sm:col-span-1">
                         <span className="text-slate-400 font-medium block mb-1">Account Number</span>
                         <span className="font-mono font-black text-indigo-700 text-sm flex items-center gap-2">
-                          {vendor.bankDetails?.accountNo || '50200049281920'}
-                          <button onClick={() => copyToClipboard(vendor.bankDetails?.accountNo || '50200049281920', 'Account Number')} className="text-slate-400 hover:text-indigo-600">
+                          {vendor.bankDetails?.accountNo || 'N/A'}
+                          <button onClick={() => copyToClipboard(vendor.bankDetails?.accountNo, 'Account Number')} className="text-slate-400 hover:text-indigo-600">
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                         </span>
@@ -1590,8 +1615,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <div>
                         <span className="text-slate-400 font-medium block mb-1">IFSC Code</span>
                         <span className="font-mono font-black text-indigo-700 flex items-center gap-2">
-                          {vendor.bankDetails?.ifscCode || 'HDFC0001234'}
-                          <button onClick={() => copyToClipboard(vendor.bankDetails?.ifscCode || 'HDFC0001234', 'IFSC Code')} className="text-slate-400 hover:text-indigo-600">
+                          {vendor.bankDetails?.ifscCode || 'N/A'}
+                          <button onClick={() => copyToClipboard(vendor.bankDetails?.ifscCode, 'IFSC Code')} className="text-slate-400 hover:text-indigo-600">
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                         </span>
@@ -2055,7 +2080,7 @@ export default function VendorCommunicationCard({ currentUser }) {
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500 font-medium">GSTIN:</span>
-                <span className="font-mono font-bold text-slate-800">{vendor.gstin || '27AABCU9603R1ZM'}</span>
+                <span className="font-mono font-bold text-slate-800">{vendor.gstin || 'N/A'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500 font-medium">Upload Date:</span>
@@ -2142,9 +2167,11 @@ export default function VendorCommunicationCard({ currentUser }) {
                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
                   <Building2 className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-black text-slate-800">Add New Vendor to MongoDB</h3>
+                <h3 className="text-base font-black text-slate-800">
+                  {isEditingVendor ? 'Edit Vendor Details' : 'Add New Vendor to MongoDB'}
+                </h3>
               </div>
-              <button onClick={() => setShowAddVendorModal(false)} className="text-slate-400 hover:text-slate-700 p-1">
+              <button onClick={() => { setShowAddVendorModal(false); setIsEditingVendor(false); setEditingVendorId(null); }} className="text-slate-400 hover:text-slate-700 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -2195,9 +2222,127 @@ export default function VendorCommunicationCard({ currentUser }) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="md:col-span-2 lg:col-span-4">
+                  <label className="text-slate-500 font-bold block mb-1">Street Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123 Textile Market, Ring Road"
+                    value={newVendorForm.address}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, address: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="text-slate-500 font-bold block mb-1">City</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Surat"
+                    value={newVendorForm.city}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, city: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">State</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Gujarat"
+                    value={newVendorForm.state}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, state: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">State Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 24"
+                    value={newVendorForm.stateCode}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, stateCode: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Pincode</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 395002"
+                    value={newVendorForm.pincode}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, pincode: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">GST Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 22AAAAA0000A1Z5"
+                    value={newVendorForm.gstin}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, gstin: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Bank Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFC Bank"
+                    value={newVendorForm.bankName}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, bankName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Account Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 50100012345678"
+                    value={newVendorForm.accountNo}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, accountNo: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">IFSC Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFC0001234"
+                    value={newVendorForm.ifscCode}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, ifscCode: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">Branch Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ring Road Branch"
+                    value={newVendorForm.branch}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, branch: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 font-bold block mb-1">UPI ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. vendor@upi"
+                    value={newVendorForm.upiId}
+                    onChange={(e) => setNewVendorForm({ ...newVendorForm, upiId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
               <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddVendorModal(false)} className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
-                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-700 shadow-sm">Save to MongoDB</button>
+                <button type="button" onClick={() => { setShowAddVendorModal(false); setIsEditingVendor(false); setEditingVendorId(null); }} className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold">Cancel</button>
+                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-700 shadow-sm">
+                  {isEditingVendor ? 'Save Changes' : 'Save to MongoDB'}
+                </button>
               </div>
             </form>
           </div>

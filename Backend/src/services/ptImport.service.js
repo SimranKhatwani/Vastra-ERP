@@ -182,9 +182,16 @@ class PTImportService {
           const vEmail = String(getVal(vRow, 'PRIMARY EMAIL', 'Email') || '').trim();
           const vAddress = String(getVal(vRow, 'OFFICE ADDRESS', 'Address') || '').trim();
           const vCity = String(getVal(vRow, 'CITY', 'City') || '').trim();
-          const vState = String(getVal(vRow, 'STATE', 'State') || '').trim();
-          const vPincode = String(getVal(vRow, 'PINCODE', 'Pincode') || '').trim();
+          const vState = String(getVal(vRow, 'STATE', 'State', 'STAE') || '').trim();
+          const vStateCode = String(getVal(vRow, 'STATE CODE', 'State Code') || '').trim();
+          const vPincode = String(getVal(vRow, 'PINCODE', 'Pincode', 'PIN') || '').trim();
           const vPan = String(getVal(vRow, 'PAN NUMBER', 'PAN') || '').trim();
+
+          const vBankName = String(getVal(vRow, 'BANK NAME', 'Bank Name', 'Bank') || '').trim();
+          const vAccountNo = String(getVal(vRow, 'ACCOUNT NUMBER', 'ACCOUNT NO', 'A/C NO') || '').trim();
+          const vIfsc = String(getVal(vRow, 'IFSC CODE', 'IFSC') || '').trim();
+          const vBranch = String(getVal(vRow, 'BRANCH NAME', 'BRANCH') || '').trim();
+          const vUpi = String(getVal(vRow, 'UPI ID', 'UPI') || '').trim();
 
           // Try to find by GST first, then Code, then Name
           let vendor = null;
@@ -198,6 +205,14 @@ class PTImportService {
             vendor = await Vendor.findOne({ tenantId, name: new RegExp('^' + escapeRegExp(vName) + '$', 'i'), includeDeleted: true }).session(session);
           }
 
+          const bankDetails = {
+            bankName: vBankName,
+            accountNumber: vAccountNo,
+            ifscCode: vIfsc,
+            branchName: vBranch,
+            upiId: vUpi
+          };
+
           if (!vendor) {
             const created = await Vendor.create([{
               tenantId,
@@ -210,8 +225,10 @@ class PTImportService {
               address: vAddress,
               city: vCity,
               state: vState,
+              stateCode: vStateCode,
               pincode: vPincode,
               panNumber: vPan,
+              bankDetails,
               importBatchId: historyId
             }], { session });
             vendor = created[0];
@@ -230,8 +247,15 @@ class PTImportService {
             vendor.address = vAddress || vendor.address;
             vendor.city = vCity || vendor.city;
             vendor.state = vState || vendor.state;
+            vendor.stateCode = vStateCode || vendor.stateCode;
             vendor.pincode = vPincode || vendor.pincode;
             vendor.panNumber = vPan || vendor.panNumber;
+            if (!vendor.bankDetails) vendor.bankDetails = {};
+            if (vBankName) vendor.bankDetails.bankName = vBankName;
+            if (vAccountNo) vendor.bankDetails.accountNumber = vAccountNo;
+            if (vIfsc) vendor.bankDetails.ifscCode = vIfsc;
+            if (vBranch) vendor.bankDetails.branchName = vBranch;
+            if (vUpi) vendor.bankDetails.upiId = vUpi;
             await vendor.save({ session });
           }
           
