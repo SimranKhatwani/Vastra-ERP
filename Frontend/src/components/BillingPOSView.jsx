@@ -187,13 +187,13 @@ export const BillingPOSView = ({
     });
   }, [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', email: '', dob: '', gstin: '', lf: '2588' });
+  const [customerForm, setCustomerForm] = useState({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
 
   const handleCustomerPhoneChange = (e) => {
     const val = e.target.value;
     const match = customers.find(c => c.phone === val || c.mobile === val);
     if (match) {
-      setCustomerForm({ phone: val, name: match.name || '', email: match.email || '', dob: match.dob || '', gstin: match.gstin || match.gstNo || '', lf: '2588' });
+      setCustomerForm({ phone: val, name: match.name || '', customerId: match.customerId || '', gstin: match.gstin || match.gstNo || '', lf: '2588' });
       setSelectedCustomerId(match.id || match._id);
     } else {
       setCustomerForm(prev => ({ ...prev, phone: val }));
@@ -211,8 +211,6 @@ export const BillingPOSView = ({
         const newCust = await onAddCustomer({
           name: customerForm.name,
           phone: customerForm.phone,
-          email: customerForm.email,
-          dob: customerForm.dob,
           gstin: customerForm.gstin
         });
         if (newCust && (newCust.id || newCust._id)) {
@@ -227,8 +225,6 @@ export const BillingPOSView = ({
         const res = await api.put(`/customers/${selectedCustomerId}`, {
           name: customerForm.name,
           phone: customerForm.phone,
-          email: customerForm.email,
-          dob: customerForm.dob,
           gstin: customerForm.gstin
         });
         if (res.data && res.data.data) {
@@ -747,8 +743,34 @@ export const BillingPOSView = ({
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [newCustName, setNewCustName] = useState("");
   const [newCustPhone, setNewCustPhone] = useState("");
-  const [newCustEmail, setNewCustEmail] = useState("");
-  const [newCustWhatsApp, setNewCustWhatsApp] = useState("");
+  const [newCustGst, setNewCustGst] = useState("");
+  const [newCustSaving, setNewCustSaving] = useState(false);
+
+  // Customer History Modal State
+  const [showCustomerHistoryModal, setShowCustomerHistoryModal] = useState(false);
+  const [customerHistoryData, setCustomerHistoryData] = useState(null);
+  const [loadingCustomerHistory, setLoadingCustomerHistory] = useState(false);
+
+  const fetchCustomerHistory = async (id) => {
+    if (!id) return;
+    setLoadingCustomerHistory(true);
+    try {
+      const res = await api.get(`/customers/${id}/history`);
+      if (res.data && res.data.success) {
+        setCustomerHistoryData(res.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch customer history", err);
+    } finally {
+      setLoadingCustomerHistory(false);
+    }
+  };
+
+  const handleOpenCustomerHistory = () => {
+    if (!selectedCustomerId) return;
+    setShowCustomerHistoryModal(true);
+    fetchCustomerHistory(selectedCustomerId);
+  };
 
   const [showDueCustomerModal, setShowDueCustomerModal] = useState(false);
   const [dueCustName, setDueCustName] = useState("");
@@ -1207,7 +1229,7 @@ export const BillingPOSView = ({
       if (e.key === "F1") {
         e.preventDefault();
         setCart([]);
-        setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' });
+        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
         setSelectedCustomerId("");
         if (onAddNotification) onAddNotification("New Bill", "Cart cleared for new bill.", "info");
         return;
@@ -1563,12 +1585,10 @@ export const BillingPOSView = ({
     id: "c-walkin",
     name: "Walk-in Customer",
     phone: "",
-    email: "",
     outstandingBalance: 0,
     membership: "Bronze",
     walletAdvance: 0,
     loyaltyPoints: 0,
-    birthday: "",
     createdAt: "",
     totalInvoices: 0,
     totalSpent: 0,
@@ -2431,11 +2451,10 @@ export const BillingPOSView = ({
       setCouponCode("");
       setSelectedCustomerId("");
       setCustomerSearch("");
-      setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '' });
+      setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
       setOtherBillDetails({ transporter: '', trackingNo: '', shippingAddress: '' });
 
       setSelectedLoyaltyRuleId("");
-      setCancelAutoDiscount(false);
       setPaymentMethod("Cash");
       setSplitCash(0);
       setSplitCard(0);
@@ -2536,15 +2555,10 @@ export const BillingPOSView = ({
       id: newId,
       name: newCustName,
       phone: newCustPhone,
-      email:
-        newCustEmail ||
-        `${newCustName.toLowerCase().replace(/\s+/g, "")}@example.com`,
-      whatsappNumber: newCustWhatsApp || newCustPhone,
       outstandingBalance: 0,
       membership: "Bronze",
       walletAdvance: 0,
       loyaltyPoints: 10,
-      birthday: "1995-01-01",
       createdAt: "2026-06-28",
       totalInvoices: 0,
       totalSpent: 0,
@@ -2559,8 +2573,6 @@ export const BillingPOSView = ({
     setSelectedCustomerId(newId);
     setNewCustName("");
     setNewCustPhone("");
-    setNewCustEmail("");
-    setNewCustWhatsApp("");
     setShowAddCustomerModal(false);
     onAddNotification(
       "CRM Engine",
@@ -2737,17 +2749,6 @@ export const BillingPOSView = ({
     setSelectedInvoiceForReturn(null);
     setReturnedItemIds([]);
     setActivePOSMode("billing");
-  };
-
-  const generateUniqueItemCode = () => {
-    const prefixes = ["TRK", "ITM", "UC"];
-    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let randomPart = "";
-    for (let i = 0; i < 8; i++) {
-      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return `${prefix}-${randomPart}`;
   };
 
   const handleOpenDraftPreview = () => {
@@ -3568,8 +3569,8 @@ export const BillingPOSView = ({
           <div className="bg-[#f0f0f0] border border-slate-400 m-1 flex flex-col shrink-0">
             <div className="bg-[#c0c0c0] text-center text-[11px] py-1 font-bold border-b border-slate-400 text-slate-700 shadow-inner text-white flex items-center justify-between px-2" style={{ background: 'linear-gradient(to bottom, #999, #777)' }}>
               <span>Loyalty Customer Information</span>
-              <span className="text-[10px] bg-slate-800 text-white px-2 py-0.2 rounded font-mono">
-                {selectedCustomerId ? `ID: ${selectedCustomerId}` : 'New/Walk-in'}
+              <span className={`text-[10px] bg-slate-800 text-white px-2 py-0.2 rounded font-mono ${customerForm.customerId ? 'cursor-pointer hover:bg-slate-700' : ''}`} onClick={() => { if (customerForm.customerId) handleOpenCustomerHistory(); }}>
+                {customerForm.customerId ? `ID: ${customerForm.customerId}` : 'New/Walk-in'}
               </span>
             </div>
             <div className="p-2 flex flex-col gap-2 bg-slate-50">
@@ -3598,7 +3599,7 @@ export const BillingPOSView = ({
                       ).map((c, idx) => (
                         <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
                           onClick={() => {
-                            setCustomerForm({ phone: c.phone || '', name: c.name || '', email: c.email || '', dob: c.dob || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
+                            setCustomerForm({ phone: c.phone || '', name: c.name || '', customerId: c.customerId || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
                             setSelectedCustomerId(c.id || c._id);
                             setCustomerSearchQuery(c.phone);
                             setIsCustomerDropdownOpen(false);
@@ -3615,7 +3616,14 @@ export const BillingPOSView = ({
                 {/* Name */}
                 <div className="flex relative items-center border border-slate-300 bg-white">
                   <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Name</span>
-                  <input type="text" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold" value={customerForm.name} onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Name" />
+                  <input
+                    type="text"
+                    className={`flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-bold font-mono ${selectedCustomerId ? 'text-blue-600 cursor-pointer hover:underline' : ''}`}
+                    value={customerForm.name}
+                    onChange={e => setCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                    onClick={() => { if (selectedCustomerId) handleOpenCustomerHistory(); }}
+                    placeholder="Customer Name"
+                  />
                 </div>
 
                 {/* Mobile Display */}
@@ -3634,7 +3642,23 @@ export const BillingPOSView = ({
                   />
                 </div>
 
-                {/* GST No. (Replaced Title) */}
+                {/* Customer ID (New field in Row 1) */}
+                <div className="flex relative items-center border border-slate-300 bg-white overflow-hidden">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold text-indigo-700">Cust ID</span>
+                  <input
+                    type="text"
+                    readOnly
+                    className={`flex-1 min-w-0 p-1 text-[10px] outline-none bg-slate-50 uppercase font-mono font-bold ${customerForm.customerId ? 'text-indigo-600 cursor-pointer hover:underline' : 'text-slate-400'}`}
+                    value={customerForm.customerId || 'AUTO-GEN'}
+                    onClick={() => { if (customerForm.customerId) handleOpenCustomerHistory(); }}
+                    placeholder="Cust ID"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: GST, Points & Actions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 items-center pt-1 border-t border-slate-200/80">
+                {/* GST No. (Moved to Row 2) */}
                 <div className="flex relative items-center border border-slate-300 bg-white">
                   <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold">GST No.</span>
                   <input
@@ -3644,24 +3668,6 @@ export const BillingPOSView = ({
                     onChange={e => setCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
                     placeholder="GSTIN (Optional)"
                   />
-                </div>
-
-                {/* Blank Space on Row 1 */}
-                <div className="hidden md:block"></div>
-              </div>
-
-              {/* Row 2: Email, DOB, Points & Actions */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 items-center pt-1 border-t border-slate-200/80">
-                {/* Email */}
-                <div className="flex relative items-center border border-slate-300 bg-white">
-                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Email</span>
-                  <input type="email" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100" value={customerForm.email} onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" />
-                </div>
-
-                {/* DOB */}
-                <div className="flex relative items-center border border-slate-300 bg-white">
-                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">DOB</span>
-                  <input type="date" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-semibold" value={customerForm.dob} onChange={e => setCustomerForm(prev => ({ ...prev, dob: e.target.value }))} />
                 </div>
 
                 {/* Loyalty Points */}
@@ -3680,7 +3686,7 @@ export const BillingPOSView = ({
                   </button>
                   <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => {
                     setSelectedCustomerId("");
-                    setCustomerForm({ phone: '', name: '', email: '', dob: '', gstin: '', lf: '2588' });
+                    setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
                     setCustomerSearchQuery("");
                   }}>
                     <X className="w-3.5 h-3.5 text-red-500" />
@@ -3689,6 +3695,7 @@ export const BillingPOSView = ({
                 </div>
 
                 {/* Blank Space on Row 2 */}
+                <div className="hidden md:block"></div>
                 <div className="hidden md:block"></div>
               </div>
             </div>
@@ -4152,7 +4159,7 @@ export const BillingPOSView = ({
                 {/* Action Toolbar */}
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                   {[
-                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', email: '', dob: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
+                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
                     { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
                     { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
@@ -6309,6 +6316,128 @@ export const BillingPOSView = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CUSTOMER HISTORY */}
+      {showCustomerHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-xl border border-slate-100 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center shrink-0">
+              <h4 className="text-lg font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                <User className="w-5 h-5 text-indigo-500" />
+                Customer History
+              </h4>
+              <button onClick={() => setShowCustomerHistoryModal(false)} className="text-slate-400 hover:text-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {loadingCustomerHistory ? (
+              <div className="flex justify-center items-center p-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              </div>
+            ) : customerHistoryData ? (
+              <div className="flex-1 overflow-y-auto space-y-6 min-h-0">
+                <div className="grid grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase">Customer Name</div>
+                    <div className="font-bold text-slate-800">{customerForm.name || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase">Mobile</div>
+                    <div className="font-bold text-slate-800 font-mono">{customerForm.phone || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase">Customer ID</div>
+                    <div className="font-bold text-indigo-600 font-mono">{customerForm.customerId || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase">Loyalty Points</div>
+                    <div className="font-bold text-slate-800">{customers.find(c => (c.id || c._id) === selectedCustomerId)?.loyaltyPoints || 0} pts</div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h5 className="font-bold text-slate-700 uppercase text-sm border-b pb-2">Purchase History</h5>
+                  {customerHistoryData.bills && customerHistoryData.bills.length > 0 ? (
+                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100 text-slate-600">
+                          <tr>
+                            <th className="p-3 border-b">Invoice No</th>
+                            <th className="p-3 border-b">Date</th>
+                            <th className="p-3 border-b">Items</th>
+                            <th className="p-3 border-b text-right">Total Amount</th>
+                            <th className="p-3 border-b text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {customerHistoryData.bills.map((bill, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td 
+                                className="p-3 font-mono font-bold text-indigo-600 cursor-pointer hover:underline"
+                                onClick={() => handleDownloadReceiptHTML(bill)}
+                              >
+                                {bill.billNo}
+                              </td>
+                              <td className="p-3">{new Date(bill.billDate).toLocaleDateString()}</td>
+                              <td className="p-3">
+                                {bill.items && bill.items.length > 0
+                                  ? bill.items.map(item => item.inventoryPieceId?.itemName || 'Item').join(', ')
+                                  : 'N/A'}
+                                <span className="text-[10px] text-slate-400 ml-1">({bill.items?.length || 0} qty)</span>
+                              </td>
+                              <td className="p-3 text-right font-bold text-slate-800">₹{bill.grandTotal?.toLocaleString()}</td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bill.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                  {bill.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center p-8 bg-slate-50 rounded-xl text-slate-500 text-sm">No purchase history found.</div>
+                  )}
+                </div>
+
+                {customerHistoryData.alterations && customerHistoryData.alterations.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-slate-700 uppercase text-sm border-b pb-2">Alteration History</h5>
+                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100 text-slate-600">
+                          <tr>
+                            <th className="p-3 border-b">Job ID</th>
+                            <th className="p-3 border-b">Date</th>
+                            <th className="p-3 border-b">Type</th>
+                            <th className="p-3 border-b text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {customerHistoryData.alterations.map((alt, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="p-3 font-mono font-bold text-slate-700">{alt.jobId || alt._id.substring(0,8)}</td>
+                              <td className="p-3">{new Date(alt.createdAt).toLocaleDateString()}</td>
+                              <td className="p-3">{alt.alterationType} - {alt.garmentType}</td>
+                              <td className="p-3 text-center">
+                                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">{alt.status}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center p-8 text-slate-500">Failed to load history data.</div>
+            )}
           </div>
         </div>
       )}

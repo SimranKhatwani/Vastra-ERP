@@ -15,8 +15,13 @@ class CustomerService {
       throw new ApiError(400, `Customer with phone '${customerData.phone}' already exists.`);
     }
 
+    // Auto-generate customerId
+    const customerCount = await Customer.countDocuments({ tenantId });
+    const generatedCustomerId = `CUST-${String(customerCount + 1).padStart(4, '0')}`;
+
     const payload = {
       ...customerData,
+      customerId: generatedCustomerId,
       gstin: customerData.gstin !== undefined ? customerData.gstin : (customerData.gstNo || ''),
       tenantId
     };
@@ -94,9 +99,27 @@ class CustomerService {
   }
 
   static async getCustomerPurchaseHistory(customerId, tenantId) {
+    const SaleItem = require('../models/billing/SaleItem');
+    const Alteration = require('../models/alteration/Alteration');
+    require('../models/InventoryPiece'); // Ensure it's registered for populate
+
+    // Fetch all sale bills
     const bills = await SaleBill.find({ customerId, tenantId, isDeleted: false })
-      .sort({ createdAt: -1 });
-    return bills;
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Attach sale items to each bill
+    for (let bill of bills) {
+      const items = await SaleItem.find({ saleBillId: bill._id }).populate('inventoryPieceId').lean();
+      bill.items = items;
+    }
+
+    // Fetch alterations for this customer
+    const alterations = await Alteration.find({ customerId, tenantId, isDeleted: false })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return { bills, alterations };
   }
 
   static async updateCustomer(customerId, updateData, tenantId) {

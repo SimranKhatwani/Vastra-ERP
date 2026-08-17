@@ -1240,6 +1240,7 @@ export default function App() {
       const data = res.data;
       if (data.success) {
         setCustomers((prev) => [{ ...data.data, id: data.data._id }, ...prev]);
+        return data.data;
       } else {
         addToastNotification("Error", data.message, "danger");
       }

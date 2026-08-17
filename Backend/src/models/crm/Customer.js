@@ -3,10 +3,9 @@ const baseSchemaPlugin = require('../plugins/baseSchema');
 
 const customerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
+  customerId: { type: String, trim: true },
   phone: { type: String, required: true, trim: true },
-  email: { type: String, trim: true, lowercase: true },
   gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'] },
-  dob: Date,
   anniversary: Date,
   gstin: { type: String, uppercase: true, trim: true, default: '' },
   loyaltyPoints: { type: Number, default: 0 },
@@ -24,6 +23,10 @@ const customerSchema = new mongoose.Schema({
 });
 
 customerSchema.index({ tenantId: 1, phone: 1 }, { unique: true });
+customerSchema.index(
+  { tenantId: 1, customerId: 1 }, 
+  { unique: true, partialFilterExpression: { customerId: { $exists: true, $type: "string" } } }
+);
 customerSchema.plugin(baseSchemaPlugin);
 
 module.exports = mongoose.model('Customer', customerSchema);

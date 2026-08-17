@@ -27,7 +27,7 @@ export const CustomersView = ({
 
   // Add Customer Modal State
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "", dob: "", gstin: "" });
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", gstin: "" });
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   const handleCreateCustomerSubmit = async (e) => {
@@ -50,7 +50,7 @@ export const CustomersView = ({
         onAddNotification("Customer Created", `${newCustomerForm.name} saved successfully.`, "success");
       }
       setShowAddCustomerModal(false);
-      setNewCustomerForm({ name: "", phone: "", email: "", dob: "", gstin: "" });
+      setNewCustomerForm({ name: "", phone: "", gstin: "" });
     } catch (err) {
       console.error("Failed to create customer:", err);
       onAddNotification("Error", "Failed to create customer: " + (err.response?.data?.message || err.message), "error");
@@ -82,7 +82,6 @@ export const CustomersView = ({
       const payload = {
         name: cust.name,
         phone: cust.phone,
-        email: cust.email,
         gstin: editGstin,
         prepaidAdvance: amount,
         walletAdvance: Math.max(0, newWallet),
@@ -260,7 +259,7 @@ export const CustomersView = ({
                 <thead>
                   <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
                     <th className="p-3.5">Customer Name</th>
-                    <th className="p-3.5">Contact Detail</th>
+                    <th className="p-3.5">Contact & ID</th>
                     <th className="p-3.5 font-mono">GST No.</th>
                     <th className="p-3.5 text-center font-mono">Loyalty Points</th>
                     <th className="p-3.5 text-right font-mono text-amber-600">Prepaid Advance</th>
@@ -300,8 +299,8 @@ export const CustomersView = ({
                           </div>
                         </td>
                         <td className="p-3.5">
-                          <p>{cust.phone}</p>
-                          <p className="text-[10px] text-slate-400">{cust.email}</p>
+                          <p className="font-bold text-slate-700">{cust.phone}</p>
+                          {cust.customerId && <p className="text-[10px] font-mono font-bold text-indigo-500 mt-0.5">ID: {cust.customerId}</p>}
                         </td>
                         <td className="p-3.5 font-mono font-bold text-slate-700 uppercase">
                           {cust.gstin || cust.gstNo || '-'}
@@ -417,7 +416,9 @@ export const CustomersView = ({
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-800">{selectedCustomerModal.cust.name}</h3>
-                <p className="text-xs text-slate-500">{selectedCustomerModal.cust.phone} &bull; {selectedCustomerModal.customerInvoices.length} invoice(s)</p>
+                <p className="text-xs text-slate-500">
+                  {selectedCustomerModal.cust.phone} &bull; ID: {selectedCustomerModal.cust.customerId || 'N/A'} &bull; {selectedCustomerModal.customerInvoices.length} invoice(s)
+                </p>
               </div>
               <button onClick={() => setSelectedCustomerModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
                 <X className="w-4 h-4 text-slate-500" />
@@ -469,7 +470,12 @@ export const CustomersView = ({
                             <tbody className="divide-y divide-slate-100">
                               {invoicesList.map(inv => (
                                 <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                                  <td className="p-3 font-mono font-bold text-indigo-600">{inv.invoiceNo}</td>
+                                  <td 
+                                    className="p-3 font-mono font-bold text-indigo-600 cursor-pointer hover:underline"
+                                    onClick={() => handleOpenInvoice(inv, cust.walletAdvance || cust.prepaidAdvance || 0)}
+                                  >
+                                    {inv.invoiceNo}
+                                  </td>
                                   <td className="p-3 text-slate-600 font-medium">{new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                                   <td className="p-3">
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : inv.status === 'Returned' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
@@ -652,27 +658,6 @@ export const CustomersView = ({
                   onChange={(e) => setNewCustomerForm(prev => ({ ...prev, gstin: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono uppercase font-bold text-slate-800 outline-none focus:border-indigo-500"
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Email (Optional)</label>
-                  <input
-                    type="email"
-                    placeholder="email@example.com"
-                    value={newCustomerForm.email}
-                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, email: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">DOB (Optional)</label>
-                  <input
-                    type="date"
-                    value={newCustomerForm.dob}
-                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, dob: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 font-semibold"
-                  />
-                </div>
               </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button
