@@ -3882,33 +3882,85 @@ export const BillingPOSView = ({
                           </td>
                           <td className="border-r border-slate-300 p-1 text-right">{rate.toFixed(2)}</td>
                           <td className={`border-r border-slate-300 p-1 text-right ${billAdjShare > 0 ? 'font-bold' : ''}`}>{(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}</td>
-                          <td className="border-r border-slate-300 p-1">
-                            <select
-                              className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
-                              value={item.salesman1 || ''}
-                              onChange={(e) => {
-                                const newCart = [...cart];
-                                newCart[idx].salesman1 = e.target.value;
-                                setCart(newCart);
-                              }}
-                            >
-                              <option value="">-</option>
-                              {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
-                            </select>
+                          <td className="border-r border-slate-300 p-1 relative">
+                            {(() => {
+                              const val1 = item.salesman1 || '';
+                              const filtered1 = staffList?.filter(s => s.name.toLowerCase().includes(val1.toLowerCase())) || [];
+                              return (
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px] pr-4"
+                                    value={val1}
+                                    placeholder="-"
+                                    onChange={(e) => {
+                                      const newCart = [...cart];
+                                      newCart[idx].salesman1 = e.target.value;
+                                      setCart(newCart);
+                                    }}
+                                    onFocus={(e) => e.target.select()}
+                                  />
+                                  {val1 && filtered1.length > 0 && (
+                                    <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
+                                      {filtered1.map(s => (
+                                        <div
+                                          key={s._id || s.id}
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            const newCart = [...cart];
+                                            newCart[idx].salesman1 = s.name;
+                                            setCart(newCart);
+                                          }}
+                                          className="px-2 py-1 text-[11px] cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 font-medium"
+                                        >
+                                          {s.name}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
-                          <td className="border-r border-slate-300 p-1">
-                            <select
-                              className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px]"
-                              value={item.salesman2 || ''}
-                              onChange={(e) => {
-                                const newCart = [...cart];
-                                newCart[idx].salesman2 = e.target.value;
-                                setCart(newCart);
-                              }}
-                            >
-                              <option value="">-</option>
-                              {staffList?.map(s => <option key={s._id || s.id} value={s.name}>{s.name}</option>)}
-                            </select>
+                          <td className="border-r border-slate-300 p-1 relative">
+                            {(() => {
+                              const val2 = item.salesman2 || '';
+                              const filtered2 = staffList?.filter(s => s.name.toLowerCase().includes(val2.toLowerCase())) || [];
+                              return (
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px] pr-4"
+                                    value={val2}
+                                    placeholder="-"
+                                    onChange={(e) => {
+                                      const newCart = [...cart];
+                                      newCart[idx].salesman2 = e.target.value;
+                                      setCart(newCart);
+                                    }}
+                                    onFocus={(e) => e.target.select()}
+                                  />
+                                  {val2 && filtered2.length > 0 && (
+                                    <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
+                                      {filtered2.map(s => (
+                                        <div
+                                          key={s._id || s.id}
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            const newCart = [...cart];
+                                            newCart[idx].salesman2 = s.name;
+                                            setCart(newCart);
+                                          }}
+                                          className="px-2 py-1 text-[11px] cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 font-medium"
+                                        >
+                                          {s.name}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="border-r border-slate-300 p-1">{item.uniqueCode || ''}</td>
                           <td className="p-1 text-center">

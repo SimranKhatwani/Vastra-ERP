@@ -7,6 +7,7 @@ const Payment = require('../models/payments/Payment');
 const PaymentTransaction = require('../models/payments/PaymentTransaction');
 const Customer = require('../models/crm/Customer');
 const CustomerLedger = require('../models/ledger/CustomerLedger');
+const LoyaltyService = require('./loyalty.service');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT, BILL_STATUS, PAYMENT_MODE, LEDGER_TYPE } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
 
@@ -398,6 +399,48 @@ class BillingService {
           remarks: `Full Payment received for Bill No: ${saleBill.billNo}`,
           createdBy: userId
         });
+      }
+    }
+
+    // 4b. Earn Loyalty Points for the customer based on their purchase
+    if (customer && !billData.isHold) {
+      try {
+        // Fetch loyalty settings (stored as a simple JSON config in a well-known Customer doc or env)
+        // Default: 1 point per ₹20 spent. rupeesPerPoint can be overridden by stored settings.
+        let rupeesPerPoint = 20;
+        let loyaltyEnabled = true;
+        try {
+          const TenantSettings = require('../models/masters/TenantSettings');
+          const settings = await TenantSettings.findOne({ tenantId, key: 'loyalty_settings' });
+          if (settings && settings.value) {
+            loyaltyEnabled = settings.value.enabled !== false;
+            rupeesPerPoint = Number(settings.value.rupeesPerPoint) || 20;
+          }
+        } catch (_) {
+          // TenantSettings model may not exist yet — use defaults silently
+        }
+
+        if (loyaltyEnabled && rupeesPerPoint > 0) {
+          const grandTotalForPoints = grandTotal; // Use the service-computed grandTotal, not billData.grandTotal
+          const pointsEarned = Math.floor(grandTotalForPoints / rupeesPerPoint);
+          if (pointsEarned > 0) {
+            customer.loyaltyPoints = (customer.loyaltyPoints || 0) + pointsEarned;
+            await customer.save();
+            await CustomerLedger.create({
+              tenantId,
+              customerId: customer._id,
+              type: LEDGER_TYPE.LOYALTY,
+              amount: pointsEarned,
+              balanceAfter: customer.loyaltyPoints,
+              referenceBillId: saleBill._id,
+              remarks: `Earned ${pointsEarned} loyalty points on Bill ${saleBill.billNo} (₹${grandTotalForPoints} / ₹${rupeesPerPoint} per point)`,
+              createdBy: userId
+            });
+          }
+        }
+      } catch (loyaltyErr) {
+        // Non-fatal: loyalty point earning should never block a bill from being created
+        console.error('[BillingService] Failed to earn loyalty points:', loyaltyErr.message);
       }
     }
 

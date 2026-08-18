@@ -14,9 +14,32 @@ router.post('/', authorize(PERMISSIONS.CRM_CREATE), auditLog('CREATE_CUSTOMER', 
 router.get('/', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomers);
 router.get('/export', authorize(PERMISSIONS.CRM_READ), CustomerController.exportCustomers);
 
-// Mock endpoints for loyalty-settings
-router.get('/loyalty-settings', (req, res) => res.status(200).json({ success: true, data: { enabled: true, rupeesPerPoint: 20 } }));
-router.put('/loyalty-settings', (req, res) => res.status(200).json({ success: true, data: req.body }));
+// Real loyalty-settings endpoints — persisted via TenantSettings
+const TenantSettings = require('../models/masters/TenantSettings');
+
+router.get('/loyalty-settings', async (req, res) => {
+  try {
+    const settings = await TenantSettings.findOne({ tenantId: req.tenantId, key: 'loyalty_settings' });
+    const data = (settings && settings.value) ? settings.value : { enabled: true, rupeesPerPoint: 20 };
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return res.status(200).json({ success: true, data: { enabled: true, rupeesPerPoint: 20 } });
+  }
+});
+
+router.put('/loyalty-settings', async (req, res) => {
+  try {
+    const { enabled, rupeesPerPoint } = req.body;
+    await TenantSettings.findOneAndUpdate(
+      { tenantId: req.tenantId, key: 'loyalty_settings' },
+      { tenantId: req.tenantId, key: 'loyalty_settings', value: { enabled: !!enabled, rupeesPerPoint: Number(rupeesPerPoint) || 20 } },
+      { upsert: true, new: true }
+    );
+    return res.status(200).json({ success: true, data: req.body });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 router.get('/:id', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomerById);
 router.get('/:id/history', authorize(PERMISSIONS.CRM_READ), CustomerController.getPurchaseHistory);
