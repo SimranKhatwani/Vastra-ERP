@@ -1316,6 +1316,20 @@ export const BillingPOSView = ({
         return;
       }
 
+      // Payment Modal Shortcuts
+      if (showPaymentModal) {
+        if (e.ctrlKey && e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          document.getElementById("save-payment-btn")?.click();
+          return;
+        }
+        if (e.ctrlKey && e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          document.getElementById("save-print-payment-btn")?.click();
+          return;
+        }
+      }
+
       // Esc: Close Modals / Dropdowns
       if (e.key === "Escape") {
         setIsProductDropdownOpen(false);
@@ -1495,7 +1509,9 @@ export const BillingPOSView = ({
     alterationPromptItem,
     isAlterationModeActive,
     focusedAlterationIndex,
-    showAlterationModal
+    showAlterationModal,
+    showBillPreviewInvoice,
+    isGeneratingBill
   ]); // Re-bind if these states change so handleHoldBill gets latest state
   // Articulation Window States (Module 2)
   const [articulationProduct, setArticulationProduct] = useState(null);
@@ -9294,9 +9310,11 @@ export const BillingPOSView = ({
                                   setPaymentWarning(`Paid amount (₹${cashTot}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to add Due amount or select multiple methods.`);
                                   return;
                                 }
-                                setShowPaymentModal(false);
                                 const saved = await handleCheckoutSubmit(false, true, true);
-                                if (saved) handleDirectPrint(saved);
+                                if (saved) {
+                                  setShowPaymentModal(false);
+                                  setShowBillPreviewInvoice(saved);
+                                }
                               } else if (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00'].includes(btn)) {
                                 setCashDenominations(p => ({ ...p, [activeDenomination]: (p[activeDenomination]?.toString() || '') + btn }));
                               }
@@ -9495,9 +9513,11 @@ export const BillingPOSView = ({
                             onClick={async () => {
                               if (btn === 'Pay') {
                                 if (paymentType === 'Full Payment') {
-                                  setShowPaymentModal(false);
                                   const saved = await handleCheckoutSubmit(false, true, true);
-                                  if (saved) handleDirectPrint(saved);
+                                  if (saved) {
+                                    setShowPaymentModal(false);
+                                    setShowBillPreviewInvoice(saved);
+                                  }
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -9506,9 +9526,11 @@ export const BillingPOSView = ({
                                   setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
                                 }
-                                setShowPaymentModal(false);
-                                const saved = await handleCheckoutSubmit(false, true, true);
-                                if (saved) handleDirectPrint(saved);
+                                const saved2 = await handleCheckoutSubmit(false, true, true);
+                                if (saved2) {
+                                  setShowPaymentModal(false);
+                                  setShowBillPreviewInvoice(saved2);
+                                }
                               } else if (paymentType === 'Part Payment' && ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '.'].includes(btn)) {
                                 setPartPaymentAmounts(p => ({ ...p, Advance: (p.Advance?.toString() || '') + btn }));
                                 setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
@@ -9758,57 +9780,25 @@ export const BillingPOSView = ({
 
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
                   <button
-                    disabled={isSavingPayment || (paymentType === 'Full Payment' && !allocatedFullPaymentMode)}
-                    onClick={async () => {
-                      if (isSavingPayment) return;
-                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                      if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
-                        setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
-                        return;
-                      }
-                      if (paymentType === 'Part Payment' && partTotal < grandTotal) {
-                        setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
-                        return;
-                      }
-                      setIsSavingPayment(true);
-                      try {
-                        setShowPaymentModal(false);
-                        await handleCheckoutSubmit(false, true, true);
-                      } finally {
-                        setIsSavingPayment(false);
-                      }
+                    id="save-payment-btn"
+                    disabled={paymentType === 'Full Payment' && !allocatedFullPaymentMode}
+                    onClick={() => {
+                      setShowPaymentModal(false);
                     }}
                     className="w-full py-3 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-300 text-slate-700 rounded font-bold uppercase text-xs shadow-sm cursor-pointer transition-colors"
                   >
-                    <Save className="w-4 h-4 inline mr-2" /> {isSavingPayment ? "Saving Payment..." : "Save Payment"}
+                    <Save className="w-4 h-4 inline mr-2" /> Save Payment (Ctrl+S)
                   </button>
                   <button
-                    disabled={isSavingPayment || (paymentType === 'Full Payment' && !allocatedFullPaymentMode)}
-                    onClick={async () => {
-                      if (isSavingPayment) return;
-                      const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                      if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
-                        setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
-                        return;
-                      }
-                      if (paymentType === 'Part Payment' && partTotal < grandTotal) {
-                        setPaymentWarning(`Total Distributed Amount (₹${partTotal}) does not match Bill Amount (₹${grandTotal})!`);
-                        return;
-                      }
-                      setIsSavingPayment(true);
-                      try {
-                        setShowPaymentModal(false);
-                        const saved = await handleCheckoutSubmit(false, true, true);
-                        if (saved) handleDirectPrint(saved);
-                      } finally {
-                        setIsSavingPayment(false);
-                      }
+                    id="save-print-payment-btn"
+                    disabled={paymentType === 'Full Payment' && !allocatedFullPaymentMode}
+                    onClick={() => {
+                      setShowPaymentModal(false);
+                      handleOpenDraftPreview();
                     }}
                     className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded font-black uppercase text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
                   >
-                    <Printer className="w-5 h-5" /> {isSavingPayment ? "Saving & Printing..." : "Save & Print Bill"}
+                    <Printer className="w-5 h-5" /> Save & Print Bill (Ctrl+P)
                   </button>
                 </div>
               </div>
