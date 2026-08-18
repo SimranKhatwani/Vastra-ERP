@@ -324,6 +324,35 @@ class PTImportService {
         
         const hsnCode = String(getVal(row, 'hsnCode', 'HSN CODE', 'HSN/SAC', 'HSN', 'HSN Code', 'HSN No', 'HSN No.', 'HSN NO', 'HSN NO.') || '').trim();
 
+        const typeOfGstRaw = String(getVal(row, 'typeOfGst', 'Type of GST (I/E)', 'Type of GST', 'GST Type', 'GST I/E') || 'E').toUpperCase().trim();
+        const typeOfGstNormalized = ['I', 'E'].includes(typeOfGstRaw) ? typeOfGstRaw : 'E';
+
+        const gstStatus = String(getVal(row, 'gstStatus', 'GST Status', 'Tax Status', 'GST_STATUS', 'TAX_STATUS') || '').trim();
+
+        const discountStatusRaw = String(getVal(
+          row,
+          'discountStatus',
+          'Discount Status',
+          'Discount Status (B/A/N)',
+          'Discount Status(B/A/N)',
+          'Discount Status (B/A/N/)',
+          'Discount Status(B/A/N/)',
+          'Discount Status (B/N/A)',
+          'Discount Status(B/N/A)',
+          'DISCOUNT_STATUS',
+          'DISC_STATUS',
+          'DISC STATUS',
+          'DISC. STATUS',
+          'Discount Type',
+          'Disc Type',
+          'Discount Mode'
+        ) || 'N').toUpperCase().trim();
+
+        let discountStatusNormalized = 'N';
+        if (discountStatusRaw.startsWith('B')) discountStatusNormalized = 'B';
+        else if (discountStatusRaw.startsWith('A')) discountStatusNormalized = 'A';
+        else discountStatusNormalized = 'N';
+
         currentRowCtx = { rowNum, barcode, itemCode, billNo, ipn };
 
         if (processedBarcodesSet.has(barcode)) {
@@ -487,6 +516,9 @@ class PTImportService {
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
                 defaultMRP: mrp,
                 imageUrl: itemImage || undefined,
+                typeOfGst: typeOfGstNormalized,
+                gstStatus: gstStatus,
+                discountStatus: discountStatusNormalized,
                 importBatchId: historyId
               }], { session });
               product = created[0];
@@ -505,6 +537,21 @@ class PTImportService {
               if (itemImage && product.imageUrl !== itemImage) {
                 product.imageUrl = itemImage;
                 product.markModified('imageUrl');
+                updated = true;
+              }
+              if (product.typeOfGst !== typeOfGstNormalized) {
+                product.typeOfGst = typeOfGstNormalized;
+                product.markModified('typeOfGst');
+                updated = true;
+              }
+              if (product.gstStatus !== gstStatus) {
+                product.gstStatus = gstStatus;
+                product.markModified('gstStatus');
+                updated = true;
+              }
+              if (product.discountStatus !== discountStatusNormalized) {
+                product.discountStatus = discountStatusNormalized;
+                product.markModified('discountStatus');
                 updated = true;
               }
               if (updated) {
@@ -569,6 +616,9 @@ class PTImportService {
             discount,
             taxRate,
             color: primaryColor,
+            typeOfGst: typeOfGstNormalized,
+            gstStatus: gstStatus,
+            discountStatus: discountStatusNormalized,
             lineTotal,
             importBatchId: historyId
           }], { session });
@@ -618,6 +668,9 @@ class PTImportService {
               purchaseRate,
               wspAfterGST,
               mrp,
+              typeOfGst: typeOfGstNormalized,
+              gstStatus: gstStatus,
+              discountStatus: discountStatusNormalized,
               status: INVENTORY_STATUS.AVAILABLE,
               currentLocation: 'WAREHOUSE',
               importBatchId: historyId
@@ -628,6 +681,10 @@ class PTImportService {
           for (const p of createdPieces) {
             inventoryPieceIds.push(p._id);
           }
+
+          // DEBUG: Log GST/Discount fields saved to InventoryPiece
+          console.log(`[PT IMPORT ROW ${rowNum}] InventoryPiece saved => discountStatus: "${discountStatusNormalized}", typeOfGst: "${typeOfGstNormalized}", gstStatus: "${gstStatus}" | Product: ${itemCode}, Barcode: ${barcode}`);
+          console.log(`[PT IMPORT ROW ${rowNum}] Product saved => discountStatus: "${product.discountStatus}", typeOfGst: "${product.typeOfGst}", gstStatus: "${product.gstStatus}"`);
 
           const lifecycleEvents = createdPieces.map(p => ({
             tenantId,

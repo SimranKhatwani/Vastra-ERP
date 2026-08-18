@@ -30,7 +30,7 @@ const FIELDS_TO_MAP = [
   { key: "wspAfterGst", label: "WSP After GST", required: false, synonyms: ["wsp after gst", "wsp", "final rate", "landing cost"] },
   { key: "mrp", label: "MRP", required: false, synonyms: ["mrp", "retail price", "selling price", "sale price"] },
   { key: "gstOnSalePrice", label: "GST on Sale", required: false, synonyms: ["gst on sale", "gst on sale price", "sale gst"] },
-  { key: "discountStatus", label: "Discount Status", required: false, synonyms: ["discount status", "discount status (b/a/n)"] },
+  { key: "discountStatus", label: "Discount Status", required: false, synonyms: ["discount status", "discount status (b/a/n)", "discount status(b/a/n)", "discount status (b/a/n/)", "discount status(b/a/n/)", "discount status (b/n/a)", "discount_status", "disc_status", "disc status", "disc. status", "discount type", "disc type"] },
   { key: "discountOnPurchase", label: "Discount on Purchase", required: false, synonyms: ["dis. on purchase", "discount on purchase", "discount", "disc", "dis."] },
   { key: "hsnCode", label: "HSN Code", required: false, synonyms: ["hsn code", "hsn", "sac code", "hsn no", "hsn no.", "hsn number"] },
   { key: "firm", label: "Firm", required: false, synonyms: ["firm", "company", "firm name"] },
@@ -209,7 +209,12 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const firm = getVal("firm");
       const uniqueCode = getVal("uniqueCode");
       const typeOfGst = getVal("typeOfGst") || "E";
-      const discountStatus = getVal("discountStatus") || "N";
+      const gstStatus = getVal("gstStatus") || "";
+      const rawDiscStatus = String(getVal("discountStatus") || "N").trim().toUpperCase();
+      let discountStatus = "N";
+      if (rawDiscStatus.startsWith("B")) discountStatus = "B";
+      else if (rawDiscStatus.startsWith("A")) discountStatus = "A";
+      else discountStatus = "N";
       const discountOnPurchase = getNum("discountOnPurchase");
       const itemImage = getVal("itemImage");
 
@@ -220,7 +225,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
 
       return {
         tempId: `row-${idx}-${Date.now()}`,
-        billNo, billDate, vendorName, brand, designNo, serialNumber, barcode, itemCode, itemName, subCategory, quantity, batch, topBottomSet, gender, colorPrimary, colorSecondary, size, purchaseRate, mrp, hsnCode, gstOnPurchase, gstOnSalePrice, firm, uniqueCode, typeOfGst, wspAfterGst, discountStatus, discountOnPurchase, itemImage,
+        billNo, billDate, vendorName, brand, designNo, serialNumber, barcode, itemCode, itemName, subCategory, quantity, batch, topBottomSet, gender, colorPrimary, colorSecondary, size, purchaseRate, mrp, hsnCode, gstOnPurchase, gstOnSalePrice, firm, uniqueCode, typeOfGst, gstStatus, wspAfterGst, discountStatus, discountOnPurchase, itemImage,
         errors: [], warnings: [], status: "valid", resolution: "none"
       };
     });

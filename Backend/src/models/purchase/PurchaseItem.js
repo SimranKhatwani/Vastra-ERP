@@ -43,6 +43,21 @@ const purchaseItemSchema = new mongoose.Schema({
   },
   color: String,
   rack: String,
+  typeOfGst: {
+    type: String,
+    enum: ['I', 'E'],
+    default: 'E'
+  },
+  gstStatus: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  discountStatus: {
+    type: String,
+    enum: ['B', 'A', 'N'],
+    default: 'N'
+  },
   lineTotal: {
     type: Number,
     required: true

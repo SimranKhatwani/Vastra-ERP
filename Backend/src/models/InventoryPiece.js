@@ -106,6 +106,21 @@ const inventoryPieceSchema = new mongoose.Schema({
   returned: {
     type: Boolean,
     default: false
+  },
+  typeOfGst: {
+    type: String,
+    enum: ['I', 'E'],
+    default: 'E'
+  },
+  gstStatus: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  discountStatus: {
+    type: String,
+    enum: ['B', 'A', 'N'],
+    default: 'N'
   }
 });
 

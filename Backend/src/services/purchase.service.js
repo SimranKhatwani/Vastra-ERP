@@ -35,9 +35,36 @@ class PurchaseService {
     const itemsToCreate = [];
 
     for (const item of rawItems) {
+      const typeOfGst = String(item.typeOfGst || 'E').toUpperCase().trim();
+      const typeOfGstNormalized = ['I', 'E'].includes(typeOfGst) ? typeOfGst : 'E';
+
+      const gstStatus = String(item.gstStatus || '').trim();
+
+      const discountStatus = String(item.discountStatus || 'N').toUpperCase().trim();
+      const discountStatusNormalized = ['B', 'A', 'N'].includes(discountStatus) ? discountStatus : 'N';
+
       let product = null;
       if (item.productId && typeof item.productId === 'string' && item.productId.length === 24) {
         product = await Product.findOne({ _id: item.productId, tenantId });
+      }
+
+      if (product) {
+        let updated = false;
+        if (product.typeOfGst !== typeOfGstNormalized) {
+          product.typeOfGst = typeOfGstNormalized;
+          updated = true;
+        }
+        if (gstStatus && product.gstStatus !== gstStatus) {
+          product.gstStatus = gstStatus;
+          updated = true;
+        }
+        if (product.discountStatus !== discountStatusNormalized) {
+          product.discountStatus = discountStatusNormalized;
+          updated = true;
+        }
+        if (updated) {
+          await product.save();
+        }
       }
 
       if (!product) {
@@ -73,6 +100,9 @@ class PurchaseService {
           gender: 'UNISEX',
           topBottomSet: 'TOP',
           defaultMRP: mrp,
+          typeOfGst: typeOfGstNormalized,
+          gstStatus: gstStatus,
+          discountStatus: discountStatusNormalized,
           createdBy: userId
         });
       }
@@ -99,7 +129,10 @@ class PurchaseService {
         size,
         primaryColor: color,
         rack: item.rack || "A1",
-        lineTotal
+        lineTotal,
+        typeOfGst: typeOfGstNormalized,
+        gstStatus: gstStatus,
+        discountStatus: discountStatusNormalized
       });
     }
 
@@ -136,6 +169,9 @@ class PurchaseService {
         size: item.size,
         color: item.primaryColor,
         rack: item.rack,
+        typeOfGst: item.typeOfGst,
+        gstStatus: item.gstStatus,
+        discountStatus: item.discountStatus,
         lineTotal: item.lineTotal,
         createdBy: userId
       });
@@ -162,6 +198,9 @@ class PurchaseService {
           wspAfterGST: item.purchaseRate * (1 + (item.taxRate || 0) / 100),
           mrp: item.mrp,
           rack: item.rack,
+          typeOfGst: item.typeOfGst,
+          gstStatus: item.gstStatus,
+          discountStatus: item.discountStatus,
           status: INVENTORY_STATUS.AVAILABLE,
           currentLocation: 'WAREHOUSE',
           createdBy: userId

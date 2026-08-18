@@ -69,6 +69,21 @@ const productSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  typeOfGst: {
+    type: String,
+    enum: ['I', 'E'],
+    default: 'E'
+  },
+  gstStatus: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  discountStatus: {
+    type: String,
+    enum: ['B', 'A', 'N'],
+    default: 'N'
+  },
   isActive: {
     type: Boolean,
     default: true
