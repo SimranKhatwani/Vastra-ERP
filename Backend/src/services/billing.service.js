@@ -21,10 +21,12 @@ class BillingService {
       customer = await Customer.findOne({ _id: billData.customerId, tenantId });
     } else if (billData.customerPhone && billData.customerPhone !== 'N/A' && billData.customerPhone !== '') {
       customer = await Customer.findOne({ phone: billData.customerPhone, tenantId });
-      if (!customer) {
+      // Only auto-create a customer if a real name is provided (not 'Walk-in Customer')
+      const custName = (billData.customerName || '').trim();
+      if (!customer && custName && !custName.toLowerCase().includes('walk-in')) {
         customer = await Customer.create({
           tenantId,
-          name: billData.customerName || 'Walk-in Customer',
+          name: custName,
           phone: billData.customerPhone,
           createdBy: userId
         });

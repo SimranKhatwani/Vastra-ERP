@@ -813,15 +813,11 @@ export default function App() {
         return fallbackHex;
       };
 
-      const walkinCust = customers.find(c =>
-        (c.phone === "") ||
-        (c.name && c.name.toLowerCase().includes("walk-in"))
-      );
-      const defaultCustId = walkinCust ? (walkinCust._id || walkinCust.id) : null;
+      // Only use customerId if it's a valid 24-char MongoDB ObjectId — never fall back to a "walk-in" customer
       const rawCustId = inv.customerId || inv.customer?._id;
       const validCustomerId = (typeof rawCustId === "string" && rawCustId.length === 24 && /^[0-9a-fA-F]{24}$/.test(rawCustId))
         ? rawCustId
-        : (defaultCustId || null);
+        : null;
       const validFirmId = toValidObjectId(inv.firmId, "65f000000000000000000002");
       const validWarehouseId = toValidObjectId(inv.warehouseId, "65f000000000000000000003");
       const validSalesmanId = (inv.employeeId && inv.employeeId.length === 24 && /^[0-9a-fA-F]{24}$/.test(inv.employeeId)) ? inv.employeeId : null;
