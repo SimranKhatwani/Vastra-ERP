@@ -27,7 +27,7 @@ import {
   FileText
 } from "lucide-react";
 
-export function StaffActivityView({ currentUser = {}, addToastNotification = () => {} }) {
+export function StaffActivityView({ currentUser = {}, addToastNotification = () => { } }) {
   const [activeTab, setActiveTab] = useState("activity-logs"); // "activity-logs" | "login-history"
   const [loading, setLoading] = useState(false);
 
@@ -242,22 +242,20 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
         <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 self-stretch sm:self-auto">
           <button
             onClick={() => setActiveTab("activity-logs")}
-            className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
-              activeTab === "activity-logs"
+            className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${activeTab === "activity-logs"
                 ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <Activity className="w-4 h-4" />
             Activity Logs
           </button>
           <button
             onClick={() => setActiveTab("login-history")}
-            className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
-              activeTab === "login-history"
+            className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${activeTab === "login-history"
                 ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <Users className="w-4 h-4" />
             User Login History

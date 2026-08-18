@@ -516,7 +516,7 @@ export const BillingPOSView = ({
   });
   const [activeDenomination, setActiveDenomination] = useState(500);
   const [partPaymentAmounts, setPartPaymentAmounts] = useState({
-    Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+    Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Points Redeem': '', Other: ''
   });
   const [paymentWarning, setPaymentWarning] = useState("");
 
@@ -526,7 +526,7 @@ export const BillingPOSView = ({
       setPaymentType('Full Payment');
       setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
       setPartPaymentAmounts({
-        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Credit Note': '', 'Points Redeem': '', Other: ''
+        Card: '', UPI: '', Advance: '', Due: '', 'Gift Voucher': '', 'Points Redeem': '', Other: ''
       });
       setPaymentMethod("Cash");
       setAllocatedFullPaymentMode(null);
@@ -2367,7 +2367,7 @@ export const BillingPOSView = ({
       const compiledTransactions = paymentType === "Part Payment"
         ? [
           ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
-          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+          ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"]
             .filter(m => Number(partPaymentAmounts[m]) > 0)
             .map(m => {
               let mode = m.toUpperCase().replace(/\s+/g, '_');
@@ -2702,7 +2702,7 @@ export const BillingPOSView = ({
     }
 
     onAddNotification(
-      "Credit Note Issued",
+      "Advance amount Issued",
       `Credited ₹${creditAmt.toLocaleString()} to ${targetC.name}'s wallet ledger.`,
       "success",
     );
@@ -2807,7 +2807,7 @@ export const BillingPOSView = ({
     const compiledTransactions = paymentType === "Part Payment"
       ? [
         ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
-        ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"]
+        ...["Card", "UPI", "Advance", "Due", "Gift Voucher", , "Points Redeem", "Other"]
           .filter(m => Number(partPaymentAmounts[m]) > 0)
           .map(m => {
             let mode = m.toUpperCase().replace(/\s+/g, '_');
@@ -3563,12 +3563,7 @@ export const BillingPOSView = ({
           >
             Sales Orders
           </button>
-          <button
-            onClick={() => setActivePOSMode("credit_notes")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${activePOSMode === "credit_notes" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            Credit Notes
-          </button>
+
 
         </div>
 
@@ -4207,7 +4202,7 @@ export const BillingPOSView = ({
                     { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
                     { id: "itemCodeSearch", label: "Item Code (F4)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
                     { id: "designNoSearch", label: "Design No (Alt+D)", icon: <Search className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: handleFocusDesignNoSearch },
-                    { id: "viewTotals", label: "View Totals", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
+                    { id: "viewTotals", label: "Cash Summary", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
@@ -4380,7 +4375,7 @@ export const BillingPOSView = ({
                   <th className="p-3">Total Cost</th>
                   <th className="p-3">Pay Mode</th>
                   <th className="p-3">WhatsApp</th>
-                  <th className="p-3">Receipt HTML</th>
+                  <th className="p-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
@@ -4487,6 +4482,28 @@ export const BillingPOSView = ({
                               <span>Exchange Slip</span>
                             </button>
                           )}
+                          <button
+                            onClick={async () => {
+                              if (window.confirm("Are you sure you want to permanently delete this invoice? This will revert inventory back to available stock.")) {
+                                try {
+                                  const res = await api.delete(`/billing/${inv._id || inv.id}`);
+                                  if (res.data.success) {
+                                    if (onAddNotification) onAddNotification("Success", "Invoice deleted successfully", "success");
+                                    // Remove locally to update UI fast
+                                    setHistoryInvoices(prev => prev.filter(i => (i._id || i.id) !== (inv._id || inv.id)));
+                                  } else {
+                                    if (onAddNotification) onAddNotification("Error", res.data.message || "Failed to delete invoice", "danger");
+                                  }
+                                } catch (error) {
+                                  if (onAddNotification) onAddNotification("Error", error.response?.data?.message || "Failed to delete invoice", "danger");
+                                }
+                              }
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 cursor-pointer transition-colors"
+                            title="Delete Invoice"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -5591,71 +5608,7 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* Mode: Credit Notes */}
-      {activePOSMode === "credit_notes" && (
-        <div className="space-y-4 text-xs animate-fade-in">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
-            <div>
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Credit Notes Ledger
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Issue commercial refunds or pricing waivers credited directly to
-                client wallets.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setCreditInvoiceNo("");
-                setCreditAmt(500);
-                setCreditReason("Size swap price difference");
-                setShowCreditModal(true);
-              }}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Issue Credit Note</span>
-            </button>
-          </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                    <th className="p-3.5">Note ID</th>
-                    <th className="p-3.5">Date</th>
-                    <th className="p-3.5">Link Invoice</th>
-                    <th className="p-3.5">Client / Buyer</th>
-                    <th className="p-3.5">Waiver Reason</th>
-                    <th className="p-3.5 text-right">Credited Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                  {creditNotes.map((cn, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3.5 font-mono font-bold text-red-600">
-                        {cn.noteNo}
-                      </td>
-                      <td className="p-3.5 font-mono">{cn.date}</td>
-                      <td className="p-3.5 font-mono text-slate-500">
-                        {cn.invoiceNo}
-                      </td>
-                      <td className="p-3.5 font-bold text-slate-800">
-                        {cn.customerName}
-                      </td>
-                      <td className="p-3.5 text-slate-500">{cn.reason}</td>
-                      <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
-                        ₹{cn.amount.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
 
 
@@ -5829,102 +5782,7 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* MODAL: ISSUE CREDIT NOTE */}
-      {showCreditModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 text-xs animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-100 shadow-xl">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                Issue Credit Note Waiver
-              </h3>
-              <button
-                onClick={() => setShowCreditModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateCreditNote} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Beneficiary Customer
-                  </label>
-                  <select
-                    value={creditCustId}
-                    onChange={(e) => setCreditCustId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
-                  >
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Linked Invoice #
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={creditInvoiceNo}
-                    onChange={(e) => setCreditInvoiceNo(e.target.value)}
-                    placeholder="e.g. INV-20260499"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-800 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Credit Note Value (₹)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={creditAmt}
-                    onChange={(e) =>
-                      setCreditAmt(Math.max(1, Number(e.target.value)))
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono font-bold text-slate-800 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Waiver Reason
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={creditReason}
-                    onChange={(e) => setCreditReason(e.target.value)}
-                    placeholder="e.g. Garment mismatch refund"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-800 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreditModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold cursor-pointer hover:bg-slate-800"
-                >
-                  Issue Note
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+
 
       {/* MODAL: ISSUE DEBIT NOTE */}
       {showDebitModal && (
@@ -8856,7 +8714,7 @@ export const BillingPOSView = ({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-up">
             <div className="p-4 bg-blue-600 flex justify-between items-center">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Search className="w-5 h-5" /> Today's Totals
+                <Search className="w-5 h-5" /> Cash Summary
               </h3>
               <button onClick={() => setShowTotalsModal(false)} className="text-white/80 hover:text-white">
                 <X className="w-5 h-5" />
@@ -9328,7 +9186,7 @@ export const BillingPOSView = ({
             <div className="flex flex-1 overflow-hidden">
               {/* Left Column: Payment Methods */}
               <div className="w-52 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
-                {["Cash", "Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].map(method => (
+                {["Cash", "Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].map(method => (
                   <button
                     key={method}
                     onClick={() => {
@@ -9337,7 +9195,7 @@ export const BillingPOSView = ({
                         setPartPaymentAmounts(p => {
                           if (!p[method]) {
                             const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === method ? acc : acc + (Number(p[m]) || 0), 0);
+                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === method ? acc : acc + (Number(p[m]) || 0), 0);
                             const remaining = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
                             if (remaining > 0) return { ...p, [method]: remaining.toString() };
                           }
@@ -9643,7 +9501,7 @@ export const BillingPOSView = ({
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                                 if (partTot < grandTotal) {
                                   setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
@@ -9668,7 +9526,7 @@ export const BillingPOSView = ({
                       {/* Pay Advance Button below editor */}
                       {(() => {
                         const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === 'Advance' ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === 'Advance' ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
                         const remainingUnpaidAdv = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
                         const advVal = Number(partPaymentAmounts["Advance"]) || 0;
                         const displayAdvVal = paymentType === 'Full Payment' ? grandTotal : (advVal > 0 ? advVal : remainingUnpaidAdv);
@@ -9738,7 +9596,7 @@ export const BillingPOSView = ({
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                                 if (partTot < grandTotal) {
                                   setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
@@ -9765,7 +9623,7 @@ export const BillingPOSView = ({
                       {/* Pay Button below manual editor */}
                       {(() => {
                         const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => m === paymentMethod ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === paymentMethod ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
                         const remainingUnpaidMode = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
                         const currentVal = Number(partPaymentAmounts[paymentMethod]) || 0;
                         const displayVal = paymentType === 'Full Payment' ? grandTotal : (currentVal > 0 ? currentVal : remainingUnpaidMode);
@@ -9849,7 +9707,7 @@ export const BillingPOSView = ({
                         { label: "Advance Used", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
                         { label: "Points Redeem", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Points Redeem' ? grandTotal : 0) : (Number(partPaymentAmounts['Points Redeem']) || 0) },
                         { label: "Due Balance", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
-                        { label: "Gift Voucher / Other", val: (Number(partPaymentAmounts['Gift Voucher']) || 0) + (Number(partPaymentAmounts['Credit Note']) || 0) + (Number(partPaymentAmounts['Other']) || 0) },
+                        { label: "Gift Voucher / Other", val: (Number(partPaymentAmounts['Gift Voucher']) || 0) + (Number(partPaymentAmounts['Other']) || 0) },
                       ];
                       return rows.map((row, idx) => (
                         <div key={idx} className="flex justify-between items-center text-slate-600 text-[11px]">
@@ -9864,7 +9722,7 @@ export const BillingPOSView = ({
                   <div className="pt-2 border-t border-slate-200 space-y-1.5">
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       const totalPaidDisplay = paymentType === 'Full Payment' ? (allocatedFullPaymentMode ? (allocatedFullPaymentMode === 'Cash' ? cashTotal : grandTotal) : 0) : partTotal;
                       const remainingDue = Math.max(0, grandTotal - totalPaidDisplay);
                       const changeReturn = Math.max(0, totalPaidDisplay - grandTotal);
@@ -9904,7 +9762,7 @@ export const BillingPOSView = ({
                     onClick={async () => {
                       if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
                         setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
                         return;
@@ -9930,7 +9788,7 @@ export const BillingPOSView = ({
                     onClick={async () => {
                       if (isSavingPayment) return;
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Credit Note", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
                       if (paymentType === 'Full Payment' && paymentMethod === 'Cash' && cashTotal < grandTotal) {
                         setPaymentWarning(`Paid amount (₹${cashTotal}) is less than Bill Amount (₹${grandTotal}).\n\nPlease select "Part Payment" to split or add to Due.`);
                         return;

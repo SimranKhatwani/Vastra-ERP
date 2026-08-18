@@ -11,7 +11,7 @@ class ReturnController {
 
   static createReturn = asyncHandler(async (req, res) => {
     const returnDoc = await ReturnService.createReturn(req.body, req.user.id, req.tenantId);
-    return res.status(201).json(new ApiResponse(201, returnDoc, 'Return processed and credit note generated.'));
+    return res.status(201).json(new ApiResponse(201, returnDoc, 'Return processed and Advance payment generated.'));
   });
 
   static getReturns = asyncHandler(async (req, res) => {

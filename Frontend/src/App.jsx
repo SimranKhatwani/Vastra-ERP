@@ -1844,11 +1844,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "staff-activity" && (
-            <StaffActivityView
-              onAddNotification={addToastNotification}
-            />
-          )}
+
 
           {activeModule === "audit-log" && (
             <AuditLogView />

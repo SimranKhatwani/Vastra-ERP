@@ -23,5 +23,6 @@ router.get('/:id/payments', authorize(PERMISSIONS.BILLING_READ), BillingControll
 router.post('/:id/payments', authorize(PERMISSIONS.BILLING_CREATE), auditLog('RECORD_BILL_PAYMENT', 'billing'), BillingController.recordBillPayment);
 router.get('/:id/reprint', authorize(PERMISSIONS.BILLING_READ), BillingController.reprintBill);
 router.post('/:id/cancel', authorize(PERMISSIONS.BILLING_CANCEL), auditLog('CANCEL_SALE_BILL', 'billing'), BillingController.cancelSaleBill);
+router.delete('/:id', authorize(PERMISSIONS.BILLING_CANCEL), auditLog('DELETE_SALE_BILL', 'billing'), BillingController.deleteSaleBill);
 
 module.exports = router;

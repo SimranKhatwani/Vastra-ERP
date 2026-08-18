@@ -51,7 +51,7 @@ function OutstandingTab({ vendor, hubData, showToast, handleOpenShareModal }) {
     } else if (isRealVendor) {
       setInvoices([]); // Real vendor with no invoices → show empty state
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hubData]);
 
   const totalOutstanding = invoices.reduce((s, inv) => s + inv.outstanding, 0);
@@ -347,7 +347,7 @@ function PurchaseTab({ vendor, showToast, handleOpenShareModal, hubData }) {
       setOrders([]); // Real vendor with no POs → show empty state
     }
     // Demo vendor → keep DEMO_PURCHASE_ORDERS
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hubData]);
   const [newPO, setNewPO] = useState({
     items: '',
@@ -934,13 +934,13 @@ export default function VendorCommunicationCard({ currentUser }) {
     try {
       const token = localStorage.getItem('token');
       await api.post(`/vendor-communication/${selectedVendorId}/log-activity`, {
-          activityType,
-          channel,
-          remarks,
-          documentNumber: docNumber,
-          employeeName: currentUser?.name || 'Admin',
-          status: 'Completed'
-        });
+        activityType,
+        channel,
+        remarks,
+        documentNumber: docNumber,
+        employeeName: currentUser?.name || 'Admin',
+        status: 'Completed'
+      });
     } catch (e) { }
 
     // Update local Timeline
@@ -1031,7 +1031,7 @@ export default function VendorCommunicationCard({ currentUser }) {
       } else {
         res = await api.post(`/vendors`, payload);
       }
-      
+
       const data = res.data;
       if (data.success && data.data) {
         showToast(`✅ Vendor "${data.data.name}" ${isEditingVendor ? 'updated' : 'created'} successfully!`);
@@ -1367,8 +1367,8 @@ export default function VendorCommunicationCard({ currentUser }) {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`py-2 px-3 text-xs font-black rounded-xl transition-all ${activeTab === tab.id
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                     }`}
                 >
                   {tab.label}
@@ -1492,7 +1492,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                         <button onClick={() => handleOpenShareModal('Call')} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> Call</button>
                       </div>
                     </div>
-                    
+
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-slate-400 block font-medium">Email Address</span>
@@ -1545,7 +1545,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                       <p className="text-slate-600 leading-relaxed font-medium pl-1">
                         {vendor.address || 'N/A'}
                       </p>
-                      
+
                       <div className="grid grid-cols-3 gap-2 mt-2 pt-3 border-t border-slate-100">
                         <div>
                           <span className="text-[10px] text-slate-400 font-bold uppercase block">State</span>
@@ -1924,7 +1924,6 @@ export default function VendorCommunicationCard({ currentUser }) {
                         { label: 'Share Goods Return', icon: RefreshCw, action: () => handleOpenShareModal('Goods Return', 'GRN-2026-042') },
                         { label: 'Send Payment Advice', icon: DollarSign, action: () => handleOpenShareModal('Payment Advice', 'PAY-2026-118') },
                         { label: 'Share Debit Note', icon: ArrowRight, action: () => handleOpenShareModal('Debit Note', 'DN-2026-001') },
-                        { label: 'Share Credit Note', icon: ArrowRight, action: () => handleOpenShareModal('Credit Note', 'CN-2026-001') },
                         { label: 'Share Rate Enquiry', icon: Send, action: () => handleOpenShareModal('Rate Enquiry', 'RFQ-2026-001') },
                         { label: 'Share Product Images', icon: Paperclip, action: () => setActiveTab('documents') },
                         { label: 'Share Agreements', icon: Lock, action: () => setActiveTab('documents') },
@@ -1968,7 +1967,7 @@ export default function VendorCommunicationCard({ currentUser }) {
                         { label: 'Track LR & Dispatch', icon: ArrowRight, action: () => setActiveTab('timeline') },
                         { label: 'Track Goods Return', icon: RefreshCw, action: () => setActiveTab('followups') },
                         { label: 'Track Replacement Status', icon: ArrowRight, action: () => setActiveTab('followups') },
-                        { label: 'Track Credit Note Status', icon: ArrowRight, action: () => setActiveTab('followups') },
+
                         { label: 'Track Vendor Payment', icon: DollarSign, action: () => setActiveTab('followups') },
                       ].map((item, i) => (
                         <button key={i} onClick={item.action} className="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-xl text-left font-bold text-slate-700 transition">

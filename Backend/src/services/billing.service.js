@@ -863,6 +863,36 @@ class BillingService {
     return bill;
   }
 
+  /**
+   * Delete Sale Bill (Hard Delete)
+   */
+  static async deleteSaleBill(billId, userId, tenantId) {
+    const bill = await SaleBill.findOne({ _id: billId, tenantId });
+    if (!bill) throw new ApiError(404, 'Sale Bill not found.');
+
+    // If not already cancelled, revert inventory pieces back to AVAILABLE
+    if (bill.status !== BILL_STATUS.CANCELLED) {
+      const saleItems = await SaleItem.find({ saleBillId: billId, tenantId });
+      for (const item of saleItems) {
+        const piece = await InventoryPiece.findById(item.inventoryPieceId);
+        if (piece) {
+          piece.status = INVENTORY_STATUS.AVAILABLE;
+          piece.sold = false;
+          piece.currentLocation = 'WAREHOUSE';
+          piece.updatedBy = userId;
+          await piece.save();
+        }
+      }
+    }
+
+    // Delete associated items
+    await SaleItem.deleteMany({ saleBillId: billId, tenantId });
+    // Delete the bill itself
+    await SaleBill.deleteOne({ _id: billId, tenantId });
+
+    return { success: true, message: 'Sale Bill deleted successfully.' };
+  }
+
   static async getReprintPayload(billId, tenantId) {
     return this.getSaleBillById(billId, tenantId);
   }

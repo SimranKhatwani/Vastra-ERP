@@ -626,6 +626,7 @@ export const BillingSalesView = ({
                   <th className="p-3">Amount Paid</th>
                   <th className="p-3">Total Grand</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -649,11 +650,35 @@ export const BillingSalesView = ({
                         {inv.status}
                       </span>
                     </td>
+                    <td className="p-3">
+                      <button
+                        onClick={async () => {
+                          if (window.confirm("Are you sure you want to permanently delete this invoice? This will revert inventory back to available stock.")) {
+                            try {
+                              const res = await fetch(`${API}/billing/${inv._id || inv.id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" } });
+                              const data = await res.json();
+                              if (data.success) {
+                                if (onAddNotification) onAddNotification("Success", "Invoice deleted successfully", "success");
+                                fetchInvoices(); // Refresh the list
+                              } else {
+                                if (onAddNotification) onAddNotification("Error", data.message || "Failed to delete invoice", "danger");
+                              }
+                            } catch (error) {
+                              if (onAddNotification) onAddNotification("Error", "Failed to delete invoice", "danger");
+                            }
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors inline-flex items-center"
+                        title="Delete Invoice"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {filteredInvoices.length === 0 && (
                   <tr>
-                    <td colSpan="8" className="p-12 text-center text-slate-400 font-bold">
+                    <td colSpan="9" className="p-12 text-center text-slate-400 font-bold">
                       No invoices found. Generate an invoice to see it listed here!
                     </td>
                   </tr>

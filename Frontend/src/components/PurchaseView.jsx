@@ -249,37 +249,37 @@ const VendorManagement = ({ vendors, setVendors, onAddNotification }) => {
         <Modal title={editVendor ? "Edit Vendor" : "Add New Vendor"} onClose={() => setShowModal(false)} wide>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <InputRow label="Vendor Name" required><input required className={inputClass} value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))} /></InputRow>
-              <InputRow label="Business Name"><input className={inputClass} value={form.businessName} onChange={e => setForm(p => ({...p, businessName: e.target.value}))} /></InputRow>
-              <InputRow label="GSTIN"><input className={inputClass} value={form.gstin} onChange={e => setForm(p => ({...p, gstin: e.target.value}))} /></InputRow>
-              <InputRow label="PAN Number"><input className={inputClass} value={form.panNumber} onChange={e => setForm(p => ({...p, panNumber: e.target.value}))} /></InputRow>
-              <InputRow label="Contact Person"><input className={inputClass} value={form.contactPerson} onChange={e => setForm(p => ({...p, contactPerson: e.target.value}))} /></InputRow>
-              <InputRow label="Mobile Number" required><input required className={inputClass} value={form.phone} onChange={e => setForm(p => ({...p, phone: e.target.value}))} /></InputRow>
-              <InputRow label="Email"><input type="email" className={inputClass} value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} /></InputRow>
+              <InputRow label="Vendor Name" required><input required className={inputClass} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></InputRow>
+              <InputRow label="Business Name"><input className={inputClass} value={form.businessName} onChange={e => setForm(p => ({ ...p, businessName: e.target.value }))} /></InputRow>
+              <InputRow label="GSTIN"><input className={inputClass} value={form.gstin} onChange={e => setForm(p => ({ ...p, gstin: e.target.value }))} /></InputRow>
+              <InputRow label="PAN Number"><input className={inputClass} value={form.panNumber} onChange={e => setForm(p => ({ ...p, panNumber: e.target.value }))} /></InputRow>
+              <InputRow label="Contact Person"><input className={inputClass} value={form.contactPerson} onChange={e => setForm(p => ({ ...p, contactPerson: e.target.value }))} /></InputRow>
+              <InputRow label="Mobile Number" required><input required className={inputClass} value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></InputRow>
+              <InputRow label="Email"><input type="email" className={inputClass} value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></InputRow>
               <InputRow label="Category">
-                <select className={inputClass} value={form.category} onChange={e => setForm(p => ({...p, category: e.target.value}))}>
-                  {["General","Fabric","Yarn","Accessories","Packaging","Other"].map(c => <option key={c}>{c}</option>)}
+                <select className={inputClass} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
+                  {["General", "Fabric", "Yarn", "Accessories", "Packaging", "Other"].map(c => <option key={c}>{c}</option>)}
                 </select>
               </InputRow>
               <InputRow label="Payment Terms">
-                <select className={inputClass} value={form.paymentTerms} onChange={e => setForm(p => ({...p, paymentTerms: e.target.value}))}>
-                  {["Net 7","Net 15","Net 30","Net 60","Advance","COD"].map(t => <option key={t}>{t}</option>)}
+                <select className={inputClass} value={form.paymentTerms} onChange={e => setForm(p => ({ ...p, paymentTerms: e.target.value }))}>
+                  {["Net 7", "Net 15", "Net 30", "Net 60", "Advance", "COD"].map(t => <option key={t}>{t}</option>)}
                 </select>
               </InputRow>
-              <InputRow label="Credit Days"><input type="number" className={inputClass} value={form.creditDays} onChange={e => setForm(p => ({...p, creditDays: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Credit Limit (₹)"><input type="number" className={inputClass} value={form.creditLimit} onChange={e => setForm(p => ({...p, creditLimit: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Opening Balance (₹)"><input type="number" className={inputClass} value={form.openingBalance} onChange={e => setForm(p => ({...p, openingBalance: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="City"><input className={inputClass} value={form.city} onChange={e => setForm(p => ({...p, city: e.target.value}))} /></InputRow>
-              <InputRow label="State"><input className={inputClass} value={form.state} onChange={e => setForm(p => ({...p, state: e.target.value}))} /></InputRow>
-              <div className="col-span-2"><InputRow label="Address"><input className={inputClass} value={form.address} onChange={e => setForm(p => ({...p, address: e.target.value}))} /></InputRow></div>
-              <div className="col-span-2"><InputRow label="Remarks"><textarea rows={2} className={inputClass} value={form.remarks} onChange={e => setForm(p => ({...p, remarks: e.target.value}))} /></InputRow></div>
+              <InputRow label="Credit Days"><input type="number" className={inputClass} value={form.creditDays} onChange={e => setForm(p => ({ ...p, creditDays: Number(e.target.value) }))} /></InputRow>
+              <InputRow label="Credit Limit (₹)"><input type="number" className={inputClass} value={form.creditLimit} onChange={e => setForm(p => ({ ...p, creditLimit: Number(e.target.value) }))} /></InputRow>
+              <InputRow label="Opening Balance (₹)"><input type="number" className={inputClass} value={form.openingBalance} onChange={e => setForm(p => ({ ...p, openingBalance: Number(e.target.value) }))} /></InputRow>
+              <InputRow label="City"><input className={inputClass} value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} /></InputRow>
+              <InputRow label="State"><input className={inputClass} value={form.state} onChange={e => setForm(p => ({ ...p, state: e.target.value }))} /></InputRow>
+              <div className="col-span-2"><InputRow label="Address"><input className={inputClass} value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} /></InputRow></div>
+              <div className="col-span-2"><InputRow label="Remarks"><textarea rows={2} className={inputClass} value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} /></InputRow></div>
             </div>
             <div className="flex gap-3 items-center">
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
-                <input type="checkbox" checked={form.isPreferred} onChange={e => setForm(p => ({...p, isPreferred: e.target.checked}))} className="rounded" /> Preferred Supplier
+                <input type="checkbox" checked={form.isPreferred} onChange={e => setForm(p => ({ ...p, isPreferred: e.target.checked }))} className="rounded" /> Preferred Supplier
               </label>
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
-                <input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({...p, isActive: e.target.checked}))} className="rounded" /> Active
+                <input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} className="rounded" /> Active
               </label>
             </div>
             <div className="flex gap-3 justify-end border-t border-slate-100 pt-4">
@@ -325,23 +325,7 @@ const VendorManagement = ({ vendors, setVendors, onAddNotification }) => {
                 </div>
               )}
             </div>
-            {history && (
-              <div>
-                <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Recent Purchase Invoices</h4>
-                {(!history.invoices || history.invoices.length === 0) ? <p className="text-xs text-slate-400 text-center py-4">No invoices yet.</p> : (
-                  <div className="space-y-1.5">
-                    {history.invoices.slice(0, 5).map((inv, i) => (
-                      <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
-                        <span className="font-mono font-bold text-indigo-600">{inv.invoiceNo}</span>
-                        <span className="text-slate-500">{fmtDate(inv.invoiceDate)}</span>
-                        <span className="font-bold text-slate-800">₹{fmt(inv.grandTotal)}</span>
-                        <Badge label={inv.paymentStatus} color={inv.paymentStatus === "Paid" ? "green" : inv.paymentStatus === "Partial" ? "amber" : "red"} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+
           </div>
         </Modal>
       )}
@@ -452,15 +436,15 @@ const GRNEntry = ({ grns, setGrns, vendors, products, onAddNotification }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <InputRow label="Vendor" required>
-                <select required className={inputClass} value={form.vendorId} onChange={e => setForm(p => ({...p, vendorId: e.target.value}))}>
+                <select required className={inputClass} value={form.vendorId} onChange={e => setForm(p => ({ ...p, vendorId: e.target.value }))}>
                   <option value="">Select Vendor...</option>
                   {vendors.filter(v => v.isActive).map(v => <option key={v._id} value={v._id}>{v.name}</option>)}
                 </select>
               </InputRow>
-              <InputRow label="Reference No"><input className={inputClass} value={form.referenceNo} onChange={e => setForm(p => ({...p, referenceNo: e.target.value}))} /></InputRow>
-              <InputRow label="Receive Date"><input type="date" className={inputClass} value={form.receiveDate} onChange={e => setForm(p => ({...p, receiveDate: e.target.value}))} /></InputRow>
-              <InputRow label="Rack Location"><input className={inputClass} value={form.rackLocation} onChange={e => setForm(p => ({...p, rackLocation: e.target.value}))} placeholder="e.g. RCK-A-3" /></InputRow>
-              <div className="col-span-2"><InputRow label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm(p => ({...p, remarks: e.target.value}))} /></InputRow></div>
+              <InputRow label="Reference No"><input className={inputClass} value={form.referenceNo} onChange={e => setForm(p => ({ ...p, referenceNo: e.target.value }))} /></InputRow>
+              <InputRow label="Receive Date"><input type="date" className={inputClass} value={form.receiveDate} onChange={e => setForm(p => ({ ...p, receiveDate: e.target.value }))} /></InputRow>
+              <InputRow label="Rack Location"><input className={inputClass} value={form.rackLocation} onChange={e => setForm(p => ({ ...p, rackLocation: e.target.value }))} placeholder="e.g. RCK-A-3" /></InputRow>
+              <div className="col-span-2"><InputRow label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} /></InputRow></div>
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -511,242 +495,7 @@ const GRNEntry = ({ grns, setGrns, vendors, products, onAddNotification }) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 3: PURCHASE INVOICE MANAGEMENT
-// ─────────────────────────────────────────────────────────────────────────────
-const PurchaseInvoiceManager = ({ purchaseInvoices, setPurchaseInvoices, vendors, products, onAddNotification }) => {
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [showModal, setShowModal] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isCustomVendor, setIsCustomVendor] = useState(false);
-  const [form, setForm] = useState({ vendorId: "", vendorName: "", invoiceNo: "", invoiceDate: new Date().toISOString().split("T")[0], dueDate: "", referenceNo: "", subTotal: 0, cgst: 0, sgst: 0, igst: 0, discount: 0, freight: 0, otherCharges: 0, grandTotal: 0, paymentTerms: "Net 30", amountPaid: 0, remarks: "", items: [] });
-  const [invItems, setInvItems] = useState([{ productId: "", name: "", sku: "", quantity: 1, price: 0, taxPercent: 12, total: 0 }]);
 
-  const filtered = useMemo(() => purchaseInvoices.filter(inv => {
-    const q = search.toLowerCase();
-    const matchQ = !q || inv.invoiceNo?.toLowerCase().includes(q) || inv.vendorName?.toLowerCase().includes(q) || inv.referenceNo?.toLowerCase().includes(q);
-    const matchS = filterStatus === "all" || inv.paymentStatus === filterStatus;
-    return matchQ && matchS;
-  }), [purchaseInvoices, search, filterStatus]);
-
-  const computeTotals = useCallback(() => {
-    const sub = invItems.reduce((s, it) => s + (it.price || 0) * (it.quantity || 0), 0);
-    const tax = invItems.reduce((s, it) => s + (it.price || 0) * (it.quantity || 0) * ((it.taxPercent || 0) / 100), 0);
-    const grand = sub + tax + (form.freight || 0) + (form.otherCharges || 0) - (form.discount || 0) + (form.cgst || 0) + (form.sgst || 0) + (form.igst || 0);
-    setForm(p => ({ ...p, subTotal: Math.round(sub), grandTotal: Math.round(grand) }));
-    setInvItems(prev => prev.map(it => ({ ...it, total: Math.round(it.price * it.quantity + it.price * it.quantity * (it.taxPercent / 100)) })));
-  }, [invItems, form.freight, form.otherCharges, form.discount, form.cgst, form.sgst, form.igst]);
-
-  const updateInvItem = (i, field, val) => {
-    setInvItems(prev => {
-      const next = prev.map((it, idx) => idx === i ? { ...it, [field]: val } : it);
-      return next;
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const hasVendor = form.vendorId || (form.vendorName && form.vendorName.trim());
-    if (!hasVendor || !form.invoiceNo) { onAddNotification("Validation", "Vendor Name and Invoice No are required.", "warning"); return; }
-    setIsLoading(true);
-    const sub = invItems.reduce((s, it) => s + (it.price || 0) * (it.quantity || 0), 0);
-    const grand = sub + (form.freight || 0) + (form.otherCharges || 0) + (form.cgst || 0) + (form.sgst || 0) + (form.igst || 0) - (form.discount || 0);
-    try {
-      const payload = { ...form, subTotal: sub, grandTotal: grand, items: invItems };
-      const r = await fetch(`${API}/invoice`, { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
-      const d = r.data;
-      if (d.success) {
-        setPurchaseInvoices(prev => [{ ...d.data, id: d.data._id }, ...prev]);
-        onAddNotification("Invoice Created", `Purchase Invoice ${d.data.invoiceNo} saved. Vendor outstanding updated.`, "success");
-        setShowModal(false);
-      } else { onAddNotification("Error", d.message, "danger"); }
-    } catch (err) { onAddNotification("Error", err.message, "danger"); }
-    setIsLoading(false);
-  };
-
-  const totalBill = purchaseInvoices.reduce((s, inv) => s + (inv.grandTotal || 0), 0);
-  const totalOut = purchaseInvoices.filter(inv => inv.paymentStatus !== "Paid").reduce((s, inv) => s + (inv.outstandingAmount || 0), 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPICard icon={FileText} label="Total Invoices" value={purchaseInvoices.length} color="indigo" />
-        <KPICard icon={IndianRupee} label="Total Billed" value={`₹${fmt(totalBill)}`} color="blue" />
-        <KPICard icon={CheckCircle2} label="Paid" value={purchaseInvoices.filter(i => i.paymentStatus === "Paid").length} color="green" />
-        <KPICard icon={AlertTriangle} label="Outstanding" value={`₹${fmt(totalOut)}`} color="red" />
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex gap-3 items-center justify-between flex-wrap">
-        <div className="flex gap-2 flex-1 min-w-0">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..." className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-indigo-400 outline-none" />
-          </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border border-slate-200 rounded-xl px-3 py-2 outline-none">
-            <option value="all">All Status</option>
-            <option value="Paid">Paid</option>
-            <option value="Partial">Partial</option>
-            <option value="Unpaid">Unpaid</option>
-          </select>
-        </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-sm">
-          <Plus className="w-3.5 h-3.5" /> New Invoice
-        </button>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
-                <th className="p-3.5 text-left">Invoice No</th><th className="p-3.5 text-left">Vendor</th><th className="p-3.5 text-left">Invoice Date</th><th className="p-3.5 text-left">Due Date</th><th className="p-3.5 text-right">Grand Total</th><th className="p-3.5 text-right">Amount Paid</th><th className="p-3.5 text-right">Outstanding</th><th className="p-3.5 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filtered.length === 0 ? <tr><td colSpan={8} className="p-12 text-center text-slate-400">No purchase invoices yet.</td></tr> :
-                filtered.map(inv => (
-                  <tr key={inv._id} className="hover:bg-slate-50/60">
-                    <td className="p-3.5 font-mono font-bold text-indigo-600">{inv.invoiceNo}</td>
-                    <td className="p-3.5 font-semibold text-slate-800">{inv.vendorName}</td>
-                    <td className="p-3.5 text-slate-500">{fmtDate(inv.invoiceDate)}</td>
-                    <td className="p-3.5 text-slate-500">{fmtDate(inv.dueDate)}</td>
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-800">₹{fmt(inv.grandTotal)}</td>
-                    <td className="p-3.5 text-right font-mono text-emerald-600">₹{fmt(inv.amountPaid)}</td>
-                    <td className="p-3.5 text-right font-mono font-bold text-red-600">₹{fmt(inv.outstandingAmount)}</td>
-                    <td className="p-3.5 text-center"><Badge label={inv.paymentStatus} color={inv.paymentStatus === "Paid" ? "green" : inv.paymentStatus === "Partial" ? "amber" : "red"} /></td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showModal && (
-        <Modal title="New Purchase Invoice" onClose={() => setShowModal(false)} wide>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <InputRow label="Vendor" required>
-                {!isCustomVendor ? (
-                  <select
-                    required={!isCustomVendor}
-                    className={inputClass}
-                    value={form.vendorId}
-                    onChange={(e) => {
-                      if (e.target.value === "__MANUAL__") {
-                        setIsCustomVendor(true);
-                        setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
-                      } else {
-                        const selected = vendors.find((v) => v._id === e.target.value);
-                        setForm((p) => ({
-                          ...p,
-                          vendorId: e.target.value,
-                          vendorName: selected ? selected.name : "",
-                        }));
-                      }
-                    }}
-                  >
-                    <option value="">Select Vendor...</option>
-                    {vendors.filter((v) => v.isActive).map((v) => (
-                      <option key={v._id} value={v._id}>
-                        {v.name}
-                      </option>
-                    ))}
-                    <option value="__MANUAL__">✏️ Enter Custom Vendor Name...</option>
-                  </select>
-                ) : (
-                  <div className="flex gap-1 w-full">
-                    <input
-                      required
-                      className={inputClass}
-                      placeholder="Enter vendor name manually..."
-                      value={form.vendorName}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, vendorId: "", vendorName: e.target.value }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCustomVendor(false);
-                        setForm((p) => ({ ...p, vendorId: "", vendorName: "" }));
-                      }}
-                      className="px-2 py-1 text-[10px] font-bold bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 whitespace-nowrap cursor-pointer"
-                      title="Switch back to vendor list"
-                    >
-                      List
-                    </button>
-                  </div>
-                )}
-              </InputRow>
-              <InputRow label="Invoice No" required><input required className={inputClass} value={form.invoiceNo} onChange={e => setForm(p => ({...p, invoiceNo: e.target.value}))} /></InputRow>
-              <InputRow label="Reference No"><input className={inputClass} value={form.referenceNo} onChange={e => setForm(p => ({...p, referenceNo: e.target.value}))} /></InputRow>
-              <InputRow label="Invoice Date"><input type="date" className={inputClass} value={form.invoiceDate} onChange={e => setForm(p => ({...p, invoiceDate: e.target.value}))} /></InputRow>
-              <InputRow label="Due Date"><input type="date" className={inputClass} value={form.dueDate} onChange={e => setForm(p => ({...p, dueDate: e.target.value}))} /></InputRow>
-              <InputRow label="Payment Terms">
-                <select className={inputClass} value={form.paymentTerms} onChange={e => setForm(p => ({...p, paymentTerms: e.target.value}))}>
-                  {["Net 7","Net 15","Net 30","Net 60","Advance","COD"].map(t => <option key={t}>{t}</option>)}
-                </select>
-              </InputRow>
-            </div>
-
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-200 uppercase">Invoice Items</span>
-                <button type="button" onClick={() => setInvItems(p => [...p, { productId: "", name: "", sku: "", quantity: 1, price: 0, taxPercent: 12, total: 0 }])} className="flex items-center gap-1 text-xs font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-lg"><Plus className="w-3 h-3" />Add Row</button>
-              </div>
-              <table className="w-full text-xs">
-                <thead><tr className="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold border-b border-slate-100">
-                  <th className="p-2.5 text-left">Product</th><th className="p-2.5 text-right">Qty</th><th className="p-2.5 text-right">Price</th><th className="p-2.5 text-right">Tax%</th><th className="p-2.5 text-right">Total</th><th className="p-2.5"></th>
-                </tr></thead>
-                <tbody>
-                  {invItems.map((it, i) => (
-                    <tr key={i} className="border-b border-slate-50">
-                      <td className="p-2"><select className={`${inputClass} min-w-[180px]`} value={it.productId} onChange={e => {
-                        const p = products.find(x => (x._id || x.id) === e.target.value);
-                        updateInvItem(i, "productId", e.target.value);
-                        if (p) { updateInvItem(i, "name", p.name); updateInvItem(i, "sku", p.sku); updateInvItem(i, "price", p.purchasePrice || 0); }
-                      }}>
-                        <option value="">Select Product...</option>
-                        {products.map(p => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
-                      </select></td>
-                      <td className="p-2"><input type="number" min={1} className={`${inputClass} w-20 text-right`} value={it.quantity} onChange={e => updateInvItem(i, "quantity", Number(e.target.value))} /></td>
-                      <td className="p-2"><input type="number" min={0} className={`${inputClass} w-24 text-right`} value={it.price} onChange={e => updateInvItem(i, "price", Number(e.target.value))} /></td>
-                      <td className="p-2"><input type="number" min={0} className={`${inputClass} w-16 text-right`} value={it.taxPercent} onChange={e => updateInvItem(i, "taxPercent", Number(e.target.value))} /></td>
-                      <td className="p-2 text-right font-mono font-bold text-slate-700">₹{fmt(it.price * it.quantity)}</td>
-                      <td className="p-2"><button type="button" onClick={() => setInvItems(p => p.filter((_, j) => j !== i))} disabled={invItems.length === 1} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-30"><Trash2 className="w-3.5 h-3.5" /></button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <InputRow label="CGST (₹)"><input type="number" className={inputClass} value={form.cgst} onChange={e => setForm(p => ({...p, cgst: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="SGST (₹)"><input type="number" className={inputClass} value={form.sgst} onChange={e => setForm(p => ({...p, sgst: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="IGST (₹)"><input type="number" className={inputClass} value={form.igst} onChange={e => setForm(p => ({...p, igst: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Discount (₹)"><input type="number" className={inputClass} value={form.discount} onChange={e => setForm(p => ({...p, discount: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Freight (₹)"><input type="number" className={inputClass} value={form.freight} onChange={e => setForm(p => ({...p, freight: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Other Charges (₹)"><input type="number" className={inputClass} value={form.otherCharges} onChange={e => setForm(p => ({...p, otherCharges: Number(e.target.value)}))} /></InputRow>
-              <InputRow label="Amount Paid (₹)"><input type="number" className={inputClass} value={form.amountPaid} onChange={e => setForm(p => ({...p, amountPaid: Number(e.target.value)}))} /></InputRow>
-              <div className="col-span-2"><InputRow label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm(p => ({...p, remarks: e.target.value}))} /></InputRow></div>
-            </div>
-
-            <div className="bg-indigo-50 rounded-xl p-3 flex justify-between items-center text-xs font-bold text-indigo-800">
-              <span>Grand Total (Computed):</span>
-              <span className="text-lg font-black">₹{fmt(invItems.reduce((s, it) => s + it.price * it.quantity, 0) + (form.cgst || 0) + (form.sgst || 0) + (form.igst || 0) + (form.freight || 0) + (form.otherCharges || 0) - (form.discount || 0))}</span>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-              <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2 text-xs font-bold bg-slate-100 rounded-xl">Cancel</button>
-              <button type="submit" disabled={isLoading} className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50">
-                <Save className="w-3.5 h-3.5" /> {isLoading ? "Saving..." : "Save Purchase Invoice"}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </div>
-  );
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 4: PURCHASE RETURNS
@@ -785,18 +534,35 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPICard icon={RotateCcw} label="Total Returns" value={purchaseReturns.length} color="amber" />
+        <KPICard icon={RotateCcw} label="Total Returns" value={purchaseReturns.length} color="indigo" />
+        <KPICard icon={Clock} label="Pending GR" value={purchaseReturns.filter(r => r.status === "Pending" || !r.status).length} color="amber" />
         <KPICard icon={CheckCircle2} label="Approved" value={purchaseReturns.filter(r => r.status === "Approved").length} color="green" />
         <KPICard icon={RefreshCw} label="Replacements" value={purchaseReturns.filter(r => r.actionRequired === "Replacement").length} color="blue" />
-        <KPICard icon={IndianRupee} label="Refunds" value={purchaseReturns.filter(r => r.actionRequired === "Refund").length} color="red" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex gap-3 items-center justify-between">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search returns..." className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-indigo-400 outline-none" />
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex gap-3 items-center justify-between flex-wrap">
+        <div className="flex gap-2 flex-1 min-w-0">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search returns..." className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-indigo-400 outline-none" />
+          </div>
+          <select
+            onChange={(e) => {
+              if (e.target.value) {
+                setSearch(e.target.value);
+              } else {
+                setSearch("");
+              }
+            }}
+            className="text-xs border border-slate-200 rounded-xl px-3 py-2 outline-none text-slate-600"
+          >
+            <option value="">All GR Statuses</option>
+            <option value="pending">Pending GR</option>
+            <option value="approved">Approved</option>
+            <option value="completed">Completed</option>
+          </select>
         </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-amber-700 shadow-sm">
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-amber-700 shadow-sm whitespace-nowrap">
           <Plus className="w-3.5 h-3.5" /> New Return
         </button>
       </div>
@@ -935,23 +701,23 @@ const PurchaseReturns = ({ purchaseReturns, setPurchaseReturns, vendors, product
             <InputRow label="Product" required>
               <select required className={inputClass} value={form.productId} onChange={e => {
                 const p = products.find(x => (x._id || x.id) === e.target.value);
-                setForm(prev => ({...prev, productId: e.target.value, productName: p?.name || "", sku: p?.sku || ""}));
+                setForm(prev => ({ ...prev, productId: e.target.value, productName: p?.name || "", sku: p?.sku || "" }));
               }}>
                 <option value="">Select Product...</option>
                 {products.map(p => <option key={p._id || p.id} value={p._id || p.id}>{p.name} ({p.sku})</option>)}
               </select>
             </InputRow>
             <InputRow label="Quantity Returned" required>
-              <input type="number" min={1} required className={inputClass} value={form.quantity} onChange={e => setForm(p => ({...p, quantity: Number(e.target.value)}))} />
+              <input type="number" min={1} required className={inputClass} value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: Number(e.target.value) }))} />
             </InputRow>
-            <InputRow label="Return Reason"><textarea rows={2} className={inputClass} value={form.reason} onChange={e => setForm(p => ({...p, reason: e.target.value}))} /></InputRow>
+            <InputRow label="Return Reason"><textarea rows={2} className={inputClass} value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))} /></InputRow>
             <InputRow label="Action Required">
-              <select className={inputClass} value={form.actionRequired} onChange={e => setForm(p => ({...p, actionRequired: e.target.value}))}>
+              <select className={inputClass} value={form.actionRequired} onChange={e => setForm(p => ({ ...p, actionRequired: e.target.value }))}>
                 <option value="Refund">Refund</option>
                 <option value="Replacement">Replacement</option>
               </select>
             </InputRow>
-            <InputRow label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm(p => ({...p, remarks: e.target.value}))} /></InputRow>
+            <InputRow label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} /></InputRow>
             <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
               <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2 text-xs font-bold bg-slate-100 rounded-xl">Cancel</button>
               <button type="submit" disabled={isLoading} className="px-5 py-2 text-xs font-bold bg-amber-600 text-white rounded-xl hover:bg-amber-700 flex items-center gap-2 disabled:opacity-50">
@@ -1109,7 +875,7 @@ const PurchaseReportsTab = ({ purchaseReports, setPurchaseReports, onAddNotifica
 
           {/* View toggle */}
           <div className="flex gap-2 bg-slate-100 p-1 rounded-xl w-fit">
-            {[["vendor","Vendor-wise"],["product","Product-wise"],["daily","Daily"],["monthly","Monthly"],["gst","GST Register"],["returns","Returns"]].map(([v,l]) => (
+            {[["vendor", "Vendor-wise"], ["product", "Product-wise"], ["daily", "Daily"], ["monthly", "Monthly"], ["gst", "GST Register"], ["returns", "Returns"]].map(([v, l]) => (
               <button key={v} onClick={() => setActiveView(v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${activeView === v ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{l}</button>
             ))}
           </div>
@@ -1211,7 +977,7 @@ const VendorOutstandingReports = ({ vendorOutstanding, setVendorOutstanding, onA
         // Refresh outstanding list
         const r2 = await fetch(`${API}/outstanding`, { headers: authHeaders() });
         const d2 = r2.data;
-        if (d2.success) setVendorOutstanding(d2.data.map(o => ({...o, id: o._id})));
+        if (d2.success) setVendorOutstanding(d2.data.map(o => ({ ...o, id: o._id })));
         onAddNotification("Payment Recorded", `₹${fmt(payForm.amount)} paid against ${payModal.invoiceNo}.`, "success");
         setPayModal(null);
         setPayForm({ amount: 0, paymentMode: "Cash", referenceNo: "", remarks: "" });
@@ -1322,15 +1088,15 @@ const VendorOutstandingReports = ({ vendorOutstanding, setVendorOutstanding, onA
           </div>
           <form onSubmit={handlePayment} className="space-y-3">
             <InputRow label="Payment Amount (₹)" required>
-              <input type="number" required min={0.01} max={payModal.outstandingAmount} step="0.01" className={inputClass} value={payForm.amount} onChange={e => setPayForm(p => ({...p, amount: Number(e.target.value)}))} />
+              <input type="number" required min={0.01} max={payModal.outstandingAmount} step="0.01" className={inputClass} value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: Number(e.target.value) }))} />
             </InputRow>
             <InputRow label="Payment Mode">
-              <select className={inputClass} value={payForm.paymentMode} onChange={e => setPayForm(p => ({...p, paymentMode: e.target.value}))}>
-                {["Cash","Bank Transfer","UPI","Cheque","Credit Card","Other"].map(m => <option key={m}>{m}</option>)}
+              <select className={inputClass} value={payForm.paymentMode} onChange={e => setPayForm(p => ({ ...p, paymentMode: e.target.value }))}>
+                {["Cash", "Bank Transfer", "UPI", "Cheque", "Credit Card", "Other"].map(m => <option key={m}>{m}</option>)}
               </select>
             </InputRow>
-            <InputRow label="Reference / Transaction No"><input className={inputClass} value={payForm.referenceNo} onChange={e => setPayForm(p => ({...p, referenceNo: e.target.value}))} placeholder="UTR / Cheque / UPI Ref" /></InputRow>
-            <InputRow label="Remarks"><input className={inputClass} value={payForm.remarks} onChange={e => setPayForm(p => ({...p, remarks: e.target.value}))} /></InputRow>
+            <InputRow label="Reference / Transaction No"><input className={inputClass} value={payForm.referenceNo} onChange={e => setPayForm(p => ({ ...p, referenceNo: e.target.value }))} placeholder="UTR / Cheque / UPI Ref" /></InputRow>
+            <InputRow label="Remarks"><input className={inputClass} value={payForm.remarks} onChange={e => setPayForm(p => ({ ...p, remarks: e.target.value }))} /></InputRow>
             <div className="bg-indigo-50 rounded-xl p-3 text-xs font-bold text-indigo-800 flex justify-between">
               <span>Remaining after payment:</span>
               <span>₹{fmt(Math.max(0, payModal.outstandingAmount - payForm.amount))}</span>
@@ -1464,12 +1230,10 @@ export const PurchaseView = ({
   const [poQty, setPoQty] = useState(100);
 
   const tabs = [
-    { id: "pos",         label: "Procurement & Purchase Orders (PO)", icon: FileText },
-    { id: "grn",         label: "Goods Receipt (GRN)",     icon: ClipboardList },
-    { id: "invoice",     label: "Purchase Invoices",       icon: FileText },
-    { id: "returns",     label: "Purchase Returns",        icon: RotateCcw },
-    { id: "pending",     label: "Pending Tracking",        icon: Clock },
-    { id: "reports",     label: "Purchase Reports",        icon: BarChart3 },
+    { id: "pos", label: "Procurement & Purchase Orders (PO)", icon: FileText },
+    { id: "returns", label: "Purchase Returns", icon: RotateCcw },
+    { id: "pending", label: "Pending Tracking", icon: Clock },
+    { id: "reports", label: "Purchase Reports", icon: BarChart3 },
   ];
 
   const handleCreatePOSubmit = async (e) => {
@@ -1643,11 +1407,11 @@ export const PurchaseView = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-800">Procurement & Purchase Orders (PO)</h2>
-          <p className="text-xs text-slate-400">Import 27-column PT Files, manage POs, GRNs, purchase invoices & returns.</p>
+          <h2 className="text-lg font-black text-slate-800">Purchase Invoices & POs</h2>
+          <p className="text-xs text-slate-400">Import PT Files, manage POs, purchase invoices & returns.</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full font-semibold">
-          <ShoppingBag className="w-3.5 h-3.5" /> {(purchaseOrders || []).length} POs / PT Vouchers · {grns.length} GRNs · {purchaseInvoices.length} Invoices
+          <ShoppingBag className="w-3.5 h-3.5" /> {(purchaseOrders || []).length} POs / PT Vouchers · {purchaseInvoices.length} Invoices
         </div>
       </div>
 
@@ -1673,7 +1437,7 @@ export const PurchaseView = ({
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-800">PT File & Purchase Voucher Hub</h3>
-                  <p className="text-xs text-slate-400">Import 27-Column Excel PT Files or create manual purchase entry vouchers</p>
+                  <p className="text-xs text-slate-400">Import Excel PT Files or create manual purchase entry vouchers</p>
                 </div>
               </div>
 
@@ -1683,7 +1447,7 @@ export const PurchaseView = ({
                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <UploadCloud className="w-4 h-4" />
-                  <span>Import PT File (27 Cols)</span>
+                  <span>Import PT File</span>
                 </button>
 
                 <button
@@ -1798,32 +1562,7 @@ export const PurchaseView = ({
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
-                                {po.importBatchId && (
-                                  <button
-                                    onClick={async () => {
-                                      if (window.confirm("CRITICAL WARNING: You are about to delete an entire PT Excel Import. This will atomically remove ALL associated Purchase Bills, Products, Vendors, and Inventory records.\n\nAre you absolutely sure?")) {
-                                        try {
-                                          const res = await api.delete(`/pt-import/${po.importBatchId}`, { headers: authHeaders() });
-                                          if (res.data?.success) {
-                                            alert("PT Import deleted successfully.");
-                                            window.dispatchEvent(new Event("vastra-data-refresh"));
-                                            if (setPurchaseOrders) {
-                                              const refreshRes = await api.get('/purchase-orders');
-                                              const dataOrBills = Array.isArray(refreshRes.data?.data) ? refreshRes.data.data : (Array.isArray(refreshRes.data?.data?.bills) ? refreshRes.data.data.bills : []);
-                                              setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
-                                            }
-                                          }
-                                        } catch (err) {
-                                          alert("Failed to delete PT Import: " + (err.response?.data?.message || err.message));
-                                        }
-                                      }
-                                    }}
-                                    className="p-1.5 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors cursor-pointer border border-red-200 shadow-sm"
-                                    title="Delete ENTIRE PT Import Batch"
-                                  >
-                                    <Trash2 className="w-4 h-4" /> PT
-                                  </button>
-                                )}
+
                               </div>
                             </td>
                           </tr>
@@ -1926,8 +1665,8 @@ export const PurchaseView = ({
           </div>
         )}
 
-        {activeTab === "grn" && <GRNEntry grns={grns} setGrns={setGrns} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
-        {activeTab === "invoice" && <PurchaseInvoiceManager purchaseInvoices={purchaseInvoices} setPurchaseInvoices={setPurchaseInvoices} vendors={vendors} products={products} onAddNotification={onAddNotification} />}
+
+
         {activeTab === "returns" && <PurchaseReturns purchaseReturns={purchaseReturns} setPurchaseReturns={setPurchaseReturns} vendors={vendors} products={products} purchaseInvoices={purchaseInvoices} onAddNotification={onAddNotification} />}
         {activeTab === "pending" && <PendingTracking pendingPurchases={pendingPurchases} setPendingPurchases={setPendingPurchases} onAddNotification={onAddNotification} />}
         {activeTab === "reports" && <PurchaseReportsTab purchaseReports={purchaseReports} setPurchaseReports={setPurchaseReports} onAddNotification={onAddNotification} />}

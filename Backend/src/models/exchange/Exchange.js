@@ -36,7 +36,7 @@ const exchangeSchema = new mongoose.Schema({
   netDifference: {
     type: Number,
     required: true
-  }, // Positive = Customer pays extra, Negative = Refund/Credit Note
+  }, // Positive = Customer pays extra, Negative = Refund/Advance amount
   status: {
     type: String,
     enum: ['COMPLETED', 'CANCELLED'],

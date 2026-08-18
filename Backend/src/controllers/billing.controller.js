@@ -38,6 +38,11 @@ class BillingController {
     return res.status(200).json(new ApiResponse(200, bill, 'Sale bill cancelled successfully.'));
   });
 
+  static deleteSaleBill = asyncHandler(async (req, res) => {
+    const result = await BillingService.deleteSaleBill(req.params.id, req.user.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, result, 'Sale bill deleted successfully.'));
+  });
+
   static reprintBill = asyncHandler(async (req, res) => {
     const payload = await BillingService.getReprintPayload(req.params.id, req.tenantId);
     return res.status(200).json(new ApiResponse(200, payload, 'Reprint data retrieved.'));
