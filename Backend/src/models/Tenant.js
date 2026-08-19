@@ -49,6 +49,12 @@ const tenantSchema = new mongoose.Schema({
     endDate: Date,
     maxUsers: { type: Number, default: 10 },
     maxWarehouses: { type: Number, default: 3 }
+  },
+  commissionSettings: {
+    isEnabled: { type: Boolean, default: false },
+    salespersonPercentage: { type: Number, default: 1.5 },
+    workerPercentage: { type: Number, default: 0.5 },
+    calculationBasis: { type: String, default: 'Selling Price' }
   }
 });
 

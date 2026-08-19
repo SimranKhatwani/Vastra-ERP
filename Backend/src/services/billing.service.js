@@ -240,6 +240,55 @@ class BillingService {
 
     let salesmanId = (typeof billData.salesmanId === 'string' && billData.salesmanId.length === 24) ? billData.salesmanId : null;
 
+    if (salesmanId) {
+      const User = require('../models/User');
+      const Salesman = require('../models/masters/Salesman');
+      const userObj = await User.findById(salesmanId);
+      if (userObj) {
+        let salesmanObj = await Salesman.findOne({
+          tenantId,
+          $or: [
+            { phone: userObj.phone },
+            { email: userObj.email },
+            { name: userObj.name }
+          ]
+        });
+        if (!salesmanObj) {
+          salesmanObj = await Salesman.create({
+            tenantId,
+            name: userObj.name,
+            phone: userObj.phone || '0000000000',
+            email: userObj.email,
+            commissionPercentage: 5
+          });
+        }
+        salesmanId = salesmanObj._id;
+      }
+    }
+
+    let resolvedCommPercentage = 0;
+    if (salesmanId) {
+      const Tenant = require('../models/Tenant');
+      const tenant = await Tenant.findById(tenantId).lean();
+      const settings = tenant?.commissionSettings || {};
+      
+      const Salesman = require('../models/masters/Salesman');
+      const salesmanObj = await Salesman.findById(salesmanId).lean();
+      
+      const User = require('../models/User');
+      const userObj = await User.findOne({ tenantId, $or: [ { phone: salesmanObj?.phone }, { email: salesmanObj?.email }, { name: salesmanObj?.name } ] }).lean();
+
+      const userDesig = (userObj?.designation || salesmanObj?.designation || userObj?.role || '').toLowerCase();
+      const isWorker = userDesig.includes('worker') || userDesig.includes('tailor') || userDesig.includes('fitter') || userDesig.includes('stitcher') || userDesig === 'worker';
+      
+      if (isWorker) {
+        resolvedCommPercentage = settings.workerPercentage !== undefined ? settings.workerPercentage : (salesmanObj?.commissionPercentage || 0.5);
+      } else {
+        resolvedCommPercentage = settings.salespersonPercentage !== undefined ? settings.salespersonPercentage : (salesmanObj?.commissionPercentage || 5);
+      }
+    }
+    const resolvedCommAmount = grandTotal * (resolvedCommPercentage / 100);
+
     // 2. Create Sale Bill
     const saleBill = await SaleBill.create({
       tenantId,
@@ -260,6 +309,8 @@ class BillingService {
       advanceApplied: Number(billData.advanceApplied || 0),
       paymentMethod: billData.paymentMethod || (billData.paymentTransactions && billData.paymentTransactions.length > 0 ? billData.paymentTransactions.map(t => t.mode).join(' + ') : (dueAmount > 0 ? "Credit" : "Cash")),
       status: billStatus,
+      commissionPercentage: resolvedCommPercentage,
+      commissionAmount: resolvedCommAmount,
       remarks: billData.remarks,
       isHold: Boolean(billData.isHold),
       createdBy: userId

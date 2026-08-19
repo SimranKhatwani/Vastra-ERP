@@ -6,6 +6,10 @@ const salesmanSchema = new mongoose.Schema({
   phone: { type: String, required: true, trim: true },
   email: String,
   code: String,
+  designation: { type: String, trim: true, default: '' },
+  gender: { type: String, enum: ['Male', 'Female', 'Other'], default: 'Male' },
+  age: { type: Number },
+  address: { type: String, trim: true, default: '' },
   commissionPercentage: { type: Number, default: 0 }
 });
 

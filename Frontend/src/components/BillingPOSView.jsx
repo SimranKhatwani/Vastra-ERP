@@ -666,65 +666,13 @@ export const BillingPOSView = ({
   };
 
   // New billing features states
-  const [quotations, setQuotations] = useState([
-    {
-      id: "q-1",
-      quoteNo: "QTN-2026-001",
-      customerName: "Ramesh Kumar",
-      date: "2026-06-25",
-      total: 4500,
-      status: "Draft",
-      items: [
-        {
-          name: "Raymond Executive Linen Shirt - White",
-          quantity: 2,
-          price: 1500,
-          totalPrice: 3000,
-        },
-      ],
-    },
-    {
-      id: "q-2",
-      quoteNo: "QTN-2026-002",
-      customerName: "Sushma Swaraj",
-      date: "2026-06-27",
-      total: 12500,
-      status: "Approved",
-      items: [
-        {
-          name: "Biba Festive Floral Saree - Red Silk",
-          quantity: 1,
-          price: 8500,
-          totalPrice: 8500,
-        },
-      ],
-    },
-  ]);
+  const [quotations, setQuotations] = useState([]);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteCustName, setQuoteCustName] = useState("");
   const [quoteProdId, setQuoteProdId] = useState("");
   const [quoteQty, setQuoteQty] = useState(1);
 
-  const [salesOrders, setSalesOrders] = useState([
-    {
-      id: "so-1",
-      orderNo: "SO-2026-101",
-      customerName: "Ramesh Kumar",
-      date: "2026-06-26",
-      total: 9200,
-      status: "Pending",
-      itemsCount: 3,
-    },
-    {
-      id: "so-2",
-      orderNo: "SO-2026-102",
-      customerName: "Aman Deep",
-      date: "2026-06-28",
-      total: 18500,
-      status: "Dispatched",
-      itemsCount: 5,
-    },
-  ]);
+  const [salesOrders, setSalesOrders] = useState([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderCustName, setOrderCustName] = useState("");
   const [orderProdId, setOrderProdId] = useState("");
@@ -2428,6 +2376,7 @@ export const BillingPOSView = ({
         loyaltyPointsUsed,
         status: paymentMethod === "Credit" || computedDueAmount >= grandTotal ? "Unpaid" : "Paid",
         employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
+        salesmanId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
         employeeName: cashier.name,
         salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
         billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
@@ -3900,7 +3849,7 @@ export const BillingPOSView = ({
                                     }}
                                     onFocus={(e) => e.target.select()}
                                   />
-                                  {val1 && filtered1.length > 0 && (
+                                  {val1 && filtered1.length > 0 && !(filtered1.length === 1 && filtered1[0].name.toLowerCase() === val1.toLowerCase()) && (
                                     <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
                                       {filtered1.map(s => (
                                         <div
@@ -3940,7 +3889,7 @@ export const BillingPOSView = ({
                                     }}
                                     onFocus={(e) => e.target.select()}
                                   />
-                                  {val2 && filtered2.length > 0 && (
+                                  {val2 && filtered2.length > 0 && !(filtered2.length === 1 && filtered2[0].name.toLowerCase() === val2.toLowerCase()) && (
                                     <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
                                       {filtered2.map(s => (
                                         <div
@@ -5015,7 +4964,6 @@ export const BillingPOSView = ({
 
                         <button
                           type="button"
-                          disabled={!returnApprovedCheckbox || returnedItemIds.length === 0}
                           onClick={async () => {
                             if (isProcessingReturn) return;
                             setIsProcessingReturn(true);

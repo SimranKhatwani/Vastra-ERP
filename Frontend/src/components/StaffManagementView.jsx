@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, ShieldBan, CheckCircle, User, Phone, Mail, MapPin } from "lucide-react";
+import { Plus, Search, Edit, Trash2, ShieldBan, CheckCircle, User, Phone, Mail, MapPin, Lock, Eye, EyeOff } from "lucide-react";
 import api from '../api/axios';
 
 
@@ -7,7 +7,23 @@ export function StaffManagementView() {
   const [staff, setStaff] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editStaffId, setEditStaffId] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    designation: '',
+    gender: 'Male',
+    age: '',
+    address: ''
+  });
   const [generatedAuth, setGeneratedAuth] = useState(null);
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+
+  const togglePasswordVisibility = (id) => {
+    setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -84,6 +100,45 @@ export function StaffManagementView() {
       } catch (err) {
         alert("Failed to delete staff: " + (err.response?.data?.message || err.message));
       }
+    }
+  };
+
+  // Open edit modal and preload staff data
+  const handleOpenEdit = (emp) => {
+    setEditStaffId(emp._id || emp.id);
+    setEditFormData({
+      name: emp.name || "",
+      email: emp.email || "",
+      phone: emp.phone || "",
+      designation: emp.designation || "",
+      gender: emp.gender || "Male",
+      age: emp.age || "",
+      address: emp.address || "",
+      password: ""
+    });
+    setShowEditModal(true);
+  };
+
+  // Submit edited staff data
+  const handleEditStaff = async (e) => {
+    e.preventDefault();
+    if (!editStaffId) return;
+    try {
+      const token = localStorage.getItem("token");
+      const payload = { ...editFormData };
+      if (!payload.password) delete payload.password;
+      const { data } = await api.put(`/staff/${editStaffId}`, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data.success) {
+        // Update staff list with new data using functional updater
+        setStaff(prev => prev.map(s => (s._id === editStaffId || s.id === editStaffId ? data.data : s)));
+        // Optionally refetch from server to ensure consistency
+        fetchStaff();
+        setShowEditModal(false);
+      }
+    } catch (err) {
+      alert("Failed to edit staff: " + (err.response?.data?.message || err.message));
     }
   };
 
@@ -177,8 +232,26 @@ export function StaffManagementView() {
                         <span>{emp.phone}</span>
                       </div>
                     </td>
-                    <td className="p-4 font-mono text-xs text-slate-800 font-bold bg-slate-50/50">
-                      {emp.password || 'N/A'}
+                    <td className="p-4 font-mono text-xs text-slate-500 font-semibold bg-slate-50/50">
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {visiblePasswords[emp._id || emp.id] 
+                            ? (emp.plainPassword || 'N/A') 
+                            : '••••••••'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => togglePasswordVisibility(emp._id || emp.id)}
+                          className="text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-0.5 rounded hover:bg-slate-100 transition-colors"
+                          title="Toggle Password Visibility"
+                        >
+                          {visiblePasswords[emp._id || emp.id] ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </td>
                     <td className="p-4">
                       <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
@@ -201,7 +274,14 @@ export function StaffManagementView() {
                         <span className="text-[10px] uppercase">{emp.status || "Active"}</span>
                       </div>
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="p-4 text-center space-x-2 flex justify-center">
+                      <button
+                        onClick={() => handleOpenEdit(emp)}
+                        className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg transition-colors cursor-pointer"
+                        title="Edit Staff"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => handleDelete(emp._id || emp.id)}
                         className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
@@ -288,9 +368,9 @@ export function StaffManagementView() {
                   </div>
                   
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700">Email Address</label>
-                    <input 
-                      type="email" name="email" required value={formData.email} onChange={handleChange}
+                    <label className="text-xs font-bold text-slate-700">Email Address (Optional)</label>
+                    <input
+                      type="email" name="email" value={formData.email} onChange={handleChange}
                       placeholder="rahul@garmenterp.com"
                       className="erp-input"
                     />
@@ -307,11 +387,22 @@ export function StaffManagementView() {
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700">Designation / Role</label>
-                    <input 
-                      type="text" name="designation" required value={formData.designation} onChange={handleChange}
-                      placeholder="e.g. Senior Support Executive"
-                      className="erp-input"
-                    />
+                    <select 
+                      name="designation" 
+                      required 
+                      value={formData.designation} 
+                      onChange={handleChange} 
+                      className="erp-select w-full"
+                    >
+                      <option value="" disabled>Select Role</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Manager">Manager</option>
+                      <option value="Salesperson">Salesperson</option>
+                      <option value="Worker">Worker</option>
+                      <option value="Tailor">Tailor</option>
+                      <option value="Cashier">Cashier</option>
+                      <option value="Accountant">Accountant</option>
+                    </select>
                   </div>
                 </div>
 
@@ -358,6 +449,97 @@ export function StaffManagementView() {
                 <button type="submit" className="erp-btn-primary px-8">
                   Register Staff
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Staff Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-lg">Edit Staff Member</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Update staff details.</p>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 transition-colors">
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleEditStaff} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
+                {/* Registration Details */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">Account Registration</h4>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Full Name</label>
+                    <input type="text" name="name" required value={editFormData.name} onChange={e => setEditFormData({ ...editFormData, name: e.target.value })} className="erp-input" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Email Address (Optional)</label>
+                    <input type="email" name="email" value={editFormData.email} onChange={e => setEditFormData({ ...editFormData, email: e.target.value })} className="erp-input" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Phone Number</label>
+                    <input type="tel" name="phone" required value={editFormData.phone} onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })} className="erp-input" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Designation / Role</label>
+                    <select 
+                      name="designation" 
+                      required 
+                      value={editFormData.designation} 
+                      onChange={e => setEditFormData({ ...editFormData, designation: e.target.value })} 
+                      className="erp-select w-full"
+                    >
+                      <option value="" disabled>Select Role</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Manager">Manager</option>
+                      <option value="Salesperson">Salesperson</option>
+                      <option value="Worker">Worker</option>
+                      <option value="Tailor">Tailor</option>
+                      <option value="Cashier">Cashier</option>
+                      <option value="Accountant">Accountant</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Update Password (Optional)</label>
+                    <input 
+                      type="password" name="password" 
+                      value={editFormData.password || ''} 
+                      onChange={e => setEditFormData({ ...editFormData, password: e.target.value })} 
+                      className="erp-input" 
+                      placeholder="Type a new password to reset it"
+                    />
+                  </div>
+                </div>
+                {/* Personal Details */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">Staff Details</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700">Gender</label>
+                      <select name="gender" value={editFormData.gender} onChange={e => setEditFormData({ ...editFormData, gender: e.target.value })} className="erp-select">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700">Age</label>
+                      <input type="number" name="age" required value={editFormData.age} onChange={e => setEditFormData({ ...editFormData, age: e.target.value })} className="erp-input" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-xs font-bold text-slate-700">Full Address</label>
+                      <textarea name="address" required value={editFormData.address} onChange={e => setEditFormData({ ...editFormData, address: e.target.value })} className="erp-input min-h-[105px] resize-none" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowEditModal(false)} className="erp-btn-secondary">Cancel</button>
+                <button type="submit" className="erp-btn-primary px-8">Save Changes</button>
               </div>
             </form>
           </div>

@@ -118,22 +118,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
     }
   };
 
-  // Admin Actions: Lock / Unlock Account
-  const handleToggleLock = async (employeeId, employeeName) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(`/staff-activity/toggle-lock/${employeeId}`);
-      const data = res.data;
-      if (data.success) {
-        addToastNotification("Account Status Updated", data.message, "success");
-        fetchLoginHistory();
-      } else {
-        addToastNotification("Action Failed", data.message, "danger");
-      }
-    } catch (err) {
-      addToastNotification("Error", "Failed to toggle account lock", "danger");
-    }
-  };
+
 
   // Export CSV Helper
   const handleExportCSV = (type) => {
@@ -233,7 +218,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
               </span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Real-time MongoDB audit trail monitoring employee actions, login authentication histories, and session security.
+              Real-time monitoring employee actions, login authentication histories, and session security.
             </p>
           </div>
         </div>
@@ -243,8 +228,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
           <button
             onClick={() => setActiveTab("activity-logs")}
             className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${activeTab === "activity-logs"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
-                : "text-slate-600 hover:text-slate-900"
+              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
+              : "text-slate-600 hover:text-slate-900"
               }`}
           >
             <Activity className="w-4 h-4" />
@@ -253,8 +238,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
           <button
             onClick={() => setActiveTab("login-history")}
             className={`flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${activeTab === "login-history"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
-                : "text-slate-600 hover:text-slate-900"
+              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60"
+              : "text-slate-600 hover:text-slate-900"
               }`}
           >
             <Users className="w-4 h-4" />
@@ -582,13 +567,13 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                     </tr>
                   ) : (
                     loginHistory.map((log) => {
-                      const loginDt = new Date(log.loginTime);
-                      const logoutDt = log.logoutTime ? new Date(log.logoutTime) : null;
+                      const loginDt = log.createdAt ? new Date(log.createdAt) : null;
+                      const isValidDate = loginDt && !isNaN(loginDt.getTime());
                       return (
                         <tr key={log._id || log.loginId} className="hover:bg-slate-50/80 transition-all">
                           <td className="p-4 font-bold text-slate-900">
                             {log.employeeName}
-                            <span className="block text-[10px] text-slate-400 font-mono font-normal">ID: {log.employeeId || 'N/A'}</span>
+                            <span className="block text-[10px] text-slate-400 font-mono font-normal">ID: {(log.employeeId || 'N/A').toString().substring(0, 8)}</span>
                           </td>
                           <td className="p-4">
                             <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold capitalize border border-slate-200">
@@ -596,57 +581,52 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                             </span>
                           </td>
                           <td className="p-4 text-slate-600">
-                            {log.department}
-                            <span className="block text-[10px] text-slate-400">{log.branch}</span>
+                            {log.employeeEmail || '-'}
                           </td>
                           <td className="p-4 font-mono text-slate-600 whitespace-nowrap">
-                            {loginDt.toLocaleDateString()} {loginDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {isValidDate ? `${loginDt.toLocaleDateString('en-IN')} ${loginDt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : '-'}
                           </td>
                           <td className="p-4 font-mono text-slate-500 whitespace-nowrap">
-                            {logoutDt ? `${logoutDt.toLocaleDateString()} ${logoutDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : "Still Active"}
+                            {log.logoutTime && log.logoutTime !== '-' ? log.logoutTime : "Still Active"}
                           </td>
                           <td className="p-4 font-mono text-indigo-600 font-bold">
-                            {log.sessionDuration || "Active Now"}
+                            {log.duration && log.duration !== '-' ? log.duration : "Active Now"}
                           </td>
                           <td className="p-4 text-slate-700">
                             {log.device}
-                            <span className="block text-[10px] text-slate-400">{log.browser} ({log.operatingSystem})</span>
+                            <span className="block text-[10px] text-slate-400">{log.browser}</span>
                           </td>
                           <td className="p-4 font-mono text-slate-500">{log.ipAddress}</td>
                           <td className="p-4">
-                            {log.status === "Online" ? (
+                            {log.status === "Active" || log.status === "Online" ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> Online
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> Active
                               </span>
                             ) : log.status === "Logged Out" ? (
                               <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-slate-200">
                                 Logged Out
                               </span>
-                            ) : log.status === "Force Logged Out" ? (
-                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200">
-                                Force Terminated
+                            ) : log.status === "Failed" ? (
+                              <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-rose-200">
+                                Failed
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-rose-200">
+                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200">
                                 {log.status}
                               </span>
                             )}
                           </td>
                           <td className="p-4 text-right space-x-2">
-                            {log.status === "Online" && (
+                            {(log.status === "Active" || log.status === "Online") ? (
                               <button
                                 onClick={() => handleForceLogout(log.employeeId, log.employeeName)}
                                 className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                               >
                                 Force Logout
                               </button>
+                            ) : (
+                              <span className="text-slate-400 text-[10px] font-bold italic mr-2">No actions available</span>
                             )}
-                            <button
-                              onClick={() => handleToggleLock(log.employeeId, log.employeeName)}
-                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                            >
-                              Lock / Unlock
-                            </button>
                           </td>
                         </tr>
                       );

@@ -9,12 +9,32 @@ const userRepo = new BaseRepository(User);
 
 class UserService {
   static async createUser(userData, tenantId) {
-    const existing = await userRepo.findOne({ email: userData.email.toLowerCase() }, tenantId);
-    if (existing) {
-      throw new ApiError(400, 'User with this email already exists in your company.');
+    let email = userData.email ? userData.email.trim().toLowerCase() : null;
+    if (email) {
+      const existing = await userRepo.findOne({ email }, tenantId);
+      if (existing) {
+        throw new ApiError(400, 'User with this email already exists in your company.');
+      }
+    } else {
+      email = undefined;
     }
 
-    if (userData.roleId) {
+    // Auto-generate password if not provided
+    let generatedPassword = null;
+    if (!userData.password) {
+      const crypto = require('crypto');
+      generatedPassword = crypto.randomBytes(4).toString('hex'); // 8-char random password
+      userData.password = generatedPassword;
+    }
+
+    // If no roleId provided, find or create a default 'Staff' role
+    if (!userData.roleId) {
+      let defaultRole = await Role.findOne({ name: 'Staff', tenantId });
+      if (!defaultRole) {
+        defaultRole = await Role.create({ name: 'Staff', description: 'Default staff role', permissions: [], tenantId, isSystemRole: true });
+      }
+      userData.roleId = defaultRole._id;
+    } else {
       const role = await Role.findOne({ _id: userData.roleId, tenantId });
       if (!role) {
         throw new ApiError(404, 'Selected role does not exist.');
@@ -25,12 +45,18 @@ class UserService {
 
     const user = await userRepo.create({
       ...userData,
-      email: userData.email.toLowerCase(),
+      email,
       password: hashedPassword,
+      plainPassword: userData.password,
       tenantId
     }, tenantId);
 
-    return User.findById(user._id).select('-password').populate('roleId');
+    const createdUser = await User.findById(user._id).select('-password').populate('roleId');
+    // Attach generated password so controller can return it
+    if (generatedPassword) {
+      createdUser._generatedPassword = generatedPassword;
+    }
+    return createdUser;
   }
 
   static async getUsers(query = {}, tenantId) {
@@ -88,7 +114,18 @@ class UserService {
 
   static async updateUser(userId, updateData, tenantId) {
     if (updateData.password) {
+      updateData.plainPassword = updateData.password;
       updateData.password = await hashPassword(updateData.password);
+    }
+    if (updateData.email) {
+      const email = updateData.email.trim().toLowerCase();
+      const existing = await userRepo.findOne({ email, _id: { $ne: userId } }, tenantId);
+      if (existing) {
+        throw new ApiError(400, 'User with this email already exists in your company.');
+      }
+      updateData.email = email;
+    } else if (updateData.email === "" || updateData.email === null || updateData.email === undefined) {
+      updateData.email = undefined;
     }
     const updatedUser = await userRepo.update(userId, updateData, tenantId, { new: true });
     if (!updatedUser) throw new ApiError(404, 'User not found.');
@@ -120,7 +157,10 @@ class UserService {
 
   static async resetUserPassword(userId, newPassword, tenantId) {
     const hashedPassword = await hashPassword(newPassword);
-    const user = await userRepo.update(userId, { password: hashedPassword }, tenantId);
+    const user = await userRepo.update(userId, { 
+      password: hashedPassword,
+      plainPassword: newPassword
+    }, tenantId);
     if (!user) throw new ApiError(404, 'User not found.');
     return true;
   }

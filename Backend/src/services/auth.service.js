@@ -171,6 +171,22 @@ class AuthService {
       status: 'SUCCESS'
     });
 
+    // Record login in Audit Log for activity feed
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.create({
+      tenantId: isSuperAdmin ? null : user.tenantId,
+      userId: user._id,
+      userName: user.name,
+      userEmail: user.email,
+      action: 'LOGIN',
+      module: 'auth',
+      method: 'POST',
+      endpoint: '/api/auth/login',
+      ipAddress: reqInfo.ip,
+      userAgent: reqInfo.userAgent,
+      details: { loginType: isSuperAdmin ? 'SuperAdmin' : 'User' }
+    });
+
     if (!isSuperAdmin) {
       user.lastLogin = new Date();
       await user.save();
@@ -251,9 +267,26 @@ class AuthService {
   /**
    * Logout User & Revoke Refresh Token
    */
-  static async logout(tokenStr) {
+  static async logout(tokenStr, reqUser = null, reqInfo = {}) {
     if (tokenStr) {
       await RefreshToken.findOneAndUpdate({ token: tokenStr }, { isRevoked: true });
+    }
+    // Record logout in Audit Log
+    if (reqUser) {
+      const AuditLog = require('../models/AuditLog');
+      await AuditLog.create({
+        tenantId: reqUser.tenantId || null,
+        userId: reqUser.id,
+        userName: reqUser.name || '',
+        userEmail: reqUser.email || '',
+        action: 'LOGOUT',
+        module: 'auth',
+        method: 'POST',
+        endpoint: '/api/auth/logout',
+        ipAddress: reqInfo.ip || '',
+        userAgent: reqInfo.userAgent || '',
+        details: {}
+      });
     }
     return true;
   }
@@ -344,6 +377,102 @@ class AuthService {
     const Model = isSuperAdmin ? SuperAdmin : User;
     const updated = await Model.findByIdAndUpdate(userId, fieldsToUpdate, { new: true }).select('-password');
     return updated;
+  }
+
+  /**
+   * Impersonate another user (Admin privilege)
+   */
+  static async impersonate(adminId, targetUserId) {
+    const admin = await User.findById(adminId).populate('roleId');
+    if (!admin || (!admin.isTenantOwner && admin.roleId?.name !== 'TENANT_ADMIN')) {
+      throw new ApiError(403, 'Only administrators can swap user contexts.');
+    }
+
+    const targetUser = await User.findById(targetUserId).populate('roleId');
+    if (!targetUser || String(targetUser.tenantId) !== String(admin.tenantId)) {
+      throw new ApiError(404, 'Target user not found or belongs to a different business.');
+    }
+
+    // Token Generation for Target User
+    const tokenPayload = {
+      id: targetUser._id,
+      tenantId: targetUser.tenantId,
+      email: targetUser.email,
+      roleId: targetUser.roleId?._id,
+      isSuperAdmin: false,
+      originalUserId: admin._id // Flag indicating impersonation
+    };
+
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Save RefreshToken
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await RefreshToken.create({
+      userId: targetUser._id,
+      tenantId: targetUser.tenantId,
+      token: refreshToken,
+      expiresAt
+    });
+
+    return {
+      user: {
+        id: targetUser._id,
+        name: targetUser.name,
+        email: targetUser.email,
+        isSuperAdmin: false,
+        tenantId: targetUser.tenantId,
+        role: targetUser.roleId?.name,
+        permissions: targetUser.roleId?.permissions || [],
+        originalUserId: admin._id
+      },
+      accessToken,
+      refreshToken
+    };
+  }
+
+  /**
+   * Stop impersonating and return to original admin session
+   */
+  static async stopImpersonating(originalUserId) {
+    const admin = await User.findById(originalUserId).populate('roleId');
+    if (!admin) {
+      throw new ApiError(404, 'Original admin user not found.');
+    }
+
+    const tokenPayload = {
+      id: admin._id,
+      tenantId: admin.tenantId,
+      email: admin.email,
+      roleId: admin.roleId?._id,
+      isSuperAdmin: false
+    };
+
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Save RefreshToken
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await RefreshToken.create({
+      userId: admin._id,
+      tenantId: admin.tenantId,
+      token: refreshToken,
+      expiresAt
+    });
+
+    return {
+      user: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        isSuperAdmin: false,
+        tenantId: admin.tenantId,
+        role: admin.roleId?.name,
+        permissions: admin.roleId?.permissions || []
+      },
+      accessToken,
+      refreshToken
+    };
   }
 }
 

@@ -28,6 +28,22 @@ const alterationSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  commissionPaidAmount: {
+    type: Number,
+    default: 0
+  },
+  isCommissionPaid: {
+    type: Boolean,
+    default: false
+  },
+  commissionPercentage: {
+    type: Number,
+    default: 0
+  },
+  commissionAmount: {
+    type: Number,
+    default: 0
+  },
   priority: {
     type: String,
     default: 'Normal'

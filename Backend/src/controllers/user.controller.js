@@ -5,7 +5,16 @@ const UserService = require('../services/user.service');
 class UserController {
   static createUser = asyncHandler(async (req, res) => {
     const user = await UserService.createUser(req.body, req.tenantId);
-    return res.status(201).json(new ApiResponse(201, user, 'User created successfully.'));
+    const generatedPassword = user._generatedPassword || null;
+    const responseData = user.toObject ? user.toObject() : user;
+    delete responseData._generatedPassword;
+    return res.status(201).json({
+      success: true,
+      statusCode: 201,
+      data: responseData,
+      generatedPassword,
+      message: 'User created successfully.'
+    });
   });
 
   static getUsers = asyncHandler(async (req, res) => {

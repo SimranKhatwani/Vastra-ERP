@@ -59,28 +59,64 @@ export const PermissionsView = ({
 
   // Sub-Tab & Feature Actions Granular Registry
   const granularPermissions = [
-    // Tailoring Sub-Tabs
-    { key: "articulation_dashboard", module: "articulation", category: "Tailoring Studio Tabs", label: "Alteration Dashboard Tab", desc: "View and filter active alteration tickets" },
-    { key: "articulation_reports", module: "articulation", category: "Tailoring Studio Tabs", label: "Alteration Reports Tab", desc: "View BI analytics, delayed audit logs & category charts" },
-    { key: "articulation_tracking", module: "articulation", category: "Tailoring Studio Tabs", label: "Employee Workload Tracking Tab", desc: "View tailor capacity & productivity cards" },
-    { key: "whatsapp_send", module: "articulation", category: "Tailoring Studio Actions", label: "Send WhatsApp Notifications", desc: "Trigger customer WhatsApp alert modals" },
+    // Overview Dashboard
+    { key: "dashboard_metrics", module: "dashboard", category: "Dashboard Widgets", label: "Financial Metrics & Counts", desc: "View store sales totals, profit numbers, and pieces summary cards" },
+    { key: "dashboard_charts", module: "dashboard", category: "Dashboard Widgets", label: "BI Performance Charts", desc: "View operational charts, sales projections, and vendor metrics" },
 
-    // POS Billing Actions
-    { key: "billing_new_bill", module: "billing", category: "POS Billing Toolbar", label: "NEW BILL Toolbar Tab", desc: "Create a fresh POS billing cart" },
-    { key: "billing_prev_next", module: "billing", category: "POS Billing Toolbar", label: "PREVIOUS / NEXT BILL Navigation", desc: "Navigate past POS invoices" },
-    { key: "billing_modify_bill", module: "billing", category: "POS Billing Toolbar", label: "MODIFY BILL Toolbar Tab", desc: "Modify or void existing POS invoices" },
-    { key: "apply_discounts", module: "billing", category: "POS Billing Actions", label: "Apply Custom Discounts", desc: "Override price or apply manual coupon codes" },
+    // POS Billing
+    { key: "billing_new_bill", module: "billing", category: "POS Billing Operations", label: "NEW BILL Workspace", desc: "Access the POS billing cart to compile new garment invoices" },
+    { key: "billing_prev_next", module: "billing", category: "POS Billing Operations", label: "Invoice History Tab", desc: "View historical POS transactions logs & print duplicate receipts" },
+    { key: "billing_modify_bill", module: "billing", category: "POS Billing Operations", label: "Void / Modify Bill", desc: "Recall past bills to cart and update or void items" },
+    { key: "apply_discounts", module: "billing", category: "POS Billing Operations", label: "Apply Manual Discounts", desc: "Apply custom flat value or percentage discounts to active cart items" },
 
-    // Financials & Exporting Actions
-    { key: "export_csv", module: "reports", category: "Export Actions", label: "Export CSV Reports", desc: "Export sales, financial, and alteration CSV files" },
+    // Billing & Sales Management
+    { key: "billing_sales_history", module: "billing-sales", category: "Sales Admin Tabs", label: "Billing History List", desc: "Browse full bills list, cancel invoices, and track outstanding ledger balances" },
+    { key: "billing_sales_credit_notes", module: "billing-sales", category: "Sales Admin Tabs", label: "Credit Notes Registry", desc: "Manage issued credit vouchers, returns refunds, and wallet logs" },
+    { key: "billing_sales_hold_bills", module: "billing-sales", category: "Sales Admin Tabs", label: "On-Hold Bills List", desc: "Inspect bills placed on hold and retrieve active checkouts" },
+    { key: "billing_sales_gst_reports", module: "billing-sales", category: "Sales Admin Tabs", label: "GST Tax Breakdown", desc: "View CGST/SGST collected totals and output tax reports" },
+
+    // Tailoring & Garments
+    { key: "articulation_dashboard", module: "articulation", category: "Tailoring Studio Tabs", label: "Alterations Dashboard", desc: "View, update status, and track active alteration tickets" },
+    { key: "articulation_reports", module: "articulation", category: "Tailoring Studio Tabs", label: "Alteration Performance Reports", desc: "Analyze delayed tickets, workload distribution, and alerts logs" },
+    { key: "articulation_tracking", module: "articulation", category: "Tailoring Studio Tabs", label: "Tailor Allocation & Workload", desc: "Assign pieces, view master tailor metrics, and track capacities" },
+    { key: "whatsapp_send", module: "articulation", category: "Tailoring Studio Actions", label: "WhatsApp Ready Notifications", desc: "Trigger automatic WhatsApp notifications to customers" },
+
+    // Products & Catalogs
+    { key: "product_catalog_view", module: "products", category: "Garment Catalog Tabs", label: "Product Grid Catalog", desc: "Browse item styles, prices, stock levels, and search designs" },
+    { key: "product_catalog_create", module: "products", category: "Garment Catalog Tabs", label: "Add Product Form", desc: "Create new product designs with barcodes, sizes, colors, and MRP" },
+    { key: "product_catalog_import", module: "products", category: "Garment Catalog Tabs", label: "Bulk PT File Importer", desc: "Upload PT Excel sheet datasets to add products in bulk" },
+
+    // Inventory Stock Control
+    { key: "inventory_stock_adjust", module: "inventory", category: "Stock Management Actions", label: "Adjust Stock Count", desc: "Manually adjust available pieces quantities and handle damages" },
+    { key: "inventory_lifecycle_timeline", module: "inventory", category: "Stock Management Actions", label: "Garment Lifecycle History", desc: "Inspect history log, audit timeline, and track a piece from purchase to sale" },
+
+    // Purchase & Vendor Orders
+    { key: "purchase_entry", module: "purchase", category: "Procurements Tabs", label: "New Purchase Invoice (GRN)", desc: "Enter new supplier purchase bills and add barcoded stock" },
+    { key: "purchase_invoices_history", module: "purchase", category: "Procurements Tabs", label: "Purchase History Log", desc: "Browse past purchase bills list and audit stock receipts" },
+    { key: "purchase_returns", module: "purchase", category: "Procurements Tabs", label: "Goods Return to Supplier", desc: "Create vendor debit notes and return defective inventory" },
+    { key: "purchase_outstanding", module: "purchase", category: "Procurements Tabs", label: "Vendor Payments Ledger", desc: "Manage outstanding balances, records payments, and download ledgers" },
+
+    // Discount & Offer Engine
+    { key: "discount_rules_manage", module: "discount-offers", category: "Promo Engine Tabs", label: "Manage Offers & Rules", desc: "Create combodeal promos, flat discounts, and buy-X-get-Y rules" },
+    { key: "discount_analytics", module: "discount-offers", category: "Promo Engine Tabs", label: "Offers BI Reports", desc: "Analyze performance and track utilization rates of promotional campaigns" },
+
+    // CRM & Customer Loyalty
+    { key: "customer_history", module: "customers", category: "CRM Directory Tabs", label: "Customer Ledger Ledger", desc: "View detailed profile, invoice history, and outstanding logs" },
+    { key: "customer_loyalty", module: "customers", category: "CRM Directory Tabs", label: "Loyalty Wallet & Points", desc: "Adjust wallet advance credits, check points balance, and points ratio" },
+
+    // HR Payroll & Rosters
+    { key: "attendance_roster", module: "employees", category: "HR Directory Tabs", label: "Attendance & Shift Roster", desc: "Inspect daily log sheet, shift records, and overtime hours" },
+    { key: "commissions_roster", module: "employees", category: "HR Directory Tabs", label: "Staff Sales Commissions", desc: "View sales credits, incentives earned, and payout ledgers" },
+    { key: "attendance_policy", module: "employees", category: "HR Directory Tabs", label: "Store HR Policies", desc: "Configure punch timing thresholds, late fine rules, and holidays" },
+
+    // General Reports
+    { key: "export_csv", module: "reports", category: "BI Actions", label: "Export CSV Datasets", desc: "Download full spreadsheets of sales, financials, alterations, and taxes" }
   ];
 
-  // Selected Role State
+  // State Definitions
   const [selectedRole, setSelectedRole] = useState("manager");
   const [filterQuery, setFilterQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
-
-  // Permissions Matrix State from API / LocalStorage
   const [permissionMatrix, setPermissionMatrix] = useState({});
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);

@@ -12,6 +12,8 @@ router.post('/register-tenant', authLimiter, validate(registerTenantSchema), Aut
 router.post('/login', authLimiter, validate(loginSchema), auditLog('USER_LOGIN', 'Auth'), AuthController.login);
 router.post('/verify-supervisor', authLimiter, authenticate, AuthController.verifySupervisor);
 router.post('/refresh-token', AuthController.refreshToken);
+router.post('/impersonate/:userId', authenticate, AuthController.impersonate);
+router.post('/stop-impersonating', authenticate, AuthController.stopImpersonating);
 router.post('/logout', authenticate, AuthController.logout);
 router.get('/profile', authenticate, AuthController.getProfile);
 router.put('/profile', authenticate, AuthController.updateProfile);

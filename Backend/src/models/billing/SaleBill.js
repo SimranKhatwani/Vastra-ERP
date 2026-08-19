@@ -99,6 +99,22 @@ const saleBillSchema = new mongoose.Schema({
     type: String,
     default: 'Cash'
   },
+  isCommissionPaid: {
+    type: Boolean,
+    default: false
+  },
+  commissionPercentage: {
+    type: Number,
+    default: 0
+  },
+  commissionAmount: {
+    type: Number,
+    default: 0
+  },
+  commissionPaidAmount: {
+    type: Number,
+    default: 0
+  },
   remarks: String
 });
 

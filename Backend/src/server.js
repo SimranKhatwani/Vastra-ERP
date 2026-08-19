@@ -8,7 +8,35 @@ const logger = require('./utils/logger');
 const PORT = process.env.PORT || 5000;
 
 // Connect to Database and start server
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Sync plain passwords for existing seed users if missing
+  try {
+    const User = require('./models/User');
+    const usersToUpdate = await User.find({
+      $or: [
+        { plainPassword: { $exists: false } },
+        { plainPassword: null },
+        { plainPassword: '' }
+      ]
+    });
+    if (usersToUpdate.length > 0) {
+      logger.info(`[Migration] Found ${usersToUpdate.length} users with missing plainPassword.`);
+      for (let u of usersToUpdate) {
+        if (u.email.toLowerCase().includes('rajat')) {
+          u.plainPassword = 'password123';
+        } else if (u.email.toLowerCase().includes('john')) {
+          u.plainPassword = 'password123';
+        } else {
+          u.plainPassword = 'password123';
+        }
+        await u.save();
+        logger.info(`[Migration] Updated plainPassword for ${u.email}`);
+      }
+    }
+  } catch (err) {
+    logger.error('Failed to run plainPassword database migration: ' + err.message);
+  }
+
   const server = http.createServer(app);
 
   const io = new Server(server, {

@@ -13,41 +13,7 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
   const [companyGstin, setCompanyGstin] = useState("27AAAAA1111A1Z1");
   const [companyContact, setCompanyContact] = useState("+91 98765 43210");
 
-  // RBAC permissions state (fully interactive!)
-  const [permissions, setPermissions] = useState([
-    {
-      role: "Super Admin",
-      billing: true,
-      stockAdjust: true,
-      priceEdit: true,
-      hrPayroll: true,
-      apiDev: true,
-    },
-    {
-      role: "Store Manager",
-      billing: true,
-      stockAdjust: true,
-      priceEdit: true,
-      hrPayroll: false,
-      apiDev: false,
-    },
-    {
-      role: "Salesperson",
-      billing: true,
-      stockAdjust: false,
-      priceEdit: false,
-      hrPayroll: false,
-      apiDev: false,
-    },
-    {
-      role: "Tailor Customizer",
-      billing: false,
-      stockAdjust: true,
-      priceEdit: false,
-      hrPayroll: false,
-      apiDev: false,
-    },
-  ]);
+
 
   // ── WhatsApp config state ─────────────────────────────────────────
   const [waConfig, setWaConfig] = useState({
@@ -179,16 +145,7 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
     }
   };
 
-  const handlePermissionChange = (roleIndex, permKey) => {
-    setPermissions((prev) =>
-      prev.map((p, i) => (i === roleIndex ? { ...p, [permKey]: !p[permKey] } : p)),
-    );
-    onAddNotification(
-      "RBAC Matrix Changed",
-      `Altered system clearance privileges for ${permissions[idx].role}.`,
-      "warning",
-    );
-  };
+
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
@@ -240,12 +197,7 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
           >
             Company Profile &amp; GSTIN
           </button>
-          <button
-            onClick={() => setActiveTab("rbac")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === "rbac" ? "bg-white text-slate-800" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            RBAC Clearance Matrix
-          </button>
+
           <button
             onClick={() => setActiveTab("backups")}
             className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === "backups" ? "bg-white text-slate-800" : "text-slate-500 hover:text-slate-800"}`}
@@ -354,87 +306,7 @@ export const SettingsView = ({ onAddNotification, currentUser }) => {
         </form>
       )}
 
-      {/* TAB: RBAC CLEARANCES */}
-      {activeTab === "rbac" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-              Role-Based Access Matrix (RBAC)
-            </h4>
-            <span className="text-[10px] text-slate-400 flex items-center gap-1 bg-slate-100 px-2.5 py-0.5 rounded-md font-bold">
-              <Lock className="w-3.5 h-3.5" />
-              <span>Durable Session Lockout Active</span>
-            </span>
-          </div>
 
-          <div className="overflow-x-auto text-xs">
-            <table className="w-full text-left font-semibold">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100 tracking-wider">
-                  <th className="p-3.5">System Staff Role</th>
-                  <th className="p-3.5 text-center">POS Billing</th>
-                  <th className="p-3.5 text-center">Stock Correction</th>
-                  <th className="p-3.5 text-center">Price Override</th>
-                  <th className="p-3.5 text-center">HR Payroll</th>
-                  <th className="p-3.5 text-center">API Keys</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-                {permissions.map((p, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="p-3.5 font-bold text-slate-800">{p.role}</td>
-
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={p.billing}
-                        onChange={() => togglePermission(idx, "billing")}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </td>
-
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={p.stockAdjust}
-                        onChange={() => togglePermission(idx, "stockAdjust")}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </td>
-
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={p.priceEdit}
-                        onChange={() => togglePermission(idx, "priceEdit")}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </td>
-
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={p.hrPayroll}
-                        onChange={() => togglePermission(idx, "hrPayroll")}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </td>
-
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={p.apiDev}
-                        onChange={() => togglePermission(idx, "apiDev")}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* TAB: BACKUPS */}
       {activeTab === "backups" && (

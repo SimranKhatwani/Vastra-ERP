@@ -24,6 +24,7 @@ const inventoryLifecycleRoutes = require('./inventoryLifecycle.routes');
 
 
 const permissionRoutes = require('./permission.routes');
+const commissionRoutes = require('./commission.routes');
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ router.use('/users', userRoutes);
 router.use('/employees', userRoutes); // Alias for frontend compatibility
 router.use('/staff', userRoutes); // Alias for frontend POS view compatibility
 router.use('/discounts', (req, res) => res.status(200).json({ success: true, data: [] })); // Mock discount rules
-router.use('/commissions', (req, res) => res.status(200).json({ success: true, data: {} })); // Mock commissions
+router.use('/commissions', commissionRoutes);
 router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/masters', masterRoutes);
@@ -62,6 +63,7 @@ router.use('/barcode', barcodeRoutes);
 router.use('/inventory-lifecycle', inventoryLifecycleRoutes);
 router.use('/reports', reportRoutes);
 router.use('/audit', auditRoutes);
+router.use('/staff-activity', require('./staffActivity.routes'));
 
 // Mock routes to prevent 404 spam from Dashboard UI polling
 router.use('/attendance/dashboard-stats', (req, res) => res.status(200).json({ success: true, data: {} }));

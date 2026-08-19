@@ -18,6 +18,12 @@ class AlterationService {
       totalCharges += Number(item.charge || 0);
     });
 
+    const Tenant = require('../models/Tenant');
+    const tenant = await Tenant.findById(tenantId).lean();
+    const settings = tenant?.commissionSettings || {};
+    const commRate = settings.workerPercentage !== undefined ? settings.workerPercentage : 10;
+    const commAmount = totalCharges * (commRate / 100);
+
     const alteration = await Alteration.create({
       tenantId,
       alterationNo: data.alterationNo || `ALT-${Date.now()}`,
@@ -26,6 +32,8 @@ class AlterationService {
       expectedDeliveryDate: data.expectedDeliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       totalCharges,
+      commissionPercentage: commRate,
+      commissionAmount: commAmount,
       status: ALTERATION_STATUS.RECEIVED,
       remarks: data.remarks,
       createdBy: userId

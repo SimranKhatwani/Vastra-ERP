@@ -9,7 +9,6 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
     lowercase: true,
     trim: true
   },
@@ -17,9 +16,31 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  plainPassword: {
+    type: String,
+    default: ''
+  },
   phone: {
     type: String,
     trim: true
+  },
+  designation: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  gender: {
+    type: String,
+    enum: ['Male', 'Female', 'Other'],
+    default: 'Male'
+  },
+  age: {
+    type: Number
+  },
+  address: {
+    type: String,
+    trim: true,
+    default: ''
   },
   roleId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -41,7 +62,7 @@ const userSchema = new mongoose.Schema({
   lastLogin: Date
 });
 
-userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+userSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true });
 userSchema.plugin(baseSchemaPlugin);
 
 module.exports = mongoose.model('User', userSchema);

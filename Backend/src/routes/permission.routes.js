@@ -1,14 +1,13 @@
 const express = require('express');
-const { ALL_PERMISSIONS, PERMISSIONS } = require('../constants/permissions');
-const ApiResponse = require('../helpers/ApiResponse');
+const PermissionController = require('../controllers/permission.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  return res.status(200).json(new ApiResponse(200, {
-    permissions: ALL_PERMISSIONS,
-    permissionMap: PERMISSIONS
-  }, 'Permissions matrix retrieved successfully.'));
-});
+router.use(authenticate);
+
+router.get('/', PermissionController.getPermissions);
+router.put('/', PermissionController.savePermissions);
+router.post('/reset', PermissionController.resetPermissions);
 
 module.exports = router;

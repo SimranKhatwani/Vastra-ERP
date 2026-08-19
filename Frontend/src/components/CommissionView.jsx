@@ -247,28 +247,28 @@ export const CommissionView = ({
           api.get(`/staff`)
         ]);
 
-        if (staffRes.ok) {
+        if (staffRes.data) {
           const sData = staffRes.data;
           setStaffList(sData.data || []);
         }
 
-        if (marketplacesRes.ok) {
+        if (marketplacesRes.data) {
           const mData = marketplacesRes.data;
           setMarketplaceOrders(mData.data || []);
         }
-        if (influencersRes.ok) {
+        if (influencersRes.data) {
           const iData = influencersRes.data;
           setInfluencers(iData.data || []);
         }
-        if (rulesRes.ok) {
+        if (rulesRes.data) {
           const sData = rulesRes.data;
           if (sData.data) setCommissionSettings(sData.data);
         }
-        if (settlementsRes.ok) {
+        if (settlementsRes.data) {
           const sData = settlementsRes.data;
           setSettlementHistory(sData.data || []);
         }
-        if (auditRes.ok) {
+        if (auditRes.data) {
           const aData = auditRes.data;
           setAuditLogs(aData.data || []);
         }
@@ -1388,15 +1388,12 @@ export const CommissionView = ({
 
       {/* 3. STAFF COMMISSION */}
       {activeTab === "staff" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800 mb-4">Salesperson Performance</h3>
-            <StaffCommissionPanel role="Salesperson" onAddNotification={onAddNotification} />
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs">
+          <div className="mb-2">
+            <h3 className="text-base font-extrabold text-slate-800">Staff Commission Performance</h3>
+            <p className="text-xs text-slate-500 font-medium">Track, filter, and pay commissions for salespeople and workshop tailors.</p>
           </div>
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800 mb-4">Worker / Tailor Performance</h3>
-            <StaffCommissionPanel role="Worker" onAddNotification={onAddNotification} />
-          </div>
+          <StaffCommissionPanel role="All" onAddNotification={onAddNotification} />
         </div>
       )}
 
@@ -1421,7 +1418,7 @@ export const CommissionView = ({
                 try {
                   const token = localStorage.getItem("token");
                   const res = await api.put(`/commissions/staff/settings`, commissionSettings);
-                  if (res.ok) {
+                  if (res.data && res.data.success) {
                     onAddNotification("Settings Saved", "Commission rules updated successfully.", "success");
                   }
                 } catch (err) {

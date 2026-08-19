@@ -60,7 +60,11 @@ class AuthController {
 
   static logout = asyncHandler(async (req, res) => {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    await AuthService.logout(refreshToken);
+    const reqInfo = {
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent']
+    };
+    await AuthService.logout(refreshToken, req.user || null, reqInfo);
 
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
@@ -95,6 +99,70 @@ class AuthController {
 
   static currentUser = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, req.user, 'Current user context.'));
+  });
+
+  static impersonate = asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    const result = await AuthService.impersonate(req.user.id, userId);
+
+    // Set Access Token in HTTP-only Cookie
+    res.cookie('accessToken', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 15 * 60 * 1000
+    });
+
+    // Set Refresh Token in HTTP-only Cookie
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json(new ApiResponse(200, result, 'Swapped user context successfully.'));
+  });
+
+  static stopImpersonating = asyncHandler(async (req, res) => {
+    // Check if current token payload contains originalUserId
+    const ApiError = require('../helpers/ApiError');
+    // Decode target originalUserId from token (it is in req.user as authenticated)
+    // Wait! Let's check: does req.user have originalUserId?
+    // Let's verify where req.user is populated: in auth.middleware.js:
+    // req.user = { id: user._id, ... }
+    // Wait! In auth.middleware.js, did we add originalUserId to req.user?
+    // No! In auth.middleware.js:
+    // req.user = { id: user._id, tenantId: user.tenantId, roleId: user.roleId?._id, roleName: user.roleId?.name, isTenantOwner: user.isTenantOwner, isSuperAdmin: false, permissions }
+    // It does NOT copy decoded.originalUserId!
+    // Let's check auth.middleware.js:
+    // decoded = verifyAccessToken(token);
+    // So decoded contains originalUserId. We should add it to req.user in auth.middleware.js!
+    // Yes! Let's make sure req.user.originalUserId = decoded.originalUserId || null;
+    const originalUserId = req.user.originalUserId;
+    if (!originalUserId) {
+      throw new ApiError(400, 'Not currently in an impersonated session.');
+    }
+
+    const result = await AuthService.stopImpersonating(originalUserId);
+
+    // Set Access Token in HTTP-only Cookie
+    res.cookie('accessToken', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 15 * 60 * 1000
+    });
+
+    // Set Refresh Token in HTTP-only Cookie
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json(new ApiResponse(200, result, 'Returned to admin session.'));
   });
 }
 

@@ -468,7 +468,12 @@ export const DashboardView = ({
     // 3. Exact Commission Rate from Admin DB record or Staff Summary API
     const rawCommRate = staffApiStats?.commissionRate ?? myEmployeeRecord?.commissionRate ?? myEmployeeRecord?.commRate ?? currentUser?.commissionRate;
     const parsedRate = parseFloat(rawCommRate);
-    const commRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : 1.5;
+    // Determine if this user is a worker for fallback rate
+    const userDesig = (staffApiStats?.designation || currentUser?.designation || myEmployeeRecord?.designation || '').toLowerCase();
+    const userRoleStr = (staffApiStats?.role || currentUser?.role || '').toLowerCase();
+    const isWorkerUser = ['worker', 'tailor', 'fitter', 'stitcher'].some(w => userDesig.includes(w) || userRoleStr.includes(w));
+    const fallbackCommRate = isWorkerUser ? 0.5 : 1.5;
+    const commRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : fallbackCommRate;
 
     // 4. Exact Sales & Commission Achieved (100% Real DB matching)
     const invoiceSales = myInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);

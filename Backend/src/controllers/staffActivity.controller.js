@@ -1,0 +1,234 @@
+const asyncHandler = require('../helpers/asyncHandler');
+const ApiResponse = require('../helpers/ApiResponse');
+const AuditLog = require('../models/AuditLog');
+const LoginHistory = require('../models/LoginHistory');
+const User = require('../models/User');
+const RefreshToken = require('../models/RefreshToken');
+
+class StaffActivityController {
+  /**
+   * GET /staff-activity/activity-logs
+   * Returns audit logs formatted for the StaffActivityView frontend
+   */
+  static getActivityLogs = asyncHandler(async (req, res) => {
+    const tenantId = req.tenantId;
+    const { search, module, status, startDate, endDate, page = 1, limit = 50 } = req.query;
+
+    const filter = {};
+    if (tenantId) filter.tenantId = tenantId;
+
+    if (module && module !== 'All') {
+      filter.module = module;
+    }
+    if (status && status !== 'All') {
+      // Map frontend status to query
+      if (status === 'Success') {
+        filter.action = { $not: /FAILED|DELETE/ };
+      } else if (status === 'Failed') {
+        filter.action = /FAILED/;
+      } else if (status === 'Warning') {
+        filter.action = /DELETE|SUSPEND/;
+      }
+    }
+    if (startDate) {
+      filter.createdAt = filter.createdAt || {};
+      filter.createdAt.$gte = new Date(startDate);
+    }
+    if (endDate) {
+      filter.createdAt = filter.createdAt || {};
+      filter.createdAt.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+    }
+    if (search) {
+      filter.$or = [
+        { userName: new RegExp(search, 'i') },
+        { userEmail: new RegExp(search, 'i') },
+        { action: new RegExp(search, 'i') },
+        { module: new RegExp(search, 'i') }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const logs = await AuditLog.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Transform to match frontend expected shape
+    const data = logs.map((log) => {
+      const dt = new Date(log.createdAt);
+      let logStatus = 'Success';
+      if (String(log.action).includes('DELETE') || String(log.action).includes('SUSPEND')) {
+        logStatus = 'Warning';
+      }
+      if (String(log.action).includes('FAILED')) {
+        logStatus = 'Failed';
+      }
+
+      return {
+        _id: log._id,
+        activityId: `ACT-${String(log._id).slice(-6).toUpperCase()}`,
+        date: dt.toLocaleDateString('en-IN'),
+        time: dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        employeeName: log.userName || 'System',
+        employeeEmail: log.userEmail || '',
+        role: log.module || 'N/A',
+        module: log.module || 'General',
+        action: log.action,
+        record: log.displayName || log.item || log.endpoint || '-',
+        status: logStatus,
+        ipAddress: log.ipAddress || '-',
+        userAgent: log.userAgent || '-',
+        details: log.details || {},
+        createdAt: log.createdAt
+      };
+    });
+
+    const total = await AuditLog.countDocuments(filter);
+
+    return res.status(200).json(new ApiResponse(200, data, 'Activity logs retrieved.', {
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / parseInt(limit))
+    }));
+  });
+
+  /**
+   * GET /staff-activity/login-history
+   * Returns login history formatted for the StaffActivityView frontend
+   */
+  static getLoginHistory = asyncHandler(async (req, res) => {
+    const tenantId = req.tenantId;
+    const { search, role, status, page = 1, limit = 50 } = req.query;
+
+    const filter = {};
+    if (tenantId) filter.tenantId = tenantId;
+
+    if (status && status !== 'All') {
+      filter.status = status.toUpperCase();
+    }
+    if (search) {
+      filter.$or = [
+        { email: new RegExp(search, 'i') }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const logs = await LoginHistory.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('userId', 'name email designation roleId')
+      .lean();
+
+    // Collect unique userIds to fetch roles
+    const userIds = [...new Set(logs.filter(l => l.userId).map(l => l.userId._id || l.userId))];
+    const users = await User.find({ _id: { $in: userIds } }).populate('roleId', 'name').select('name roleId').lean();
+    const userMap = {};
+    users.forEach(u => {
+      userMap[String(u._id)] = {
+        name: u.name,
+        role: u.roleId?.name || 'Staff'
+      };
+    });
+
+    // Fetch active refresh tokens for these users to determine real Active status
+    const activeTokens = await RefreshToken.find({
+      userId: { $in: userIds },
+      isRevoked: false,
+      expiresAt: { $gt: new Date() }
+    }).select('userId').lean();
+
+    const activeUserIds = new Set(activeTokens.map(t => String(t.userId)));
+    const processedActiveUsers = new Set();
+
+    const data = logs.map((log) => {
+      const dt = new Date(log.createdAt);
+      const userId = log.userId?._id || log.userId;
+      const userInfo = userId ? userMap[String(userId)] : null;
+
+      // Parse user agent for device/browser
+      const ua = log.userAgent || '';
+      let browser = 'Unknown';
+      let device = 'Desktop';
+      if (ua.includes('Chrome')) browser = 'Chrome';
+      else if (ua.includes('Firefox')) browser = 'Firefox';
+      else if (ua.includes('Safari')) browser = 'Safari';
+      else if (ua.includes('Edge')) browser = 'Edge';
+      if (ua.includes('Mobile')) device = 'Mobile';
+      else if (ua.includes('Tablet')) device = 'Tablet';
+
+      let status = 'Failed';
+      if (log.status === 'SUCCESS') {
+        const userIdStr = String(userId);
+        if (activeUserIds.has(userIdStr) && !processedActiveUsers.has(userIdStr)) {
+          status = 'Active';
+          processedActiveUsers.add(userIdStr);
+        } else {
+          status = 'Logged Out';
+        }
+      }
+
+      return {
+        _id: log._id,
+        employeeId: userId,
+        sessionId: `SES-${String(log._id).slice(-6).toUpperCase()}`,
+        employeeName: userInfo?.name || log.email || 'Unknown',
+        employeeEmail: log.email,
+        role: userInfo?.role || 'Staff',
+        loginTime: dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        loginDate: dt.toLocaleDateString('en-IN'),
+        logoutTime: status === 'Active' ? '-' : dt.toLocaleDateString('en-IN'), // placeholder for ended session
+        duration: status === 'Active' ? 'Active Now' : 'Ended',
+        ipAddress: log.ipAddress || '-',
+        device: device,
+        browser: browser,
+        status: status,
+        failureReason: log.failureReason || null,
+        createdAt: log.createdAt
+      };
+    });
+
+    const total = await LoginHistory.countDocuments(filter);
+
+    return res.status(200).json(new ApiResponse(200, data, 'Login history retrieved.', {
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / parseInt(limit))
+    }));
+  });
+
+  /**
+   * POST /staff-activity/force-logout/:employeeId
+   * Revoke all refresh tokens for the given employee
+   */
+  static forceLogout = asyncHandler(async (req, res) => {
+    const { employeeId } = req.params;
+    await RefreshToken.updateMany(
+      { userId: employeeId, isRevoked: false },
+      { isRevoked: true }
+    );
+    return res.status(200).json(new ApiResponse(200, null, 'User forcefully logged out.'));
+  });
+
+  /**
+   * POST /staff-activity/toggle-lock/:employeeId
+   * Toggle account lock status
+   */
+  static toggleLock = asyncHandler(async (req, res) => {
+    const { employeeId } = req.params;
+    const user = await User.findById(employeeId);
+    if (!user) {
+      return res.status(404).json(new ApiResponse(404, null, 'User not found.'));
+    }
+    user.isLocked = !user.isLocked;
+    await user.save();
+    return res.status(200).json(new ApiResponse(200, { isLocked: user.isLocked }, `User account ${user.isLocked ? 'locked' : 'unlocked'}.`));
+  });
+}
+
+module.exports = StaffActivityController;

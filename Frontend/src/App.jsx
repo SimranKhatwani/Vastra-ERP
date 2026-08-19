@@ -406,7 +406,7 @@ export default function App() {
         const token = localStorage.getItem("token");
         if (!token) return;
         const res = await api.get(`/permissions`);
-        if (!res.ok) return;
+        if (!res || !res.data) return;
         const data = res.data;
         if (data.success && data.data) {
           setPermissionMatrix(data.data);
@@ -432,20 +432,35 @@ export default function App() {
   }, [isLoggedIn, currentUser?.role]);
 
   // Helper to normalize role keys safely (e.g. "Sales Person" -> "salesperson")
-  const normalizeRoleKey = (role) => {
+  const normalizeRoleKey = (role, designation) => {
     let r = (role || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    let d = (designation || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+    // Map default Staff role to designation if present
+    if (r === 'staff' && d) {
+      r = d;
+    }
+    if (r === 'staff') return 'salesperson';
+
     if (r.includes('admin') || r.includes('owner') || r === 'businessadmin' || r === 'tenantadmin' || r === 'tenantowner') return 'admin';
     if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
-    if (r === 'worker' || r === 'floorworker' || r === 'productionworker') return 'worker';
+    if (r === 'worker' || r === 'floorworker' || r === 'productionworker' || r === 'stitcher' || r === 'fitter') return 'worker';
     if (r === 'cashier' || r === 'poscashier') return 'cashier';
     if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
     if (r === 'accountant' || r === 'accounts') return 'accountant';
-    return 'admin';
+    if (r === 'manager') return 'manager';
+
+    // If role didn't match but designation indicates worker/tailor, use designation
+    if (d && ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].includes(d)) return 'worker';
+    if (d && ['salesperson', 'sales', 'salesman'].includes(d)) return 'salesperson';
+    if (d && ['cashier'].includes(d)) return 'cashier';
+
+    return 'salesperson'; // secure fallback instead of admin
   };
 
   // Role-based sidebar module access helper
-  const getAccessibleModules = (role) => {
-    const roleKey = normalizeRoleKey(role);
+  const getAccessibleModules = (role, designation) => {
+    const roleKey = normalizeRoleKey(role, designation);
 
     // Base fallback modules per role
     let baseModules = [];
@@ -608,10 +623,10 @@ export default function App() {
     const config = permissionMatrix[roleKey] || permissionMatrix[roleKey.toLowerCase()] || permissionMatrix[role];
     if (config) {
       const levelsMap = config.moduleAccessLevels || {};
-      const allowedArr = config.allowedModules || [];
+      const allowedArr = config.allowedModules;
 
       // Starting list: if Admin set allowedModules, start with allowedModules; otherwise start with baseModules
-      let finalModules = Array.isArray(allowedArr) && allowedArr.length > 0 ? [...allowedArr] : [...baseModules];
+      let finalModules = Array.isArray(allowedArr) ? [...allowedArr] : [...baseModules];
 
       // Enforce 3-Level explicit overrides (NO_ACCESS vs FULL_CONTROL/VIEW_ONLY)
       Object.keys(levelsMap).forEach((modId) => {
@@ -643,11 +658,11 @@ export default function App() {
 
   // Ensure active module is always one the current user has access to
   React.useEffect(() => {
-    const allowed = getAccessibleModules(currentUser?.role);
+    const allowed = getAccessibleModules(currentUser?.role, currentUser?.designation);
     if (!allowed.includes(activeModule)) {
       setActiveModule(allowed[0] || "billing");
     }
-  }, [currentUser?.role, activeModule, JSON.stringify(permissionMatrix)]);
+  }, [currentUser?.role, currentUser?.designation, activeModule, JSON.stringify(permissionMatrix)]);
 
   // Global Toast System
   const [toasts, setToasts] = useState([]);
@@ -1279,7 +1294,8 @@ export default function App() {
     ? employees.filter(Boolean)
     : [];
 
-  const isAdminOrDhruv = ["admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) ||
+  const isAdminOrDhruv = ["admin", "tenant_admin", "businessadmin", "superadmin"].includes((currentUser?.role || '').toLowerCase()) ||
+    currentUser?.isTenantOwner ||
     (currentUser?.name || '').toLowerCase().includes("dhruv");
 
   // Unread notifications tracker
@@ -1432,9 +1448,9 @@ export default function App() {
               </span>
             )}
 
-            {modulesList
+             {modulesList
               .filter((mod) =>
-                getAccessibleModules(currentUser?.role).includes(mod.id),
+                getAccessibleModules(currentUser?.role, currentUser?.designation).includes(mod.id),
               )
               .map((mod) => {
                 const Icon = mod.icon;
@@ -1502,21 +1518,26 @@ export default function App() {
               </label>
               <select
                 value={currentUser.id || currentUser._id}
-                onChange={(e) => {
-                  const selectedEmp = employees.find(
-                    (emp) => (emp.id || emp._id) === e.target.value,
-                  );
-                  if (selectedEmp) {
-                    const empWithRole = { 
-                      ...selectedEmp, 
-                      role: selectedEmp.roleId?.name || selectedEmp.role || 'Salesperson' 
-                    };
-                    setCurrentUser(empWithRole);
-                    localStorage.setItem("user", JSON.stringify(empWithRole));
+                onChange={async (e) => {
+                  const targetId = e.target.value;
+                  try {
+                    const res = await api.post(`/auth/impersonate/${targetId}`);
+                    if (res.data && res.data.data) {
+                      const { user: swappedUser, accessToken } = res.data.data;
+                      localStorage.setItem("token", accessToken);
+                      localStorage.setItem("user", JSON.stringify(swappedUser));
+                      setCurrentUser(swappedUser);
+                      addToastNotification(
+                        "Role Swapped",
+                        `Session context switched to ${swappedUser.name} (${swappedUser.role})`,
+                        "success",
+                      );
+                    }
+                  } catch (err) {
                     addToastNotification(
-                      "Role Swapped",
-                      `Session context switched to ${selectedEmp.name} (${selectedEmp.role})`,
-                      "success",
+                      "Error Swapping Context",
+                      err.response?.data?.message || err.message,
+                      "danger"
                     );
                   }
                 }}
@@ -1672,7 +1693,40 @@ export default function App() {
                   </div>
 
                   {/* Role Quick Switcher inside dropdown - ONLY FOR ADMIN / DHRUV */}
-                  {isAdminOrDhruv && (
+                  {currentUser?.originalUserId && (
+                    <div className="p-1.5 border-b border-slate-100">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await api.post('/auth/stop-impersonating');
+                            if (res.data && res.data.data) {
+                              const { user: restoredUser, accessToken } = res.data.data;
+                              localStorage.setItem("token", accessToken);
+                              localStorage.setItem("user", JSON.stringify(restoredUser));
+                              setCurrentUser(restoredUser);
+                              addToastNotification(
+                                "Returned to Admin",
+                                `Returned to session context of ${restoredUser.name}`,
+                                "success",
+                              );
+                              setShowProfileDropdown(false);
+                            }
+                          } catch (err) {
+                            addToastNotification(
+                              "Error Swapping Back",
+                              err.response?.data?.message || err.message,
+                              "danger"
+                            );
+                          }
+                        }}
+                        className="w-full text-center py-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-[10px]"
+                      >
+                        Swap Back to Admin
+                      </button>
+                    </div>
+                  )}
+
+                  {isAdminOrDhruv && !currentUser?.originalUserId && (
                     <div className="p-1.5 border-b border-slate-100 space-y-1">
                       <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider px-1">
                         Quick Switch Context
@@ -1681,15 +1735,28 @@ export default function App() {
                         <button
                           key={emp.id || emp._id}
                           type="button"
-                          onClick={() => {
-                            setCurrentUser(emp);
-                            localStorage.setItem("user", JSON.stringify(emp));
-                            addToastNotification(
-                              "Role Swapped",
-                              `Session context switched to ${emp.name} (${emp.role})`,
-                              "success",
-                            );
-                            setShowProfileDropdown(false);
+                          onClick={async () => {
+                            try {
+                              const res = await api.post(`/auth/impersonate/${emp.id || emp._id}`);
+                              if (res.data && res.data.data) {
+                                const { user: swappedUser, accessToken } = res.data.data;
+                                localStorage.setItem("token", accessToken);
+                                localStorage.setItem("user", JSON.stringify(swappedUser));
+                                setCurrentUser(swappedUser);
+                                addToastNotification(
+                                  "Role Swapped",
+                                  `Session context switched to ${swappedUser.name} (${swappedUser.role})`,
+                                  "success",
+                                );
+                                setShowProfileDropdown(false);
+                              }
+                            } catch (err) {
+                              addToastNotification(
+                                "Error Swapping Context",
+                                err.response?.data?.message || err.message,
+                                "danger"
+                              );
+                            }
                           }}
                           className={`w-full flex items-center justify-between text-left p-1.5 rounded-lg hover:bg-slate-50 transition-colors text-[10px] font-semibold ${(currentUser.id || currentUser._id) === (emp.id || emp._id) ? "bg-indigo-50/50 text-indigo-700 font-bold" : "text-slate-600"}`}
                         >
