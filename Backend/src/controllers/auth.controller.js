@@ -16,19 +16,20 @@ class AuthController {
 
     const result = await AuthService.login(req.body, reqInfo);
 
-    // Set Refresh Token in HTTP-only Cookie
+    // Set Refresh Token in HTTP-only Cookie (cross-site safe)
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
+    // Set Access Token in HTTP-only Cookie
     res.cookie('accessToken', result.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 150 * 60 * 1000 // 150 minutes
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 15 * 60 * 1000 // 15 minutes
     });
 
     return res.status(200).json(new ApiResponse(200, result, 'Login successful.'));
