@@ -92,9 +92,27 @@ class DashboardController {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
+    const Commission = require('../models/Commission');
+    const CommissionService = require('../services/commission.service');
+
+    // Ensure commissions are synced
+    await CommissionService.syncCommissionsForTenant(tenantId);
+
+    const comms = await Commission.find({
+      tenantId,
+      $or: [
+        { employeeId: salesman._id.toString() },
+        { userId: req.user.id },
+        { salesmanId: salesman._id }
+      ],
+      isDeleted: false,
+      status: { $ne: 'Cancelled' }
+    }).lean();
+
     let totalSales = 0;
     let todaySales = 0;
     let todayBillsCount = 0;
+    let exactCommAmount = 0;
 
     bills.forEach(bill => {
       totalSales += bill.grandTotal || 0;
@@ -105,16 +123,23 @@ class DashboardController {
       }
     });
 
+    if (comms.length > 0) {
+      exactCommAmount = comms.reduce((sum, c) => sum + (c.commissionAmount || 0), 0);
+    }
+
     // Use correct rate based on worker vs salesperson
-    const commRate = isWorker
-      ? (settings.workerPercentage !== undefined ? settings.workerPercentage : 0.5)
-      : (settings.salespersonPercentage !== undefined ? settings.salespersonPercentage : (salesman.commissionPercentage || 1.5));
-    const commAmt = totalSales * (commRate / 100);
+    const commRate = comms.length > 0 && comms[0].commissionPercentage !== undefined
+      ? comms[0].commissionPercentage
+      : (isWorker
+        ? (settings.workerPercentage !== undefined ? settings.workerPercentage : 0.5)
+        : (settings.salespersonPercentage !== undefined ? settings.salespersonPercentage : (salesman.commissionPercentage || 1.5)));
+
+    const finalCommAmt = exactCommAmount > 0 ? exactCommAmount : Number((totalSales * (commRate / 100)).toFixed(2));
 
     const data = {
       commissionRate: commRate,
       totalSales: totalSales,
-      commissionAmount: commAmt,
+      commissionAmount: finalCommAmt,
       invoiceCount: bills.length,
       todaySales: todaySales,
       todayBillsCount: todayBillsCount,

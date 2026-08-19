@@ -371,6 +371,14 @@ class BillingService {
       createdSaleItems.push(saleItem);
     }
 
+    // 3.2 Synchronize Commissions to Commission collection in DB
+    try {
+      const CommissionService = require('./commission.service');
+      await CommissionService.recordSaleBillCommissions(saleBill, createdSaleItems, tenantId, userId);
+    } catch (commErr) {
+      console.error('[BillingService] Failed to record commissions:', commErr);
+    }
+
     // 4. Record Payments if completed/partially paid
     let payment = null;
     if (!billData.isHold && billData.paymentTransactions && billData.paymentTransactions.length) {
@@ -930,6 +938,17 @@ class BillingService {
     bill.updatedBy = userId;
     await bill.save();
 
+    // Update Commission collection
+    try {
+      const Commission = require('../models/Commission');
+      await Commission.updateMany(
+        { tenantId, sourceId: billId, sourceType: 'SaleBill' },
+        { $set: { status: 'Cancelled' } }
+      );
+    } catch (e) {
+      console.error('[BillingService] Failed to cancel commissions:', e);
+    }
+
     // Revert inventory pieces back to AVAILABLE
     const saleItems = await SaleItem.find({ saleBillId: billId, tenantId });
     for (const item of saleItems) {
@@ -981,8 +1000,13 @@ class BillingService {
       }
     }
 
-    // Delete associated items
+    // Delete associated items and commissions
     await SaleItem.deleteMany({ saleBillId: billId, tenantId });
+    try {
+      const Commission = require('../models/Commission');
+      await Commission.deleteMany({ tenantId, sourceId: billId });
+    } catch (e) {}
+
     // Delete the bill itself
     await SaleBill.deleteOne({ _id: billId, tenantId });
 

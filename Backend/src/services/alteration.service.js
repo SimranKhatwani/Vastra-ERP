@@ -77,6 +77,14 @@ class AlterationService {
       createdItems.push(altItem);
     }
 
+    // Synchronize worker commission to Commission collection
+    try {
+      const CommissionService = require('./commission.service');
+      await CommissionService.recordAlterationCommission(alteration, tenantId, userId);
+    } catch (commErr) {
+      console.error('[AlterationService] Failed to record worker commission:', commErr);
+    }
+
     return { alteration, items: createdItems };
   }
 

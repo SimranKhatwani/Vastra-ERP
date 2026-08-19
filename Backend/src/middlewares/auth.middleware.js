@@ -16,10 +16,16 @@ const normalizeRoleName = (role, designation) => {
 
   if (r.includes('admin') || r.includes('owner') || r === 'businessadmin' || r === 'tenantadmin' || r === 'tenantowner') return 'admin';
   if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
-  if (r === 'worker' || r === 'floorworker' || r === 'productionworker') return 'worker';
+  if (r === 'worker' || r === 'floorworker' || r === 'productionworker' || r === 'stitcher' || r === 'fitter') return 'worker';
   if (r === 'cashier' || r === 'poscashier') return 'cashier';
   if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
   if (r === 'accountant' || r === 'accounts') return 'accountant';
+  if (r === 'manager') return 'manager';
+
+  if (d && ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].includes(d)) return 'worker';
+  if (d && ['salesperson', 'sales', 'salesman'].includes(d)) return 'salesperson';
+  if (d && ['cashier'].includes(d)) return 'cashier';
+
   return 'salesperson';
 };
 
@@ -154,6 +160,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
       id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || '',
+      designation: user.designation || '',
       tenantId: user.tenantId,
       roleId: user.roleId?._id,
       roleName: user.roleId?.name,
