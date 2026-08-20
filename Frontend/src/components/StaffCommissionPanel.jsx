@@ -187,13 +187,11 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
     return () => window.removeEventListener('commission.updated', handleUpdate);
   }, []);
 
-  // Group by employee and apply roleFilter
   const groupedData = React.useMemo(() => {
     const map = {};
     history.forEach(h => {
       if (roleFilter !== "All" && h.employeeRole !== roleFilter) return;
 
-      // Group key: Normalized Employee Name + Role to guarantee a single row per employee
       const nameKey = (h.employeeName || 'Unknown').toLowerCase().trim();
       const groupKey = `${nameKey}_${(h.employeeRole || 'worker').toLowerCase()}`;
 
@@ -205,6 +203,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
           name: h.employeeName,
           role: h.employeeRole,
           productsSold: 0,
+          invoicesSet: new Set(),
           totalSales: 0,
           totalCommission: 0,
           pending: 0,
@@ -219,13 +218,20 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
           map[groupKey].percentage = h.commissionPercentage;
         }
       }
+      if (h.invoiceNo || h.saleBillId || h.alterationId) {
+        map[groupKey].invoicesSet.add(h.invoiceNo || String(h.saleBillId || h.alterationId));
+      }
       map[groupKey].productsSold += (h.quantity || 1);
       map[groupKey].totalSales += (h.netAmountBasis || 0);
       map[groupKey].totalCommission += (h.commissionAmount || 0);
       map[groupKey].pending += (h.commissionPendingAmount !== undefined ? h.commissionPendingAmount : (h.status === 'Pending' ? h.commissionAmount : 0));
       map[groupKey].paid += (h.commissionPaidAmount !== undefined ? h.commissionPaidAmount : (h.status === 'Paid' ? h.commissionAmount : 0));
     });
-    return Object.values(map);
+
+    return Object.values(map).map(e => ({
+      ...e,
+      billsCount: e.invoicesSet.size || 1
+    }));
   }, [history, roleFilter]);
 
   const filteredData = groupedData.filter(e => e.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -238,65 +244,48 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/80">
         {/* Role filter buttons */}
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-          <button
-            onClick={() => setRoleFilter("All")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              roleFilter === "All"
-                ? "bg-white text-indigo-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            All Staff
-          </button>
-          <button
-            onClick={() => setRoleFilter("Salesperson")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              roleFilter === "Salesperson"
-                ? "bg-white text-indigo-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Salespersons Only
-          </button>
-          <button
-            onClick={() => setRoleFilter("Worker")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              roleFilter === "Worker"
-                ? "bg-white text-indigo-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Workers Only
-          </button>
+          {["All", "Worker", "Tailor", "Salesperson", "Cashier"].map(r => (
+            <button
+              key={r}
+              onClick={() => setRoleFilter(r)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                roleFilter === r
+                  ? "bg-white text-slate-800 shadow-xs"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {r}
+            </button>
+          ))}
         </div>
 
         {/* Search */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+        <div className="relative flex-1 max-w-xs">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search staff by name..."
+            placeholder="Search employee..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white hover:bg-slate-50 focus:bg-white text-xs font-medium border border-slate-200 focus:border-indigo-500 rounded-xl outline-none transition-all text-slate-700"
+            className="w-full pl-9 pr-4 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-all"
           />
         </div>
       </div>
 
-      {/* Main Ledger Table */}
-      <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-xs">
+      {/* Main Aggregated Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-xs">
         <div className="overflow-x-auto text-xs">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
                 <th className="p-3.5">Employee Name</th>
                 <th className="p-3.5">Role</th>
-                <th className="p-3.5 text-right">Products Sold</th>
-                <th className="p-3.5 text-right">Total Sales</th>
-                <th className="p-3.5 text-center">Commission %</th>
-                <th className="p-3.5 text-right">Total Commission</th>
-                <th className="p-3.5 text-right text-orange-600">Pending</th>
-                <th className="p-3.5 text-right text-emerald-600">Paid</th>
+                <th className="p-3.5 text-right font-bold text-slate-700">Bills (Items)</th>
+                <th className="p-3.5 text-right font-bold text-slate-700">Total Sales</th>
+                <th className="p-3.5 text-center font-bold text-indigo-600">Commission %</th>
+                <th className="p-3.5 text-right font-bold text-indigo-600">Total Commission</th>
+                <th className="p-3.5 text-right font-bold text-orange-600">Pending</th>
+                <th className="p-3.5 text-right font-bold text-emerald-600">Paid</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -314,7 +303,10 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
                       {emp.name}
                     </td>
                     <td className="p-3.5 font-medium text-slate-500">{emp.role}</td>
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-700">{emp.productsSold}</td>
+                    <td className="p-3.5 text-right font-mono font-bold text-slate-700">
+                      <span className="text-indigo-600">{emp.billsCount} Bills</span>
+                      <span className="block text-[10px] text-slate-400 font-normal font-sans">({emp.productsSold} items)</span>
+                    </td>
                     <td className="p-3.5 text-right font-mono font-bold text-slate-700">₹{emp.totalSales.toLocaleString()}</td>
                     <td className="p-3.5 text-center font-bold text-indigo-600">{emp.percentage}%</td>
                     <td className="p-3.5 text-right font-mono font-bold text-indigo-600">₹{emp.totalCommission.toFixed(2)}</td>
