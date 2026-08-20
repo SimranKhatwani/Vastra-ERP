@@ -25,6 +25,11 @@ class AlterationController {
     return res.status(200).json(new ApiResponse(200, details, 'Alteration details fetched.'));
   });
 
+  static getPendingItems = asyncHandler(async (req, res) => {
+    const pendingItems = await AlterationService.getPendingAlterationItems(req.tenantId);
+    return res.status(200).json(new ApiResponse(200, pendingItems, 'Pending alteration items fetched.'));
+  });
+
   static getDashboard = asyncHandler(async (req, res) => {
     const dashboard = await AlterationService.getAlterationDashboard(req.tenantId, req.query.dateRange);
     return res.status(200).json(new ApiResponse(200, dashboard, 'Alteration dashboard metrics fetched.'));

@@ -65,7 +65,10 @@ const normalizeInvoice = (b) => {
       quantity: i.quantity || i.qty || 1,
       sellingPrice: i.sellingPrice || i.price || 0,
       discountAmount: i.discountAmount || 0,
-      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0))
+      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0)),
+      hasAlteration: Boolean(i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')),
+      alterationStatus: i.alterationStatus || (i.hasAlteration ? 'PENDING' : 'NONE'),
+      alterationRecord: i.alterationRecord
     })),
     subTotal: b.subTotal || b.grandTotal || 0,
     discount: b.discountAmount || b.discount || 0,

@@ -66,6 +66,20 @@ const saleItemSchema = new mongoose.Schema({
   },
   exchangedAt: {
     type: Date
+  },
+  hasAlteration: {
+    type: Boolean,
+    default: false
+  },
+  alterationStatus: {
+    type: String,
+    enum: ['PENDING', 'CONFIGURED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'DELIVERED', 'NONE'],
+    default: 'NONE'
+  },
+  alterationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Alteration',
+    default: null
   }
 });
 

@@ -48,6 +48,7 @@ export const ArticulationView = ({
   customers = [],
   employees = [],
   products = [],
+  invoices = [],
   onAddCustomToCart,
   onAddNotification,
   initialTab = "dashboard",
@@ -249,6 +250,8 @@ export const ArticulationView = ({
   // 'dashboard' | 'reports' | 'tracking'
   const [activeStudioTab, setActiveStudioTab] = useState(initialTab || "dashboard");
   const [alterationRecords, setAlterationRecords] = useState(defaultAlterationsList);
+  const [pendingAlterations, setPendingAlterations] = useState([]);
+  const [loadingPending, setLoadingPending] = useState(false);
   const [alterationsFilterStatus, setAlterationsFilterStatus] = useState(initialFilterStatus || "All");
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [alterationsFilterType, setAlterationsFilterType] = useState("All");
@@ -256,6 +259,8 @@ export const ArticulationView = ({
   const [altTypeSummary, setAltTypeSummary] = useState(null);
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
+  const [previewBillInvoice, setPreviewBillInvoice] = useState(null);
+  const [loadingBillPreview, setLoadingBillPreview] = useState(false);
 
   // --- NEW ALTERATION WIZARD STATE ---
   const [showCreateAltModal, setShowCreateAltModal] = useState(false);
@@ -271,6 +276,7 @@ export const ArticulationView = ({
   const [altDetails, setAltDetails] = useState([]);
   const [altCustomText, setAltCustomText] = useState("");
   const [altMeasurements, setAltMeasurements] = useState({});
+  const [altCharges, setAltCharges] = useState(0);
 
   const tailorOptions = useMemo(() => {
     if (employees && employees.length > 0) {
@@ -279,6 +285,222 @@ export const ArticulationView = ({
     }
     return defaultTailors.map(t => t.name);
   }, [employees, defaultTailors]);
+
+  // Clickable Invoice Preview Handler
+  const handleOpenInvoicePreview = async (invoiceNumber, saleBillId = null) => {
+    if (!invoiceNumber && !saleBillId) return;
+
+    // 1. Try finding in loaded invoices
+    const found = (invoices || []).find(inv =>
+      (inv.invoiceNo && (inv.invoiceNo === invoiceNumber || inv.invoiceNo.toLowerCase() === String(invoiceNumber).toLowerCase())) ||
+      (inv.billNo && (inv.billNo === invoiceNumber || inv.billNo.toLowerCase() === String(invoiceNumber).toLowerCase())) ||
+      (inv.id && inv.id === saleBillId) ||
+      (inv._id && inv._id === saleBillId)
+    );
+
+    if (found) {
+      setPreviewBillInvoice(found);
+      return;
+    }
+
+    // 2. Fetch from backend API
+    setLoadingBillPreview(true);
+    try {
+      const searchKey = invoiceNumber || saleBillId;
+      const res = await api.get(`/billing?search=${encodeURIComponent(searchKey)}`);
+      const data = res.data;
+      const bills = Array.isArray(data.data) ? data.data : (data.data?.bills || []);
+      if (bills.length > 0) {
+        const match = bills.find(b => b.billNo === invoiceNumber || b.invoiceNo === invoiceNumber || b._id === saleBillId) || bills[0];
+        setPreviewBillInvoice(match);
+      } else {
+        if (onAddNotification) onAddNotification("Info", `Invoice ${invoiceNumber} details not found.`, "info");
+      }
+    } catch (err) {
+      console.error("Failed to fetch bill invoice preview:", err);
+      if (onAddNotification) onAddNotification("Error", "Could not load invoice details.", "danger");
+    } finally {
+      setLoadingBillPreview(false);
+    }
+  };
+
+  const generateInvoiceReceiptHTML = (inv) => {
+    if (!inv) return "";
+    const receiptDate = inv.date || inv.billDate || inv.createdAt
+      ? new Date(inv.date || inv.billDate || inv.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+      : '-';
+
+    const items = inv.items || inv.saleItems || inv.billItems || [];
+    const custName = inv.customerName || inv.customerId?.name || inv.customer?.name || "Walk-in Customer";
+    const custPhone = inv.customerPhone || inv.customerId?.phone || inv.customer?.phone || "";
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Receipt ${inv.invoiceNo || inv.billNo || 'INVOICE'}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
+          .text-center { text-align: center; }
+          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; font-size: 11px; }
+          th { text-align: left; }
+          .text-right { text-align: right; }
+          .totals { font-weight: bold; }
+          .footer { font-size: 10px; margin-top: 20px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center header">VASTRA ERP — SHOWROOM RECEIPT</div>
+        <div class="text-center details">Original Sales Bill & Tax Invoice</div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Receipt No:</b> ${inv.invoiceNo || inv.billNo || 'N/A'}<br>
+          <b>Date:</b> ${receiptDate}<br>
+          <b>Customer:</b> ${custName} ${custPhone ? `(${custPhone})` : ''}
+        </div>
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Item Description</th>
+              <th class="text-right">Qty</th>
+              <th class="text-right">Price</th>
+              <th class="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => {
+              const isAlt = Boolean(item.hasAlteration || item.alterationRecord || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE'));
+              return `
+                <tr>
+                  <td>
+                    ${item.name || item.productName || item.itemName || 'Garment Item'} (${item.size || 'FS'}/${item.color || item.primaryColor || 'Std'})
+                    ${isAlt ? '<br/><b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
+                  </td>
+                  <td class="text-right">${item.quantity || item.qty || 1}</td>
+                  <td class="text-right">&#8377;${(Number(item.price || item.sellingPrice || 0)).toLocaleString('en-IN')}</td>
+                  <td class="text-right">&#8377;${(Number(item.totalPrice || item.finalPrice || (item.sellingPrice || item.price || 0) * (item.quantity || 1))).toLocaleString('en-IN')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+        <table>
+          <tr>
+            <td>Subtotal:</td>
+            <td class="text-right">&#8377;${(Number(inv.subTotal || inv.grandTotal || 0)).toLocaleString('en-IN')}</td>
+          </tr>
+          ${(inv.discountTotal || inv.discountAmount || 0) > 0 ? `
+            <tr>
+              <td>Discount:</td>
+              <td class="text-right">-&#8377;${(Number(inv.discountTotal || inv.discountAmount || 0)).toLocaleString('en-IN')}</td>
+            </tr>
+          ` : ''}
+          <tr class="totals">
+            <td>Grand Total:</td>
+            <td class="text-right">&#8377;${(Number(inv.grandTotal || inv.totalAmount || 0)).toLocaleString('en-IN')}</td>
+          </tr>
+        </table>
+        <div class="divider"></div>
+        <div class="details">
+          <div class="text-center"><b>Payment Mode:</b> ${inv.paymentMethod || inv.paymentMode || 'Cash'}</div>
+          <div class="text-center">
+            <b>Status:</b> ${(inv.status || 'Paid').toUpperCase()}<br>
+            Thank you for shopping with us!<br>
+            Powered by Vastra ERP Billing
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const handlePrintPreviewBill = (inv) => {
+    if (!inv) return;
+    const html = generateInvoiceReceiptHTML(inv);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 300);
+    }
+  };
+
+  const handleDownloadPreviewBill = (inv) => {
+    if (!inv) return;
+    const html = generateInvoiceReceiptHTML(inv);
+    const blob = new Blob(["\ufeff" + html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Invoice_${inv.invoiceNo || inv.billNo || 'Receipt'}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleWhatsAppPreviewBill = (inv) => {
+    if (!inv) return;
+    const custName = inv.customerName || inv.customerId?.name || "Customer";
+    const rawPhone = (inv.customerPhone || inv.customerId?.phone || "").replace(/\D/g, "");
+    const invNo = inv.invoiceNo || inv.billNo || "INV";
+    const total = (Number(inv.grandTotal || 0)).toLocaleString('en-IN');
+    const msg = `*VASTRA ERP SHOWROOM*\nInvoice Confirmation\n-------------------------\n*Invoice:* ${invNo}\n*Customer:* ${custName}\n*Grand Total:* ₹${total}\n\nThank you for shopping with us!`;
+    const encoded = encodeURIComponent(msg);
+    const url = rawPhone && rawPhone.length >= 10
+      ? `https://api.whatsapp.com/send?phone=${rawPhone.length === 10 ? '91' + rawPhone : rawPhone}&text=${encoded}`
+      : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(url, '_blank');
+  };
+
+  // Pre-load and open Alteration Details popup for a pending billed garment
+  const handleConfigurePendingGarment = (pendingItem) => {
+    const delivery = new Date();
+    delivery.setDate(delivery.getDate() + 3);
+    const trial = new Date();
+    trial.setDate(trial.getDate() + 2);
+
+    setSelectedAltInvoice({
+      _id: pendingItem.saleBillId,
+      invoiceNo: pendingItem.invoiceNo,
+      customerName: pendingItem.customerName,
+      customerPhone: pendingItem.customerPhone,
+      customerId: pendingItem.customerId
+    });
+
+    setSelectedAltItem({
+      productId: pendingItem.productId,
+      inventoryPieceId: pendingItem.inventoryPieceId,
+      name: pendingItem.productName,
+      productName: pendingItem.productName,
+      barcode: pendingItem.barcode,
+      sku: pendingItem.sku,
+      size: pendingItem.size || "M",
+      color: pendingItem.color || "Standard"
+    });
+
+    setAltTailorName(tailorOptions[0] || "Master Ramesh Kumar");
+    setAltPriority("Normal");
+    setAltDeliveryDate(delivery.toISOString().split('T')[0]);
+    setAltTrialDate(trial.toISOString().split('T')[0]);
+    setAltDetails([]);
+    setAltCustomText("");
+    setAltMeasurements({
+      Chest: "",
+      Waist: "",
+      Shoulder: "",
+      Sleeve: "",
+      Length: ""
+    });
+    setAltCharges(0);
+    setShowCreateAltModal(true);
+  };
 
   useEffect(() => {
     if (autoStartAlteration) {
@@ -298,19 +520,19 @@ export const ArticulationView = ({
       setSelectedAltItem(null);
       setAltInvoiceSearch("");
       setAltInvoices([]);
-      setAltTailorName("");
+      setAltTailorName(tailorOptions[0] || "");
       setAltPriority("Normal");
       setAltDetails([]);
       setAltCustomText("");
       setAltMeasurements({});
+      setAltCharges(0);
     }
-  }, [autoStartAlteration, clearAutoStartAlteration]);
+  }, [autoStartAlteration, clearAutoStartAlteration, tailorOptions]);
 
   const handleSearchAltInvoices = async () => {
     if (!altInvoiceSearch.trim()) return;
     setSearchingAltInvoices(true);
     try {
-      const token = localStorage.getItem("token");
       const res = await api.get(`/billing?search=${altInvoiceSearch}`);
       const data = res.data;
       if (data.success && data.data) {
@@ -331,35 +553,77 @@ export const ArticulationView = ({
     }
 
     const payload = {
-      invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice._id,
+      invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber || selectedAltInvoice._id,
       invoiceId: selectedAltInvoice._id,
+      saleBillId: selectedAltInvoice._id,
+      customerId: selectedAltInvoice.customerId,
       customerName: selectedAltInvoice.customerName,
       customerPhone: selectedAltInvoice.customerPhone,
       productId: selectedAltItem.productId,
       productName: selectedAltItem.productName || selectedAltItem.name,
-      sku: selectedAltItem.sku,
-      size: selectedAltItem.size,
-      color: selectedAltItem.color,
-      tailorName: altTailorName,
-      priority: altPriority,
+      barcode: selectedAltItem.barcode || selectedAltItem.sku,
+      sku: selectedAltItem.sku || selectedAltItem.barcode,
+      size: selectedAltItem.size || 'M',
+      color: selectedAltItem.color || 'Standard',
+      tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
+      priority: altPriority || 'Normal',
       status: "Pending",
       deliveryDate: altDeliveryDate,
       trialDate: altTrialDate,
-      alterationDetails: altDetails,
+      alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
       customAlterationText: altCustomText,
-      measurements: altMeasurements
+      specialInstructions: altCustomText,
+      measurements: altMeasurements,
+      charge: Number(altCharges || 0),
+      items: [{
+        barcode: selectedAltItem.barcode || selectedAltItem.sku || selectedAltItem.uniqueCode,
+        inventoryPieceId: selectedAltItem.inventoryPieceId || selectedAltItem._id,
+        pieceName: selectedAltItem.productName || selectedAltItem.name,
+        instructions: altDetails.join(', ') || altCustomText || 'Custom Fitting',
+        alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
+        measurements: altMeasurements,
+        charge: Number(altCharges || 0)
+      }]
     };
 
     try {
-      const token = localStorage.getItem("token");
       const res = await api.post(`/alterations`, payload);
       const data = res.data;
       if (data.success) {
+        const createdAlt = data.data?.alteration || data.data || {};
+        const ticketSlipObj = {
+          _id: createdAlt._id || `alt-${Date.now()}`,
+          alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+          invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber,
+          invoiceId: selectedAltInvoice._id,
+          customerName: selectedAltInvoice.customerName || 'Walk-in Customer',
+          customerPhone: selectedAltInvoice.customerPhone || '',
+          productName: selectedAltItem.productName || selectedAltItem.name || 'Altered Garment',
+          barcode: selectedAltItem.barcode || selectedAltItem.sku || '',
+          sku: selectedAltItem.sku || selectedAltItem.barcode || '',
+          size: selectedAltItem.size || 'M',
+          color: selectedAltItem.color || 'Standard',
+          tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+          priority: altPriority || 'Normal',
+          status: "Pending",
+          deliveryDate: altDeliveryDate,
+          trialDate: altTrialDate,
+          alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
+          customAlterationText: altCustomText,
+          specialInstructions: altCustomText,
+          measurements: altMeasurements,
+          createdAt: new Date().toISOString()
+        };
+
         if (onAddNotification) {
-          onAddNotification("Alteration Created", `Ticket ${data.data.alterationId} added successfully.`, "success");
+          onAddNotification("Alteration Saved", `Alteration ticket ${ticketSlipObj.alterationId} generated successfully.`, "success");
         }
+
         setShowCreateAltModal(false);
-        fetchAlterations(); // Refresh list
+        fetchAlterations();
+        fetchPendingAlterations();
+        // Promptly open the Alteration Job Ticket Receipt slip modal!
+        setSelectedJobTicket(ticketSlipObj);
       } else {
         if (onAddNotification) {
           onAddNotification("Error", data.message || "Failed to create alteration ticket.", "danger");
@@ -582,9 +846,108 @@ export const ArticulationView = ({
     window.open(url, "_blank");
   };
 
+  const handleDownloadJobTicketHTML = (ticket) => {
+    if (!ticket) return;
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Job Ticket ${ticket.alterationId}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 400px; margin: 0 auto; }
+          .text-center { text-align: center; }
+          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; font-size: 11px; }
+          th { text-align: left; }
+          .text-right { text-align: right; }
+          .badge { font-weight: bold; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center header">VASTRA ERP — ALTERATION TICKET</div>
+        <div class="text-center details">Boutique Tailoring & Garment Fitting Slip</div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Ticket ID:</b> ${ticket.alterationId}<br>
+          <b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>
+          <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
+          <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone || 'N/A'})
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>Garment Item:</b> ${ticket.productName}<br>
+          <b>Barcode:</b> ${ticket.barcode || ticket.sku || '-'}<br>
+          <b>Size & Color:</b> ${ticket.size || 'M'} / ${ticket.color || 'Standard'}<br>
+          <b>Master Tailor:</b> ${ticket.tailorName || 'Unassigned'}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>MEASUREMENTS (INCHES):</b><br>
+          ${Object.entries(ticket.measurements || {}).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>ALTERATION TYPES:</b><br>
+          ${(ticket.alterationDetails || ['Custom Fit']).map(d => `✓ ${d}`).join('<br>')}
+          ${ticket.customAlterationText ? `<br><b>Custom Note:</b> ${ticket.customAlterationText}` : ''}
+        </div>
+        <div class="divider"></div>
+        <div class="details">
+          <b>DELIVERY SCHEDULE:</b><br>
+          <b>Delivery Date:</b> ${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}<br>
+          <b>Trial Date:</b> ${ticket.trialDate || 'N/A'}<br>
+          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span><br>
+          <b>Current Status:</b> <span class="badge">${ticket.status || 'Pending'}</span>
+        </div>
+        ${ticket.specialInstructions ? `
+          <div class="divider"></div>
+          <div class="details">
+            <b>SPECIAL INSTRUCTIONS:</b><br>
+            "${ticket.specialInstructions}"
+          </div>
+        ` : ''}
+        <div class="divider"></div>
+        <div class="details text-center">
+          Powered by Vastra ERP Tailoring Module
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Alteration_Slip_${ticket.alterationId || 'Ticket'}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (onAddNotification) onAddNotification("Downloaded", `Alteration slip downloaded for ${ticket.alterationId}.`, "success");
+  };
+
+  const fetchPendingAlterations = async () => {
+    setLoadingPending(true);
+    try {
+      const res = await api.get(`/alterations/pending-items`);
+      const data = res.data;
+      if (data.success && data.data) {
+        setPendingAlterations(data.data);
+      } else {
+        setPendingAlterations([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pending alterations:", err);
+      setPendingAlterations([]);
+    } finally {
+      setLoadingPending(false);
+    }
+  };
+
   const fetchAlterations = async () => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.get(`/alterations`);
       const data = res.data;
       if (data.success && data.data && data.data.length > 0) {
@@ -601,11 +964,11 @@ export const ArticulationView = ({
 
   const handleUpdateAlterationStatus = async (alterationId, newStatus) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.patch(`/alterations/${alterationId}/status`, { status: newStatus });
       if (res.data.success) {
         if (onAddNotification) onAddNotification("Status Updated", `Status changed to ${newStatus}`, "success");
         fetchAlterations();
+        fetchPendingAlterations();
       } else {
         if (onAddNotification) onAddNotification("Error", res.data.message || "Failed to update status", "danger");
       }
@@ -617,7 +980,11 @@ export const ArticulationView = ({
 
   useEffect(() => {
     fetchAlterations();
-    const interval = setInterval(fetchAlterations, 8000);
+    fetchPendingAlterations();
+    const interval = setInterval(() => {
+      fetchAlterations();
+      fetchPendingAlterations();
+    }, 6000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1280,6 +1647,101 @@ export const ArticulationView = ({
         {activeStudioTab === "dashboard" && (
           <div className="space-y-5 animate-fade-in">
 
+            {/* INCOMING ALTERATION REQUESTS FROM BILLED SALES (PENDING DETAILS) */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-rose-500/5 to-indigo-500/10 border-2 border-amber-300 rounded-3xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
+                    <Scissors className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black uppercase text-slate-900 tracking-wide">
+                        Incoming Alterations from Billed Sales
+                      </h3>
+                      <span className="bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">
+                        {pendingAlterations.length} Pending
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Garments marked for alteration during POS checkout. Click any product to enter tailoring details & generate its Alteration Slip.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={fetchPendingAlterations}
+                  disabled={loadingPending}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPending ? 'animate-spin' : ''}`} />
+                  <span>Refresh Queue</span>
+                </button>
+              </div>
+
+              {pendingAlterations.length === 0 ? (
+                <div className="bg-white/80 border border-dashed border-amber-200 rounded-2xl p-4 text-center text-xs text-slate-400">
+                  No pending alterations from recent bills. Garments marked in POS will automatically appear here.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                  {pendingAlterations.map((item, idx) => (
+                    <div
+                      key={item.saleItemId || idx}
+                      onClick={() => handleConfigurePendingGarment(item)}
+                      className="group bg-white rounded-2xl border-2 border-amber-200 hover:border-rose-500 p-4 transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between space-y-3"
+                    >
+                      <div>
+                        <div className="flex justify-between items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenInvoicePreview(item.invoiceNo, item.saleBillId);
+                            }}
+                            className="text-[10px] font-mono font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-lg border border-indigo-200 uppercase transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Click to view full Invoice Receipt"
+                          >
+                            <FileText className="w-3 h-3 text-indigo-600" />
+                            <span>Invoice: {item.invoiceNo}</span>
+                          </button>
+                          <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                            Pending Setup
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors mt-2">
+                          {item.productName}
+                        </h4>
+
+                        <div className="text-xs font-mono font-bold text-slate-700 mt-1 flex items-center gap-1">
+                          <span className="text-slate-400">Barcode:</span>
+                          <span className="text-slate-900 font-extrabold bg-slate-100 px-1.5 py-0.5 rounded">{item.barcode}</span>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 mt-1.5 flex justify-between items-center border-t border-slate-100 pt-2">
+                          <span>Customer: <strong className="text-slate-700">{item.customerName}</strong></span>
+                          <span className="font-mono text-[10px] text-slate-400">{item.customerPhone || ''}</span>
+                        </div>
+
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          Size: <span className="font-bold text-slate-600">{item.size || 'M'}</span> | Color: <span className="font-bold text-slate-600">{item.color || 'Std'}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="w-full py-2 bg-slate-900 group-hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Scissors className="w-3.5 h-3.5" />
+                        <span>Configure Alteration Details ➔</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* KPI METRIC CARDS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
@@ -1543,8 +2005,16 @@ export const ArticulationView = ({
                             <td className="p-3.5 font-mono font-bold text-rose-600 whitespace-nowrap">
                               {alt.alterationId || `ALT-${alt._id.slice(-6)}`}
                             </td>
-                            <td className="p-3.5 font-mono font-bold text-indigo-600 whitespace-nowrap">
-                              {alt.invoiceNumber || alt.invoiceId}
+                            <td className="p-3.5 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInvoicePreview(alt.invoiceNumber || alt.invoiceId, alt.saleBillId)}
+                                className="font-mono font-extrabold text-indigo-600 hover:text-indigo-900 hover:underline bg-indigo-50/70 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-100 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                title="Click to view full Invoice Receipt"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                <span>{alt.invoiceNumber || alt.invoiceId}</span>
+                              </button>
                             </td>
                             <td className="p-3.5">
                               <p className="font-extrabold text-slate-800">{alt.customerName}</p>
@@ -2246,19 +2716,37 @@ export const ArticulationView = ({
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
               <button
+                type="button"
                 onClick={() => setSelectedJobTicket(null)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
               >
                 Close (Esc)
               </button>
               <button
-                onClick={() => handlePrintJobTicketHTML(selectedJobTicket)}
-                className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                type="button"
+                onClick={() => handleDownloadJobTicketHTML(selectedJobTicket)}
+                className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
-                <span>Print Job Ticket</span>
+                <Download className="w-3.5 h-3.5" />
+                <span>Download</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePrintJobTicketHTML(selectedJobTicket)}
+                className="py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Slip</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhatsappModalTarget(selectedJobTicket)}
+                className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
               </button>
             </div>
 
@@ -2398,19 +2886,28 @@ export const ArticulationView = ({
             {selectedAltInvoice && selectedAltItem && (
               <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                 {/* Selected Info Summary Header */}
-                <div className="flex justify-between items-start bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                <div className="flex justify-between items-start bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                   <div>
-                    <p className="font-extrabold text-slate-800">{selectedAltItem.name}</p>
-                    <p className="text-[10px] text-slate-500">
-                      Invoice: {selectedAltInvoice.invoiceNo} · Customer: {selectedAltInvoice.customerName}
+                    <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
+                    <p className="text-xs font-mono font-bold text-indigo-700 mt-0.5">
+                      Barcode: <span className="text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200">{selectedAltItem.barcode || selectedAltItem.sku || 'N/A'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Invoice: <span className="font-bold text-slate-800">{selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber}</span> · Customer: <span className="font-bold text-slate-800">{selectedAltInvoice.customerName}</span> ({selectedAltInvoice.customerPhone || 'N/A'})
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      Size: <span className="font-bold text-slate-600">{selectedAltItem.size || 'M'}</span> | Color: <span className="font-bold text-slate-600">{selectedAltItem.color || 'Standard'}</span>
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelectedAltItem(null)}
-                    className="text-xs text-rose-600 font-bold hover:underline"
+                    onClick={() => {
+                      setSelectedAltItem(null);
+                      setSelectedAltInvoice(null);
+                    }}
+                    className="text-xs text-rose-600 font-bold hover:underline shrink-0"
                   >
-                    Change Item
+                    Change Garment
                   </button>
                 </div>
 
@@ -2553,6 +3050,75 @@ export const ArticulationView = ({
                 </div>
               </form>
             )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: BILL RECEIPT PREVIEW ─── */}
+      {previewBillInvoice && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in font-sans overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto flex flex-col max-h-[90vh] text-slate-800">
+            
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 text-indigo-600">
+                <FileText className="w-5 h-5" />
+                <span className="text-sm font-black uppercase tracking-wide">
+                  Bill Receipt Preview
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewBillInvoice(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Receipt Thermal Scroll Preview Frame */}
+            <div className="flex-1 border border-slate-200 rounded-2xl overflow-hidden bg-slate-100 shadow-inner">
+              <iframe
+                title="Invoice Print Preview"
+                srcDoc={generateInvoiceReceiptHTML(previewBillInvoice)}
+                className="w-full h-[58vh] border-none bg-white"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 font-sans shrink-0">
+              <button
+                type="button"
+                onClick={() => setPreviewBillInvoice(null)}
+                className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+              >
+                Close (Esc)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadPreviewBill(previewBillInvoice)}
+                className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePrintPreviewBill(previewBillInvoice)}
+                className="py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Bill</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWhatsAppPreviewBill(previewBillInvoice)}
+                className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </button>
+            </div>
 
           </div>
         </div>

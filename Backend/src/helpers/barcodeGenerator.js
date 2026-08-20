@@ -9,11 +9,15 @@ const generateBarcode = (tenantId, prefix = 'VST') => {
   return `${prefix}${timestamp}${random}`;
 };
 
-const generateUniqueCode = (designNo, size, index) => {
-  const cleanDesign = (designNo || 'GEN').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const cleanSize = (size || 'FREE').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const seq = String(index).padStart(4, '0');
-  return `${cleanDesign}-${cleanSize}-${seq}`;
+const generateUniqueCode = (designNo, size, index = 0) => {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const timeHex = Date.now().toString(36).slice(-3).toUpperCase();
+  const randBytes = crypto.randomBytes(3);
+  let randPart = '';
+  for (let i = 0; i < 3; i++) {
+    randPart += chars[randBytes[i] % chars.length];
+  }
+  return `UC-${timeHex}${randPart}`;
 };
 
 module.exports = {

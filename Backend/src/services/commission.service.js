@@ -112,6 +112,7 @@ class CommissionService {
     const tenant = await Tenant.findById(tenantId).lean();
     const settings = tenant?.commissionSettings || {};
 
+    const Role = require('../models/Role');
     const adminUsers = await User.find({ tenantId, isDeleted: false }).populate('roleId').lean();
     const adminNames = new Set(
       adminUsers

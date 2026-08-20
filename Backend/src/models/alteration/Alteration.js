@@ -15,8 +15,10 @@ const alterationSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
-    required: true
+    required: false
   },
+  customerName: String,
+  customerPhone: String,
   expectedDeliveryDate: Date,
   status: {
     type: String,

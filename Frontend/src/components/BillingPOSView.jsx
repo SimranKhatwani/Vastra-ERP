@@ -11,6 +11,7 @@ import {
   Coins,
   Printer,
   CheckCircle,
+  Check,
   X,
   Plus,
   Minus,
@@ -40,15 +41,14 @@ import {
   ImageIcon
 } from "lucide-react";
 
-const generateUniqueItemCode = () => {
-  const prefixes = ["TRK", "ITM", "UC"];
-  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let randomPart = "";
-  for (let i = 0; i < 8; i++) {
-    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+const generateUniqueItemCode = (designNo, size, index = 0) => {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const timeHex = Date.now().toString(36).slice(-3).toUpperCase();
+  let randStr = '';
+  for (let i = 0; i < 3; i++) {
+    randStr += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return `${prefix}-${randomPart}`;
+  return `UC-${timeHex}${randStr}`;
 };
 
 export const BillingPOSView = ({
@@ -303,7 +303,7 @@ export const BillingPOSView = ({
               discount: 0,
               gstPercent: 0,
               totalPrice: sPrice,
-              uniqueCode: generateUniqueItemCode()
+              uniqueCode: generateUniqueItemCode(p.designNo || p.itemName || 'ITM', p.size || 'FS', 0)
             }
           ]);
           if (onAddNotification) {
@@ -1407,7 +1407,24 @@ export const BillingPOSView = ({
           e.preventDefault();
           const targetItem = cart[focusedAlterationIndex];
           if (targetItem) {
-            handleOpenAlterationForCartItem(targetItem);
+            setCart(prev => {
+              const next = [...prev];
+              const cur = next[focusedAlterationIndex];
+              const nextHasAlt = !cur.hasAlteration;
+              next[focusedAlterationIndex] = {
+                ...cur,
+                hasAlteration: nextHasAlt,
+                alterationStatus: nextHasAlt ? 'PENDING' : 'NONE'
+              };
+              return next;
+            });
+            if (!targetItem.hasAlteration && onAddNotification) {
+              onAddNotification(
+                "Marked for Alteration",
+                `${targetItem.name} marked for alteration. Complete tailoring details in Alteration Module after billing.`,
+                "info"
+              );
+            }
           }
           return;
         }
@@ -1520,21 +1537,6 @@ export const BillingPOSView = ({
       wk.id || wk._id || "w-default",
       wk.name || "In-House Tailor"
     );
-
-    // Show the Alteration prompt popup
-    const cartItemRef = {
-      productId: prod._id || prod.id,
-      name: prod.name,
-      sku: prod.sku,
-      size: customSize,
-      color: customColor,
-      salespersonId: sp.id || sp._id || "sp-default",
-      salespersonName: sp.name || "Store Salesperson",
-      workerId: wk.id || wk._id || "w-default",
-      workerName: wk.name || "In-House Tailor",
-      quantity: qty
-    };
-    setAlterationPromptItem(cartItemRef);
   };
 
   // Handle articulated items forwarded from Customizer
@@ -1770,6 +1772,11 @@ export const BillingPOSView = ({
       const hsnVal = prod.hsn || prod.hsnCode || prod.hsnId?.code || '';
 
       for (let i = 0; i < customQty; i++) {
+        // If product has distinct piece uniqueCodes from available inventory, use them; otherwise generate a fresh unique code
+        const pieceUniqueCode = (prod.pieces && prod.pieces[i]?.uniqueCode && !prod.pieces[i].uniqueCode.includes('undefined'))
+          ? prod.pieces[i].uniqueCode
+          : generateUniqueItemCode(designNoVal || itemNameVal, sizeVal, i);
+
         newItems.push({
           cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}-${i}`,
           productId: prod._id || prod.id,
@@ -1798,7 +1805,7 @@ export const BillingPOSView = ({
           workerId: wId,
           workerName: wName,
           quantity: 1,
-          uniqueCode: generateUniqueItemCode(),
+          uniqueCode: pieceUniqueCode,
           hasAlteration: false,
           alterationRecord: null
         });
@@ -1879,8 +1886,9 @@ export const BillingPOSView = ({
         const item = prev[idx];
         const newItem = {
           ...item,
+          cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
           quantity: 1,
-          uniqueCode: generateUniqueItemCode(),
+          uniqueCode: generateUniqueItemCode(item.designNo || item.itemName || 'ITM', item.size || 'FS', prev.length),
           alterationRecord: undefined,
           hasAlteration: false
         };
@@ -2483,13 +2491,14 @@ export const BillingPOSView = ({
       );
 
       // ── Automatic WhatsApp Dispatch (fire-and-forget, never blocks checkout) ──
-      if (savedInvoice && savedInvoice._id && onRetryWhatsApp) {
+      const custPhoneDigits = (currentActiveCustomer.phone || '').replace(/\D/g, '');
+      if (savedInvoice && savedInvoice._id && onRetryWhatsApp && custPhoneDigits.length >= 10) {
         setWhatsappDispatchState('sending');
         setWhatsappDispatchId(savedInvoice._id);
         onRetryWhatsApp(savedInvoice._id)
           .then(ok => setWhatsappDispatchState(ok ? 'success' : 'failed'))
           .catch(err => {
-            console.error('[BillingPOSView] WhatsApp dispatch error:', err);
+            console.warn('[BillingPOSView] WhatsApp dispatch notice:', err?.message);
             setWhatsappDispatchState('failed');
           });
       } else {
@@ -2820,8 +2829,6 @@ export const BillingPOSView = ({
   };
 
   const handleGenerateBillAction = async () => {
-    if (isGeneratingBill) return;
-    setIsGeneratingBill(true);
     try {
       const saved = await handleCheckoutSubmit(false, true);
       if (saved) {
@@ -2829,14 +2836,9 @@ export const BillingPOSView = ({
         setTimeout(() => {
           barcodeInputRef.current?.focus();
         }, 150);
-        if (typeof onAddNotification === 'function') {
-          onAddNotification("Success", "Bill generated successfully.", "success");
-        }
       }
     } catch (err) {
       console.error("Generate Bill Error:", err);
-    } finally {
-      setIsGeneratingBill(false);
     }
   };
 
@@ -2971,7 +2973,7 @@ export const BillingPOSView = ({
           (item) => `
                 <tr>
                   <td>
-                    ${item.name} (${item.size}/${item.color}) ${!!(item.hasAlteration || item.alterationRecord) ? '<b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
+                    ${item.name} (${item.size}/${item.color}) ${Boolean(item.hasAlteration || item.alterationRecord || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE')) ? '<b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
                     ${item.uniqueCode ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode}</span>` : ''}
                   </td>
                   <td class="text-center">${item.hsn || 'N/A'}</td>
@@ -3162,28 +3164,12 @@ export const BillingPOSView = ({
     };
 
     let mainHtml = generateReceiptHTMLContent(invoice, false);
-
-    // Check if there are actual alteration items
-    const hasAlterations = invoice.items && invoice.items.some(i => i.hasAlteration || !!i.alterationRecord);
-
-    if (hasAlterations) {
-      // Inject the alteration HTML before the closing </body> tag of the main HTML
-      const altHtml = generateAlterationReceiptHTMLContent(invoice);
-      mainHtml = mainHtml.replace('</body>', altHtml + '</body>');
-    }
-
     printHTML(mainHtml, 250, "print-iframe-main");
   };
 
   const generateFullPreviewHTML = (invoice) => {
     if (!invoice) return "";
-    let htmlContent = generateReceiptHTMLContent(invoice, false);
-    const hasAlterations = invoice.items && invoice.items.some(i => i.hasAlteration || !!i.alterationRecord);
-    if (hasAlterations) {
-      const altHtml = generateAlterationReceiptHTMLContent(invoice);
-      htmlContent = htmlContent.replace('</body>', altHtml + '</body>');
-    }
-    return htmlContent;
+    return generateReceiptHTMLContent(invoice, false);
   };
 
   // Direct download trigger as HTML file
@@ -3911,7 +3897,7 @@ export const BillingPOSView = ({
                               );
                             })()}
                           </td>
-                          <td className="border-r border-slate-300 p-1">{item.uniqueCode || ''}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all">{item.uniqueCode || ''}</td>
                           <td className="p-1 text-center">
                             <button onClick={() => {
                               const newCart = cart.filter((_, i) => i !== idx);
@@ -4287,51 +4273,81 @@ export const BillingPOSView = ({
                   cart.map((item, idx) => {
                     const hasAlt = !!(item.hasAlteration || item.alterationRecord);
                     const isFocused = isAlterationModeActive && focusedAlterationIndex === idx;
+                    const barcodeText = item.barcode || item.barcodeNo || item.uniqueCode || item.itemCode || 'N/A';
 
-                    const cardStyle = isFocused
-                      ? (hasAlt
-                        ? 'bg-emerald-100/90 border-2 border-indigo-600 ring-2 ring-indigo-500/40 shadow-md font-bold'
-                        : 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md font-bold')
-                      : (hasAlt
-                        ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400'
-                        : 'bg-white border-slate-300 hover:border-slate-400');
+                    const handleToggleAlterationMark = () => {
+                      setFocusedAlterationIndex(idx);
+                      setIsAlterationModeActive(true);
+                      setCart(prev => {
+                        const next = [...prev];
+                        const cur = next[idx];
+                        const nextHasAlt = !cur.hasAlteration;
+                        next[idx] = {
+                          ...cur,
+                          hasAlteration: nextHasAlt,
+                          alterationStatus: nextHasAlt ? 'PENDING' : 'NONE'
+                        };
+                        return next;
+                      });
+                      if (!hasAlt && onAddNotification) {
+                        onAddNotification(
+                          "Marked for Alteration",
+                          `${item.name} marked for alteration. Complete tailoring details in Alteration Module after billing.`,
+                          "info"
+                        );
+                      }
+                    };
+
+                    const cardStyle = hasAlt
+                      ? 'bg-emerald-50 border-2 border-emerald-500 ring-2 ring-emerald-400/40 shadow-sm'
+                      : (isFocused
+                        ? 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md'
+                        : 'bg-white border border-slate-300 hover:border-slate-400');
 
                     return (
                       <div
                         key={idx}
                         id={`alt-panel-item-${idx}`}
-                        className={`p-2 rounded border transition-all flex flex-col gap-1 cursor-pointer ${cardStyle}`}
-                        onClick={() => {
-                          setFocusedAlterationIndex(idx);
-                          setIsAlterationModeActive(true);
-                          handleOpenAlterationForCartItem(item);
-                        }}
+                        className={`p-2 rounded-lg transition-all flex flex-col gap-1 cursor-pointer select-none ${cardStyle}`}
+                        onClick={handleToggleAlterationMark}
                       >
-                        <div className="flex items-start gap-1.5">
+                        <div className="flex items-start gap-2">
                           {isFocused && (
                             <span className="text-indigo-700 font-black text-xs shrink-0 animate-pulse">➢</span>
                           )}
-                          <input
-                            type="checkbox"
-                            checked={hasAlt}
-                            onChange={(e) => {
+
+                          {/* Custom Styled Checkbox Bracket */}
+                          <div
+                            onClick={(e) => {
                               e.stopPropagation();
-                              setFocusedAlterationIndex(idx);
-                              setIsAlterationModeActive(true);
-                              handleOpenAlterationForCartItem(item);
+                              handleToggleAlterationMark();
                             }}
-                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5 shrink-0"
-                          />
+                            className={`w-4 h-4 rounded mt-0.5 shrink-0 flex items-center justify-center transition-all cursor-pointer ${
+                              hasAlt
+                                ? 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-xs'
+                                : 'bg-white border-2 border-slate-400 hover:border-emerald-500'
+                            }`}
+                          >
+                            {hasAlt && <Check className="w-3 h-3 text-white stroke-[3.5]" />}
+                          </div>
+
                           <div className="flex-1 min-w-0">
-                            <div className={`font-bold truncate text-[10px] ${isFocused ? 'text-indigo-950 font-extrabold' : 'text-slate-800'}`} title={item.name}>
+                            <div className={`font-bold truncate text-[10px] ${hasAlt ? 'text-emerald-950 font-extrabold' : (isFocused ? 'text-indigo-950 font-extrabold' : 'text-slate-800')}`} title={item.name}>
                               {item.name}
+                            </div>
+                            <div className="text-[9.5px] font-mono text-slate-700 font-bold mt-0.5 truncate" title={`Barcode: ${barcodeText}`}>
+                              Barcode: <span className="text-slate-900">{barcodeText}</span>
                             </div>
                             <div className="text-[9px] text-slate-500 font-mono">
                               Sz: {item.size || 'M'} | Col: {item.color || 'Std'} | Qty: {item.quantity}
                             </div>
-                            {hasAlt && (
-                              <div className="text-[9px] text-emerald-700 font-bold mt-0.5 flex items-center gap-0.5">
-                                <span>✔ Ready</span>
+                            {hasAlt ? (
+                              <div className="text-[9px] text-emerald-700 font-extrabold mt-0.5 flex items-center gap-0.5">
+                                <span>✔ Marked for Alteration</span>
+                              </div>
+                            ) : (
+                              <div className="text-[8.5px] text-slate-400 italic mt-0.5">
+                                Click to mark for alteration
                               </div>
                             )}
                           </div>
@@ -4414,6 +4430,11 @@ export const BillingPOSView = ({
                           {isExchanged && (
                             <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
                               🔁 EXCHANGED
+                            </span>
+                          )}
+                          {Boolean(inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))) && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-200 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              ✂ ALTERATION
                             </span>
                           )}
                         </div>

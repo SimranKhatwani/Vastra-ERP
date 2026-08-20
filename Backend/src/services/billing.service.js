@@ -196,9 +196,11 @@ class BillingService {
       validatedPieces.push({
         piece,
         cartItemId: item.cartItemId,
+        cartUniqueCode: (item.uniqueCode && !item.uniqueCode.includes('undefined')) ? item.uniqueCode : null,
         sellingPrice,
         discountAmount: discount,
-        finalPrice
+        finalPrice,
+        hasAlteration: Boolean(item.hasAlteration)
       });
     }
 
@@ -320,16 +322,29 @@ class BillingService {
     const createdSaleItems = [];
 
     for (const val of validatedPieces) {
+      // Ensure the piece has a non-empty, unique code
+      if (!val.piece.uniqueCode || val.piece.uniqueCode === 'GEN-FREE-undefined' || val.piece.uniqueCode.includes('undefined')) {
+        const { generateUniqueCode } = require('../helpers/barcodeGenerator');
+        val.piece.uniqueCode = generateUniqueCode(val.piece.productId?.designNo || val.piece.productId?.itemCode, val.piece.size);
+        await val.piece.save();
+      }
+
+      const itemUniqueCode = val.cartUniqueCode || val.piece.uniqueCode;
+      const isAltered = Boolean(val.hasAlteration);
+
       const saleItem = await SaleItem.create({
         tenantId,
         saleBillId: saleBill._id,
         inventoryPieceId: val.piece._id,
         barcode: val.piece.barcode,
-        uniqueCode: val.piece.uniqueCode || val.piece.barcode,
+        uniqueCode: itemUniqueCode,
         mrp: val.piece.mrp,
         sellingPrice: val.sellingPrice,
         discountAmount: val.discountAmount,
         finalPrice: val.finalPrice,
+        hasAlteration: isAltered,
+        alterationStatus: isAltered ? 'PENDING' : 'NONE',
+        alterationId: null,
         createdBy: userId
       });
 
@@ -505,67 +520,11 @@ class BillingService {
       }
     }
 
-    // 5. Generate Alteration Bill if requested
-    let alteration = null;
-    if (billData.alterations && billData.alterations.length > 0) {
-      const Alteration = require('../models/alteration/Alteration');
-      const AlterationItem = require('../models/alteration/AlterationItem');
-      const { ALTERATION_STATUS } = require('../constants/status');
-
-      // Take details from the first alteration request for the header
-      const altReq = billData.alterations[0];
-      
-      alteration = await Alteration.create({
-        tenantId,
-        alterationNo: `ALT-${saleBill.billNo.split('-')[1] || Date.now()}`,
-        saleBillId: saleBill._id,
-        customerId: customer ? customer._id : undefined,
-        expectedDeliveryDate: altReq.expectedDeliveryDate,
-        tailorName: altReq.tailorName || 'Default Tailor',
-        priority: altReq.priority || 'Normal',
-        trialDate: altReq.trialDate,
-        totalCharges: billData.alterations.reduce((sum, a) => sum + (Number(a.charge) || 0), 0),
-        status: ALTERATION_STATUS.RECEIVED,
-        remarks: altReq.remarks,
-        createdBy: userId
-      });
-
-      for (const altReqItem of billData.alterations) {
-        // Find matching piece from validatedPieces
-        const matchingVal = validatedPieces.find(v => 
-          (altReqItem.cartItemId && v.cartItemId === altReqItem.cartItemId) ||
-          v.piece.barcode === altReqItem.barcode || 
-          v.piece.uniqueCode === altReqItem.barcode || 
-          v.piece.itemCode === altReqItem.barcode
-        );
-        
-        if (matchingVal) {
-          await AlterationItem.create({
-            tenantId,
-            alterationId: alteration._id,
-            inventoryPieceId: matchingVal.piece._id,
-            pieceName: matchingVal.piece.product?.name || 'Altered Item',
-            instructions: altReqItem.instructions,
-            charge: altReqItem.charge || 0,
-            alterationDetails: altReqItem.alterationDetails || [],
-            measurements: altReqItem.measurements || {},
-            createdBy: userId
-          });
-
-          // Also update inventory piece to show it's altered/at tailor
-          matchingVal.piece.altered = true;
-          matchingVal.piece.currentLocation = 'TAILOR_SHOP';
-          await matchingVal.piece.save();
-        }
-      }
-    }
-
     return {
       saleBill,
       customer,
       saleItemsCount: createdSaleItems.length,
-      payment,
-      alteration
+      payment
     };
   }
 
@@ -670,7 +629,10 @@ class BillingService {
         sellingPrice: item.sellingPrice || 0,
         discountAmount: item.discountAmount || 0,
         finalPrice: item.finalPrice || 0,
-        quantity: 1
+        quantity: 1,
+        hasAlteration: Boolean(item.hasAlteration || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE')),
+        alterationStatus: item.alterationStatus || (item.hasAlteration ? 'PENDING' : 'NONE'),
+        alterationId: item.alterationId || null
       });
     });
 

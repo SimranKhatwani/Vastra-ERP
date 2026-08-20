@@ -9,14 +9,48 @@ const { formatExportData } = require('../helpers/export.helper');
 class AlterationService {
   static async createAlteration(data, userId, tenantId) {
     let totalCharges = 0;
+    const SaleBill = require('../models/billing/SaleBill');
+    const SaleItem = require('../models/billing/SaleItem');
 
-    if (!data.items || !data.items.length) {
-      throw new ApiError(400, 'Alteration request must contain at least one item.');
+    // Handle flexible item payload
+    let rawItems = data.items;
+    if (!rawItems || !rawItems.length) {
+      if (data.productId || data.sku || data.barcode || data.productName) {
+        rawItems = [{
+          barcode: data.barcode || data.sku,
+          inventoryPieceId: data.inventoryPieceId,
+          pieceName: data.productName,
+          instructions: Array.isArray(data.alterationDetails) ? data.alterationDetails.join(', ') : (data.instructions || data.customAlterationText || 'Standard Fit'),
+          alterationDetails: data.alterationDetails || [],
+          measurements: data.measurements || {},
+          charge: data.charge || 0
+        }];
+      } else {
+        throw new ApiError(400, 'Alteration request must contain at least one item.');
+      }
     }
 
-    data.items.forEach(item => {
+    rawItems.forEach(item => {
       totalCharges += Number(item.charge || 0);
     });
+
+    let resolvedSaleBillId = data.saleBillId || data.invoiceId;
+    if (resolvedSaleBillId && typeof resolvedSaleBillId === 'string' && resolvedSaleBillId.length !== 24) {
+      const foundBill = await SaleBill.findOne({
+        tenantId,
+        $or: [{ billNo: resolvedSaleBillId }, { _id: resolvedSaleBillId }]
+      }).lean();
+      if (foundBill) resolvedSaleBillId = foundBill._id;
+      else resolvedSaleBillId = undefined;
+    }
+
+    if (!resolvedSaleBillId && data.invoiceNumber) {
+      const foundBill = await SaleBill.findOne({
+        tenantId,
+        billNo: data.invoiceNumber
+      }).lean();
+      if (foundBill) resolvedSaleBillId = foundBill._id;
+    }
 
     const Tenant = require('../models/Tenant');
     const tenant = await Tenant.findById(tenantId).lean();
@@ -26,53 +60,75 @@ class AlterationService {
 
     const alteration = await Alteration.create({
       tenantId,
-      alterationNo: data.alterationNo || `ALT-${Date.now()}`,
-      saleBillId: data.saleBillId,
-      customerId: data.customerId,
-      expectedDeliveryDate: data.expectedDeliveryDate,
+      alterationNo: data.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+      saleBillId: resolvedSaleBillId,
+      customerId: data.customerId || undefined,
+      customerName: data.customerName || '',
+      customerPhone: data.customerPhone || '',
+      expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
+      priority: data.priority || 'Normal',
+      trialDate: data.trialDate,
       totalCharges,
       commissionPercentage: commRate,
       commissionAmount: commAmount,
       status: ALTERATION_STATUS.RECEIVED,
-      remarks: data.remarks,
+      remarks: data.remarks || data.customAlterationText || data.specialInstructions,
       createdBy: userId
     });
 
     const createdItems = [];
 
-    for (const item of data.items) {
-      const piece = await InventoryPiece.findOne({ barcode: item.barcode, tenantId });
-      if (!piece) {
-        throw new ApiError(404, `Item with barcode '${item.barcode}' not found.`);
+    for (const item of rawItems) {
+      let piece = null;
+      if (item.inventoryPieceId) {
+        piece = await InventoryPiece.findOne({ _id: item.inventoryPieceId, tenantId });
+      }
+      if (!piece && item.barcode) {
+        piece = await InventoryPiece.findOne({
+          tenantId,
+          $or: [{ barcode: item.barcode }, { uniqueCode: item.barcode }]
+        });
       }
 
       const altItem = await AlterationItem.create({
         tenantId,
         alterationId: alteration._id,
-        inventoryPieceId: piece._id,
-        instructions: item.instructions,
+        inventoryPieceId: piece ? piece._id : undefined,
+        pieceName: item.pieceName || piece?.productId?.name || 'Altered Garment',
+        instructions: item.instructions || 'Standard Fit',
+        alterationDetails: item.alterationDetails || [],
+        measurements: item.measurements || {},
         charge: item.charge || 0,
         createdBy: userId
       });
 
-      piece.status = INVENTORY_STATUS.ALTERED;
-      piece.altered = true;
-      piece.currentLocation = 'TAILOR_SHOP';
-      await piece.save();
+      if (piece) {
+        piece.status = INVENTORY_STATUS.ALTERED;
+        piece.altered = true;
+        piece.currentLocation = 'TAILOR_SHOP';
+        await piece.save();
 
-      await InventoryLifecycle.create({
-        tenantId,
-        inventoryPieceId: piece._id,
-        barcode: piece.barcode,
-        eventType: LIFECYCLE_EVENT.ALTERATION,
-        fromLocation: 'CUSTOMER',
-        toLocation: 'TAILOR_SHOP',
-        referenceId: alteration._id,
-        referenceModel: 'Alteration',
-        performedBy: userId,
-        notes: `Received for alteration: ${item.instructions}`
-      });
+        if (resolvedSaleBillId) {
+          await SaleItem.updateMany(
+            { saleBillId: resolvedSaleBillId, inventoryPieceId: piece._id, tenantId },
+            { $set: { hasAlteration: true, alterationStatus: 'CONFIGURED', alterationId: alteration._id } }
+          );
+        }
+
+        await InventoryLifecycle.create({
+          tenantId,
+          inventoryPieceId: piece._id,
+          barcode: piece.barcode,
+          eventType: LIFECYCLE_EVENT.ALTERATION,
+          fromLocation: 'CUSTOMER',
+          toLocation: 'TAILOR_SHOP',
+          referenceId: alteration._id,
+          referenceModel: 'Alteration',
+          performedBy: userId,
+          notes: `Received for alteration: ${item.instructions || 'Tailoring'}`
+        });
+      }
 
       createdItems.push(altItem);
     }
@@ -86,6 +142,61 @@ class AlterationService {
     }
 
     return { alteration, items: createdItems };
+  }
+
+  static async getPendingAlterationItems(tenantId) {
+    const SaleItem = require('../models/billing/SaleItem');
+    const AlterationItem = require('../models/alteration/AlterationItem');
+
+    // Find all SaleItems with hasAlteration = true that are PENDING or not yet in an Alteration record
+    const pendingSaleItems = await SaleItem.find({
+      tenantId,
+      hasAlteration: true,
+      $or: [
+        { alterationStatus: 'PENDING' },
+        { alterationStatus: { $exists: false } },
+        { alterationId: null }
+      ]
+    })
+      .populate('saleBillId')
+      .populate({
+        path: 'inventoryPieceId',
+        populate: { path: 'productId' }
+      })
+      .sort({ createdAt: -1 });
+
+    const existingAltItems = await AlterationItem.find({ tenantId }).select('inventoryPieceId alterationId').lean();
+    const configuredPieceIds = new Set(existingAltItems.map(a => a.inventoryPieceId?.toString()));
+
+    const result = pendingSaleItems
+      .filter(si => si.saleBillId && (!si.alterationId || !configuredPieceIds.has(si.inventoryPieceId?._id?.toString())))
+      .map(si => {
+        const piece = si.inventoryPieceId || {};
+        const product = piece.productId || {};
+        const bill = si.saleBillId || {};
+
+        return {
+          saleItemId: si._id,
+          saleBillId: bill._id,
+          invoiceNo: bill.billNo || bill.invoiceNo || `BILL-${bill._id}`,
+          billDate: bill.billDate || bill.createdAt,
+          customerId: bill.customerId,
+          customerName: bill.customerName || (bill.customerId?.name) || 'Walk-in Customer',
+          customerPhone: bill.customerPhone || (bill.customerId?.phone) || '',
+          inventoryPieceId: piece._id,
+          productId: product._id,
+          productName: product.name || product.itemName || piece.productName || 'Billed Garment',
+          barcode: piece.barcode || si.barcode || piece.uniqueCode || si.uniqueCode || product.sku || 'N/A',
+          uniqueCode: piece.uniqueCode || si.uniqueCode || '',
+          sku: product.sku || product.itemCode || piece.barcode || 'N/A',
+          size: piece.size || product.size || 'M',
+          color: piece.primaryColor || product.color || 'Standard',
+          price: si.finalPrice || si.sellingPrice || piece.mrp || 0,
+          status: 'Pending Details'
+        };
+      });
+
+    return result;
   }
 
   static async updateStatus(alterationId, status, userId, tenantId) {
@@ -117,7 +228,7 @@ class AlterationService {
     if (query.search) filter.alterationNo = new RegExp(query.search, 'i');
 
     const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 20;
+    const limit = parseInt(query.limit) || 50;
     const skip = (page - 1) * limit;
 
     const alterations = await Alteration.find(filter)
@@ -127,14 +238,24 @@ class AlterationService {
       .limit(limit);
 
     const total = await Alteration.countDocuments(filter);
+    const altIds = alterations.map(a => a._id);
+
+    // Batch fetch all items in ONE query
+    const allItems = await AlterationItem.find({ alterationId: { $in: altIds } }).populate({
+      path: 'inventoryPieceId',
+      populate: { path: 'productId' }
+    });
+
+    const itemsByAltId = new Map();
+    for (const item of allItems) {
+      const key = item.alterationId?.toString();
+      if (!itemsByAltId.has(key)) itemsByAltId.set(key, []);
+      itemsByAltId.get(key).push(item);
+    }
 
     // Flatten data for frontend ArticulationView
-    const formattedAlterations = await Promise.all(alterations.map(async (alt) => {
-      const items = await AlterationItem.find({ alterationId: alt._id }).populate({
-        path: 'inventoryPieceId',
-        populate: { path: 'productId' }
-      });
-
+    const formattedAlterations = alterations.map((alt) => {
+      const items = itemsByAltId.get(alt._id.toString()) || [];
       const firstItem = items[0] || {};
       const piece = firstItem.inventoryPieceId || {};
       const product = piece.productId || {};
@@ -142,10 +263,15 @@ class AlterationService {
       return {
         _id: alt._id,
         alterationId: alt.alterationNo,
-        invoiceNumber: alt.saleBillId ? alt.saleBillId.billNo : '',
-        customerName: alt.customerId ? alt.customerId.name : 'Walk-in',
-        customerPhone: alt.customerId ? alt.customerId.phone : '',
+        invoiceNumber: alt.saleBillId ? (alt.saleBillId.billNo || alt.saleBillId.invoiceNo) : (alt.invoiceNumber || ''),
+        invoiceId: alt.saleBillId ? (alt.saleBillId.billNo || alt.saleBillId.invoiceNo || alt.saleBillId._id) : (alt.invoiceNumber || alt.invoiceId || ''),
+        saleBillId: alt.saleBillId?._id || alt.saleBillId,
+        saleBill: alt.saleBillId || null,
+        customerName: alt.customerName || (alt.customerId ? alt.customerId.name : (alt.saleBillId ? (alt.saleBillId.customerName || alt.saleBillId.customerId?.name) : 'Walk-in')),
+        customerPhone: alt.customerPhone || (alt.customerId ? alt.customerId.phone : (alt.saleBillId ? (alt.saleBillId.customerPhone || alt.saleBillId.customerId?.phone) : '')),
         productName: firstItem.pieceName || product.name || 'Altered Garment',
+        barcode: piece.barcode || '',
+        uniqueCode: piece.uniqueCode || '',
         sku: piece.barcode || piece.uniqueCode || product.sku || '',
         size: piece.size || product.size || 'N/A',
         color: piece.primaryColor || product.color || 'N/A',
@@ -156,9 +282,13 @@ class AlterationService {
         trialDate: alt.trialDate ? alt.trialDate.toISOString().split('T')[0] : '',
         alterationDetails: firstItem.alterationDetails || (firstItem.instructions ? firstItem.instructions.split(',') : []),
         measurements: firstItem.measurements || {},
+        specialInstructions: alt.remarks || '',
+        customAlterationText: alt.remarks || '',
+        totalCharges: alt.totalCharges || 0,
+        createdAt: alt.createdAt,
         createdBy: alt.createdBy
       };
-    }));
+    });
 
     return {
       alterations: formattedAlterations,

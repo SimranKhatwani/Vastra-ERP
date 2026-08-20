@@ -110,7 +110,10 @@ const normalizeInvoice = (b) => {
       quantity: i.quantity || i.qty || 1,
       sellingPrice: i.sellingPrice || i.price || 0,
       discountAmount: i.discountAmount || 0,
-      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0))
+      finalPrice: i.finalPrice || ((i.sellingPrice || i.price || 0) - (i.discountAmount || 0)),
+      hasAlteration: Boolean(i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')),
+      alterationStatus: i.alterationStatus || (i.hasAlteration ? 'PENDING' : 'NONE'),
+      alterationRecord: i.alterationRecord
     })),
     subTotal: b.subTotal || b.grandTotal || 0,
     discount: b.discountAmount || b.discount || 0,
@@ -893,7 +896,8 @@ export default function App() {
         uniqueCode: item.uniqueCode,
         sellingPrice: Number(item.price || item.sellingPrice || 0),
         discountAmount: Number(item.discountAmount || 0),
-        cartItemId: item.cartItemId
+        cartItemId: item.cartItemId,
+        hasAlteration: Boolean(item.hasAlteration || item.alterationRecord)
       }));
 
       const paymentTransactionsList = (() => {
@@ -968,34 +972,37 @@ export default function App() {
           alterationBill: data.data.alteration || null
         });
 
-        // Refetch invoices, customer lists, and products catalog directly from backend DB
-        try {
-          const [resInvoices, resCustomers, resProducts] = await Promise.all([
-            api.get(`/billing?limit=2000`),
-            api.get(`/customers`),
-            api.get(`/products`)
-          ]);
+        // 1. Perform immediate optimistic local state updates for lightning-fast UI responsiveness
+        performLocalStateUpdates(savedInvoice);
 
-          const fetchedInvoices = extractBillsArray(resInvoices.data);
-          if (fetchedInvoices.length > 0) {
-            setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
-          } else {
-            setInvoices(prev => [savedInvoice, ...prev.filter(i => i.id !== savedInvoice.id)]);
+        // 2. Non-blocking asynchronous sync in background without delaying checkout response
+        setTimeout(async () => {
+          try {
+            const [resInvoices, resCustomers, resProducts] = await Promise.all([
+              api.get(`/billing?limit=500`),
+              api.get(`/customers`),
+              api.get(`/products`)
+            ]);
+
+            const fetchedInvoices = extractBillsArray(resInvoices.data);
+            if (fetchedInvoices.length > 0) {
+              setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
+            }
+
+            if (resCustomers.data?.success) {
+              setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
+            }
+
+            if (resProducts.data?.success) {
+              const rawProds = Array.isArray(resProducts.data.data) ? resProducts.data.data : (resProducts.data.data?.products || []);
+              setProducts(rawProds.map(p => ({ ...p, id: p._id })));
+            }
+          } catch (refetchErr) {
+            console.warn("[Background sync after billing]", refetchErr?.message);
           }
+        }, 100);
 
-          if (resCustomers.data?.success) {
-            setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
-          }
-
-          if (resProducts.data?.success) {
-            const rawProds = Array.isArray(resProducts.data.data) ? resProducts.data.data : (resProducts.data.data?.products || []);
-            setProducts(rawProds.map(p => ({ ...p, id: p._id })));
-          }
-        } catch (refetchErr) {
-          console.error("[Post-checkout refetch error]", refetchErr);
-        }
-
-        addToastNotification("Success", `Bill ${savedInvoice.invoiceNo} saved to MongoDB`, "success");
+        addToastNotification("Success", `Bill generated successfully.`, "success");
         return savedInvoice;
       } else {
         throw new Error(data.message || "Failed to save bill to database");
@@ -1010,25 +1017,17 @@ export default function App() {
 
   const handleRetryWhatsApp = async (invoiceId) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.post(`/billing/${invoiceId}/send-whatsapp`);
       const data = res.data;
       if (data.success) {
         addToastNotification("WhatsApp", "Invoice dispatched to WhatsApp successfully.", "success");
-        // Refresh invoices list so status updates reflect in history
-        const resInvoices = await api.get(`/billing?limit=2000`);
-        const fetchedInvoices = extractBillsArray(resInvoices.data);
-        if (fetchedInvoices.length > 0) {
-          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
-        }
         return true;
       } else {
-        addToastNotification("WhatsApp Failed", data.message || "Dispatch failed.", "danger");
+        console.warn("[WhatsApp Dispatch Notice]", data?.message);
         return false;
       }
     } catch (error) {
-      console.error("[handleRetryWhatsApp]", error);
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.warn("[handleRetryWhatsApp]", error?.message);
       return false;
     }
   };
@@ -1284,20 +1283,18 @@ export default function App() {
   };
 
   const handleUpdateCustomerBalance = async (customerId, amount) => {
+    if (!customerId || typeof customerId !== 'string' || customerId.length !== 24 || !amount) return;
     try {
-      const token = localStorage.getItem("token");
-      const customer = customers.find(c => c.id === customerId);
+      const customer = customers.find(c => c.id === customerId || c._id === customerId);
       if (!customer) return;
-      const newBalance = Math.max(0, customer.outstandingBalance + amount);
+      const newBalance = Math.max(0, (customer.outstandingBalance || 0) + amount);
       const res = await api.put(`/customers/${customerId}`, { outstandingBalance: newBalance });
       const data = res.data;
       if (data.success) {
-        setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...data.data, id: data.data._id } : c)));
-      } else {
-        addToastNotification("Error", data.message, "danger");
+        setCustomers((prev) => prev.map((c) => (c.id === customerId || c._id === customerId ? { ...data.data, id: data.data._id } : c)));
       }
     } catch (error) {
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.warn("[handleUpdateCustomerBalance]", error?.message);
     }
   };
 
@@ -1889,6 +1886,7 @@ export default function App() {
               customers={customers}
               employees={employees}
               products={products}
+              invoices={invoices}
               initialTab={articulationInitialTab}
               initialFilterStatus={articulationInitialFilter}
               autoStartAlteration={articulationStartAlteration}
