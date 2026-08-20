@@ -1,4 +1,3 @@
-import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ShieldCheck,
@@ -20,8 +19,19 @@ import {
   Settings,
   Briefcase,
   Shield,
-  User
+  User,
+  Percent,
+  Tags,
+  Warehouse,
+  ClipboardCheck,
+  Building2,
+  Wallet,
+  Receipt,
+  ShieldAlert,
+  Globe,
+  Terminal
 } from "lucide-react";
+import api from '../api/axios';
 
 export const PermissionsView = ({
   currentUser = {},
@@ -38,23 +48,35 @@ export const PermissionsView = ({
     { id: "accountant", label: "Accountant", badge: "Financial Ledger", color: "bg-cyan-100 text-cyan-800 border-cyan-200" },
   ];
 
-  // Core Modules Registry
+  // Core Modules Registry - Complete 27 System Modules
   const modulesRegistry = [
     { id: "dashboard", name: "Overview Dashboard", category: "Core Operations", icon: Layers, desc: "Main system metrics, sales widgets & operational overview" },
-    { id: "billing", name: "POS Billing & Invoicing", category: "Sales & Billing", icon: ShoppingBag, desc: "POS cart checkout, barcode billing & receipt processing" },
+    { id: "billing", name: "Boutique POS Billing", category: "Sales & Billing", icon: ShoppingBag, desc: "POS cart checkout, barcode billing & receipt processing" },
     { id: "billing-sales", name: "Billing & Sales Management", category: "Sales & Billing", icon: ShoppingBag, desc: "Comprehensive billing records, invoice tracking & sales management" },
-    { id: "articulation", name: "Tailoring & Alterations Studio", category: "Garment Fitting", icon: Scissors, desc: "Alteration job tickets, tailor tracking & pickup notifications" },
-    { id: "products", name: "Products & Garment Catalog", category: "Inventory", icon: Layers, desc: "Garment product items, prices, MRP, sizes & categories" },
-    { id: "inventory", name: "Inventory Stock Control", category: "Inventory", icon: Layers, desc: "Adjust stock levels, warehouse counts & low stock alerts" },
-    { id: "purchase", name: "Purchase & Vendor Orders", category: "Procurement", icon: Briefcase, desc: "Supplier invoices, GRNs & vendor outstanding ledgers" },
-    { id: "vendor-communication", name: "Vendor Communication Card", category: "Procurement", icon: Briefcase, desc: "Vendor relationship hub, documents, timeline & follow-ups" },
-    { id: "financial-management", name: "Financial Analytics & Expenses", category: "Finance", icon: DollarSign, desc: "Revenue vs expenses, profit margins & financial ledgers" },
-    { id: "customers", name: "CRM & Customer Directory", category: "CRM", icon: Users, desc: "Customer phone directory, credit balance & loyalty points" },
-    { id: "employees", name: "Employee Directory & Roster", category: "HR & Payroll", icon: User, desc: "Staff profiles, commissions earned & payroll ledgers" },
-    { id: "attendance-dashboard", name: "Attendance & Shift Records", category: "HR & Payroll", icon: Clock, desc: "Punch-in/out logs, shift turnout rate & manager review" },
-    { id: "reports", name: "Reports & Business Intelligence", category: "Analytics", icon: BarChart3, desc: "Executive reports, exportable BI charts & audit logs" },
-    { id: "permissions", name: "Permissions & Role Access", category: "System Admin", icon: ShieldCheck, desc: "Manage role-based permission matrices" },
-    { id: "settings", name: "System & Store Configurations", category: "System Admin", icon: Settings, desc: "Store profile, tax rules & printer receipt settings" }
+    { id: "discount-offers", name: "Discount & Offer Engine", category: "Sales & Billing", icon: Percent, desc: "Combodeal promotions, flat discounts & promo rules" },
+    { id: "articulation", name: "Tailoring & Garments Studio", category: "Garment Fitting", icon: Scissors, desc: "Alteration job tickets, tailor tracking & pickup notifications" },
+    { id: "products", name: "Products & Garment Catalog", category: "Inventory & Stock", icon: Tags, desc: "Garment product items, prices, MRP, sizes & categories" },
+    { id: "inventory", name: "Inventory Management Module", category: "Inventory & Stock", icon: Warehouse, desc: "Adjust stock levels, warehouse counts & low stock alerts" },
+    { id: "stock-management", name: "Stock Management Module", category: "Inventory & Stock", icon: ClipboardCheck, desc: "Barcode stock verification, batch transfers & audits" },
+    { id: "purchase", name: "Procurements & POs (Purchase)", category: "Procurement", icon: Briefcase, desc: "Supplier purchase bills, GRNs & vendor outstanding ledgers" },
+    { id: "vendor-communication", name: "Vendor Communication Card", category: "Procurement", icon: Building2, desc: "Vendor relationship hub, agreements, timeline & follow-ups" },
+    { id: "financial-management", name: "Financial Management", category: "Finance & Accounts", icon: DollarSign, desc: "Revenue vs expenses, profit margins & financial ledgers" },
+    { id: "accounts-treasury", name: "Accounts & Treasury", category: "Finance & Accounts", icon: Wallet, desc: "Cash drawer, bank deposits, payment gateways & petty cash" },
+    { id: "accounting", name: "General Ledger Profit", category: "Finance & Accounts", icon: Receipt, desc: "Balance sheet, profit & loss, charts of accounts & journal entries" },
+    { id: "customers", name: "CRM & Customer Loyalty", category: "CRM & Customers", icon: Users, desc: "Customer directory, credit balances, purchase history & loyalty points" },
+    { id: "employees", name: "HR Payroll & Rosters", category: "HR & Workforce", icon: User, desc: "Staff profiles, salaries, shifts, overtime & attendance rosters" },
+    { id: "staff", name: "Staff Management", category: "HR & Workforce", icon: User, desc: "Staff login credentials, roles, designations & PIN management" },
+    { id: "commissions", name: "Channel & Staff Commissions", category: "HR & Workforce", icon: Percent, desc: "Staff sales commissions, worker stitch credits & payout ledgers" },
+    { id: "attendance-dashboard", name: "Attendance Record", category: "HR & Workforce", icon: Clock, desc: "Daily punch-in/out logs, shift turnout rate & roster compliance" },
+    { id: "manager-review", name: "Manager Review", category: "HR & Workforce", icon: ShieldAlert, desc: "Staff punch audit, attendance dispute resolution & manager approvals" },
+    { id: "attendance-settings", name: "Attendance Policy", category: "HR & Workforce", icon: Settings, desc: "Store HR policies, punch timing thresholds, late fine rules & holidays" },
+    { id: "reports", name: "Reports & Business Analytics", category: "Analytics & BI", icon: BarChart3, desc: "Executive reports, exportable BI charts & audit logs" },
+    { id: "permissions", name: "Permissions & Role Access", category: "System Administration", icon: ShieldCheck, desc: "Manage role-based permission matrices & feature toggles" },
+    { id: "staff-activity", name: "Staff Activity Audit", category: "System Administration", icon: ShieldAlert, desc: "Real-time user sessions, login logs, force logout & security controls" },
+    { id: "settings", name: "System Configurations", category: "System Administration", icon: Settings, desc: "Store profile, tax rules, printer receipt settings & billing preferences" },
+    { id: "integrations", name: "Channel Connectors", category: "System Administration", icon: Globe, desc: "WhatsApp API, SMS gateways, payment gateways & external sync" },
+    { id: "developer", name: "Developer Gate APIs", category: "System Administration", icon: Terminal, desc: "API keys, webhooks & developer endpoints" },
+    { id: "saas", name: "SaaS Multi-Tenants", category: "Super Admin", icon: Building2, desc: "Multi-tenant tenant management & subscription controls" }
   ];
 
   // Sub-Tab & Feature Actions Granular Registry
@@ -75,6 +97,10 @@ export const PermissionsView = ({
     { key: "billing_sales_hold_bills", module: "billing-sales", category: "Sales Admin Tabs", label: "On-Hold Bills List", desc: "Inspect bills placed on hold and retrieve active checkouts" },
     { key: "billing_sales_gst_reports", module: "billing-sales", category: "Sales Admin Tabs", label: "GST Tax Breakdown", desc: "View CGST/SGST collected totals and output tax reports" },
 
+    // Discount & Offer Engine
+    { key: "discount_rules_manage", module: "discount-offers", category: "Promo Engine Tabs", label: "Manage Offers & Rules", desc: "Create combodeal promos, flat discounts, and buy-X-get-Y rules" },
+    { key: "discount_analytics", module: "discount-offers", category: "Promo Engine Tabs", label: "Offers BI Reports", desc: "Analyze performance and track utilization rates of promotional campaigns" },
+
     // Tailoring & Garments
     { key: "articulation_dashboard", module: "articulation", category: "Tailoring Studio Tabs", label: "Alterations Dashboard", desc: "View, update status, and track active alteration tickets" },
     { key: "articulation_reports", module: "articulation", category: "Tailoring Studio Tabs", label: "Alteration Performance Reports", desc: "Analyze delayed tickets, workload distribution, and alerts logs" },
@@ -90,24 +116,54 @@ export const PermissionsView = ({
     { key: "inventory_stock_adjust", module: "inventory", category: "Stock Management Actions", label: "Adjust Stock Count", desc: "Manually adjust available pieces quantities and handle damages" },
     { key: "inventory_lifecycle_timeline", module: "inventory", category: "Stock Management Actions", label: "Garment Lifecycle History", desc: "Inspect history log, audit timeline, and track a piece from purchase to sale" },
 
+    // Stock Management Module
+    { key: "stock_management_audit", module: "stock-management", category: "Stock Audits", label: "Stock Verification Audit", desc: "Perform physical stock count comparisons and reconcile discrepancies" },
+    { key: "stock_management_transfer", module: "stock-management", category: "Stock Audits", label: "Inter-Store Transfers", desc: "Initiate and approve batch stock transfers between store locations" },
+
     // Purchase & Vendor Orders
     { key: "purchase_entry", module: "purchase", category: "Procurements Tabs", label: "New Purchase Invoice (GRN)", desc: "Enter new supplier purchase bills and add barcoded stock" },
     { key: "purchase_invoices_history", module: "purchase", category: "Procurements Tabs", label: "Purchase History Log", desc: "Browse past purchase bills list and audit stock receipts" },
     { key: "purchase_returns", module: "purchase", category: "Procurements Tabs", label: "Goods Return to Supplier", desc: "Create vendor debit notes and return defective inventory" },
     { key: "purchase_outstanding", module: "purchase", category: "Procurements Tabs", label: "Vendor Payments Ledger", desc: "Manage outstanding balances, records payments, and download ledgers" },
 
-    // Discount & Offer Engine
-    { key: "discount_rules_manage", module: "discount-offers", category: "Promo Engine Tabs", label: "Manage Offers & Rules", desc: "Create combodeal promos, flat discounts, and buy-X-get-Y rules" },
-    { key: "discount_analytics", module: "discount-offers", category: "Promo Engine Tabs", label: "Offers BI Reports", desc: "Analyze performance and track utilization rates of promotional campaigns" },
+    // Vendor Communication Card
+    { key: "vendor_communication_view", module: "vendor-communication", category: "Vendor Hub", label: "Vendor Profiles & Statements", desc: "View supplier agreements, outstanding ledgers, and contact info" },
+    { key: "vendor_communication_share", module: "vendor-communication", category: "Vendor Hub", label: "Share Purchase Orders & LR", desc: "Send PO copies, transport receipts, and payment advice directly to vendors" },
+
+    // Financial Management
+    { key: "financial_revenue_view", module: "financial-management", category: "Financial Analytics", label: "Revenue & Expense Overview", desc: "View store net revenues, operating expenses, and cash flow trends" },
+    { key: "financial_expenses_add", module: "financial-management", category: "Financial Analytics", label: "Record Daily Expenses", desc: "Log petty expenses, utility bills, maintenance, and store overheads" },
+
+    // Accounts & Treasury
+    { key: "treasury_cash_drawer", module: "accounts-treasury", category: "Treasury Operations", label: "Cash Drawer & Bank Deposits", desc: "Manage daily drawer opening/closing cash balances and bank deposits" },
+    { key: "treasury_petty_cash", module: "accounts-treasury", category: "Treasury Operations", label: "Petty Cash Ledger", desc: "Record and approve cash withdrawals and daily vouchers" },
+
+    // General Ledger & Accounting
+    { key: "accounting_ledger_view", module: "accounting", category: "Accounting Statements", label: "Profit & Loss Statement", desc: "Access comprehensive P&L, balance sheets, and charts of accounts" },
+    { key: "accounting_journal_entry", module: "accounting", category: "Accounting Statements", label: "Post Journal Entries", desc: "Create manual double-entry accounting journal vouchers" },
 
     // CRM & Customer Loyalty
-    { key: "customer_history", module: "customers", category: "CRM Directory Tabs", label: "Customer Ledger Ledger", desc: "View detailed profile, invoice history, and outstanding logs" },
+    { key: "customer_history", module: "customers", category: "CRM Directory Tabs", label: "Customer Ledger", desc: "View detailed profile, invoice history, and outstanding credit logs" },
     { key: "customer_loyalty", module: "customers", category: "CRM Directory Tabs", label: "Loyalty Wallet & Points", desc: "Adjust wallet advance credits, check points balance, and points ratio" },
 
     // HR Payroll & Rosters
     { key: "attendance_roster", module: "employees", category: "HR Directory Tabs", label: "Attendance & Shift Roster", desc: "Inspect daily log sheet, shift records, and overtime hours" },
     { key: "commissions_roster", module: "employees", category: "HR Directory Tabs", label: "Staff Sales Commissions", desc: "View sales credits, incentives earned, and payout ledgers" },
     { key: "attendance_policy", module: "employees", category: "HR Directory Tabs", label: "Store HR Policies", desc: "Configure punch timing thresholds, late fine rules, and holidays" },
+
+    // Staff Management
+    { key: "staff_manage_credentials", module: "staff", category: "Staff Admin", label: "Manage Staff Accounts & PINs", desc: "Create new employee login accounts, change roles, and reset PINs" },
+
+    // Channel & Staff Commissions
+    { key: "commissions_manage_payout", module: "commissions", category: "Commission Controls", label: "Approve & Settle Payouts", desc: "Mark pending sales commissions as paid and edit payout amounts" },
+
+    // Staff Activity Audit
+    { key: "staff_activity_view_logs", module: "staff-activity", category: "Audit & Security", label: "View Audit Trail & Login Logs", desc: "Inspect detailed employee activity timestamps, IP addresses, and browsers" },
+    { key: "staff_activity_force_logout", module: "staff-activity", category: "Audit & Security", label: "Force Logout & Account Lock", desc: "Terminate active user sessions across all devices and freeze accounts" },
+
+    // Attendance Policy & Manager Review
+    { key: "manager_review_approve", module: "manager-review", category: "Attendance Review", label: "Approve Punch Corrections", desc: "Review, approve, or reject employee attendance punch disputes" },
+    { key: "attendance_settings_edit", module: "attendance-settings", category: "Attendance Rules", label: "Edit Attendance Policy", desc: "Modify grace periods, late deduction slabs, and work shift hours" },
 
     // General Reports
     { key: "export_csv", module: "reports", category: "BI Actions", label: "Export CSV Datasets", desc: "Download full spreadsheets of sales, financials, alterations, and taxes" }
@@ -436,7 +492,7 @@ export const PermissionsView = ({
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-          {["All", "Modules", "SubTabs", "Garment Fitting", "Sales & Billing", "Finance", "HR & Payroll"].map((cat) => (
+          {["All", "Modules", "SubTabs", "Core Operations", "Sales & Billing", "Garment Fitting", "Inventory & Stock", "Procurement", "Finance & Accounts", "HR & Workforce", "System Administration"].map((cat) => (
             <button
               key={cat}
               onClick={() => setCategoryFilter(cat)}

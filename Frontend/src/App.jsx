@@ -577,7 +577,6 @@ export default function App() {
           "dashboard",
           "billing",
           "articulation",
-          "inventory_articulation",
           "commissions",
           "products",
           "inventory",
@@ -596,7 +595,7 @@ export default function App() {
           "permissions",
           "staff-activity",
           "integrations",
-          "dev",
+          "developer",
           "settings",
           "attendance-dashboard",
           "manager-review",
@@ -608,7 +607,6 @@ export default function App() {
           "dashboard",
           "billing",
           "articulation",
-          "inventory_articulation",
           "commissions",
           "products",
           "inventory",
@@ -621,9 +619,8 @@ export default function App() {
           "accounts-treasury",
           "customers",
           "employees",
+          "staff",
           "reports",
-          "permissions",
-          "settings",
           "attendance-dashboard",
           "manager-review",
         ];
@@ -634,14 +631,7 @@ export default function App() {
           "billing",
           "billing-sales",
           "discount-offers",
-          "articulation",
-          "products",
-          "purchase",
-          "vendor-communication",
-          "financial-management",
-          "accounts-treasury",
           "customers",
-          "accounting",
           "attendance-dashboard",
         ];
         break;
@@ -650,8 +640,7 @@ export default function App() {
           "dashboard",
           "billing",
           "products",
-          "purchase",
-          "vendor-communication",
+          "customers",
           "attendance-dashboard",
         ];
         break;
@@ -668,8 +657,6 @@ export default function App() {
           "accounts-treasury",
           "accounting",
           "reports",
-          "purchase",
-          "vendor-communication",
           "attendance-dashboard",
         ];
         break;
@@ -1553,7 +1540,7 @@ export default function App() {
                     {currentUser?.name || "Guest User"}
                   </p>
                   <p className="text-indigo-600 font-semibold uppercase font-mono tracking-wider text-[8px] truncate">
-                    {currentUser?.role || "Guest"} • Active
+                    {currentUser?.designation || currentUser?.role || "Staff"} • Active
                   </p>
                 </div>
               )}

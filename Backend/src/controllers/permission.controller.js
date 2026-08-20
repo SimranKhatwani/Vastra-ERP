@@ -7,7 +7,7 @@ const DEFAULT_ROLE_CONFIGS = {
   superadmin: {
     allowedModules: [
       "saas", "developer", "integrations", "settings", "permissions",
-      "staff-activity", "audit-log", "purchase", "vendor-communication",
+      "staff-activity", "purchase", "vendor-communication",
       "financial-management", "accounts-treasury", "attendance-dashboard",
       "manager-review", "attendance-settings"
     ],
@@ -16,72 +16,74 @@ const DEFAULT_ROLE_CONFIGS = {
   },
   admin: {
     allowedModules: [
-      "dashboard", "billing", "articulation", "inventory_articulation",
-      "commissions", "products", "inventory", "stock-management",
-      "billing-sales", "discount-offers", "purchase", "vendor-communication",
-      "financial-management", "accounts-treasury", "customers", "employees",
-      "staff", "accounting", "reports", "permissions", "staff-activity",
-      "audit-log", "integrations", "dev", "settings", "attendance-dashboard",
-      "manager-review", "attendance-settings"
+      "dashboard", "billing", "articulation", "commissions", "products",
+      "inventory", "stock-management", "billing-sales", "discount-offers",
+      "purchase", "vendor-communication", "financial-management",
+      "accounts-treasury", "customers", "employees", "staff", "accounting",
+      "reports", "permissions", "staff-activity", "integrations",
+      "developer", "settings", "attendance-dashboard", "manager-review",
+      "attendance-settings"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   businessadmin: {
     allowedModules: [
-      "dashboard", "billing", "articulation", "inventory_articulation",
-      "commissions", "products", "inventory", "stock-management",
-      "billing-sales", "discount-offers", "purchase", "vendor-communication",
-      "financial-management", "accounts-treasury", "customers", "employees",
-      "staff", "accounting", "reports", "permissions", "staff-activity",
-      "audit-log", "integrations", "dev", "settings", "attendance-dashboard",
-      "manager-review", "attendance-settings"
+      "dashboard", "billing", "articulation", "commissions", "products",
+      "inventory", "stock-management", "billing-sales", "discount-offers",
+      "purchase", "vendor-communication", "financial-management",
+      "accounts-treasury", "customers", "employees", "staff", "accounting",
+      "reports", "permissions", "staff-activity", "integrations",
+      "developer", "settings", "attendance-dashboard", "manager-review",
+      "attendance-settings"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   manager: {
     allowedModules: [
-      "dashboard", "billing", "articulation", "inventory_articulation",
-      "commissions", "products", "inventory", "stock-management",
-      "billing-sales", "discount-offers", "purchase", "vendor-communication",
-      "financial-management", "accounts-treasury", "customers", "employees",
-      "reports", "permissions", "settings", "attendance-dashboard", "manager-review"
+      "dashboard", "billing", "articulation", "commissions", "products",
+      "inventory", "stock-management", "billing-sales", "discount-offers",
+      "purchase", "vendor-communication", "financial-management",
+      "accounts-treasury", "customers", "employees", "staff", "reports",
+      "attendance-dashboard", "manager-review"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   cashier: {
     allowedModules: [
-      "dashboard", "billing", "billing-sales", "discount-offers", "articulation",
-      "products", "purchase", "vendor-communication", "financial-management",
-      "accounts-treasury", "customers", "accounting", "attendance-dashboard"
+      "dashboard", "billing", "billing-sales", "discount-offers",
+      "customers", "attendance-dashboard"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   salesperson: {
     allowedModules: [
-      "dashboard", "billing", "products", "purchase", "vendor-communication",
-      "attendance-dashboard"
+      "dashboard", "billing", "products", "customers", "attendance-dashboard"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   tailor: {
-    allowedModules: ["dashboard", "articulation", "attendance-dashboard"],
+    allowedModules: [
+      "dashboard", "articulation", "attendance-dashboard"
+    ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   worker: {
-    allowedModules: ["dashboard", "attendance-dashboard"],
+    allowedModules: [
+      "dashboard", "attendance-dashboard"
+    ],
     moduleAccessLevels: {},
     tabPermissions: {}
   },
   accountant: {
     allowedModules: [
       "dashboard", "financial-management", "accounts-treasury", "accounting",
-      "reports", "purchase", "vendor-communication", "attendance-dashboard"
+      "reports", "attendance-dashboard"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}

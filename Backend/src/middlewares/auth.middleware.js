@@ -163,6 +163,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
       // Fallback
     }
 
+    const effectiveRole = user.isTenantOwner ? 'Admin' : (user.designation || user.roleId?.name || 'Staff');
+
     req.user = {
       id: user._id,
       name: user.name,
@@ -172,6 +174,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
       tenantId: user.tenantId,
       roleId: user.roleId?._id,
       roleName: user.roleId?.name,
+      role: effectiveRole,
       isTenantOwner: user.isTenantOwner,
       isSuperAdmin: false,
       originalUserId: decoded.originalUserId || null,

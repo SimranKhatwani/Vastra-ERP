@@ -221,7 +221,7 @@ class AuthService {
         designation: user.designation || '',
         isSuperAdmin,
         tenantId: isSuperAdmin ? null : user.tenantId,
-        role: isSuperAdmin ? 'SUPER_ADMIN' : (user.roleId?.name || user.role || 'Staff'),
+        role: isSuperAdmin ? 'SUPER_ADMIN' : (user.isTenantOwner ? 'Admin' : (user.designation || user.roleId?.name || user.role || 'Staff')),
         permissions: isSuperAdmin ? ['*'] : (user.roleId?.permissions || [])
       },
       accessToken,
@@ -446,7 +446,7 @@ class AuthService {
         designation: targetUser.designation || '',
         isSuperAdmin: false,
         tenantId: targetUser.tenantId,
-        role: targetUser.roleId?.name || targetUser.role || 'Staff',
+        role: targetUser.isTenantOwner ? 'Admin' : (targetUser.designation || targetUser.roleId?.name || targetUser.role || 'Staff'),
         permissions: targetUser.roleId?.permissions || [],
         originalUserId: admin._id
       },
@@ -493,7 +493,7 @@ class AuthService {
         designation: admin.designation || '',
         isSuperAdmin: false,
         tenantId: admin.tenantId,
-        role: admin.roleId?.name || admin.role || 'TENANT_ADMIN',
+        role: admin.isTenantOwner ? 'Admin' : (admin.designation || admin.roleId?.name || admin.role || 'TENANT_ADMIN'),
         permissions: admin.roleId?.permissions || []
       },
       accessToken,

@@ -502,9 +502,15 @@ export const DashboardView = ({
     const rawTodaySales = myTodayInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
     const myTodaySales = staffApiStats?.todaySales ?? rawTodaySales;
     const myTodayBillsCount = staffApiStats?.todayBillsCount ?? myTodayInvoices.length;
-    const isCashierRole = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase().includes('cashier');
-    const isAccountantRole = (myEmployeeRecord?.role || currentUser?.role || '').toLowerCase().includes('accountant');
-    const hideCommissionUI = isCashierRole || isAccountantRole;
+
+    const rawRoleStr = (currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || staffApiStats?.designation || staffApiStats?.role || '').toLowerCase();
+    const isSalesperson = ['salesperson', 'sales', 'sales executive'].some(r => rawRoleStr.includes(r));
+    const isWorkerOrTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].some(r => rawRoleStr.includes(r));
+    
+    // Commission UI is STRICTLY for Salesperson and Worker / Tailor only!
+    // For Cashier, Accountant, Admin, and other staff, hideCommissionUI is TRUE.
+    const hideCommissionUI = !isSalesperson && !isWorkerOrTailor;
+    const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || 'Staff';
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
 
@@ -515,7 +521,7 @@ export const DashboardView = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-mono border border-emerald-500/30 capitalize">
-                {myEmployeeRecord.role || currentUser.role || 'Staff'} Portal
+                {effectiveDisplayRole} Portal
               </span>
               <span className="text-slate-400 text-xs font-mono">
                 Store Front
