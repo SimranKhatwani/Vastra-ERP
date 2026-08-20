@@ -121,6 +121,19 @@ class AuthService {
         throw new ApiError(401, 'Invalid credentials.');
       }
 
+      if (user.isLocked || user.status !== 'ACTIVE') {
+        await LoginHistory.create({
+          userId: user._id,
+          tenantId: user.tenantId,
+          email,
+          ipAddress: reqInfo.ip,
+          userAgent: reqInfo.userAgent,
+          status: 'FAILED',
+          failureReason: 'Account is locked or deactivated by administrator'
+        });
+        throw new ApiError(403, 'Your account has been locked or deactivated by an administrator. Please contact your manager.');
+      }
+
       const isMatch = await comparePassword(password, user.password);
       if (!isMatch) {
         await LoginHistory.create({
@@ -160,6 +173,13 @@ class AuthService {
       token: refreshToken,
       expiresAt
     });
+
+    // Reset forceLoggedOutAt on successful login
+    if (!isSuperAdmin && user) {
+      user.forceLoggedOutAt = null;
+      user.lastLogin = new Date();
+      await user.save();
+    }
 
     // Record Login History
     await LoginHistory.create({

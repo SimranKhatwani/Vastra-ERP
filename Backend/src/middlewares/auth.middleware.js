@@ -60,8 +60,15 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
     const user = await User.findById(decoded.id).populate('roleId');
 
-    if (!user || user.isDeleted || user.status !== 'ACTIVE') {
-      throw new ApiError(401, 'User account is invalid or deactivated.');
+    if (!user || user.isDeleted || user.status !== 'ACTIVE' || user.isLocked) {
+      throw new ApiError(401, 'User account is invalid, locked, or deactivated.');
+    }
+
+    if (user.forceLoggedOutAt && decoded.iat) {
+      const tokenIssuedAt = decoded.iat * 1000;
+      if (tokenIssuedAt < user.forceLoggedOutAt.getTime()) {
+        throw new ApiError(401, 'Your session has been terminated by an administrator. Please log in again.');
+      }
     }
 
     const role = user.roleId;

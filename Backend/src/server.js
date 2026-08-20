@@ -56,6 +56,7 @@ connectDB().then(async () => {
   });
 
   app.set('io', io);
+  global.io = io;
 
   server.listen(PORT, () => {
     logger.info(`=======================================================`);

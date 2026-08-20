@@ -823,95 +823,8 @@ export const DashboardView = ({
         </div>
       </div>
 
-      {/* Morning Action Dashboard */}
-      {morningActions && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden mb-6">
-          <div className="p-5 border-b border-slate-100 bg-red-50/30">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-              Today You Need to Focus On
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Critical tasks and alerts requiring immediate management attention.
-            </p>
-          </div>
-          <div className="p-4 bg-slate-50/50">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-              <div
-                onClick={() => setActiveTab("billing")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-red-50 hover:border-red-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🔴</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.overdueDeliveries}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Overdue<br />Deliveries</div>
-              </div>
 
-              <div
-                onClick={() => setActiveTab("billing")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🟡</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.deliveriesDueToday}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Due<br />Today</div>
-              </div>
 
-              <div
-                onClick={() => setActiveTab("customers")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-orange-50 hover:border-orange-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🟠</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.vipCustomersPending}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">VIPs<br />Pending</div>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("employees")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🔵</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.salesmenAbsent}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Absent<br />Salesmen</div>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("billing")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🟢</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.waitingCollection}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Waiting<br />Collection</div>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("employees")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-yellow-50 hover:border-yellow-200 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">⚠️</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.tailorsAtCapacity}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Tailors<br />Full</div>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("billing")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">📩</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.messagesFailed}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Msgs<br />Failed</div>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("saas")}
-                className="flex flex-col items-center justify-center text-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-100 hover:border-slate-300 hover:-translate-y-1 hover:shadow-md transition-all group"
-              >
-                <div className="text-2xl group-hover:scale-110 transition-transform">🔁</div>
-                <div className="font-black text-slate-800 text-xl leading-none">{morningActions.realterCases}</div>
-                <div className="text-[10px] text-slate-500 font-medium leading-tight uppercase tracking-wider">Re-Alter<br />Cases</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Quick Actions Panel */}
       <QuickActionsPanel
@@ -1389,7 +1302,7 @@ export const DashboardView = ({
               </button>
             );
           })}
-          
+
           {/* TOTAL CARD */}
           <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-indigo-200 bg-indigo-100/50 shadow-xs">
             <div className="flex flex-col items-center gap-2 mb-2 text-indigo-900">
@@ -1844,32 +1757,32 @@ export const DashboardView = ({
                 else if (actionStr.includes('DELETE') || actionStr.includes('REMOVE')) { icon = '🗑️'; color = 'red'; }
                 else if (actionStr.includes('UPDATE') || actionStr.includes('EDIT')) { icon = '✏️'; color = 'orange'; }
                 else if (actionStr.includes('LOGIN')) { icon = '🔑'; color = 'teal'; }
-                
+
                 if (actionStr.includes('EXCHANGE')) { icon = '🔄'; color = 'orange'; }
                 if (actionStr.includes('RETURN')) { icon = '↩️'; color = 'red'; }
 
                 let title = log.item;
                 let detailStr = '';
-                
+
                 if (!title || title.trim() === '') {
-                   if (actionStr === 'CREATE_EXCHANGE') {
-                      title = `Exchanged Item`;
-                      detailStr = `Bill ID: ${log.details?.body?.originalBillId?.toString().slice(-6) || 'Unknown'}`;
-                   } else if (actionStr === 'CREATE_RETURN') {
-                      title = `Returned Item(s)`;
-                      detailStr = `Bill: ${log.details?.body?.saleBillNo || 'Unknown'} - Mode: ${log.details?.body?.refundMode || 'N/A'}`;
-                   } else if (actionStr === 'CREATE_SALE_BILL') {
-                      title = `New Sale Bill generated`;
-                      detailStr = `Total: ₹${log.details?.body?.grandTotal || 0} - Mode: ${log.details?.body?.paymentMethod || 'Cash'}`;
-                   } else {
-                      title = log.action || 'System Action';
-                   }
+                  if (actionStr === 'CREATE_EXCHANGE') {
+                    title = `Exchanged Item`;
+                    detailStr = `Bill ID: ${log.details?.body?.originalBillId?.toString().slice(-6) || 'Unknown'}`;
+                  } else if (actionStr === 'CREATE_RETURN') {
+                    title = `Returned Item(s)`;
+                    detailStr = `Bill: ${log.details?.body?.saleBillNo || 'Unknown'} - Mode: ${log.details?.body?.refundMode || 'N/A'}`;
+                  } else if (actionStr === 'CREATE_SALE_BILL') {
+                    title = `New Sale Bill generated`;
+                    detailStr = `Total: ₹${log.details?.body?.grandTotal || 0} - Mode: ${log.details?.body?.paymentMethod || 'Cash'}`;
+                  } else {
+                    title = log.action || 'System Action';
+                  }
                 }
 
                 if (!detailStr) {
-                   if (typeof log.details === 'string') detailStr = log.details;
-                   else if (log.details && Object.keys(log.details).length > 0) detailStr = `${log.module || 'System'} action performed.`;
-                   else detailStr = `${log.module || 'System'} Module`;
+                  if (typeof log.details === 'string') detailStr = log.details;
+                  else if (log.details && Object.keys(log.details).length > 0) detailStr = `${log.module || 'System'} action performed.`;
+                  else detailStr = `${log.module || 'System'} Module`;
                 }
 
                 const item = {

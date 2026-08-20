@@ -231,13 +231,68 @@ export default function App() {
       }
     };
 
+    const handleForceLogoutEvent = (payload) => {
+      let storedUser = null;
+      try {
+        storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      } catch (e) {}
+
+      const myId = String(storedUser?._id || storedUser?.id || currentUser?._id || currentUser?.id || '');
+      const myEmail = (storedUser?.email || currentUser?.email || '').toLowerCase().trim();
+      const myName = (storedUser?.name || currentUser?.name || '').toLowerCase().trim();
+
+      const targetUserId = String(payload?.userId || '');
+      const targetEmpId = String(payload?.employeeId || '');
+      const targetEmail = String(payload?.email || '').toLowerCase().trim();
+      const targetName = String(payload?.name || '').toLowerCase().trim();
+
+      const isTarget = (
+        (targetUserId && myId && targetUserId === myId) ||
+        (targetEmpId && myId && targetEmpId === myId) ||
+        (targetEmail && myEmail && targetEmail === myEmail) ||
+        (targetName && myName && targetName === myName)
+      );
+
+      if (isTarget) {
+        alert("Your session has been terminated by an administrator. Please log in again.");
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = "/";
+      }
+    };
+    socket.on('user.force_logout', handleForceLogoutEvent);
+
     const events = ['notification.created', 'notification.updated', 'inventory.updated', 'inventory.low', 'invoice.created', 'invoice.updated', 'purchase.created', 'purchase.approved', 'employee.created', 'employee.updated', 'commission.updated', 'supplier.updated', 'payroll.updated', 'whatsapp.sent', 'whatsapp.failed', 'tenant.activity', 'dashboard.stats.updated', 'permissions.updated'];
     events.forEach((eventName) => socket.on(eventName, handleRealtimeEvent));
 
     return () => {
+      socket.off('user.force_logout', handleForceLogoutEvent);
       events.forEach((eventName) => socket.off(eventName, handleRealtimeEvent));
     };
   }, [socket]);
+
+  // Real-time background session heartbeat to guarantee instant force-logout detection
+  React.useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const checkSession = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        await api.get("/auth/me");
+      } catch (err) {
+        if (err?.response?.status === 401) {
+          alert("Your session has been terminated by an administrator. Please log in again.");
+          localStorage.clear();
+          sessionStorage.clear();
+          window.location.href = "/";
+        }
+      }
+    };
+
+    const interval = setInterval(checkSession, 3000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
 
   React.useEffect(() => {
     const fetchProducts = async () => {
@@ -507,7 +562,6 @@ export default function App() {
           "settings",
           "permissions",
           "staff-activity",
-          "audit-log",
           "purchase",
           "vendor-communication",
           "financial-management",
@@ -541,7 +595,6 @@ export default function App() {
           "reports",
           "permissions",
           "staff-activity",
-          "audit-log",
           "integrations",
           "dev",
           "settings",
@@ -1336,7 +1389,6 @@ export default function App() {
     { id: "settings", label: "System Configurations", icon: Settings },
     { id: "permissions", label: "Permissions & Role Access", icon: ShieldCheck },
     { id: "staff-activity", label: "Staff Activity Audit", icon: ShieldAlert },
-    { id: "audit-log", label: "Audit Log", icon: ShieldCheck },
     { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
     { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
     { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
@@ -1916,12 +1968,6 @@ export default function App() {
             />
           )}
 
-
-
-          {activeModule === "audit-log" && (
-            <AuditLogView />
-          )}
-
           {activeModule === "purchase" && (
             <PurchaseView
               vendors={vendors}
@@ -2133,6 +2179,7 @@ export default function App() {
                 setIsLoggedIn(true);
                 localStorage.setItem("token", user.token);
                 localStorage.setItem("user", JSON.stringify(user));
+                window.dispatchEvent(new Event("auth-changed"));
               }}
               addToastNotification={addToastNotification}
             />
@@ -2163,6 +2210,7 @@ export default function App() {
                 setIsLoggedIn(true);
                 localStorage.setItem("token", user.token);
                 localStorage.setItem("user", JSON.stringify(user));
+                window.dispatchEvent(new Event("auth-changed"));
               }}
               addToastNotification={addToastNotification}
               switchableEmployees={switchableEmployees}

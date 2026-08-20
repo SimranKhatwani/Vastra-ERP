@@ -12,13 +12,16 @@ class StaffActivityController {
    */
   static getActivityLogs = asyncHandler(async (req, res) => {
     const tenantId = req.tenantId;
-    const { search, module, status, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { search, module, action, status, startDate, endDate, page = 1, limit = 50 } = req.query;
 
     const filter = {};
     if (tenantId) filter.tenantId = tenantId;
 
     if (module && module !== 'All') {
-      filter.module = module;
+      filter.module = new RegExp(`^${module}$`, 'i');
+    }
+    if (action && action !== 'All' && action !== 'all') {
+      filter.action = action;
     }
     if (status && status !== 'All') {
       // Map frontend status to query
@@ -126,12 +129,13 @@ class StaffActivityController {
 
     // Collect unique userIds to fetch roles
     const userIds = [...new Set(logs.filter(l => l.userId).map(l => l.userId._id || l.userId))];
-    const users = await User.find({ _id: { $in: userIds } }).populate('roleId', 'name').select('name roleId').lean();
+    const users = await User.find({ _id: { $in: userIds } }).populate('roleId', 'name').select('name roleId isLocked').lean();
     const userMap = {};
     users.forEach(u => {
       userMap[String(u._id)] = {
         name: u.name,
-        role: u.roleId?.name || 'Staff'
+        role: u.roleId?.name || 'Staff',
+        isLocked: !!u.isLocked
       };
     });
 
@@ -179,6 +183,7 @@ class StaffActivityController {
         employeeName: userInfo?.name || log.email || 'Unknown',
         employeeEmail: log.email,
         role: userInfo?.role || 'Staff',
+        isLocked: userInfo?.isLocked || false,
         loginTime: dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
         loginDate: dt.toLocaleDateString('en-IN'),
         logoutTime: status === 'Active' ? '-' : dt.toLocaleDateString('en-IN'), // placeholder for ended session
@@ -202,30 +207,99 @@ class StaffActivityController {
     }));
   });
 
-  /**
-   * POST /staff-activity/force-logout/:employeeId
-   * Revoke all refresh tokens for the given employee
-   */
   static forceLogout = asyncHandler(async (req, res) => {
     const { employeeId } = req.params;
+    
+    let user = null;
+    if (employeeId) {
+      user = await User.findById(employeeId);
+      if (!user) {
+        const Salesman = require('../models/masters/Salesman');
+        const salesman = await Salesman.findById(employeeId);
+        if (salesman) {
+          user = await User.findOne({
+            tenantId: req.tenantId,
+            $or: [
+              { phone: salesman.phone },
+              { email: salesman.email },
+              { name: salesman.name }
+            ],
+            isDeleted: false
+          });
+        }
+      }
+    }
+
+    const targetUserId = user ? user._id : employeeId;
+    const userEmail = user?.email || '';
+
+    if (user) {
+      user.forceLoggedOutAt = new Date();
+      await user.save();
+    }
+
+    await RefreshToken.deleteMany({ userId: { $in: [targetUserId, employeeId] } });
     await RefreshToken.updateMany(
-      { userId: employeeId, isRevoked: false },
+      { userId: { $in: [targetUserId, employeeId] } },
       { isRevoked: true }
     );
-    return res.status(200).json(new ApiResponse(200, null, 'User forcefully logged out.'));
+
+    const io = req.app.get('io') || global.io;
+    if (io) {
+      io.emit('user.force_logout', { 
+        userId: String(targetUserId),
+        employeeId: String(employeeId),
+        email: userEmail,
+        name: user?.name || '',
+        timestamp: Date.now()
+      });
+    }
+
+    return res.status(200).json(new ApiResponse(200, null, 'User forcefully logged out across all devices.'));
   });
 
-  /**
-   * POST /staff-activity/toggle-lock/:employeeId
-   * Toggle account lock status
-   */
   static toggleLock = asyncHandler(async (req, res) => {
     const { employeeId } = req.params;
-    const user = await User.findById(employeeId);
+    let user = await User.findById(employeeId);
+    if (!user) {
+      const Salesman = require('../models/masters/Salesman');
+      const salesman = await Salesman.findById(employeeId);
+      if (salesman) {
+        user = await User.findOne({
+          tenantId: req.tenantId,
+          $or: [
+            { phone: salesman.phone },
+            { email: salesman.email },
+            { name: salesman.name }
+          ],
+          isDeleted: false
+        });
+      }
+    }
+
     if (!user) {
       return res.status(404).json(new ApiResponse(404, null, 'User not found.'));
     }
+
     user.isLocked = !user.isLocked;
+
+    if (user.isLocked) {
+      user.forceLoggedOutAt = new Date();
+      await RefreshToken.deleteMany({ userId: user._id });
+      await RefreshToken.updateMany({ userId: user._id }, { isRevoked: true });
+
+      const io = req.app.get('io') || global.io;
+      if (io) {
+        io.emit('user.force_logout', { 
+          userId: String(user._id),
+          employeeId: String(employeeId),
+          email: user.email,
+          name: user.name,
+          timestamp: Date.now()
+        });
+      }
+    }
+
     await user.save();
     return res.status(200).json(new ApiResponse(200, { isLocked: user.isLocked }, `User account ${user.isLocked ? 'locked' : 'unlocked'}.`));
   });

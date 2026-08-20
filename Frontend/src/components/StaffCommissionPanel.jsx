@@ -129,10 +129,12 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
     }
   };
 
-  const handleMarkPaid = async (employeeId) => {
+  const handleMarkPaid = async (empOrId) => {
+    const employeeId = typeof empOrId === 'object' ? (empOrId.id || empOrId.name) : empOrId;
+    const employeeRole = typeof empOrId === 'object' ? empOrId.role : undefined;
     try {
       const token = localStorage.getItem("token");
-      const res = await api.put(`/commissions/staff/pay/${employeeId}`, {}, {
+      const res = await api.put(`/commissions/staff/pay/${employeeId}`, { employeeRole }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data && res.data.success) {
@@ -191,9 +193,15 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
     history.forEach(h => {
       if (roleFilter !== "All" && h.employeeRole !== roleFilter) return;
 
-      if (!map[h.employeeId]) {
-        map[h.employeeId] = {
+      // Group key: Normalized Employee Name + Role to guarantee a single row per employee
+      const nameKey = (h.employeeName || 'Unknown').toLowerCase().trim();
+      const groupKey = `${nameKey}_${(h.employeeRole || 'worker').toLowerCase()}`;
+
+      if (!map[groupKey]) {
+        map[groupKey] = {
           id: h.employeeId,
+          ids: [h.employeeId],
+          userId: h.userId,
           name: h.employeeName,
           role: h.employeeRole,
           productsSold: 0,
@@ -201,14 +209,21 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
           totalCommission: 0,
           pending: 0,
           paid: 0,
-          percentage: h.commissionPercentage
+          percentage: h.commissionPercentage || 0
         };
+      } else {
+        if (!map[groupKey].ids.includes(h.employeeId)) {
+          map[groupKey].ids.push(h.employeeId);
+        }
+        if (h.commissionPercentage && (!map[groupKey].percentage || map[groupKey].percentage === 0)) {
+          map[groupKey].percentage = h.commissionPercentage;
+        }
       }
-      map[h.employeeId].productsSold += h.quantity;
-      map[h.employeeId].totalSales += h.netAmountBasis;
-      map[h.employeeId].totalCommission += h.commissionAmount;
-      map[h.employeeId].pending += h.commissionPendingAmount !== undefined ? h.commissionPendingAmount : (h.status === 'Pending' ? h.commissionAmount : 0);
-      map[h.employeeId].paid += h.commissionPaidAmount !== undefined ? h.commissionPaidAmount : (h.status === 'Paid' ? h.commissionAmount : 0);
+      map[groupKey].productsSold += (h.quantity || 1);
+      map[groupKey].totalSales += (h.netAmountBasis || 0);
+      map[groupKey].totalCommission += (h.commissionAmount || 0);
+      map[groupKey].pending += (h.commissionPendingAmount !== undefined ? h.commissionPendingAmount : (h.status === 'Pending' ? h.commissionAmount : 0));
+      map[groupKey].paid += (h.commissionPaidAmount !== undefined ? h.commissionPaidAmount : (h.status === 'Paid' ? h.commissionAmount : 0));
     });
     return Object.values(map);
   }, [history, roleFilter]);
@@ -294,7 +309,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
                   <tr key={emp.id} className="hover:bg-slate-50/40">
                     <td 
                       className="p-3.5 font-bold text-indigo-600 cursor-pointer hover:underline"
-                      onClick={() => setSelectedEmployee(emp.id)}
+                      onClick={() => setSelectedEmployee(emp)}
                     >
                       {emp.name}
                     </td>
@@ -311,7 +326,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
                             type="checkbox" 
                             className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
                             onChange={(e) => {
-                              if(e.target.checked) handleMarkPaid(emp.id);
+                              if(e.target.checked) handleMarkPaid(emp);
                             }}
                             title="Mark pending commissions as fully paid"
                           />
@@ -421,7 +436,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
               <div>
                 <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
                   <Users className="w-5 h-5 text-indigo-600" />
-                  {history.find(e => e.employeeId === selectedEmployee)?.employeeName} - Detailed Ledger
+                  {selectedEmployee.name} - Detailed Ledger
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-1">
                   Complete breakdown of all items sold and commissions generated.
@@ -455,7 +470,11 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {history.filter(h => h.employeeId === selectedEmployee).map((item) => (
+                      {history.filter(h => 
+                        (h.employeeName && h.employeeName.toLowerCase().trim() === selectedEmployee.name.toLowerCase().trim()) ||
+                        (selectedEmployee.ids && selectedEmployee.ids.includes(h.employeeId)) ||
+                        (h.employeeId === selectedEmployee.id)
+                      ).map((item) => (
                         <tr key={item._id} className="hover:bg-slate-50/50">
                           <td className="p-3.5 font-medium text-slate-600 flex items-center gap-1.5 whitespace-nowrap">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />

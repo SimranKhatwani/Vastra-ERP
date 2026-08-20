@@ -59,7 +59,12 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  lastLogin: Date
+  lastLogin: Date,
+  forceLoggedOutAt: Date,
+  isLocked: {
+    type: Boolean,
+    default: false
+  }
 });
 
 userSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true });

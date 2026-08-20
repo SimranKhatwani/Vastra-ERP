@@ -53,6 +53,9 @@ class CommissionService {
       ? saleBill.commissionPercentage
       : commissionPercentage;
 
+    const canonicalEmpId = user ? user._id.toString() : salesman._id.toString();
+    const canonicalName = user ? user.name : salesman.name;
+
     const createdCommissions = [];
 
     for (const item of saleItems) {
@@ -69,8 +72,8 @@ class CommissionService {
           tenantId,
           userId: user ? user._id : undefined,
           salesmanId: salesman._id,
-          employeeId: salesman._id.toString(),
-          employeeName: salesman.name,
+          employeeId: canonicalEmpId,
+          employeeName: canonicalName,
           employeeRole,
           sourceType: 'SaleBill',
           sourceId: saleBill._id,
@@ -101,6 +104,11 @@ class CommissionService {
   static async recordAlterationCommission(alteration, tenantId, createdByUserId) {
     if (!alteration || !alteration.tailorName) return null;
 
+    const charges = alteration.totalCharges || 0;
+    if (charges <= 0 && (!alteration.commissionAmount || alteration.commissionAmount <= 0)) {
+      return null; // Skip zero-charge alterations to prevent clutter
+    }
+
     const tenant = await Tenant.findById(tenantId).lean();
     const settings = tenant?.commissionSettings || {};
 
@@ -124,9 +132,9 @@ class CommissionService {
       ? alteration.commissionPercentage
       : (settings.workerPercentage !== undefined ? Number(settings.workerPercentage) : 0.5);
 
-    const charges = alteration.totalCharges || 0;
     const commAmount = Number((charges * (commRate / 100)).toFixed(2));
     const workerId = user ? user._id.toString() : alteration.tailorName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'tailor-1';
+    const canonicalName = user ? user.name : alteration.tailorName;
 
     const commDoc = await Commission.findOneAndUpdate(
       {
@@ -138,7 +146,7 @@ class CommissionService {
         tenantId,
         userId: user ? user._id : undefined,
         employeeId: workerId,
-        employeeName: alteration.tailorName,
+        employeeName: canonicalName,
         employeeRole: 'Worker',
         sourceType: 'Alteration',
         sourceId: alteration._id,
@@ -217,6 +225,9 @@ class CommissionService {
           ? bill.commissionPercentage
           : commissionPercentage;
 
+        const canonicalEmpId = matchUser ? matchUser._id.toString() : salesman._id.toString();
+        const canonicalName = matchUser ? matchUser.name : salesman.name;
+
         const billItems = itemsMap[bill._id.toString()] || [];
         let remainingBillPaid = bill.commissionPaidAmount || 0;
 
@@ -250,8 +261,8 @@ class CommissionService {
               tenantId,
               userId: matchUser ? matchUser._id : undefined,
               salesmanId: salesman._id,
-              employeeId: salesman._id.toString(),
-              employeeName: salesman.name,
+              employeeId: canonicalEmpId,
+              employeeName: canonicalName,
               employeeRole,
               sourceType: 'SaleBill',
               sourceId: bill._id,
@@ -274,15 +285,25 @@ class CommissionService {
       }
     }
 
-    // 2. Sync Alterations
-    const alterations = await Alteration.find({ tenantId, isDeleted: false, tailorName: { $ne: null, $ne: '' } }).lean();
+    // 2. Sync Alterations (Skip zero charges or remove zero alterations)
+    const alterations = await Alteration.find({
+      tenantId,
+      isDeleted: false,
+      tailorName: { $ne: null, $ne: '' }
+    }).lean();
 
     for (const alt of alterations) {
       const nameKey = String(alt.tailorName || '').toLowerCase().trim();
       if (adminNames.has(nameKey)) continue;
 
-      const matchUser = usersMap[nameKey];
       const charges = alt.totalCharges || 0;
+      if (charges <= 0 && (!alt.commissionAmount || alt.commissionAmount <= 0)) {
+        // Remove any old zero-charge commission record for this alteration
+        await Commission.deleteOne({ tenantId, sourceId: alt._id, sourceType: 'Alteration' });
+        continue;
+      }
+
+      const matchUser = usersMap[nameKey];
       const commRate = (alt.commissionPercentage !== undefined && alt.commissionPercentage > 0)
         ? alt.commissionPercentage
         : (settings.workerPercentage !== undefined ? Number(settings.workerPercentage) : 0.5);
@@ -295,6 +316,7 @@ class CommissionService {
         : (pendingAmt === 0 && commAmt > 0 ? 'Paid' : (paidAmt > 0 ? 'Partially Paid' : 'Pending'));
 
       const workerId = matchUser ? matchUser._id.toString() : alt.tailorName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'tailor-1';
+      const canonicalName = matchUser ? matchUser.name : alt.tailorName;
 
       await Commission.findOneAndUpdate(
         {
@@ -306,7 +328,7 @@ class CommissionService {
           tenantId,
           userId: matchUser ? matchUser._id : undefined,
           employeeId: workerId,
-          employeeName: alt.tailorName,
+          employeeName: canonicalName,
           employeeRole: 'Worker',
           sourceType: 'Alteration',
           sourceId: alt._id,
@@ -340,10 +362,15 @@ class CommissionService {
       resolvedRole = salesman ? 'Salesperson' : 'Worker';
     }
 
-    // Fetch unpaid/pending commissions from Commission collection
+    // Fetch unpaid/pending commissions matching by employeeId, userId, salesmanId, or employeeName
     const commissions = await Commission.find({
       tenantId,
-      employeeId,
+      $or: [
+        { employeeId },
+        { userId: employeeId },
+        { salesmanId: employeeId },
+        { employeeName: new RegExp(`^${employeeId}$`, 'i') }
+      ],
       status: { $in: ['Pending', 'Partially Paid'] },
       isDeleted: false
     }).sort({ date: 1 });

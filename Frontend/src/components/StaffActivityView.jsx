@@ -24,7 +24,10 @@ import {
   ShieldAlert,
   Layers,
   Building2,
-  FileText
+  FileText,
+  DollarSign,
+  Package,
+  ShoppingCart
 } from "lucide-react";
 
 export function StaffActivityView({ currentUser = {}, addToastNotification = () => { } }) {
@@ -36,6 +39,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
   const [selectedActivity, setSelectedActivity] = useState(null); // Side Drawer
   const [actSearch, setActSearch] = useState("");
   const [actModule, setActModule] = useState("All");
+  const [actAction, setActAction] = useState("All");
   const [actStatus, setActStatus] = useState("All");
   const [actStartDate, setActStartDate] = useState("");
   const [actEndDate, setActEndDate] = useState("");
@@ -50,10 +54,10 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
   const fetchActivityLogs = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
       const queryParams = new URLSearchParams();
       if (actSearch) queryParams.append("search", actSearch);
       if (actModule !== "All") queryParams.append("module", actModule);
+      if (actAction !== "All") queryParams.append("action", actAction);
       if (actStatus !== "All") queryParams.append("status", actStatus);
       if (actStartDate) queryParams.append("startDate", actStartDate);
       if (actEndDate) queryParams.append("endDate", actEndDate);
@@ -74,7 +78,6 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
   const fetchLoginHistory = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
       const queryParams = new URLSearchParams();
       if (logSearch) queryParams.append("search", logSearch);
       if (logRole !== "All") queryParams.append("role", logRole);
@@ -98,48 +101,110 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
     } else {
       fetchLoginHistory();
     }
-  }, [activeTab, actModule, actStatus, actStartDate, actEndDate, logRole, logStatus]);
+  }, [activeTab, actModule, actAction, actStatus, actStartDate, actEndDate, logRole, logStatus]);
 
   // Admin Actions: Force Logout
   const handleForceLogout = async (employeeId, employeeName) => {
-    if (!window.confirm(`Are you sure you want to force logout ${employeeName}?`)) return;
+    let storedUser = null;
     try {
-      const token = localStorage.getItem("token");
+      storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    } catch (e) {}
+    const myId = String(storedUser?._id || storedUser?.id || currentUser?._id || currentUser?.id || '');
+    const isSelf = myId && String(employeeId) === myId;
+
+    if (isSelf) {
+      if (!window.confirm(`Warning: You are about to force logout YOUR OWN active account. You will be immediately logged out and redirected to login. Continue?`)) return;
+    } else {
+      if (!window.confirm(`Are you sure you want to force logout ${employeeName}? This will immediately terminate all active sessions for this account across all devices.`)) return;
+    }
+
+    try {
       const res = await api.post(`/staff-activity/force-logout/${employeeId}`);
       const data = res.data;
       if (data.success) {
+        if (isSelf) {
+          localStorage.clear();
+          sessionStorage.clear();
+          window.location.href = "/";
+          return;
+        }
         addToastNotification("Session Terminated", `Force logged out ${employeeName}`, "warning");
         fetchLoginHistory();
       } else {
         addToastNotification("Action Failed", data.message, "danger");
       }
     } catch (err) {
-      addToastNotification("Error", "Failed to force logout user", "danger");
+      if (isSelf) {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = "/";
+        return;
+      }
+      console.error(err);
+      addToastNotification("Error", err.response?.data?.message || "Failed to force logout user", "danger");
     }
   };
 
+  // Admin Actions: Toggle Account Lock
+  const handleToggleLock = async (employeeId, employeeName) => {
+    try {
+      const res = await api.post(`/staff-activity/toggle-lock/${employeeId}`);
+      const data = res.data;
+      if (data.success) {
+        addToastNotification("Account Status Updated", data.message, "success");
+        fetchLoginHistory();
+      } else {
+        addToastNotification("Action Failed", data.message, "danger");
+      }
+    } catch (err) {
+      addToastNotification("Error", "Failed to update user lock status", "danger");
+    }
+  };
 
+  // Dynamic unique actions extracted from activityLogs
+  const uniqueActions = useMemo(() => {
+    const predefined = [
+      "All Actions",
+      "LOGIN",
+      "LOGOUT",
+      "CREATE_SALE_BILL",
+      "UPDATE_ALTERATION_STATUS",
+      "Purchase Module Opened",
+      "Purchase History Viewed",
+      "Purchase Details Viewed",
+      "CREATE_EXCHANGE",
+      "CREATE_RETURN",
+      "STOCK_ADJUSTMENT",
+      "PERMISSION_UPDATE",
+      "CREATE_USER",
+      "DELETE_USER",
+      "PAY_STAFF_COMMISSIONS"
+    ];
+    const fromData = new Set(activityLogs.map(l => l.action).filter(Boolean));
+    predefined.slice(1).forEach(a => fromData.add(a));
+    return ["All Actions", ...Array.from(fromData)];
+  }, [activityLogs]);
 
   // Export CSV Helper
   const handleExportCSV = (type) => {
     let rows = [];
     let filename = "";
     if (type === "activity") {
-      filename = "Staff_Activity_Logs.csv";
-      rows.push(["Activity ID", "Date", "Time", "Employee Name", "Role", "Module", "Action", "Record", "Status", "IP Address"]);
+      filename = "System_Audit_Trail.csv";
+      rows.push(["Activity ID", "Date", "Time", "Employee Name", "Role", "Module", "Action", "Record Target", "Status", "IP Address"]);
       activityLogs.forEach((log) => {
-        const d = new Date(log.createdAt || log.createdAt);
+        const d = new Date(log.createdAt || Date.now());
         rows.push([
           log.activityId,
           d.toLocaleDateString(),
           d.toLocaleTimeString(),
-          `"${log.employeeName}"`,
-          log.role,
-          log.module,
-          `"${log.action}"`,
-          `"${log.recordName || log.recordId || ""}"`,
-          log.status,
-          log.ipAddress
+          `"${log.employeeName || 'System'}"`,
+          log.role || '-',
+          log.module || '-',
+          `"${log.action || ''}"`,
+          `"${log.record || log.displayName || ""}"`,
+          log.status || 'Success',
+          log.ipAddress || '-'
         ]);
       });
     } else {
@@ -147,16 +212,16 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
       rows.push(["Login ID", "Employee Name", "Role", "Login Time", "Logout Time", "Duration", "Device", "Browser", "IP Address", "Status"]);
       loginHistory.forEach((log) => {
         rows.push([
-          log.loginId,
-          `"${log.employeeName}"`,
-          log.role,
-          new Date(log.loginTime).toLocaleString(),
+          log.loginId || log._id,
+          `"${log.employeeName || ''}"`,
+          log.role || '-',
+          log.loginTime ? new Date(log.loginTime).toLocaleString() : "-",
           log.logoutTime ? new Date(log.logoutTime).toLocaleString() : "Active",
-          log.sessionDuration,
-          log.device,
-          log.browser,
-          log.ipAddress,
-          log.status
+          log.sessionDuration || log.duration || "-",
+          log.device || "-",
+          log.browser || "-",
+          log.ipAddress || "-",
+          log.status || "-"
         ]);
       });
     }
@@ -180,9 +245,9 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
       today: todayLogs.length,
       week: activityLogs.length,
       month: activityLogs.length,
-      billsToday: todayLogs.filter((l) => String(l.module).toLowerCase().includes("bill")).length,
-      productsToday: todayLogs.filter((l) => String(l.module).toLowerCase().includes("product")).length,
-      attendanceToday: todayLogs.filter((l) => String(l.module).toLowerCase().includes("attendance")).length,
+      billsToday: todayLogs.filter((l) => String(l.module).toLowerCase().includes("bill") || String(l.action).includes("SALE_BILL")).length,
+      purchaseToday: todayLogs.filter((l) => String(l.module).toLowerCase().includes("purchase") || String(l.action).includes("Purchase")).length,
+      loginsToday: todayLogs.filter((l) => String(l.action).toUpperCase().includes("LOGIN")).length,
       failed: activityLogs.filter((l) => l.status === "Failed").length,
       highRisk: activityLogs.filter((l) => l.status === "Warning" || String(l.action).toLowerCase().includes("delete")).length
     };
@@ -191,20 +256,19 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
   // Login History KPI Calculations
   const logKpis = useMemo(() => {
     const today = new Date().toDateString();
-    const todayLogins = loginHistory.filter((l) => new Date(l.loginTime).toDateString() === today);
+    const todayLogins = loginHistory.filter((l) => new Date(l.createdAt || l.loginTime).toDateString() === today);
     return {
       today: todayLogins.length,
-      online: loginHistory.filter((l) => l.status === "Online").length,
+      online: loginHistory.filter((l) => l.status === "Online" || l.status === "Active").length,
       loggedOut: loginHistory.filter((l) => l.status === "Logged Out").length,
-      failed: loginHistory.filter((l) => l.status === "Failed Login").length,
-      locked: loginHistory.filter((l) => l.status === "Locked").length,
-      activeSessions: loginHistory.filter((l) => l.status === "Online").length
+      failed: loginHistory.filter((l) => l.status === "Failed" || l.status === "Failed Login").length,
+      locked: loginHistory.filter((l) => l.status === "Locked").length
     };
   }, [loginHistory]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-12 select-none" id="staff-activity-root">
-      {/* ─── TOP HEADER (MATCHING VASTRA ERP LIGHT SYSTEM) ─── */}
+      {/* ─── TOP HEADER ─── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-3.5">
           <div className="p-3.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl shadow-xs">
@@ -214,11 +278,11 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
             <h1 className="text-xl font-black text-slate-900 uppercase tracking-wider flex items-center gap-2.5">
               <span>Staff Activity & Audit Center</span>
               <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
-                Audit Trail 3.0
+                Unified Audit
               </span>
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Real-time monitoring employee actions, login authentication histories, and session security.
+              Complete real-time ledger of system actions, operational changes, login authentications, and session security.
             </p>
           </div>
         </div>
@@ -233,7 +297,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
               }`}
           >
             <Activity className="w-4 h-4" />
-            Activity Logs
+            System Audit Trail
           </button>
           <button
             onClick={() => setActiveTab("login-history")}
@@ -243,46 +307,42 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
               }`}
           >
             <Users className="w-4 h-4" />
-            User Login History
+            Login & Security
           </button>
         </div>
       </div>
 
-      {/* ─── TAB 1: ACTIVITY LOGS ─────────────────────────────────────── */}
+      {/* ─── TAB 1: SYSTEM AUDIT TRAIL ─────────────────────────────────────── */}
       {activeTab === "activity-logs" && (
         <div className="space-y-6">
           {/* KPI Cards Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Today</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Today Total</span>
               <span className="text-xl font-black text-slate-800">{actKpis.today}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">This Week</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Logs</span>
               <span className="text-xl font-black text-indigo-600">{actKpis.week}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">This Month</span>
-              <span className="text-xl font-black text-slate-700">{actKpis.month}</span>
-            </div>
-            <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">Bills Today</span>
+              <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">Sales Generated</span>
               <span className="text-xl font-black text-emerald-600">{actKpis.billsToday}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-cyan-600 font-bold uppercase tracking-wider block">Products Updated</span>
-              <span className="text-xl font-black text-cyan-600">{actKpis.productsToday}</span>
+              <span className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider block">Purchase Actions</span>
+              <span className="text-xl font-black text-indigo-600">{actKpis.purchaseToday}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider block">Attendance</span>
-              <span className="text-xl font-black text-amber-600">{actKpis.attendanceToday}</span>
+              <span className="text-[10px] text-cyan-600 font-bold uppercase tracking-wider block">Logins Today</span>
+              <span className="text-xl font-black text-cyan-600">{actKpis.loginsToday}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
               <span className="text-[10px] text-rose-600 font-bold uppercase tracking-wider block">Failed Actions</span>
               <span className="text-xl font-black text-rose-600">{actKpis.failed}</span>
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider block">High Risk</span>
+              <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider block">High Risk / Deletes</span>
               <span className="text-xl font-black text-amber-600">{actKpis.highRisk}</span>
             </div>
           </div>
@@ -295,7 +355,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                 <Search className="w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by Employee, Action, Activity ID, Module..."
+                  placeholder="Search by Employee, Action, Record, Target, IP..."
                   value={actSearch}
                   onChange={(e) => setActSearch(e.target.value)}
                   className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none w-full font-medium"
@@ -303,6 +363,20 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Action Filter Dropdown */}
+                <select
+                  value={actAction}
+                  onChange={(e) => setActAction(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl focus:outline-none font-bold cursor-pointer max-w-[200px]"
+                  title="Filter by specific action performed"
+                >
+                  {uniqueActions.map((actionName) => (
+                    <option key={actionName} value={actionName === "All Actions" ? "All" : actionName}>
+                      {actionName}
+                    </option>
+                  ))}
+                </select>
+
                 {/* Module Filter */}
                 <select
                   value={actModule}
@@ -310,13 +384,14 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                   className="bg-slate-50 border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl focus:outline-none font-bold cursor-pointer"
                 >
                   <option value="All">All Modules</option>
-                  <option value="billing">POS Billing</option>
+                  <option value="billing">Billing / POS</option>
+                  <option value="purchase">Purchase & Suppliers</option>
                   <option value="products">Products Catalog</option>
-                  <option value="articulation">Tailoring Studio</option>
+                  <option value="articulation">Tailoring & Alterations</option>
                   <option value="inventory">Inventory Control</option>
-                  <option value="purchase">Purchase Orders</option>
-                  <option value="financial-management">Financials</option>
-                  <option value="permissions">Permissions & Security</option>
+                  <option value="auth">Authentication & Users</option>
+                  <option value="permissions">Permissions</option>
+                  <option value="commissions">Commissions</option>
                 </select>
 
                 {/* Status Filter */}
@@ -359,27 +434,29 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-mono text-[10px] tracking-wider">
                     <th className="p-4 font-bold">Date & Time</th>
-                    <th className="p-4 font-bold">Employee</th>
-                    <th className="p-4 font-bold">Role</th>
-                    <th className="p-4 font-bold">Department</th>
+                    <th className="p-4 font-bold">Employee / User</th>
                     <th className="p-4 font-bold">Module</th>
                     <th className="p-4 font-bold">Action Performed</th>
-                    <th className="p-4 font-bold">Record Target</th>
+                    <th className="p-4 font-bold">Record / Item Target</th>
                     <th className="p-4 font-bold">Status</th>
-                    <th className="p-4 font-bold">IP / Device</th>
-                    <th className="p-4 font-bold text-right">Details</th>
+                    <th className="p-4 font-bold">IP & Device</th>
+                    <th className="p-4 font-bold text-right">Inspect</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                   {activityLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-slate-400 font-medium">
-                        No activity log records found matching the current filters.
+                      <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
+                        No audit records found matching the current filters.
                       </td>
                     </tr>
                   ) : (
                     activityLogs.map((log) => {
                       const d = new Date(log.createdAt);
+                      const isPurchase = String(log.action).toLowerCase().includes("purchase") || String(log.module).toLowerCase().includes("purchase");
+                      const isSale = String(log.action).includes("SALE_BILL") || String(log.action).includes("BILL");
+                      const isAuth = String(log.action).includes("LOGIN") || String(log.action).includes("LOGOUT");
+
                       return (
                         <tr
                           key={log._id || log.activityId}
@@ -387,22 +464,31 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                           className="hover:bg-slate-50/80 transition-all cursor-pointer group"
                         >
                           <td className="p-4 font-mono text-slate-500 whitespace-nowrap">
-                            {d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {d.toLocaleDateString('en-IN')} {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                           </td>
                           <td className="p-4 font-bold text-slate-900">
-                            {log.employeeName}
-                            <span className="block text-[10px] text-slate-400 font-mono font-normal">ID: {log.employeeId || 'N/A'}</span>
+                            {log.employeeName || 'System'}
+                            {log.employeeEmail && (
+                              <span className="block text-[10px] text-slate-400 font-normal">{log.employeeEmail}</span>
+                            )}
                           </td>
                           <td className="p-4">
                             <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold capitalize border border-slate-200">
-                              {log.role}
+                              {log.module}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-600">{log.department || 'Retail'}</td>
-                          <td className="p-4 font-mono text-indigo-600 font-bold capitalize">{log.module}</td>
-                          <td className="p-4 font-bold text-slate-800">{log.action}</td>
-                          <td className="p-4 text-slate-500 font-mono truncate max-w-[160px]">
-                            {log.recordName || log.recordId || 'N/A'}
+                          <td className="p-4">
+                            <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-lg text-[11px] ${
+                              isPurchase ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                              isSale ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                              isAuth ? 'bg-cyan-50 text-cyan-700 border border-cyan-100' :
+                              'bg-slate-50 text-slate-800'
+                            }`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-600 font-medium truncate max-w-[200px]" title={log.record || log.displayName || ''}>
+                            {log.record || log.displayName || log.item || '-'}
                           </td>
                           <td className="p-4">
                             {log.status === "Success" ? (
@@ -420,8 +506,8 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                             )}
                           </td>
                           <td className="p-4 font-mono text-[11px] text-slate-500">
-                            {log.ipAddress}
-                            <span className="block text-[10px] text-slate-400 font-sans">{log.device}</span>
+                            {log.ipAddress || '-'}
+                            <span className="block text-[10px] text-slate-400 font-sans truncate max-w-[150px]">{log.deviceInfo || log.userAgent || '-'}</span>
                           </td>
                           <td className="p-4 text-right">
                             <button
@@ -430,6 +516,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                                 setSelectedActivity(log);
                               }}
                               className="p-1.5 bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white rounded-lg transition-all cursor-pointer"
+                              title="Inspect full audit record"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
@@ -445,22 +532,18 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
         </div>
       )}
 
-      {/* ─── TAB 2: USER LOGIN HISTORY ─────────────────────────────────────── */}
+      {/* ─── TAB 2: USER LOGIN & SECURITY ─────────────────────────────────────── */}
       {activeTab === "login-history" && (
         <div className="space-y-6">
-          {/* KPI Dashboard */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* KPI Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Logins Today</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Logins Today</span>
               <span className="text-2xl font-black text-slate-800">{logKpis.today}</span>
             </div>
             <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">Currently Online</span>
+              <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">Online / Active Sessions</span>
               <span className="text-2xl font-black text-emerald-600">{logKpis.online}</span>
-            </div>
-            <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Logged Out Users</span>
-              <span className="text-2xl font-black text-slate-600">{logKpis.loggedOut}</span>
             </div>
             <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
               <span className="text-[10px] text-rose-600 font-bold uppercase tracking-wider block">Failed Logins</span>
@@ -469,10 +552,6 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
             <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
               <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider block">Locked Accounts</span>
               <span className="text-2xl font-black text-amber-600">{logKpis.locked}</span>
-            </div>
-            <div className="bg-white border border-slate-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-              <span className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider block">Active Sessions</span>
-              <span className="text-2xl font-black text-indigo-600">{logKpis.activeSessions}</span>
             </div>
           </div>
 
@@ -483,7 +562,7 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                 <Search className="w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by Employee, Role, Device, IP Address..."
+                  placeholder="Search by Employee, Email, IP Address, Browser..."
                   value={logSearch}
                   onChange={(e) => setLogSearch(e.target.value)}
                   className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none w-full font-medium"
@@ -512,11 +591,9 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                   className="bg-slate-50 border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl focus:outline-none font-bold cursor-pointer"
                 >
                   <option value="All">All Statuses</option>
-                  <option value="Online">Online</option>
-                  <option value="Logged Out">Logged Out</option>
-                  <option value="Force Logged Out">Force Logged Out</option>
-                  <option value="Failed Login">Failed Login</option>
-                  <option value="Locked">Locked</option>
+                  <option value="Active">Active / Online</option>
+                  <option value="SUCCESS">Success</option>
+                  <option value="FAILED">Failed Login</option>
                 </select>
 
                 {/* Refresh */}
@@ -548,20 +625,18 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                   <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-mono text-[10px] tracking-wider">
                     <th className="p-4 font-bold">Employee</th>
                     <th className="p-4 font-bold">Role</th>
-                    <th className="p-4 font-bold">Department & Branch</th>
-                    <th className="p-4 font-bold">Login Time</th>
-                    <th className="p-4 font-bold">Logout Time</th>
-                    <th className="p-4 font-bold">Session Duration</th>
+                    <th className="p-4 font-bold">Email</th>
+                    <th className="p-4 font-bold">Login Timestamp</th>
                     <th className="p-4 font-bold">Device & Browser</th>
                     <th className="p-4 font-bold">IP Address</th>
                     <th className="p-4 font-bold">Status</th>
-                    <th className="p-4 font-bold text-right">Admin Security Controls</th>
+                    <th className="p-4 font-bold text-right">Security Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                   {loginHistory.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-slate-400 font-medium">
+                      <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
                         No login history records found matching the current filters.
                       </td>
                     </tr>
@@ -569,64 +644,73 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                     loginHistory.map((log) => {
                       const loginDt = log.createdAt ? new Date(log.createdAt) : null;
                       const isValidDate = loginDt && !isNaN(loginDt.getTime());
+                      const empId = log.employeeId || (log.userId && (log.userId._id || log.userId));
+
                       return (
                         <tr key={log._id || log.loginId} className="hover:bg-slate-50/80 transition-all">
                           <td className="p-4 font-bold text-slate-900">
-                            {log.employeeName}
-                            <span className="block text-[10px] text-slate-400 font-mono font-normal">ID: {(log.employeeId || 'N/A').toString().substring(0, 8)}</span>
+                            {log.employeeName || log.email || 'User'}
+                            <span className="block text-[10px] text-slate-400 font-mono font-normal">
+                              ID: {String(empId || 'N/A').slice(-6)}
+                            </span>
                           </td>
                           <td className="p-4">
                             <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold capitalize border border-slate-200">
-                              {log.role}
+                              {log.role || 'Staff'}
                             </span>
                           </td>
                           <td className="p-4 text-slate-600">
-                            {log.employeeEmail || '-'}
+                            {log.employeeEmail || log.email || '-'}
                           </td>
                           <td className="p-4 font-mono text-slate-600 whitespace-nowrap">
                             {isValidDate ? `${loginDt.toLocaleDateString('en-IN')} ${loginDt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : '-'}
                           </td>
-                          <td className="p-4 font-mono text-slate-500 whitespace-nowrap">
-                            {log.logoutTime && log.logoutTime !== '-' ? log.logoutTime : "Still Active"}
-                          </td>
-                          <td className="p-4 font-mono text-indigo-600 font-bold">
-                            {log.duration && log.duration !== '-' ? log.duration : "Active Now"}
-                          </td>
                           <td className="p-4 text-slate-700">
-                            {log.device}
+                            {log.device || log.userAgent || 'Desktop'}
                             <span className="block text-[10px] text-slate-400">{log.browser}</span>
                           </td>
-                          <td className="p-4 font-mono text-slate-500">{log.ipAddress}</td>
+                          <td className="p-4 font-mono text-slate-500">{log.ipAddress || '-'}</td>
                           <td className="p-4">
                             {log.status === "Active" || log.status === "Online" ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> Active
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> Active Session
                               </span>
-                            ) : log.status === "Logged Out" ? (
-                              <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-slate-200">
-                                Logged Out
-                              </span>
-                            ) : log.status === "Failed" ? (
+                            ) : log.status === "FAILED" || log.status === "Failed" ? (
                               <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-rose-200">
-                                Failed
+                                <XCircle className="w-3 h-3" /> Failed Login
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200">
-                                {log.status}
+                              <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-slate-200">
+                                <CheckCircle2 className="w-3 h-3" /> Success
                               </span>
                             )}
                           </td>
-                          <td className="p-4 text-right space-x-2">
-                            {(log.status === "Active" || log.status === "Online") ? (
-                              <button
-                                onClick={() => handleForceLogout(log.employeeId, log.employeeName)}
-                                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                              >
-                                Force Logout
-                              </button>
-                            ) : (
-                              <span className="text-slate-400 text-[10px] font-bold italic mr-2">No actions available</span>
-                            )}
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {empId && (
+                                <>
+                                  <button
+                                    onClick={() => handleForceLogout(empId, log.employeeName || log.email)}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                                    title="Force terminate all active sessions for this employee immediately"
+                                  >
+                                    <LogOut className="w-3 h-3" />
+                                    Force Logout
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleLock(empId, log.employeeName || log.email)}
+                                    className={`p-1.5 rounded-lg transition-all border cursor-pointer ${
+                                      log.isLocked
+                                        ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                                        : "bg-slate-50 border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-slate-100"
+                                    }`}
+                                    title={log.isLocked ? "Account is LOCKED (Forbidden to login) - Click to Unlock" : "Account is ACTIVE - Click to Freeze/Lock"}
+                                  >
+                                    {log.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -642,13 +726,13 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
       {/* ─── SIDE DRAWER DETAIL INSPECTOR ─────────────────────────────────────── */}
       {selectedActivity && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end animate-fade-in">
-          <div className="w-full max-w-md bg-white border-l border-slate-200 h-full overflow-y-auto p-6 space-y-6 shadow-2xl">
+          <div className="w-full max-w-lg bg-white border-l border-slate-200 h-full overflow-y-auto p-6 space-y-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="text-[10px] font-mono text-indigo-600 uppercase tracking-widest font-bold block">Audit Detail Inspector</span>
                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-indigo-600" />
-                  {selectedActivity.activityId}
+                  {selectedActivity.activityId || 'Record Details'}
                 </h3>
               </div>
               <button
@@ -664,15 +748,15 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Employee Profile</span>
                 <div className="flex justify-between text-slate-700">
                   <span className="text-slate-500">Name:</span>
-                  <span className="font-bold text-slate-900">{selectedActivity.employeeName}</span>
+                  <span className="font-bold text-slate-900">{selectedActivity.employeeName || 'System'}</span>
                 </div>
                 <div className="flex justify-between text-slate-700">
-                  <span className="text-slate-500">Employee ID:</span>
-                  <span className="font-mono">{selectedActivity.employeeId || "N/A"}</span>
+                  <span className="text-slate-500">Email:</span>
+                  <span className="font-mono text-slate-700">{selectedActivity.employeeEmail || "N/A"}</span>
                 </div>
                 <div className="flex justify-between text-slate-700">
-                  <span className="text-slate-500">Role & Department:</span>
-                  <span className="capitalize font-medium">{selectedActivity.role} ({selectedActivity.department})</span>
+                  <span className="text-slate-500">Role / Module:</span>
+                  <span className="capitalize font-medium">{selectedActivity.role || selectedActivity.module}</span>
                 </div>
               </div>
 
@@ -687,45 +771,36 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                   <span className="font-bold text-slate-900">{selectedActivity.action}</span>
                 </div>
                 <div className="flex justify-between text-slate-700">
-                  <span className="text-slate-500">Record Target:</span>
-                  <span className="font-mono text-slate-700 font-semibold">{selectedActivity.recordName || selectedActivity.recordId || "N/A"}</span>
+                  <span className="text-slate-500">Target Record / Item:</span>
+                  <span className="font-mono text-slate-700 font-semibold">{selectedActivity.record || selectedActivity.displayName || selectedActivity.item || "N/A"}</span>
                 </div>
                 <div className="flex justify-between text-slate-700">
                   <span className="text-slate-500">Status:</span>
-                  <span className="font-bold text-emerald-600">{selectedActivity.status}</span>
+                  <span className="font-bold text-emerald-600">{selectedActivity.status || 'Success'}</span>
                 </div>
               </div>
 
-              {selectedActivity.oldValue && (
-                <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-1">
-                  <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider block">Previous State (Old Value)</span>
-                  <p className="font-mono text-slate-800 break-words text-[11px]">{String(selectedActivity.oldValue)}</p>
-                </div>
-              )}
-
-              {selectedActivity.newValue && (
-                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-1">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">New State (New Value)</span>
-                  <p className="font-mono text-slate-800 break-words text-[11px]">{String(selectedActivity.newValue)}</p>
+              {selectedActivity.details && Object.keys(selectedActivity.details).length > 0 && (
+                <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl space-y-2 overflow-x-auto">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block font-mono">Raw Event Details</span>
+                  <pre className="text-[11px] font-mono text-emerald-400 whitespace-pre-wrap">
+                    {JSON.stringify(selectedActivity.details, null, 2)}
+                  </pre>
                 </div>
               )}
 
               <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-200/80 font-mono text-[11px]">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-sans">Device & Client Environment</span>
                 <div className="flex justify-between text-slate-600">
-                  <span className="text-slate-500">IP Address:</span>
-                  <span>{selectedActivity.ipAddress}</span>
+                  <span className="text-slate-500 font-sans">IP Address:</span>
+                  <span>{selectedActivity.ipAddress || '-'}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span className="text-slate-500">Device Type:</span>
-                  <span>{selectedActivity.device}</span>
+                  <span className="text-slate-500 font-sans">Device / Agent:</span>
+                  <span className="truncate max-w-[220px]" title={selectedActivity.userAgent || selectedActivity.deviceInfo}>{selectedActivity.userAgent || selectedActivity.deviceInfo || '-'}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span className="text-slate-500">Browser:</span>
-                  <span>{selectedActivity.browser}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span className="text-slate-500">Timestamp:</span>
+                  <span className="text-slate-500 font-sans">Timestamp:</span>
                   <span>{new Date(selectedActivity.createdAt).toLocaleString()}</span>
                 </div>
               </div>
