@@ -23,16 +23,27 @@ const connectDB = async () => {
 
     logger.info(`MongoDB Connected successfully: ${conn.connection.host}/${conn.connection.name}`);
 
-    // Drop legacy unique index on inventorypieces barcode if present so blank barcodes don't collide
+    // Drop legacy unique index on inventorypieces barcode and products itemCode if present
     try {
       const db = conn.connection.db;
-      const collections = await db.listCollections({ name: 'inventorypieces' }).toArray();
-      if (collections.length > 0) {
+      const collections = await db.listCollections().toArray();
+      const colNames = collections.map(c => c.name);
+      
+      if (colNames.includes('inventorypieces')) {
         const indexes = await db.collection('inventorypieces').indexes();
         const barcodeIdx = indexes.find(i => i.name === 'tenantId_1_barcode_1' && i.unique);
         if (barcodeIdx) {
           await db.collection('inventorypieces').dropIndex('tenantId_1_barcode_1');
           logger.info('Dropped legacy unique tenantId_1_barcode_1 index from inventorypieces');
+        }
+      }
+
+      if (colNames.includes('products')) {
+        const prodIndexes = await db.collection('products').indexes();
+        const itemCodeIdx = prodIndexes.find(i => i.name === 'tenantId_1_itemCode_1' && i.unique);
+        if (itemCodeIdx) {
+          await db.collection('products').dropIndex('tenantId_1_itemCode_1');
+          logger.info('Dropped unique tenantId_1_itemCode_1 index from products');
         }
       }
     } catch (idxErr) {

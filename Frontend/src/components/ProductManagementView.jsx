@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   Loader2
 } from "lucide-react";
+import { getFirmStyle } from "./BillingPOSView";
 
 export const ProductManagementView = ({
   products = [],
@@ -781,10 +782,13 @@ export const ProductManagementView = ({
                 <tbody className="divide-y divide-slate-100 text-slate-600">
                   {paginatedProducts.map((p, idx) => {
                     const isSelected = selectedProductIds.includes(p.id);
+                    const firmName = p.firmName || p.company || 'Primary Store Firm';
+                    const firmStyle = getFirmStyle(firmName);
+
                     return (
                       <tr
                         key={idx}
-                        className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${isSelected ? "bg-indigo-50/20" : ""}`}
+                        className={`transition-colors cursor-pointer ${firmStyle.rowClass} ${isSelected ? "ring-1 ring-indigo-500" : ""}`}
                         onClick={() => {
                           if (currentUser?.role?.toLowerCase() !== 'salesperson') {
                             openEditModal(p);
@@ -801,9 +805,12 @@ export const ProductManagementView = ({
                         </td>
                         <td className="p-3.5">
                           <div className="flex flex-col">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono shrink-0">
                                 PRD-{p.id ? p.id.toString().substring(Math.max(0, p.id.toString().length - 6)).toUpperCase() : "TEMP"}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-tight font-bold shrink-0 ${firmStyle.badgeClass}`}>
+                                {firmName}
                               </span>
                               <p className="font-bold text-slate-800 leading-tight">
                                 {p.name}

@@ -72,7 +72,7 @@ class ProductService {
     const skip = (page - 1) * limit;
 
     const products = await Product.find(filter)
-      .populate('brandId categoryId subCategoryId hsnId gstId')
+      .populate('brandId categoryId subCategoryId hsnId gstId firmId')
       .sort(query.sort ? { [query.sort]: query.order === 'desc' ? -1 : 1 } : { createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -109,6 +109,8 @@ class ProductService {
         ? availablePieces.length 
         : Math.max(0, Number(pObj.availableStock ?? pObj.stock ?? 0));
 
+      const resolvedFirmName = pObj.firmName || pPieces[0]?.firmId?.name || pObj.firmId?.name || 'New Fashion Style';
+
       return {
         ...pObj,
         name: pObj.itemName || '-',
@@ -122,13 +124,13 @@ class ProductService {
         availableStock: calculatedStock,
         soldQuantity: pPieces.filter(pc => pc.status === 'SOLD').length || Number(pObj.soldQuantity || 0),
         totalPieces: pPieces.length,
-        barcode: pPieces[0]?.barcode || '',
+        barcode: pObj.barcode || pPieces[0]?.barcode || '',
         uniqueCode: pPieces[0]?.uniqueCode || '',
         ipn: pPieces[0]?.ipn || '',
-        size: sizes || 'FREE',
-        color: colors || '-',
-        primaryColor: colors || '-',
-        secondaryColor: secondaryColors || '-',
+        size: pObj.size || sizes || 'FREE',
+        color: pObj.color || pObj.primaryColor || colors || '-',
+        primaryColor: pObj.primaryColor || pObj.color || colors || '-',
+        secondaryColor: pObj.secondaryColor || secondaryColors || '-',
         hsn: pObj.hsnId?.hsnCode || 'N/A',
         purchaseRate: pPieces[0]?.purchaseRate || 0,
         purchasePrice: pPieces[0]?.purchaseRate || 0,
@@ -143,8 +145,8 @@ class ProductService {
         purchaseInvoice: pPieces[0]?.purchaseBillId?.billNo || 'N/A',
         landedCost: pPieces[0]?.purchaseRate || 0,
         sellingPrice: pPieces[0]?.wspAfterGST || p.defaultMRP,
-        company: pPieces[0]?.firmId?.name || 'Primary Store Firm',
-        firmName: pPieces[0]?.firmId?.name || 'Primary Store Firm',
+        company: resolvedFirmName,
+        firmName: resolvedFirmName,
         rackLocation: pPieces[0]?.rack || 'Shelf A1',
         pieces: pPieces
       };

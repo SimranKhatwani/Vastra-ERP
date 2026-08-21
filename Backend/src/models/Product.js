@@ -41,6 +41,40 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SubCategory'
   },
+  firmId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Firm'
+  },
+  firmName: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  barcode: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  primaryColor: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  color: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  secondaryColor: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  size: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   gender: {
     type: String,
     enum: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'],
@@ -90,8 +124,9 @@ const productSchema = new mongoose.Schema({
   }
 });
 
-productSchema.index({ tenantId: 1, itemCode: 1 }, { unique: true });
+productSchema.index({ tenantId: 1, itemCode: 1 });
 productSchema.index({ tenantId: 1, designNo: 1 });
+productSchema.index({ tenantId: 1, barcode: 1 });
 productSchema.plugin(baseSchemaPlugin);
 
 module.exports = mongoose.model('Product', productSchema);

@@ -51,6 +51,38 @@ const generateUniqueItemCode = (designNo, size, index = 0) => {
   return `UC-${timeHex}${randStr}`;
 };
 
+export const getFirmStyle = (firmName = '') => {
+  const norm = String(firmName || '').trim().toLowerCase();
+  if (!norm || norm === '-' || norm === 'n/a' || norm === '—') {
+    return {
+      rowClass: 'bg-white hover:bg-slate-50 border-l-4 border-l-slate-300',
+      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-300 font-semibold',
+      tagColor: 'slate',
+      firmName: firmName || '—'
+    };
+  }
+
+  // Firm 1: New Fashion Style (Palam)
+  const isPalam = norm.includes('palam');
+
+  if (isPalam) {
+    return {
+      rowClass: 'bg-sky-50/70 hover:bg-sky-100/80 border-l-4 border-l-sky-500',
+      badgeClass: 'bg-sky-100 text-sky-950 border border-sky-400 font-extrabold',
+      tagColor: 'sky',
+      firmName: firmName || 'New Fashion Style (Palam)'
+    };
+  }
+
+  // Firm 2: New Fashion Style (Main)
+  return {
+    rowClass: 'bg-amber-50/70 hover:bg-amber-100/80 border-l-4 border-l-amber-500',
+    badgeClass: 'bg-amber-100 text-amber-950 border border-amber-400 font-extrabold',
+    tagColor: 'amber',
+    firmName: firmName || 'New Fashion Style'
+  };
+};
+
 export const BillingPOSView = ({
   activeModule,
   posInitialMode,
@@ -283,6 +315,8 @@ export const BillingPOSView = ({
               itemName: p.itemName || p.name || 'Item',
               barcode: p.barcode || (p.pieces && p.pieces[0]?.barcode) || '',
               subItem: p.subItem || (typeof p.category === 'string' ? p.category : p.categoryId?.name) || '',
+              firmName: p.firmName || p.company || (p.pieces && p.pieces[0]?.firmId?.name) || 'Primary Store Firm',
+              company: p.company || p.firmName || (p.pieces && p.pieces[0]?.firmId?.name) || 'Primary Store Firm',
               designNo: p.designNo || p.sku || '',
               itemCode: p.itemCode || p.productCode || p.sku || '',
               ipn: p.ipn || p.pieces?.[0]?.ipn || '',
@@ -456,6 +490,8 @@ export const BillingPOSView = ({
               itemName: name,
               barcode: barcode,
               uniqueCode: pc.uniqueCode || pc.barcode || p.uniqueCode || '',
+              firmName: pc.firmId?.name || p.firmName || p.company || 'Primary Store Firm',
+              company: pc.firmId?.name || p.company || p.firmName || 'Primary Store Firm',
               size: size,
               color: color,
               primaryColor: color,
@@ -478,7 +514,11 @@ export const BillingPOSView = ({
         const variantKey = `${p._id || p.id || p.itemCode}_${barcode}_${size.toLowerCase()}_${color.toLowerCase()}_${price}`;
 
         if (!uniqueVariantsMap.has(variantKey)) {
-          uniqueVariantsMap.set(variantKey, p);
+          uniqueVariantsMap.set(variantKey, {
+            ...p,
+            firmName: p.firmName || p.company || 'Primary Store Firm',
+            company: p.company || p.firmName || 'Primary Store Firm'
+          });
         }
       }
     });
@@ -1934,6 +1974,8 @@ export const BillingPOSView = ({
           barcode: barcodeVal,
           barcodeNo: barcodeVal,
           subItem: subItemVal,
+          firmName: prod.firmName || prod.company || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || 'Primary Store Firm',
+          company: prod.company || prod.firmName || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || 'Primary Store Firm',
           designNo: designNoVal,
           itemCode: itemCodeVal,
           ipn: ipnVal,
@@ -3973,6 +4015,7 @@ export const BillingPOSView = ({
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-8 text-[9px]">S.NO.</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Barcode</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-32">Item Name</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-center w-48 min-w-[190px]">Firm</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Sub Item</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Design No.</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Item Code</th>
@@ -4014,6 +4057,8 @@ export const BillingPOSView = ({
 
                       const barcodeDisplay = item.barcode || item.barcodeNo || item.productId?.barcode || item.pieces?.[0]?.barcode || '';
                       const nameDisplay = item.itemName || item.name || item.productId?.itemName || item.productId?.name || '';
+                      const firmDisplay = item.firmName || item.company || item.productId?.firmName || item.productId?.company || item.piece?.firmId?.name || (item.pieces && item.pieces[0]?.firmId?.name) || 'Primary Store Firm';
+                      const firmStyle = getFirmStyle(firmDisplay);
                       const subItemDisplay = item.subItem || item.productId?.subItem || (typeof item.category === 'string' ? item.category : item.category?.name) || '';
                       const designNoDisplay = item.designNo || item.productId?.designNo || item.sku || '';
                       const itemCodeDisplay = item.itemCode || item.productId?.itemCode || '';
@@ -4024,10 +4069,15 @@ export const BillingPOSView = ({
                       const hsnDisplay = item.hsn || item.hsnCode || item.hsnId?.code || '';
 
                       return (
-                        <tr key={idx} className="border-b border-slate-200 hover:bg-yellow-50">
+                        <tr key={idx} className={`border-b border-slate-200 transition-colors ${firmStyle.rowClass}`}>
                           <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
                           <td className="border-r border-slate-300 p-1 font-mono">{barcodeDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{nameDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap">
+                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-tight inline-block shadow-2xs ${firmStyle.badgeClass}`}>
+                              {firmDisplay}
+                            </span>
+                          </td>
                           <td className="border-r border-slate-300 p-1">{subItemDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono">{designNoDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono">{itemCodeDisplay}</td>
@@ -4342,6 +4392,9 @@ export const BillingPOSView = ({
                           </div>
                         )}
                       </td>
+
+                      {/* Empty Firm Cell */}
+                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
 
                       {/* Empty Sub Item Cell */}
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>

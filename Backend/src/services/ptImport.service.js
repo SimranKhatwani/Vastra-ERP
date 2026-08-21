@@ -486,21 +486,53 @@ class PTImportService {
           }
         }
 
-        // Product Catalog Management
-        const productKey = itemCode.toUpperCase();
+        // Product Catalog Management - differentiate distinct subItem / color / barcode variants
+        const normalizedBarcode = (barcode || '').trim();
+        const normalizedColor = (primaryColor || '').trim();
+        const normalizedSubItem = (subItem || '').trim();
+        const normalizedDesignNo = (designNo || '').trim();
+
+        const productKey = normalizedBarcode 
+          ? `BARCODE_${normalizedBarcode.toUpperCase()}` 
+          : `${normalizedDesignNo}_${normalizedSubItem}_${normalizedColor}_${brand._id}_${category._id}`.toUpperCase();
+
         let product = productCache.get(productKey);
         if (!product) {
           try {
-            product = await Product.findOne({ tenantId, itemCode: new RegExp('^' + escapeRegExp(itemCode) + '$', 'i'), includeDeleted: true }).session(session);
+            let queryConditions = [];
+            if (normalizedBarcode) {
+              queryConditions.push({ barcode: normalizedBarcode });
+            }
+            queryConditions.push({
+              designNo: new RegExp('^' + escapeRegExp(normalizedDesignNo) + '$', 'i'),
+              subItem: new RegExp('^' + escapeRegExp(normalizedSubItem) + '$', 'i'),
+              primaryColor: new RegExp('^' + escapeRegExp(normalizedColor) + '$', 'i'),
+              brandId: brand._id,
+              categoryId: category._id
+            });
+
+            product = await Product.findOne({
+              tenantId,
+              $or: queryConditions,
+              includeDeleted: true
+            }).session(session);
+
             if (!product) {
               const created = await Product.create([{
                 tenantId,
-                designNo,
-                itemCode,
+                designNo: normalizedDesignNo,
+                itemCode: itemCode || (normalizedBarcode ? `ITEM-${normalizedBarcode}` : `ITEM-${normalizedDesignNo}`),
                 itemName,
-                subItem,
+                subItem: normalizedSubItem,
+                barcode: normalizedBarcode,
+                primaryColor: normalizedColor,
+                color: normalizedColor,
+                secondaryColor: (secondaryColor || '').trim(),
+                size: (size || '').trim(),
                 brandId: brand._id,
                 categoryId: category._id,
+                firmId: firm ? firm._id : undefined,
+                firmName: firm ? firm.name : (firmName || ''),
                 hsnId: hsn ? hsn._id : undefined,
                 gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
@@ -517,6 +549,30 @@ class PTImportService {
               if (product.isDeleted) {
                 product.isDeleted = false;
                 product.status = 'ACTIVE';
+                updated = true;
+              }
+              if (normalizedBarcode && product.barcode !== normalizedBarcode) {
+                product.barcode = normalizedBarcode;
+                product.markModified('barcode');
+                updated = true;
+              }
+              if (normalizedColor && product.primaryColor !== normalizedColor) {
+                product.primaryColor = normalizedColor;
+                product.color = normalizedColor;
+                product.markModified('primaryColor');
+                product.markModified('color');
+                updated = true;
+              }
+              if (normalizedSubItem && product.subItem !== normalizedSubItem) {
+                product.subItem = normalizedSubItem;
+                product.markModified('subItem');
+                updated = true;
+              }
+              if (firm && (!product.firmId || product.firmId.toString() !== firm._id.toString())) {
+                product.firmId = firm._id;
+                product.firmName = firm.name;
+                product.markModified('firmId');
+                product.markModified('firmName');
                 updated = true;
               }
               if (hsn && (!product.hsnId || product.hsnId.toString() !== hsn._id.toString())) {
