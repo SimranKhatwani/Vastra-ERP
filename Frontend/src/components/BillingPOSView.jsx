@@ -403,13 +403,75 @@ export const BillingPOSView = ({
   const itemSearchContainerRef = React.useRef(null);
   const itemCodeContainerRef = React.useRef(null);
 
+  const [designNoDropdownCoords, setDesignNoDropdownCoords] = useState({ top: 0, left: 0 });
+  const [itemSearchDropdownCoords, setItemSearchDropdownCoords] = useState({ top: 0, left: 0 });
+
+  // Update Design No dropdown fixed coordinates on open/scroll/resize
+  useEffect(() => {
+    if (isDesignNoDropdownOpen && designNoContainerRef.current) {
+      const updatePos = () => {
+        if (!designNoContainerRef.current) return;
+        const rect = designNoContainerRef.current.getBoundingClientRect();
+        const screenW = window.innerWidth || document.documentElement.clientWidth;
+        const width = 780;
+        const left = Math.max(10, Math.min(screenW - width - 10, rect.left - 240));
+        setDesignNoDropdownCoords({
+          top: rect.bottom + 4,
+          left: left
+        });
+      };
+      updatePos();
+      window.addEventListener('resize', updatePos);
+      window.addEventListener('scroll', updatePos, true);
+      return () => {
+        window.removeEventListener('resize', updatePos);
+        window.removeEventListener('scroll', updatePos, true);
+      };
+    }
+  }, [isDesignNoDropdownOpen, designNoSearchInput]);
+
+  // Update Item Search dropdown fixed coordinates on open/scroll/resize
+  useEffect(() => {
+    if (isItemDropdownOpen && itemSearchContainerRef.current) {
+      const updatePos = () => {
+        if (!itemSearchContainerRef.current) return;
+        const rect = itemSearchContainerRef.current.getBoundingClientRect();
+        const screenW = window.innerWidth || document.documentElement.clientWidth;
+        const width = 780;
+        const left = Math.max(10, Math.min(screenW - width - 10, rect.left));
+        setItemSearchDropdownCoords({
+          top: rect.bottom + 4,
+          left: left
+        });
+      };
+      updatePos();
+      window.addEventListener('resize', updatePos);
+      window.addEventListener('scroll', updatePos, true);
+      return () => {
+        window.removeEventListener('resize', updatePos);
+        window.removeEventListener('scroll', updatePos, true);
+      };
+    }
+  }, [isItemDropdownOpen, itemSearchInputText]);
+
   // Global Outside Click listener to close any open search dropdown
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (designNoContainerRef.current && !designNoContainerRef.current.contains(e.target)) {
+      const designDrop = document.getElementById('design-no-fixed-dropdown');
+      const itemDrop = document.getElementById('item-search-fixed-dropdown');
+
+      if (
+        designNoContainerRef.current && 
+        !designNoContainerRef.current.contains(e.target) &&
+        (!designDrop || !designDrop.contains(e.target))
+      ) {
         setIsDesignNoDropdownOpen(false);
       }
-      if (itemSearchContainerRef.current && !itemSearchContainerRef.current.contains(e.target)) {
+      if (
+        itemSearchContainerRef.current && 
+        !itemSearchContainerRef.current.contains(e.target) &&
+        (!itemDrop || !itemDrop.contains(e.target))
+      ) {
         setIsItemDropdownOpen(false);
       }
       if (itemCodeContainerRef.current && !itemCodeContainerRef.current.contains(e.target)) {
@@ -4013,24 +4075,24 @@ export const BillingPOSView = ({
                   <thead className="bg-[#f0f0f0] border-b border-slate-400 sticky top-0 z-10 shadow-sm">
                     <tr>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-8 text-[9px]">S.NO.</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Barcode</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Barcode</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-32">Item Name</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-48 min-w-[190px]">Firm</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Sub Item</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-center w-44">Firm</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Sub Item</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Design No.</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Item Code</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Ipn</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-36 min-w-[140px]">Item Code</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Ipn</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-20">Quantity</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Colour (P)</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Colour (P)</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Colour (S)</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Size</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">HSN</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Size</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">HSN</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-16">MRP</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-16">Discount</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Rate</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-right w-18">Rate</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Amount</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Salesman 1</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Salesman 2</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 1</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 2</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Unique Code</th>
                       <th className="font-normal p-1 text-center w-10">Action</th>
                     </tr>
@@ -4071,17 +4133,17 @@ export const BillingPOSView = ({
                       return (
                         <tr key={idx} className={`border-b border-slate-200 transition-colors ${firmStyle.rowClass}`}>
                           <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono">{barcodeDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800">{nameDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap">
-                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-tight inline-block shadow-2xs ${firmStyle.badgeClass}`}>
+                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>{nameDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap overflow-hidden">
+                            <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase tracking-tight inline-block shadow-2xs ${firmStyle.badgeClass}`} title={firmDisplay}>
                               {firmDisplay}
                             </span>
                           </td>
-                          <td className="border-r border-slate-300 p-1">{subItemDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono">{designNoDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono">{itemCodeDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono">{ipnDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 overflow-hidden text-ellipsis whitespace-nowrap" title={subItemDisplay}>{subItemDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={designNoDisplay}>{designNoDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-800" title={itemCodeDisplay}>{itemCodeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={ipnDisplay}>{ipnDisplay}</td>
                           <td className="border-r border-slate-300 p-1 text-center">
                             <div className="flex items-center justify-center gap-1">
                               <button onClick={() => {
@@ -4284,8 +4346,19 @@ export const BillingPOSView = ({
 
                         {/* Interactive Detailed Item Table Dropdown List */}
                         {isItemDropdownOpen && (
-                          <div className="absolute top-full left-0 w-[780px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-blue-600">
-                            <div className="p-2 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
+                          <div 
+                            id="item-search-fixed-dropdown"
+                            style={{
+                              position: 'fixed',
+                              top: `${itemSearchDropdownCoords.top}px`,
+                              left: `${itemSearchDropdownCoords.left}px`,
+                              width: '780px',
+                              maxHeight: '340px',
+                              zIndex: 99999
+                            }}
+                            className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-blue-600 ring-2 ring-blue-500/30 animate-in fade-in zoom-in-95 duration-100"
+                          >
+                            <div className="p-2.5 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
                               <div className="flex items-center gap-2">
                                 <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Inventory Search</span>
                                 <span>Found {filteredItemSearchProducts.length} Items • Use ↑ ↓ & Enter</span>
@@ -4308,7 +4381,7 @@ export const BillingPOSView = ({
                                     e.stopPropagation();
                                     setIsItemDropdownOpen(false);
                                   }}
-                                  className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
+                                  className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
                                 >
                                   ✕
                                 </button>
@@ -4318,76 +4391,78 @@ export const BillingPOSView = ({
                             {filteredItemSearchProducts.length === 0 ? (
                               <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching items found</div>
                             ) : (
-                              <table className="w-full text-left border-collapse text-xs">
-                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
-                                  <tr>
-                                    <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
-                                    <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Size</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Color</th>
-                                    <th className="p-2 border-r border-slate-200 text-center">Stock</th>
-                                    <th className="p-2 border-r border-slate-200 text-right">Price</th>
-                                    <th className="p-2 text-center">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 text-slate-700">
-                                  {filteredItemSearchProducts.map((p, pIdx) => {
-                                    const barcode = p.barcode || p.uniqueCode || p.itemCode || '-';
-                                    const code = p.itemCode || p.productCode || p.sku || '-';
-                                    const name = p.itemName || p.name || 'Unnamed Item';
-                                    const subItem = p.subCategory || p.subItem || p.category || '-';
-                                    const size = p.size || '-';
-                                    const color = p.primaryColor || p.color || '-';
-                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                    const stock = p.availableStock ?? p.stock ?? 0;
-                                    const isHighlighted = pIdx === itemSearchHighlightedIndex;
+                              <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
+                                <table className="w-full text-left border-collapse text-xs">
+                                  <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider">
+                                    <tr>
+                                      <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
+                                      <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
+                                      <th className="p-2 border-r border-slate-200 text-center">Size</th>
+                                      <th className="p-2 border-r border-slate-200 text-center">Color</th>
+                                      <th className="p-2 border-r border-slate-200 text-center">Stock</th>
+                                      <th className="p-2 border-r border-slate-200 text-right">Price</th>
+                                      <th className="p-2 text-center">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-200 text-slate-700">
+                                    {filteredItemSearchProducts.map((p, pIdx) => {
+                                      const barcode = p.barcode || p.uniqueCode || p.itemCode || '-';
+                                      const code = p.itemCode || p.productCode || p.sku || '-';
+                                      const name = p.itemName || p.name || 'Unnamed Item';
+                                      const subItem = p.subCategory || p.subItem || p.category || '-';
+                                      const size = p.size || '-';
+                                      const color = p.primaryColor || p.color || '-';
+                                      const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                      const stock = p.availableStock ?? p.stock ?? 0;
+                                      const isHighlighted = pIdx === itemSearchHighlightedIndex;
 
-                                    return (
-                                      <tr
-                                        id={`itemsearch-opt-${pIdx}`}
-                                        key={p._id || p.id || pIdx}
-                                        className={`cursor-pointer transition-colors ${isHighlighted
-                                          ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
-                                          : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
-                                          }`}
-                                        onClick={() => {
-                                          handleAddProductToCart(p);
-                                          setItemSearchInputText("");
-                                          setIsItemDropdownOpen(false);
-                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                        }}
-                                      >
-                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
-                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
-                                        </td>
-                                        <td className="p-2 border-r border-slate-200">
-                                          <div className="font-bold text-slate-900">{name}</div>
-                                          <div className="text-[10px] text-slate-500 font-medium">Code: <span className="font-mono text-blue-600 font-bold">{code}</span> {subItem !== '-' && `• ${subItem}`}</div>
-                                        </td>
-                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
-                                        <td className="p-2 text-center border-r border-slate-200">{color}</td>
-                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
-                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
-                                            {stock} pcs
-                                          </span>
-                                        </td>
-                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
-                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="p-2 text-center">
-                                          <button
-                                            type="button"
-                                            className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                              }`}
-                                          >
-                                            + Add
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
+                                      return (
+                                        <tr
+                                          id={`itemsearch-opt-${pIdx}`}
+                                          key={p._id || p.id || pIdx}
+                                          className={`cursor-pointer transition-colors ${isHighlighted
+                                            ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
+                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
+                                            }`}
+                                          onClick={() => {
+                                            handleAddProductToCart(p);
+                                            setItemSearchInputText("");
+                                            setIsItemDropdownOpen(false);
+                                            if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                          }}
+                                        >
+                                          <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
+                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
+                                          </td>
+                                          <td className="p-2 border-r border-slate-200">
+                                            <div className="font-bold text-slate-900">{name}</div>
+                                            <div className="text-[10px] text-slate-500 font-medium">Code: <span className="font-mono text-blue-600 font-bold">{code}</span> {subItem !== '-' && `• ${subItem}`}</div>
+                                          </td>
+                                          <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
+                                          <td className="p-2 text-center border-r border-slate-200">{color}</td>
+                                          <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                              {stock} pcs
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
+                                            ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td className="p-2 text-center">
+                                            <button
+                                              type="button"
+                                              className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                                }`}
+                                            >
+                                              + Add
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                           </div>
                         )}
@@ -4426,11 +4501,22 @@ export const BillingPOSView = ({
                         />
 
                         {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
-                          <div className="absolute top-full left-[-140px] w-[660px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-indigo-600">
-                            <div className="p-2 bg-gradient-to-r from-slate-900 to-indigo-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
+                          <div 
+                            id="design-no-fixed-dropdown"
+                            style={{
+                              position: 'fixed',
+                              top: `${designNoDropdownCoords.top}px`,
+                              left: `${designNoDropdownCoords.left}px`,
+                              width: '780px',
+                              maxHeight: '340px',
+                              zIndex: 99999
+                            }}
+                            className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-indigo-600 ring-2 ring-indigo-500/30 animate-in fade-in zoom-in-95 duration-100"
+                          >
+                            <div className="p-2.5 bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
                               <div className="flex items-center gap-2">
-                                <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Design No Search</span>
-                                <span>Found {filteredDesignNoProducts.length} Items • Use ↑ ↓ & Enter</span>
+                                <span className="bg-indigo-500/40 text-indigo-100 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider border border-indigo-400/30">Design No Search</span>
+                                <span>Found {filteredDesignNoProducts.length} Items • Use ↑ ↓ to navigate & Enter to add</span>
                               </div>
                               <button
                                 type="button"
@@ -4438,7 +4524,7 @@ export const BillingPOSView = ({
                                   e.stopPropagation();
                                   setIsDesignNoDropdownOpen(false);
                                 }}
-                                className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
+                                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
                               >
                                 ✕
                               </button>
@@ -4447,78 +4533,88 @@ export const BillingPOSView = ({
                             {filteredDesignNoProducts.length === 0 ? (
                               <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching design numbers found</div>
                             ) : (
-                              <table className="w-full text-left border-collapse text-xs">
-                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
-                                  <tr>
-                                    <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Design No</th>
-                                    <th className="p-2 border-r border-slate-200 w-28 whitespace-nowrap">Barcode</th>
-                                    <th className="p-2 border-r border-slate-200 min-w-[120px]">Item Name</th>
-                                    <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Size</th>
-                                    <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Color</th>
-                                    <th className="p-2 border-r border-slate-200 text-center w-16 whitespace-nowrap">Stock</th>
-                                    <th className="p-2 border-r border-slate-200 text-right w-20 whitespace-nowrap">Price</th>
-                                    <th className="p-2 text-center w-20 whitespace-nowrap">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 text-slate-700">
-                                  {filteredDesignNoProducts.map((p, pIdx) => {
-                                    const designNo = p.designNo || p.sku || '-';
-                                    const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
-                                    const name = p.itemName || p.name || 'Unnamed Item';
-                                    const size = p.size || '-';
-                                    const color = p.primaryColor || p.color || '-';
-                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                    const stock = p.availableStock ?? p.stock ?? 0;
-                                    const isHighlighted = pIdx === designNoHighlightedIndex;
+                              <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
+                                <table className="w-full text-left border-collapse text-xs">
+                                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider shadow-2xs">
+                                    <tr>
+                                      <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Design No</th>
+                                      <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Barcode</th>
+                                      <th className="p-2 border-r border-slate-200 min-w-[130px]">Item Name</th>
+                                      <th className="p-2 border-r border-slate-200 w-36 whitespace-nowrap text-center">Firm</th>
+                                      <th className="p-2 border-r border-slate-200 text-center w-12 whitespace-nowrap">Size</th>
+                                      <th className="p-2 border-r border-slate-200 text-center w-16 whitespace-nowrap">Color</th>
+                                      <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Stock</th>
+                                      <th className="p-2 border-r border-slate-200 text-right w-20 whitespace-nowrap">Price</th>
+                                      <th className="p-2 text-center w-16 whitespace-nowrap">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-200 text-slate-700">
+                                    {filteredDesignNoProducts.map((p, pIdx) => {
+                                      const designNo = p.designNo || p.sku || '-';
+                                      const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
+                                      const name = p.itemName || p.name || 'Unnamed Item';
+                                      const firm = p.firmName || p.company || 'New Fashion Style';
+                                      const firmStyle = getFirmStyle(firm);
+                                      const size = p.size || '-';
+                                      const color = p.primaryColor || p.color || '-';
+                                      const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                      const stock = p.availableStock ?? p.stock ?? 0;
+                                      const isHighlighted = pIdx === designNoHighlightedIndex;
 
-                                    return (
-                                      <tr
-                                        id={`designsearch-opt-${pIdx}`}
-                                        key={p._id || p.id || pIdx}
-                                        className={`cursor-pointer transition-colors ${isHighlighted
-                                          ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
-                                          : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-50/60 hover:bg-indigo-50'
-                                          }`}
-                                        onClick={() => {
-                                          handleAddProductToCart(p);
-                                          setDesignNoSearchInput("");
-                                          setIsDesignNoDropdownOpen(false);
-                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                        }}
-                                      >
-                                        <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
-                                          <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-800">{designNo}</span>
-                                        </td>
-                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-800">{barcode}</span>
-                                        </td>
-                                        <td className="p-2 border-r border-slate-200">
-                                          <div className="font-bold text-slate-900">{name}</div>
-                                        </td>
-                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700 whitespace-nowrap">{size}</td>
-                                        <td className="p-2 text-center border-r border-slate-200 whitespace-nowrap">{color}</td>
-                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold whitespace-nowrap">
-                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
-                                            {stock} pcs
-                                          </span>
-                                        </td>
-                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200 whitespace-nowrap">
-                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="p-2 text-center whitespace-nowrap">
-                                          <button
-                                            type="button"
-                                            className={`px-3 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                              }`}
-                                          >
-                                            + Add
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
+                                      return (
+                                        <tr
+                                          id={`designsearch-opt-${pIdx}`}
+                                          key={p._id || p.id || pIdx}
+                                          className={`cursor-pointer transition-colors ${isHighlighted
+                                            ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
+                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50/70' : 'bg-slate-50/70 hover:bg-indigo-50/70'
+                                            }`}
+                                          onClick={() => {
+                                            handleAddProductToCart(p);
+                                            setDesignNoSearchInput("");
+                                            setIsDesignNoDropdownOpen(false);
+                                            if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                          }}
+                                        >
+                                          <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
+                                            <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-800">{designNo}</span>
+                                          </td>
+                                          <td className="p-2 font-mono text-[11px] font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-800">{barcode}</span>
+                                          </td>
+                                          <td className="p-2 border-r border-slate-200">
+                                            <div className="font-bold text-slate-900">{name}</div>
+                                          </td>
+                                          <td className="p-2 border-r border-slate-200 text-center whitespace-nowrap">
+                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-extrabold uppercase tracking-tight ${firmStyle.badgeClass}`}>
+                                              {firm}
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700 whitespace-nowrap">{size}</td>
+                                          <td className="p-2 text-center border-r border-slate-200 whitespace-nowrap font-medium">{color}</td>
+                                          <td className="p-2 text-center border-r border-slate-200 font-mono font-bold whitespace-nowrap">
+                                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                              {stock} pcs
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-right font-mono font-black text-slate-900 text-xs border-r border-slate-200 whitespace-nowrap">
+                                            ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td className="p-2 text-center whitespace-nowrap">
+                                            <button
+                                              type="button"
+                                              className={`px-2.5 py-1 rounded text-[9.5px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                                }`}
+                                            >
+                                              + Add
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                           </div>
                         )}
