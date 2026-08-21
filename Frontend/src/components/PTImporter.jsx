@@ -18,11 +18,9 @@ const FIELDS_TO_MAP = [
   { key: "itemCode", label: "Item Code", required: false, synonyms: ["item code", "code", "sku", "product code"] },
   { key: "quantity", label: "Quantity", required: true, synonyms: ["qty", "qty.", "quantity", "pcs", "total qty", "total qty."] },
   { key: "batch", label: "Batch", required: false, synonyms: ["batch"] },
-  { key: "topBottomSet", label: "Top / Bottom / Set", required: false, synonyms: ["top/bottom/set", "group 1", "group 1 (top/bottom/set)", "top bottom set", "type"] },
-  { key: "gender", label: "Gender", required: false, synonyms: ["gender", "sex"] },
-  { key: "colorPrimary", label: "Primary Color", required: false, synonyms: ["color (p)", "color(p)", "colour", "primary color", "color", "colour (p)"] },
-  { key: "colorSecondary", label: "Secondary Color", required: false, synonyms: ["color (s)", "color(s)", "secondary color", "colour (s)", "colour(s)"] },
-  { key: "size", label: "Size", required: false, synonyms: ["size"] },
+  { key: "colorPrimary", label: "Primary Color", required: false, synonyms: ["color (p)", "color(p)", "colour", "primary color", "color", "colour (p)", "colour(p)", "shade", "shade no", "shade no.", "col", "clr", "colour name", "color name", "primary colour", "color_p", "colour_p"] },
+  { key: "colorSecondary", label: "Secondary Color", required: false, synonyms: ["color (s)", "color(s)", "secondary color", "colour (s)", "colour(s)", "secondary colour", "color_s", "colour_s"] },
+  { key: "size", label: "Size", required: false, synonyms: ["size", "sizes", "sz"] },
   { key: "purchaseRate", label: "Purchase Rate", required: true, synonyms: ["p. rate", "p.rate", "purchase rate", "rate", "purchase price"] },
   { key: "gstOnPurchase", label: "GST on Purchase", required: false, synonyms: ["gst on purchase", "gst", "tax", "tax rate", "gst %"] },
   { key: "typeOfGst", label: "Type of GST (I/E)", required: false, synonyms: ["type of gst", "type of gst (i/e)", "gst type", "gst i/e"] },
@@ -115,12 +113,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         });
 
         setColumnMapping(initialMapping);
+        const parsed = parseRowsFromRaw(rows, initialMapping, {});
+        validateRows(parsed);
         setUploadProgress(100);
         setTimeout(() => {
           setIsUploading(false);
-          setStep("mapping");
-          if (onAddNotification) onAddNotification("Success", "Excel parsed. Review column mappings.", "success");
-        }, 500);
+          setStep("preview");
+          if (onAddNotification) onAddNotification("Success", `Excel parsed successfully (${rows.length} rows).`, "success");
+        }, 400);
       } catch (err) {
         setIsUploading(false);
         if (onAddNotification) onAddNotification("Parsing Failed", "Error parsing Excel spreadsheet content.", "danger");
@@ -130,20 +130,15 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     reader.readAsArrayBuffer(file);
   };
 
-  const handleConfirmMapping = () => {
-    const unmappedRequired = FIELDS_TO_MAP.filter(f => f.required && columnMapping[f.key] === undefined && !globalValues[f.key]);
-    if (unmappedRequired.length > 0) {
-      if (onAddNotification) onAddNotification("Mapping Required", `Please map or provide a value for required fields: ${unmappedRequired.map(f => f.label).join(", ")}`, "warning");
-      return;
-    }
-    const parsed = rawRows.map((rawRow, idx) => {
+  const parseRowsFromRaw = (rowsToParse, mapping = {}, globalVals = {}) => {
+    return rowsToParse.map((rawRow, idx) => {
       const getVal = (key) => {
-        const colIdx = columnMapping[key];
+        const colIdx = mapping[key];
         if (colIdx !== undefined) {
           const val = rawRow[colIdx];
           if (val !== undefined && val !== null && String(val).trim() !== "") return String(val).trim();
         }
-        if (globalValues[key]) return globalValues[key];
+        if (globalVals[key]) return globalVals[key];
         return "";
       };
       const getNum = (key) => {
@@ -156,7 +151,6 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const formatExcelDate = (val) => {
         if (!val) return "";
         const str = String(val).trim();
-        // Try Excel serial number (pure number > 10000)
         const num = parseFloat(str);
         if (!isNaN(num) && num > 10000 && str.match(/^\d+(\.\d+)?$/)) {
           const utc_days = Math.floor(num - 25569);
@@ -164,19 +158,16 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           const date_info = new Date(utc_value * 1000);
           return date_info.toISOString().split("T")[0];
         }
-        // Try DD-MM-YYYY or DD/MM/YYYY
         const ddmmyyyy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
         if (ddmmyyyy) {
           const [, dd, mm, yyyy] = ddmmyyyy;
           return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
         }
-        // Try YYYY-MM-DD (already ISO)
         const iso = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
         if (iso) {
           const [, yyyy, mm, dd] = iso;
           return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
         }
-        // Fallback: try native Date parsing
         const d = new Date(str);
         if (!isNaN(d.getTime()) && d.getFullYear() > 1970) {
           return d.toISOString().split("T")[0];
@@ -191,7 +182,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const designNo = getVal("designNo");
       const serialNumber = getVal("serialNumber");
       const barcode = getVal("barcode");
-      const itemCode = getVal("itemCode") || `ITEM-${designNo}`;
+      const itemCode = getVal("itemCode") || (designNo ? `ITEM-${designNo}` : "");
       const itemName = getVal("itemName");
       const subCategory = getVal("subCategory");
       const quantity = getNum("quantity") || 1;
@@ -229,9 +220,9 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         errors: [], warnings: [], status: "valid", resolution: "none"
       };
     });
-    validateRows(parsed);
-    setStep("preview");
   };
+
+
 
   const validateRows = (rowsToValidate) => {
     const validated = rowsToValidate.map((row) => {
@@ -530,39 +521,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         </div>
       )}
 
-      {step === "mapping" && (
-        <div className="p-6">
-          <div className="flex justify-between mb-4">
-            <h3 className="text-lg font-bold">Map Columns</h3>
-            <button onClick={handleConfirmMapping} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">Confirm Mapping</button>
-          </div>
-          <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
-            {FIELDS_TO_MAP.map((field) => (
-              <div key={field.key} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-xs font-semibold w-1/3 truncate" title={field.label}>{field.label} {field.required && <span className="text-red-500">*</span>}</div>
-                <div className="flex items-center gap-2 w-2/3">
-                  <select
-                    value={columnMapping[field.key] !== undefined ? columnMapping[field.key] : ""}
-                    onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value !== "" ? parseInt(e.target.value) : undefined })}
-                    className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
-                  >
-                    <option value="">- Column -</option>
-                    {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
-                  </select>
-                  <span className="text-[10px] text-slate-400 font-bold">OR</span>
-                  <input
-                    type={field.key.toLowerCase().includes("date") ? "date" : "text"}
-                    placeholder="Fixed Value"
-                    value={globalValues[field.key] || ""}
-                    onChange={(e) => setGlobalValues({ ...globalValues, [field.key]: e.target.value })}
-                    className="text-xs p-1.5 border rounded-lg bg-white outline-none flex-1 min-w-0"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {step === "preview" && (
         <div className="p-6">
@@ -586,6 +545,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                   <th className="p-3">Bill No</th>
                   <th className="p-3">Item Name</th>
                   <th className="p-3">Design No</th>
+                  <th className="p-3">Size</th>
+                  <th className="p-3">Color</th>
                   <th className="p-3">Qty</th>
                   <th className="p-3">Pur. Rate</th>
                   <th className="p-3">GST %</th>
@@ -600,6 +561,8 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                     <td className="p-1"><input value={r.billNo} onChange={(e) => handleRowChange(i, 'billNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
                     <td className="p-1"><input value={r.itemName} onChange={(e) => handleRowChange(i, 'itemName', e.target.value)} className="w-24 p-1 border rounded" /></td>
                     <td className="p-1"><input value={r.designNo} onChange={(e) => handleRowChange(i, 'designNo', e.target.value)} className="w-20 p-1 border rounded" /></td>
+                    <td className="p-1"><input value={r.size} onChange={(e) => handleRowChange(i, 'size', e.target.value)} className="w-16 p-1 border rounded" placeholder="Size" /></td>
+                    <td className="p-1"><input value={r.colorPrimary} onChange={(e) => handleRowChange(i, 'colorPrimary', e.target.value)} className="w-20 p-1 border rounded" placeholder="Color" /></td>
                     <td className="p-1"><input type="number" value={r.quantity} onChange={(e) => handleRowChange(i, 'quantity', e.target.value)} className="w-16 p-1 border rounded" /></td>
                     <td className="p-1"><input type="number" value={r.purchaseRate} onChange={(e) => handleRowChange(i, 'purchaseRate', e.target.value)} className="w-20 p-1 border rounded" /></td>
                     <td className="p-1"><input type="number" value={r.gstOnPurchase} onChange={(e) => handleRowChange(i, 'gstOnPurchase', e.target.value)} className="w-16 p-1 border rounded" /></td>

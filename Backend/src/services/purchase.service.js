@@ -368,6 +368,35 @@ class PurchaseService {
     return bill;
   }
 
+  static async deletePurchaseBill(id, userId, tenantId) {
+    const bill = await PurchaseBill.findOne({ _id: id, tenantId, includeDeleted: true });
+    if (!bill) throw new ApiError(404, 'Purchase Bill not found.');
+
+    // 1. Delete associated inventory lifecycles
+    const InventoryLifecycle = require('../models/InventoryLifecycle');
+    await InventoryLifecycle.deleteMany({
+      $or: [{ referenceId: id }, { referenceId: bill._id }],
+      tenantId
+    });
+
+    // 2. Delete associated inventory pieces
+    await InventoryPiece.deleteMany({
+      $or: [{ purchaseBillId: id }, { purchaseBillId: bill._id }],
+      tenantId
+    });
+
+    // 3. Delete purchase items
+    await PurchaseItem.deleteMany({
+      $or: [{ purchaseBillId: id }, { purchaseBillId: bill._id }],
+      tenantId
+    });
+
+    // 4. Delete Purchase Bill record
+    await PurchaseBill.deleteOne({ _id: id, tenantId });
+
+    return { success: true, message: 'Purchase bill deleted successfully.' };
+  }
+
   static async exportPurchaseBills(query = {}, tenantId, format = 'csv') {
     const { bills } = await this.getPurchaseBills({ ...query, limit: 10000 }, tenantId);
     const exportData = bills.map(b => ({

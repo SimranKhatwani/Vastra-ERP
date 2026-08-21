@@ -18,7 +18,8 @@ const saleItemSchema = new mongoose.Schema({
   },
   barcode: {
     type: String,
-    required: true
+    required: false,
+    default: ''
   },
   uniqueCode: {
     type: String,

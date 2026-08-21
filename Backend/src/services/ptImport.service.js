@@ -288,9 +288,9 @@ class PTImportService {
         const itemName = String(getVal(row, 'Item name', 'Item Name', 'itemName') || `${brandName} ${designNo}`).trim();
         const subItem = String(getVal(row, 'SUB ITEM NAME', 'Sub Item', 'subItem', 'Sub Item Name') || '').trim();
 
-        const size = String(getVal(row, 'Size', 'size') || 'FREE').trim();
-        const primaryColor = String(getVal(row, 'COLOR', 'Color', 'color', 'Primary Color') || '-').trim();
-        const secondaryColor = String(getVal(row, 'Secondary Color', 'secondaryColor') || '').trim();
+        const size = String(getVal(row, 'Size', 'size', 'SIZE') || 'FREE').trim();
+        const primaryColor = String(getVal(row, 'colorPrimary', 'color', 'COLOR', 'Color', 'COLOR (P)', 'COLOR(P)', 'Colour', 'COLOUR', 'COLOUR (P)', 'COLOUR(P)', 'Primary Color', 'Primary Colour', 'PRIMARY COLOR', 'Shade', 'SHADE', 'Shade No', 'SHADE NO', 'Col', 'COL', 'Clr', 'CLR') || '').trim();
+        const secondaryColor = String(getVal(row, 'secondaryColor', 'Secondary Color', 'COLOR (S)', 'COLOR(S)', 'Colour (S)', 'COLOUR (S)', 'COLOUR(S)', 'Secondary Colour', 'SECONDARY COLOR') || '').trim();
 
         let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice', 'Sales Price') || 0);
         const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate', 'Rate') || 0);
@@ -559,12 +559,15 @@ class PTImportService {
         let purchaseBill = billCache.get(billNo.toUpperCase());
         if (!purchaseBill) {
           try {
-            const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp('^' + escapeRegExp(billNo) + '$', 'i') }).session(session);
+            const existingBill = await PurchaseBill.findOne({ tenantId, billNo: new RegExp('^' + escapeRegExp(billNo) + '$', 'i'), includeDeleted: true }).session(session);
             if (existingBill) {
+              existingBill.isDeleted = false;
+              existingBill.status = 'APPROVED';
               existingBill.vendorId = vendor._id;
               existingBill.firmId = firm._id;
               existingBill.warehouseId = warehouse._id;
               existingBill.importBatchId = historyId;
+              existingBill.billDate = billDate;
               await existingBill.save({ session });
               purchaseBill = existingBill;
             } else {

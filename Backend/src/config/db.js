@@ -22,6 +22,22 @@ const connectDB = async () => {
     });
 
     logger.info(`MongoDB Connected successfully: ${conn.connection.host}/${conn.connection.name}`);
+
+    // Drop legacy unique index on inventorypieces barcode if present so blank barcodes don't collide
+    try {
+      const db = conn.connection.db;
+      const collections = await db.listCollections({ name: 'inventorypieces' }).toArray();
+      if (collections.length > 0) {
+        const indexes = await db.collection('inventorypieces').indexes();
+        const barcodeIdx = indexes.find(i => i.name === 'tenantId_1_barcode_1' && i.unique);
+        if (barcodeIdx) {
+          await db.collection('inventorypieces').dropIndex('tenantId_1_barcode_1');
+          logger.info('Dropped legacy unique tenantId_1_barcode_1 index from inventorypieces');
+        }
+      }
+    } catch (idxErr) {
+      logger.warn(`Index sync warning: ${idxErr.message}`);
+    }
   } catch (primaryError) {
     logger.warn(`Primary MongoDB connection failed (${primaryError.message}). Attempting local MongoDB fallback...`);
 
