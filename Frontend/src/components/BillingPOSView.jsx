@@ -364,6 +364,30 @@ export const BillingPOSView = ({
   const [isAlterationModeActive, setIsAlterationModeActive] = useState(false);
   const [focusedAlterationIndex, setFocusedAlterationIndex] = useState(0);
 
+  // Refs for dropdown container outside-click detection
+  const designNoContainerRef = React.useRef(null);
+  const itemSearchContainerRef = React.useRef(null);
+  const itemCodeContainerRef = React.useRef(null);
+
+  // Global Outside Click listener to close any open search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (designNoContainerRef.current && !designNoContainerRef.current.contains(e.target)) {
+        setIsDesignNoDropdownOpen(false);
+      }
+      if (itemSearchContainerRef.current && !itemSearchContainerRef.current.contains(e.target)) {
+        setIsItemDropdownOpen(false);
+      }
+      if (itemCodeContainerRef.current && !itemCodeContainerRef.current.contains(e.target)) {
+        setIsItemCodeDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+
+
   const handleOpenAlterationForCartItem = (item) => {
     if (!item) return;
     setSelectedAlterationCartItem(item);
@@ -404,15 +428,82 @@ export const BillingPOSView = ({
     }).slice(0, 60);
   }, [products, itemSearchInputText]);
 
+  const expandProductVariants = (list) => {
+    const uniqueVariantsMap = new Map();
+
+    (list || []).forEach(p => {
+      const availablePieces = (p.pieces || []).filter(pc => pc.status === 'AVAILABLE' || !pc.status);
+
+      if (availablePieces.length > 0) {
+        availablePieces.forEach(pc => {
+          const size = (pc.size || p.size || 'FREE').trim();
+          const color = (pc.primaryColor || pc.color || p.primaryColor || p.color || '-').trim();
+          const mrp = Number(pc.mrp ?? p.mrp ?? p.defaultMRP ?? p.sellingPrice ?? 0);
+          const price = Number(pc.sellingPrice ?? pc.wspAfterGST ?? p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0);
+          const name = p.itemName || p.name || 'Unnamed Item';
+          const barcode = (pc.barcode || pc.uniqueCode || p.barcode || p.uniqueCode || '').trim();
+
+          // Differentiate each available piece by its unique barcode, size, color, price and product
+          const variantKey = `${p._id || p.id || p.itemCode}_${barcode}_${size.toLowerCase()}_${color.toLowerCase()}_${price}`;
+
+          if (!uniqueVariantsMap.has(variantKey)) {
+            uniqueVariantsMap.set(variantKey, {
+              ...p,
+              _id: p._id || p.id,
+              id: p._id || p.id,
+              pieceId: pc._id || pc.id,
+              name: name,
+              itemName: name,
+              barcode: barcode,
+              uniqueCode: pc.uniqueCode || pc.barcode || p.uniqueCode || '',
+              size: size,
+              color: color,
+              primaryColor: color,
+              secondaryColor: pc.secondaryColor || p.secondaryColor || '',
+              mrp: mrp,
+              price: price,
+              sellingPrice: price,
+              availableStock: 1,
+              stock: 1,
+              pieces: [pc]
+            });
+          }
+        });
+      } else {
+        // Product without piece records
+        const size = (p.size || 'FREE').trim();
+        const color = (p.primaryColor || p.color || '-').trim();
+        const price = Number(p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0);
+        const barcode = (p.barcode || p.uniqueCode || '').trim();
+        const variantKey = `${p._id || p.id || p.itemCode}_${barcode}_${size.toLowerCase()}_${color.toLowerCase()}_${price}`;
+
+        if (!uniqueVariantsMap.has(variantKey)) {
+          uniqueVariantsMap.set(variantKey, p);
+        }
+      }
+    });
+
+    return Array.from(uniqueVariantsMap.values());
+  };
+
   const filteredDesignNoProducts = React.useMemo(() => {
     if (!products || products.length === 0) return [];
     const q = String(designNoSearchInput || "").trim().toLowerCase();
-    if (!q) return products.slice(0, 40);
-    return products.filter(p => {
-      const design = String(p.designNo || p.sku || "").toLowerCase();
-      const name = String(p.itemName || p.name || "").toLowerCase();
-      return design.includes(q) || name.includes(q);
-    }).slice(0, 60);
+    if (!q) return [];
+
+    // 1. Exact matches strictly on designNo / sku
+    const exactDesign = products.filter(p => {
+      const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+      return design === q;
+    });
+    if (exactDesign.length > 0) return expandProductVariants(exactDesign);
+
+    // 2. Strict prefix/contains matches ONLY on designNo / sku
+    const partials = products.filter(p => {
+      const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+      return design.length > 0 && (design.startsWith(q) || design.includes(q));
+    });
+    return expandProductVariants(partials).slice(0, 60);
   }, [products, designNoSearchInput]);
 
 
@@ -537,6 +628,8 @@ export const BillingPOSView = ({
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
   const [historyViewIndex, setHistoryViewIndex] = useState(-1); // -1 = Active New Bill
+
+
 
   const handleStartNewBill = () => {
     setHistoryViewIndex(-1);
@@ -981,6 +1074,31 @@ export const BillingPOSView = ({
     return () => clearTimeout(handler);
   }, [productSearch]);
 
+  // When any modal opens, close all floating dropdowns immediately
+  useEffect(() => {
+    if (
+      isItemSearchModalOpen ||
+      showPaymentModal ||
+      showAdjustmentModal ||
+      showReceiptModal ||
+      showExchangeSlipModal ||
+      qtyModalProduct ||
+      activePOSMode !== "billing"
+    ) {
+      setIsDesignNoDropdownOpen(false);
+      setIsItemDropdownOpen(false);
+      setIsItemCodeDropdownOpen(false);
+    }
+  }, [
+    isItemSearchModalOpen,
+    showPaymentModal,
+    showAdjustmentModal,
+    showReceiptModal,
+    showExchangeSlipModal,
+    qtyModalProduct,
+    activePOSMode
+  ]);
+
   const handleHoldBill = () => {
     if (cart.length === 0) {
       if (onAddNotification) onAddNotification("Hold Bill", "Cart is empty.", "warning");
@@ -1009,26 +1127,57 @@ export const BillingPOSView = ({
   };
 
   const handleFocusItemCodeSearch = () => {
-    const input = document.getElementById("itemCodeSearchInput");
-    if (input) {
-      input.focus();
-      if (typeof input.select === "function") input.select();
-      setIsItemCodeDropdownOpen(true);
+    if (isItemSearchModalOpen) setIsItemSearchModalOpen(false);
+    if (activePOSMode !== "billing") {
+      setActivePOSMode("billing");
     }
+    const focusAction = () => {
+      const input = document.getElementById("itemCodeSearchInput");
+      if (input) {
+        input.focus();
+        input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (typeof input.select === "function") input.select();
+        setIsItemCodeDropdownOpen(true);
+      }
+    };
+    focusAction();
+    setTimeout(focusAction, 50);
+    setTimeout(focusAction, 150);
   };
 
   const handleFocusDesignNoSearch = () => {
-    const input = document.getElementById("designNoSearchInput");
-    if (input) {
-      input.focus();
-      if (typeof input.select === "function") input.select();
-      setIsDesignNoDropdownOpen(true);
+    if (isItemSearchModalOpen) setIsItemSearchModalOpen(false);
+    if (activePOSMode !== "billing") {
+      setActivePOSMode("billing");
     }
+    const focusAction = () => {
+      const input = document.getElementById("designNoSearchInput");
+      if (input) {
+        input.focus();
+        input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (typeof input.select === "function") input.select();
+        if (designNoSearchInput.trim().length > 0) {
+          setIsDesignNoDropdownOpen(true);
+          setDesignNoHighlightedIndex(0);
+        }
+      }
+    };
+    focusAction();
+    setTimeout(focusAction, 50);
+    setTimeout(focusAction, 150);
   };
 
   // --- GLOBAL KEYBOARD LISTENERS ---
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Master Shortcut: Alt + D → Focus Design No Search (Intercept early before browser catches it)
+      if (e.altKey && (e.key === "d" || e.key === "D" || e.code === "KeyD" || e.key === "∂" || e.keyCode === 68)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleFocusDesignNoSearch();
+        return;
+      }
+
       // Prevent browser default actions (like F5 refresh) for our POS shortcuts
       if (["F1", "F2", "F3", "F4", "F5", "F6", "F8", "F9"].includes(e.key)) {
         e.preventDefault();
@@ -1456,8 +1605,8 @@ export const BillingPOSView = ({
         }
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     qtyModalProduct,
     cart,
@@ -3350,10 +3499,134 @@ export const BillingPOSView = ({
     }
   };
 
+  const executeDesignNoSearch = async (query) => {
+    const q = String(query || "").trim();
+    if (!q) return;
+
+    const qLower = q.toLowerCase();
+    let matchingRaw = [];
+
+    // 1. Check local in-memory products strictly for exact designNo matches first
+    const localExact = (products || []).filter(p => {
+      const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+      return design === qLower;
+    });
+
+    if (localExact.length > 0) {
+      matchingRaw = localExact;
+    } else {
+      const localPartial = (products || []).filter(p => {
+        const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+        return design.length > 0 && (design.startsWith(qLower) || design.includes(qLower));
+      });
+      if (localPartial.length > 0) {
+        matchingRaw = localPartial;
+      }
+    }
+
+    // 2. Query backend API to ensure we check the full database, strictly filtering on designNo
+    try {
+      const res = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
+      if (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
+        const remoteItems = res.data.data.filter(p => {
+          const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+          return design.length > 0 && (design === qLower || design.startsWith(qLower) || design.includes(qLower));
+        });
+
+        if (remoteItems.length > 0) {
+          const remoteExact = remoteItems.filter(p => {
+            const design = String(p.designNo || p.sku || p.design_no || p.designNumber || "").trim().toLowerCase();
+            return design === qLower;
+          });
+          const bestRemote = remoteExact.length > 0 ? remoteExact : remoteItems;
+
+          const mergedMap = new Map();
+          [...matchingRaw, ...bestRemote].forEach(item => {
+            const key = (item._id || item.id || item.barcode || Math.random()).toString();
+            if (!mergedMap.has(key)) {
+              mergedMap.set(key, item);
+            }
+          });
+          matchingRaw = Array.from(mergedMap.values());
+        }
+      }
+    } catch (err) {
+      console.warn("Design No backend search fallback error:", err);
+    }
+
+    // Expand all product pieces/variants so all items with this design no are selectable
+    const matchingItems = expandProductVariants(matchingRaw);
+
+    // TEST 1: 0 matching items -> Show validation message, do NOT add to billing, close dropdown
+    if (matchingItems.length === 0) {
+      if (onAddNotification) {
+        onAddNotification("Not Found", `No item found for Design No: ${q}`, "danger");
+      }
+      setIsDesignNoDropdownOpen(false);
+      return;
+    }
+
+    // TEST 2: Exactly 1 matching item -> Automatically add to billing, no dropdown, no extra click
+    if (matchingItems.length === 1) {
+      const itemToAdd = matchingItems[0];
+      handleAddProductToCart(itemToAdd);
+      setDesignNoSearchInput("");
+      setIsDesignNoDropdownOpen(false);
+      if (onAddNotification) {
+        onAddNotification("Item Added", `Added ${itemToAdd.itemName || itemToAdd.name || 'Item'} to bill`, "success");
+      }
+      return;
+    }
+
+    // TEST 3: More than 1 matching item (2+ matches) -> Show dropdown list containing all matching items
+    setIsDesignNoDropdownOpen(true);
+    setDesignNoHighlightedIndex(0);
+  };
+
   const handleDesignNoKeyDown = async (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIsDesignNoDropdownOpen(true);
+      setDesignNoHighlightedIndex(prev => {
+        const next = (prev + 1) % Math.max(1, filteredDesignNoProducts.length);
+        setTimeout(() => {
+          document.getElementById(`designsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+        }, 10);
+        return next;
+      });
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIsDesignNoDropdownOpen(true);
+      setDesignNoHighlightedIndex(prev => {
+        const next = (prev - 1 + Math.max(1, filteredDesignNoProducts.length)) % Math.max(1, filteredDesignNoProducts.length);
+        setTimeout(() => {
+          document.getElementById(`designsearch-opt-${next}`)?.scrollIntoView({ block: 'nearest' });
+        }, 10);
+        return next;
+      });
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setIsDesignNoDropdownOpen(false);
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
-      await executeSmartSearch(designNoSearchInput, setDesignNoSearchInput);
+      // If dropdown is open with multiple items and operator hits Enter, select highlighted item
+      if (isDesignNoDropdownOpen && filteredDesignNoProducts.length > 1) {
+        const itemToAdd = filteredDesignNoProducts[designNoHighlightedIndex] || filteredDesignNoProducts[0];
+        if (itemToAdd) {
+          handleAddProductToCart(itemToAdd);
+          setDesignNoSearchInput("");
+          setIsDesignNoDropdownOpen(false);
+          if (onAddNotification) onAddNotification("Item Added", `Added ${itemToAdd.itemName || itemToAdd.name || 'Item'} to bill`, "success");
+          return;
+        }
+      }
+      await executeDesignNoSearch(designNoSearchInput);
     }
   };
 
@@ -3365,6 +3638,9 @@ export const BillingPOSView = ({
   };
 
   const handleOpenItemSearchModal = () => {
+    setIsDesignNoDropdownOpen(false);
+    setIsItemDropdownOpen(false);
+    setIsItemCodeDropdownOpen(false);
     const formatted = (products || []).map(p => ({
       _id: p._id || p.id,
       id: p._id || p.id,
@@ -3923,7 +4199,7 @@ export const BillingPOSView = ({
                         />
                       </td>
                       {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
-                      <td className="border-r border-slate-300 p-0.5 relative">
+                      <td ref={itemSearchContainerRef} className="border-r border-slate-300 p-0.5 relative">
                         <div className="flex items-center bg-white border border-blue-300 shadow-inner">
                           <input
                             type="text"
@@ -4071,20 +4347,132 @@ export const BillingPOSView = ({
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
 
                       {/* Design No Search Field */}
-                      <td className="border-r border-slate-300 p-0.5 relative">
+                      <td ref={designNoContainerRef} className="border-r border-slate-300 p-0.5 relative">
                         <input
                           id="designNoSearchInput"
                           type="text"
                           className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
-                          placeholder="SEARCH (D)"
+                          placeholder="(Alt+D)"
                           value={designNoSearchInput}
-                          onChange={(e) => setDesignNoSearchInput(e.target.value)}
+                          onChange={(e) => {
+                            setDesignNoSearchInput(e.target.value);
+                            if (e.target.value.trim().length > 0) {
+                              setIsDesignNoDropdownOpen(true);
+                              setDesignNoHighlightedIndex(0);
+                            } else {
+                              setIsDesignNoDropdownOpen(false);
+                            }
+                          }}
+                          onFocus={() => {
+                            if (designNoSearchInput.trim().length > 0) {
+                              setIsDesignNoDropdownOpen(true);
+                              setDesignNoHighlightedIndex(0);
+                            }
+                          }}
                           onKeyDown={handleDesignNoKeyDown}
                         />
+
+                        {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
+                          <div className="absolute top-full left-[-140px] w-[660px] bg-white border border-slate-300 shadow-2xl rounded-b-xl max-h-80 overflow-y-auto z-[250] text-slate-800 border-t-2 border-t-indigo-600">
+                            <div className="p-2 bg-gradient-to-r from-slate-900 to-indigo-900 text-white flex items-center justify-between text-xs font-bold sticky top-0 z-20 shadow-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Design No Search</span>
+                                <span>Found {filteredDesignNoProducts.length} Items • Use ↑ ↓ & Enter</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsDesignNoDropdownOpen(false);
+                                }}
+                                className="text-slate-400 hover:text-white font-extrabold px-1 text-sm cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {filteredDesignNoProducts.length === 0 ? (
+                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching design numbers found</div>
+                            ) : (
+                              <table className="w-full text-left border-collapse text-xs">
+                                <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-[33px] z-10 text-[10px] uppercase tracking-wider">
+                                  <tr>
+                                    <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Design No</th>
+                                    <th className="p-2 border-r border-slate-200 w-28 whitespace-nowrap">Barcode</th>
+                                    <th className="p-2 border-r border-slate-200 min-w-[120px]">Item Name</th>
+                                    <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Size</th>
+                                    <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Color</th>
+                                    <th className="p-2 border-r border-slate-200 text-center w-16 whitespace-nowrap">Stock</th>
+                                    <th className="p-2 border-r border-slate-200 text-right w-20 whitespace-nowrap">Price</th>
+                                    <th className="p-2 text-center w-20 whitespace-nowrap">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 text-slate-700">
+                                  {filteredDesignNoProducts.map((p, pIdx) => {
+                                    const designNo = p.designNo || p.sku || '-';
+                                    const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
+                                    const name = p.itemName || p.name || 'Unnamed Item';
+                                    const size = p.size || '-';
+                                    const color = p.primaryColor || p.color || '-';
+                                    const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                    const stock = p.availableStock ?? p.stock ?? 0;
+                                    const isHighlighted = pIdx === designNoHighlightedIndex;
+
+                                    return (
+                                      <tr
+                                        id={`designsearch-opt-${pIdx}`}
+                                        key={p._id || p.id || pIdx}
+                                        className={`cursor-pointer transition-colors ${isHighlighted
+                                          ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
+                                          : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-50/60 hover:bg-indigo-50'
+                                          }`}
+                                        onClick={() => {
+                                          handleAddProductToCart(p);
+                                          setDesignNoSearchInput("");
+                                          setIsDesignNoDropdownOpen(false);
+                                          if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                        }}
+                                      >
+                                        <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
+                                          <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-800">{designNo}</span>
+                                        </td>
+                                        <td className="p-2 font-mono text-[11px] font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-800">{barcode}</span>
+                                        </td>
+                                        <td className="p-2 border-r border-slate-200">
+                                          <div className="font-bold text-slate-900">{name}</div>
+                                        </td>
+                                        <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700 whitespace-nowrap">{size}</td>
+                                        <td className="p-2 text-center border-r border-slate-200 whitespace-nowrap">{color}</td>
+                                        <td className="p-2 text-center border-r border-slate-200 font-mono font-bold whitespace-nowrap">
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                            {stock} pcs
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200 whitespace-nowrap">
+                                          &#8377;{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="p-2 text-center whitespace-nowrap">
+                                          <button
+                                            type="button"
+                                            className={`px-3 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                              }`}
+                                          >
+                                            + Add
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* Item Code Search Field */}
-                      <td className="border-r border-slate-300 p-0.5 relative">
+                      <td ref={itemCodeContainerRef} className="border-r border-slate-300 p-0.5 relative">
                         <input
                           id="itemCodeSearchInput"
                           type="text"
@@ -4322,11 +4710,10 @@ export const BillingPOSView = ({
                               e.stopPropagation();
                               handleToggleAlterationMark();
                             }}
-                            className={`w-4 h-4 rounded mt-0.5 shrink-0 flex items-center justify-center transition-all cursor-pointer ${
-                              hasAlt
-                                ? 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-xs'
-                                : 'bg-white border-2 border-slate-400 hover:border-emerald-500'
-                            }`}
+                            className={`w-4 h-4 rounded mt-0.5 shrink-0 flex items-center justify-center transition-all cursor-pointer ${hasAlt
+                              ? 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-xs'
+                              : 'bg-white border-2 border-slate-400 hover:border-emerald-500'
+                              }`}
                           >
                             {hasAlt && <Check className="w-3 h-3 text-white stroke-[3.5]" />}
                           </div>

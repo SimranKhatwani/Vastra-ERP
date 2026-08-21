@@ -34,13 +34,15 @@ const inventoryPieceSchema = new mongoose.Schema({
   },
   barcode: {
     type: String,
-    required: true,
-    trim: true
+    required: false,
+    trim: true,
+    default: ''
   },
   uniqueCode: {
     type: String,
-    required: true,
-    trim: true
+    required: false,
+    trim: true,
+    default: ''
   },
   batch: {
     type: String,
@@ -74,7 +76,8 @@ const inventoryPieceSchema = new mongoose.Schema({
   },
   mrp: {
     type: Number,
-    required: true,
+    required: false,
+    default: 0,
     min: 0
   },
   rack: {
@@ -124,7 +127,7 @@ const inventoryPieceSchema = new mongoose.Schema({
   }
 });
 
-inventoryPieceSchema.index({ tenantId: 1, barcode: 1 }, { unique: true });
+inventoryPieceSchema.index({ tenantId: 1, barcode: 1 });
 inventoryPieceSchema.index({ tenantId: 1, uniqueCode: 1 });
 inventoryPieceSchema.index({ tenantId: 1, productId: 1, status: 1 });
 inventoryPieceSchema.plugin(baseSchemaPlugin);

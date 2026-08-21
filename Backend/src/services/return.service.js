@@ -110,6 +110,21 @@ class ReturnService {
       piece.updatedBy = userId;
       await piece.save();
 
+      // Synchronize Product master stock in MongoDB
+      if (piece.productId && item.condition === 'RESELLABLE') {
+        const Product = require('../models/Product');
+        await Product.updateOne(
+          { _id: piece.productId },
+          {
+            $inc: {
+              stock: 1,
+              availableStock: 1,
+              soldQuantity: -1
+            }
+          }
+        );
+      }
+
       await InventoryLifecycle.create({
         tenantId,
         inventoryPieceId: piece._id,

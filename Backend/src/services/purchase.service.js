@@ -176,10 +176,11 @@ class PurchaseService {
         createdBy: userId
       });
 
-      // Generate 1 Barcode / 1 Document for each quantity unit!
+      // Generate 1 Document for each quantity unit
       for (let i = 1; i <= item.qty; i++) {
-        const barcode = item.product.barcode || generateBarcode(tenantId, 'VST');
-        const uniqueCode = generateUniqueCode(item.product.designNo || 'DES', item.size, i);
+        const barcode = item.product?.barcode || item.barcode || '';
+        const uniqueCode = item.product?.uniqueCode || item.uniqueCode || '';
+        const ipn = item.ipn || '';
 
         const piece = await InventoryPiece.create({
           tenantId,
@@ -190,7 +191,7 @@ class PurchaseService {
           firmId,
           barcode,
           uniqueCode,
-          ipn: `${item.product.itemCode || 'ITM'}-${item.size}-${barcode.slice(-4)}`,
+          ipn,
           primaryColor: item.primaryColor,
           secondaryColor: item.secondaryColor,
           size: item.size,

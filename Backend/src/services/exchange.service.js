@@ -41,11 +41,27 @@ class ExchangeService {
       createdBy: userId
     });
 
-    // Update returned piece status
+    // Update returned piece status and restore Product stock
     returnedPiece.status = INVENTORY_STATUS.AVAILABLE;
     returnedPiece.sold = false;
     returnedPiece.returned = true;
+    returnedPiece.currentLocation = 'WAREHOUSE';
+    returnedPiece.updatedBy = userId;
     await returnedPiece.save();
+
+    if (returnedPiece.productId) {
+      const Product = require('../models/Product');
+      await Product.updateOne(
+        { _id: returnedPiece.productId },
+        {
+          $inc: {
+            stock: 1,
+            availableStock: 1,
+            soldQuantity: -1
+          }
+        }
+      );
+    }
 
     await InventoryLifecycle.create({
       tenantId,
@@ -60,10 +76,26 @@ class ExchangeService {
       notes: `Exchanged in return for barcode ${newPiece.barcode}`
     });
 
-    // Update new piece status
+    // Update new piece status and decrement Product stock
     newPiece.status = INVENTORY_STATUS.SOLD;
     newPiece.sold = true;
+    newPiece.currentLocation = 'CUSTOMER';
+    newPiece.updatedBy = userId;
     await newPiece.save();
+
+    if (newPiece.productId) {
+      const Product = require('../models/Product');
+      await Product.updateOne(
+        { _id: newPiece.productId },
+        {
+          $inc: {
+            stock: -1,
+            availableStock: -1,
+            soldQuantity: 1
+          }
+        }
+      );
+    }
 
     await InventoryLifecycle.create({
       tenantId,

@@ -294,23 +294,14 @@ class PTImportService {
 
         let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice', 'Sales Price') || 0);
         const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate', 'Rate') || 0);
-        if (!mrp || mrp <= 0) {
-          mrp = purchaseRate > 0 ? Math.round(purchaseRate * 1.5) : 500;
+        if (!mrp || isNaN(mrp) || mrp < 0) {
+          mrp = 0;
         }
         const wspAfterGST = parseFloat(getVal(row, 'WSP', 'wsp', 'WSP After GST') || purchaseRate);
 
         let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE') || '').trim();
-        if (!barcode) {
-          barcode = generateBarcode();
-        }
         let uniqueCode = String(getVal(row, 'Unique Code', 'uniqueCode', 'UNIQUE CODE') || '').trim();
-        if (!uniqueCode) {
-          uniqueCode = generateUniqueCode();
-        }
         let ipn = String(getVal(row, 'IPN', 'ipn', 'IPN No') || '').trim();
-        if (!ipn) {
-          ipn = `IPN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
-        }
         const batch = String(getVal(row, 'Batch', 'batch') || '').trim();
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
@@ -355,12 +346,11 @@ class PTImportService {
 
         currentRowCtx = { rowNum, barcode, itemCode, billNo, ipn };
 
-        if (processedBarcodesSet.has(barcode)) {
-          summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in batch. A new unique barcode was auto-generated.` });
-          barcode = generateBarcode();
-          while (processedBarcodesSet.has(barcode)) {
-             barcode = generateBarcode();
+        if (barcode) {
+          if (processedBarcodesSet.has(barcode)) {
+            summary.errors.push({ row: rowNum, error: `Duplicate barcode '${barcode}' in batch.` });
           }
+          processedBarcodesSet.add(barcode);
         }
 
         // Firm Management
@@ -633,24 +623,7 @@ class PTImportService {
         try {
           const piecesToCreate = [];
           for (let i = 0; i < qty; i++) {
-            let pieceBarcode = (i === 0) ? barcode : generateBarcode();
-            
-            let isUnique = false;
-            while (!isUnique) {
-              if (processedBarcodesSet.has(pieceBarcode)) {
-                pieceBarcode = generateBarcode();
-                continue;
-              }
-              const existingBarcode = await InventoryPiece.findOne({ tenantId, barcode: pieceBarcode }).session(session);
-              if (existingBarcode) {
-                pieceBarcode = generateBarcode();
-              } else {
-                isUnique = true;
-              }
-            }
-            
-            processedBarcodesSet.add(pieceBarcode);
-            
+            const pieceBarcode = barcode;
             piecesToCreate.push({
               tenantId,
               productId: product._id,

@@ -24,17 +24,21 @@ class ProductService {
   }
 
   static async searchBilling(queryStr, tenantId) {
-    const { products } = await this.getProducts({ limit: 100 }, tenantId);
-    if (!queryStr) return products;
-    const q = queryStr.toLowerCase().trim();
+    if (!queryStr) {
+      const { products } = await this.getProducts({ limit: 100 }, tenantId);
+      return products;
+    }
+    const q = queryStr.trim();
+    const { products } = await this.getProducts({ search: q, limit: 100 }, tenantId);
     return products.filter(p =>
-      (p.itemName && p.itemName.toLowerCase().includes(q)) ||
-      (p.name && p.name.toLowerCase().includes(q)) ||
-      (p.itemCode && p.itemCode.toLowerCase().includes(q)) ||
-      (p.designNo && p.designNo.toLowerCase().includes(q)) ||
-      (p.barcode && String(p.barcode).toLowerCase().includes(q)) ||
-      (p.uniqueCode && String(p.uniqueCode).toLowerCase().includes(q)) ||
-      (p.ipn && String(p.ipn).toLowerCase().includes(q))
+      (p.itemName && p.itemName.toLowerCase().includes(q.toLowerCase())) ||
+      (p.name && p.name.toLowerCase().includes(q.toLowerCase())) ||
+      (p.itemCode && p.itemCode.toLowerCase().includes(q.toLowerCase())) ||
+      (p.designNo && p.designNo.toLowerCase().includes(q.toLowerCase())) ||
+      (p.sku && p.sku.toLowerCase().includes(q.toLowerCase())) ||
+      (p.barcode && String(p.barcode).toLowerCase().includes(q.toLowerCase())) ||
+      (p.uniqueCode && String(p.uniqueCode).toLowerCase().includes(q.toLowerCase())) ||
+      (p.ipn && String(p.ipn).toLowerCase().includes(q.toLowerCase()))
     );
   }
 

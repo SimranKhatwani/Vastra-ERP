@@ -355,15 +355,15 @@ export const ProductManagementView = ({
     setModalMode("create");
     setFormName("");
     setFormSKU("");
-    setFormBarcode(`890${String(100000000 + products.length + 1)}`);
+    setFormBarcode("");
     setFormColor("");
     setFormSize("M");
     setFormVariants([]);
-    setFormPurchasePrice(450);
-    setFormMRP(1200);
-    setFormSellingPrice(999);
-    setFormStock(40);
-    setFormMinStock(8);
+    setFormPurchasePrice(0);
+    setFormMRP(0);
+    setFormSellingPrice(0);
+    setFormStock(0);
+    setFormMinStock(5);
     setShowProductModal(true);
   };
 
