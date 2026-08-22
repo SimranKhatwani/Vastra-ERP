@@ -1439,6 +1439,18 @@ export const BillingPOSView = ({
     setTimeout(focusAction, 150);
   };
 
+// Centralized helper to completely wipe out existing context (cart, loaded invoice, customer, returns)
+  const handleClearBillContext = (notificationTitle = "Clear Bill", notificationMsg = "Context cleared.") => {
+    setCart([]);
+    setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+    setSelectedCustomerId("");
+    setLoadedOriginalInvoice(null);
+    setReturnActionType(null);
+    setReturnedItemIds([]);
+    setActivePOSMode("billing");
+    if (onAddNotification) onAddNotification(notificationTitle, notificationMsg, "info");
+  };
+
   // --- GLOBAL KEYBOARD LISTENERS ---
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1623,10 +1635,7 @@ export const BillingPOSView = ({
       // F1: New Bill
       if (e.key === "F1") {
         e.preventDefault();
-        setCart([]);
-        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-        setSelectedCustomerId("");
-        if (onAddNotification) onAddNotification("New Bill", "Cart cleared for new bill.", "info");
+        handleClearBillContext("New Bill", "Cart cleared for new bill.");
         return;
       }
       // F2: Product Search
@@ -1802,8 +1811,7 @@ export const BillingPOSView = ({
         // Clear Bill -> C
         if (k === "c") {
           e.preventDefault();
-          setCart([]);
-          if (onAddNotification) onAddNotification("Clear Bill", "Cart cleared.", "info");
+          handleClearBillContext("Clear Bill", "Cart cleared.");
           return;
         }
         // Loyalty -> L
@@ -2888,11 +2896,10 @@ export const BillingPOSView = ({
       };
 
       setCompletedInvoice(mergedInvoice);
-      setCart([]);
+      handleClearBillContext("Invoice Compiled Successfully", `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`);
+      
       setCouponCode("");
-      setSelectedCustomerId("");
       setCustomerSearch("");
-      setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
       setOtherBillDetails({ transporter: '', trackingNo: '', shippingAddress: '' });
 
       setSelectedLoyaltyRuleId("");
@@ -2925,12 +2932,6 @@ export const BillingPOSView = ({
       if (!skipBillPreview) {
         setShowBillPreviewInvoice(mergedInvoice);
       }
-
-      onAddNotification(
-        "Invoice Compiled Successfully",
-        `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`,
-        "success",
-      );
 
       // ── Automatic WhatsApp Dispatch (fire-and-forget, never blocks checkout) ──
       const custPhoneDigits = (currentActiveCustomer.phone || '').replace(/\D/g, '');
@@ -4414,11 +4415,7 @@ export const BillingPOSView = ({
                     <Save className="w-3.5 h-3.5 text-green-600" />
                     <span>Save Profile</span>
                   </button>
-                  <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => {
-                    setSelectedCustomerId("");
-                    setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-                    setCustomerSearchQuery("");
-                  }}>
+                  <button className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e1e1e1] border border-slate-300 rounded text-[10px] font-bold text-slate-700 flex items-center gap-1 cursor-pointer" onClick={() => handleClearBillContext("Loaded Bill Cleared", "Original bill context cleared.")}>
                     <X className="w-3.5 h-3.5 text-red-500" />
                     <span>New Customer</span>
                   </button>
@@ -5188,12 +5185,12 @@ export const BillingPOSView = ({
                 {/* Action Toolbar */}
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                   {[
-                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
+                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => handleClearBillContext("New Bill", "Cart cleared for new bill.") },
                     { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => handleOpenAlterationForSelectedProduct() },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
                     { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
                     { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
-                    { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => setCart([]) },
+                    { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => handleClearBillContext() },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
                     { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
@@ -5214,7 +5211,7 @@ export const BillingPOSView = ({
                     } },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
                     { id: "adjustments", label: "Adjustments (A)", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
-                    { id: "clearBill", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
+                    { id: "clearBill", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => handleClearBillContext() },
                     { id: "viewHolds", label: "View Holds (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
                     { id: "challanModal", label: "Retv Challans", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowChallanModal(true) },
                     { id: "otherDetails", label: "Other Details", icon: <FileText className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowOtherDetailsModal(true) },
