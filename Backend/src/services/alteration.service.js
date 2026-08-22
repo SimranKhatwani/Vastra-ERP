@@ -34,23 +34,24 @@ class AlterationService {
       totalCharges += Number(item.charge || 0);
     });
 
+    const mongoose = require('mongoose');
     let resolvedSaleBillId = data.saleBillId || data.invoiceId;
-    if (resolvedSaleBillId && typeof resolvedSaleBillId === 'string' && resolvedSaleBillId.length !== 24) {
-      const foundBill = await SaleBill.findOne({
-        tenantId,
-        $or: [{ billNo: resolvedSaleBillId }, { _id: resolvedSaleBillId }]
-      }).lean();
-      if (foundBill) resolvedSaleBillId = foundBill._id;
-      else resolvedSaleBillId = undefined;
+    let foundBill = null;
+
+    if (resolvedSaleBillId) {
+      if (mongoose.Types.ObjectId.isValid(resolvedSaleBillId) && resolvedSaleBillId.toString().length === 24) {
+        foundBill = await SaleBill.findOne({ tenantId, _id: resolvedSaleBillId });
+      }
+      if (!foundBill) {
+        foundBill = await SaleBill.findOne({ tenantId, billNo: resolvedSaleBillId });
+      }
     }
 
-    if (!resolvedSaleBillId && data.invoiceNumber) {
-      const foundBill = await SaleBill.findOne({
-        tenantId,
-        billNo: data.invoiceNumber
-      }).lean();
-      if (foundBill) resolvedSaleBillId = foundBill._id;
+    if (!foundBill && data.invoiceNumber) {
+      foundBill = await SaleBill.findOne({ tenantId, billNo: data.invoiceNumber });
     }
+
+    resolvedSaleBillId = foundBill ? foundBill._id : undefined;
 
     const Tenant = require('../models/Tenant');
     const tenant = await Tenant.findById(tenantId).lean();
@@ -62,9 +63,9 @@ class AlterationService {
       tenantId,
       alterationNo: data.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
       saleBillId: resolvedSaleBillId,
-      customerId: data.customerId || undefined,
-      customerName: data.customerName || '',
-      customerPhone: data.customerPhone || '',
+      customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
+      customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
+      customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       priority: data.priority || 'Normal',
@@ -76,6 +77,13 @@ class AlterationService {
       remarks: data.remarks || data.customAlterationText || data.specialInstructions,
       createdBy: userId
     });
+
+    if (foundBill) {
+      await SaleBill.updateOne(
+        { _id: foundBill._id, tenantId },
+        { $set: { hasAlteration: true, alterationId: alteration._id } }
+      );
+    }
 
     const createdItems = [];
 
@@ -95,26 +103,42 @@ class AlterationService {
         tenantId,
         alterationId: alteration._id,
         inventoryPieceId: piece ? piece._id : undefined,
-        pieceName: item.pieceName || piece?.productId?.name || 'Altered Garment',
-        instructions: item.instructions || 'Standard Fit',
+        pieceName: item.pieceName || item.productName || piece?.productId?.name || 'Altered Garment',
+        productName: item.productName || item.pieceName || piece?.productId?.name || 'Altered Garment',
+        size: item.size || piece?.size || 'FS',
+        color: item.color || piece?.primaryColor || 'Standard',
+        barcode: item.barcode || piece?.barcode || '',
+        uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
+        sku: item.sku || piece?.barcode || '',
+        instructions: Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : (item.instructions || data.customAlterationText || 'Standard Fit'),
         alterationDetails: item.alterationDetails || [],
         measurements: item.measurements || {},
         charge: item.charge || 0,
         createdBy: userId
       });
 
+      if (resolvedSaleBillId) {
+        const itemBarcode = item.barcode || item.uniqueCode;
+        const itemName = item.pieceName || item.productName;
+        await SaleItem.updateMany(
+          {
+            saleBillId: resolvedSaleBillId,
+            tenantId,
+            $or: [
+              ...(piece ? [{ inventoryPieceId: piece._id }] : []),
+              ...(itemBarcode ? [{ barcode: itemBarcode }, { uniqueCode: itemBarcode }] : []),
+              ...(itemName ? [{ name: itemName }, { itemName: itemName }] : [])
+            ]
+          },
+          { $set: { hasAlteration: true, alterationStatus: 'CONFIGURED', alterationId: alteration._id } }
+        );
+      }
+
       if (piece) {
         piece.status = INVENTORY_STATUS.ALTERED;
         piece.altered = true;
         piece.currentLocation = 'TAILOR_SHOP';
         await piece.save();
-
-        if (resolvedSaleBillId) {
-          await SaleItem.updateMany(
-            { saleBillId: resolvedSaleBillId, inventoryPieceId: piece._id, tenantId },
-            { $set: { hasAlteration: true, alterationStatus: 'CONFIGURED', alterationId: alteration._id } }
-          );
-        }
 
         await InventoryLifecycle.create({
           tenantId,
@@ -258,7 +282,16 @@ class AlterationService {
       const items = itemsByAltId.get(alt._id.toString()) || [];
       const firstItem = items[0] || {};
       const piece = firstItem.inventoryPieceId || {};
-      const product = piece.productId || {};
+      const productName = firstItem.productName || firstItem.pieceName || product.name || product.itemName || 'Altered Garment';
+      const size = firstItem.size || piece.size || product.size || 'FS';
+      const color = firstItem.color || piece.primaryColor || product.color || 'Standard';
+      const barcode = firstItem.barcode || piece.barcode || '';
+      const uniqueCode = firstItem.uniqueCode || piece.uniqueCode || '';
+      const sku = firstItem.sku || piece.barcode || product.sku || '';
+      const measurements = firstItem.measurements || alt.measurements || {};
+      const alterationDetails = (firstItem.alterationDetails && firstItem.alterationDetails.length > 0)
+        ? firstItem.alterationDetails
+        : (firstItem.instructions ? firstItem.instructions.split(', ') : (alt.remarks ? [alt.remarks] : []));
 
       return {
         _id: alt._id,
@@ -267,24 +300,25 @@ class AlterationService {
         invoiceId: alt.saleBillId ? (alt.saleBillId.billNo || alt.saleBillId.invoiceNo || alt.saleBillId._id) : (alt.invoiceNumber || alt.invoiceId || ''),
         saleBillId: alt.saleBillId?._id || alt.saleBillId,
         saleBill: alt.saleBillId || null,
-        customerName: alt.customerName || (alt.customerId ? alt.customerId.name : (alt.saleBillId ? (alt.saleBillId.customerName || alt.saleBillId.customerId?.name) : 'Walk-in')),
+        customerName: alt.customerName || (alt.customerId ? alt.customerId.name : (alt.saleBillId ? (alt.saleBillId.customerName || alt.saleBillId.customerId?.name) : 'Walk-in Customer')),
         customerPhone: alt.customerPhone || (alt.customerId ? alt.customerId.phone : (alt.saleBillId ? (alt.saleBillId.customerPhone || alt.saleBillId.customerId?.phone) : '')),
-        productName: firstItem.pieceName || product.name || 'Altered Garment',
-        barcode: piece.barcode || '',
-        uniqueCode: piece.uniqueCode || '',
-        sku: piece.barcode || piece.uniqueCode || product.sku || '',
-        size: piece.size || product.size || 'N/A',
-        color: piece.primaryColor || product.color || 'N/A',
-        tailorName: alt.tailorName,
+        productName,
+        barcode,
+        uniqueCode,
+        sku,
+        size,
+        color,
+        tailorName: alt.tailorName || 'Master Tailor',
         priority: alt.priority || 'Normal',
         status: alt.status,
         deliveryDate: alt.expectedDeliveryDate ? alt.expectedDeliveryDate.toISOString().split('T')[0] : '',
         trialDate: alt.trialDate ? alt.trialDate.toISOString().split('T')[0] : '',
-        alterationDetails: firstItem.alterationDetails || (firstItem.instructions ? firstItem.instructions.split(',') : []),
-        measurements: firstItem.measurements || {},
-        specialInstructions: alt.remarks || '',
+        alterationDetails,
+        measurements,
+        specialInstructions: alt.remarks || firstItem.instructions || '',
         customAlterationText: alt.remarks || '',
         totalCharges: alt.totalCharges || 0,
+        items,
         createdAt: alt.createdAt,
         createdBy: alt.createdBy
       };

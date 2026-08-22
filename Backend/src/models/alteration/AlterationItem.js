@@ -10,11 +10,18 @@ const alterationItemSchema = new mongoose.Schema({
   inventoryPieceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'InventoryPiece',
-    required: true
+    required: false
   },
+  pieceName: String,
+  productName: String,
+  barcode: String,
+  uniqueCode: String,
+  sku: String,
+  size: String,
+  color: String,
   instructions: {
     type: String,
-    required: true
+    default: 'Standard Fit'
   },
   charge: {
     type: Number,
@@ -22,10 +29,8 @@ const alterationItemSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED'],
     default: 'PENDING'
   },
-  pieceName: String,
   alterationDetails: [String],
   measurements: mongoose.Schema.Types.Mixed
 });

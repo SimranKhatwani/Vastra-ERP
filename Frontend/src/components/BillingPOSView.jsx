@@ -1,5 +1,6 @@
 import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
+import { generateCode128SvgString } from '../helpers/barcode128.helper';
 import {
   Search,
   Barcode,
@@ -62,24 +63,32 @@ export const getFirmStyle = (firmName = '') => {
     };
   }
 
-  // Firm 1: New Fashion Style (Palam)
-  const isPalam = norm.includes('palam');
-
-  if (isPalam) {
+  // Firm 1: New Fashion Style (Palam) -> Fixed Cyan / Sky Blue Theme
+  if (norm.includes('palam')) {
     return {
-      rowClass: 'bg-sky-50/70 hover:bg-sky-100/80 border-l-4 border-l-sky-500',
+      rowClass: 'bg-sky-50/80 hover:bg-sky-100/90 border-l-4 border-l-sky-500',
       badgeClass: 'bg-sky-100 text-sky-950 border border-sky-400 font-extrabold',
       tagColor: 'sky',
       firmName: firmName || 'New Fashion Style (Palam)'
     };
   }
 
-  // Firm 2: New Fashion Style (Main)
+  // Firm 2: New Fashion Style (Main) -> Fixed Amber / Gold Theme
+  if (norm.includes('new fashion') || norm.includes('main') || norm.includes('nfs')) {
+    return {
+      rowClass: 'bg-amber-50/80 hover:bg-amber-100/90 border-l-4 border-l-amber-500',
+      badgeClass: 'bg-amber-100 text-amber-950 border border-amber-400 font-extrabold',
+      tagColor: 'amber',
+      firmName: firmName || 'New Fashion Style'
+    };
+  }
+
+  // Other Registered Firms -> Fixed Emerald / Green Theme
   return {
-    rowClass: 'bg-amber-50/70 hover:bg-amber-100/80 border-l-4 border-l-amber-500',
-    badgeClass: 'bg-amber-100 text-amber-950 border border-amber-400 font-extrabold',
-    tagColor: 'amber',
-    firmName: firmName || 'New Fashion Style'
+    rowClass: 'bg-emerald-50/70 hover:bg-emerald-100/80 border-l-4 border-l-emerald-500',
+    badgeClass: 'bg-emerald-100 text-emerald-950 border border-emerald-400 font-extrabold',
+    tagColor: 'emerald',
+    firmName: firmName
   };
 };
 
@@ -100,6 +109,7 @@ export const BillingPOSView = ({
   onRetryWhatsApp,
   quickArticulateItem,
   clearQuickArticulateItem,
+  onAlterationIssued,
 }) => {
   // Cart state
   const [cart, setCart] = useState(() => {
@@ -245,12 +255,20 @@ export const BillingPOSView = ({
 
   const handleCustomerPhoneChange = (e) => {
     const val = e.target.value;
-    const match = customers.find(c => c.phone === val || c.mobile === val);
+    const match = customers.find(c => (c.phone && c.phone === val) || (c.mobile && c.mobile === val));
     if (match) {
-      setCustomerForm({ phone: val, name: match.name || '', customerId: match.customerId || '', gstin: match.gstin || match.gstNo || '', lf: '2588' });
+      const custId = match.customerId || (match.phone ? `CUST-${match.phone.slice(-4)}` : `CUST-${(match._id || match.id || '').toString().slice(-4).toUpperCase()}`);
+      setCustomerForm({
+        phone: val,
+        name: match.name || '',
+        customerId: custId,
+        gstin: match.gstin || match.gstNo || '',
+        lf: '2588'
+      });
       setSelectedCustomerId(match.id || match._id);
     } else {
-      setCustomerForm(prev => ({ ...prev, phone: val }));
+      const autoId = val.length >= 10 ? `CUST-${val.slice(-4)}` : (val.length > 0 ? `CUST-AUTO` : '');
+      setCustomerForm(prev => ({ ...prev, phone: val, customerId: autoId }));
       setSelectedCustomerId("");
     }
   };
@@ -262,17 +280,20 @@ export const BillingPOSView = ({
     }
     if (!selectedCustomerId && onAddCustomer) {
       try {
+        const autoCustId = customerForm.customerId && customerForm.customerId !== 'CUST-AUTO'
+          ? customerForm.customerId
+          : `CUST-${customerForm.phone.slice(-4)}`;
         const newCust = await onAddCustomer({
-          name: customerForm.name,
+          name: customerForm.name || 'Walk-in Customer',
           phone: customerForm.phone,
-          gstin: customerForm.gstin
+          gstin: customerForm.gstin,
+          customerId: autoCustId
         });
         if (newCust && (newCust.id || newCust._id)) {
           setSelectedCustomerId(newCust.id || newCust._id);
-          if (newCust.customerId) {
-            setCustomerForm(prev => ({ ...prev, customerId: newCust.customerId }));
-          }
-          if (onAddNotification) onAddNotification("Success", "Customer Created & Saved", "success");
+          const resolvedCustId = newCust.customerId || autoCustId;
+          setCustomerForm(prev => ({ ...prev, customerId: resolvedCustId }));
+          if (onAddNotification) onAddNotification("Success", `Customer Created (ID: ${resolvedCustId})`, "success");
         }
       } catch (err) {
         console.error(err);
@@ -461,14 +482,14 @@ export const BillingPOSView = ({
       const itemDrop = document.getElementById('item-search-fixed-dropdown');
 
       if (
-        designNoContainerRef.current && 
+        designNoContainerRef.current &&
         !designNoContainerRef.current.contains(e.target) &&
         (!designDrop || !designDrop.contains(e.target))
       ) {
         setIsDesignNoDropdownOpen(false);
       }
       if (
-        itemSearchContainerRef.current && 
+        itemSearchContainerRef.current &&
         !itemSearchContainerRef.current.contains(e.target) &&
         (!itemDrop || !itemDrop.contains(e.target))
       ) {
@@ -480,6 +501,32 @@ export const BillingPOSView = ({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Global Keydown Shortcut listener (Alt+B -> Barcode, Alt+D -> Design No)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      // Alt + B -> Focus Barcode Input
+      if (e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        const el = document.getElementById('posBarcodeInput');
+        if (el) {
+          el.focus();
+          el.select();
+        }
+      }
+      // Alt + D -> Focus Design No Input
+      if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        const el = document.getElementById('designNoSearchInput');
+        if (el) {
+          el.focus();
+          el.select();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalShortcuts);
+    return () => window.removeEventListener("keydown", handleGlobalShortcuts);
   }, []);
 
 
@@ -676,6 +723,8 @@ export const BillingPOSView = ({
 
   const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] =
     useState(null);
+  const [loadedOriginalInvoice, setLoadedOriginalInvoice] = useState(null);
+  const [selectedCartRowIndex, setSelectedCartRowIndex] = useState(0);
   const [returnedItemIds, setReturnedItemIds] = useState([]);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState(null);
@@ -697,8 +746,11 @@ export const BillingPOSView = ({
   const [exchangeOldItemIdx, setExchangeOldItemIdx] = useState(0);
   const [exchangeNewSearchQuery, setExchangeNewSearchQuery] = useState("");
   const [exchangeSelectedNewProduct, setExchangeSelectedNewProduct] = useState(null);
+  const [showReturnExchangeModal, setShowReturnExchangeModal] = useState(false);
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
+  const [showAlterationDocketModal, setShowAlterationDocketModal] = useState(false);
+  const [completedAlterationDocket, setCompletedAlterationDocket] = useState(null);
   const [returnWarning, setReturnWarning] = useState({ show: false, title: "", message: "" });
 
   // Cash Denomination UI
@@ -1036,19 +1088,21 @@ export const BillingPOSView = ({
       return;
     }
 
-    const previewInvNo = `INV-${Date.now().toString().slice(-6)}`;
     const targetTailor = altSelectedTailor || tailorEmployeesList[0] || { id: "t-default", name: "Master Tailor Ramesh" };
+    const invNo = loadedOriginalInvoice?.invoiceNo || loadedOriginalInvoice?.billNo || `INV-${Date.now().toString().slice(-6)}`;
+    const invId = loadedOriginalInvoice?._id || loadedOriginalInvoice?.id || undefined;
 
     const payload = {
-      invoiceId: previewInvNo,
-      invoiceNumber: previewInvNo,
+      saleBillId: invId,
+      invoiceId: invId || invNo,
+      invoiceNumber: invNo,
       customerId: ((activeCustomer.id || activeCustomer._id) === "c-walkin" || activeCustomer.phone === "") ? null : (activeCustomer.id || activeCustomer._id),
-      customerName: activeCustomer.name === "Walk-in Customer" ? "Walk-in Customer" : activeCustomer.name,
-      customerPhone: (activeCustomer.phone === "N/A" || activeCustomer.phone === "" || (activeCustomer.id || activeCustomer._id) === "c-walkin") ? "" : activeCustomer.phone,
+      customerName: customerForm.name || activeCustomer.name || "Walk-in Customer",
+      customerPhone: customerForm.phone || activeCustomer.phone || "",
       productId: selectedAlterationCartItem.productId || selectedAlterationCartItem.id || "p-gen",
-      productName: selectedAlterationCartItem.name,
-      sku: selectedAlterationCartItem.sku || "SKU-001",
-      barcode: selectedAlterationCartItem.barcode || "BAR-001",
+      productName: selectedAlterationCartItem.name || selectedAlterationCartItem.itemName,
+      sku: selectedAlterationCartItem.sku || selectedAlterationCartItem.designNo || "SKU-001",
+      barcode: selectedAlterationCartItem.barcode || selectedAlterationCartItem.uniqueCode || "BAR-001",
       size: selectedAlterationCartItem.size || "M",
       color: selectedAlterationCartItem.color || "Standard",
       salespersonId: selectedAlterationCartItem.salespersonId || "sp-1",
@@ -1069,8 +1123,6 @@ export const BillingPOSView = ({
       createdBy: currentUser ? currentUser.name : "Cashier"
     };
 
-    const savedRecord = payload;
-
     // Attach alteration record to target item in cart
     setCart(prev => prev.map(item => {
       let isMatch = false;
@@ -1084,13 +1136,17 @@ export const BillingPOSView = ({
       }
 
       if (isMatch) {
-        return { ...item, hasAlteration: true, alterationRecord: savedRecord };
+        return { ...item, hasAlteration: true, alterationRecord: payload };
       }
       return item;
     }));
 
     if (onAddNotification) {
-      onAddNotification("Alteration Saved", `Alteration ticket created for ${selectedAlterationCartItem.name} & attached to bill!`, "success");
+      onAddNotification(
+        "Alteration Configured",
+        `Alteration details saved for ${selectedAlterationCartItem.name}. Click 'Complete & Issue Slips' to finish.`,
+        "success"
+      );
     }
 
     setSelectedAlterationCartItem(null);
@@ -1099,6 +1155,119 @@ export const BillingPOSView = ({
     setAltCustomText("");
     setAltSpecialInstructions("");
     setShowAlterationModal(false);
+  };
+
+  const handleCompleteAllBillActions = async () => {
+    const alteredItems = cart.filter(i => i.hasAlteration && i.alterationRecord);
+
+    if (alteredItems.length === 0) {
+      if (onAddNotification) onAddNotification("Notice", "Please configure alteration on at least one item first.", "warning");
+      return;
+    }
+
+    const invNo = loadedOriginalInvoice?.invoiceNo || loadedOriginalInvoice?.billNo || `INV-${Date.now().toString().slice(-6)}`;
+    const invId = loadedOriginalInvoice?._id || loadedOriginalInvoice?.id || undefined;
+    const firstRec = alteredItems[0]?.alterationRecord || {};
+
+    const rawItemsPayload = alteredItems.map(item => {
+      const rec = item.alterationRecord || {};
+      return {
+        productId: item.productId || item.id,
+        productName: item.name || item.itemName,
+        pieceName: item.name || item.itemName,
+        sku: item.sku || item.designNo || item.itemCode || "SKU-001",
+        barcode: item.barcode || item.uniqueCode || item.itemCode || "BAR-001",
+        uniqueCode: item.uniqueCode || item.barcode || "",
+        size: item.size || "FS",
+        color: item.color || "Standard",
+        instructions: Array.isArray(rec.alterationDetails) && rec.alterationDetails.length > 0 ? rec.alterationDetails.join(', ') : (rec.customAlterationText || rec.specialInstructions || 'Standard Fit'),
+        alterationDetails: rec.alterationDetails || [],
+        measurements: rec.measurements || {},
+        charge: Number(rec.charge || 0)
+      };
+    });
+
+    const unifiedPayload = {
+      saleBillId: invId,
+      invoiceId: invId || invNo,
+      invoiceNumber: invNo,
+      customerId: ((activeCustomer.id || activeCustomer._id) === "c-walkin" || activeCustomer.phone === "") ? null : (activeCustomer.id || activeCustomer._id),
+      customerName: customerForm.name || activeCustomer.name || "Walk-in Customer",
+      customerPhone: customerForm.phone || activeCustomer.phone || "",
+      tailorId: firstRec.tailorId || "t-1",
+      tailorName: firstRec.tailorName || "Master Tailor",
+      deliveryDate: firstRec.deliveryDate,
+      deliveryTime: firstRec.deliveryTime,
+      trialDate: firstRec.trialDate,
+      priority: firstRec.priority || "Normal",
+      remarks: firstRec.specialInstructions || firstRec.customAlterationText || "",
+      items: rawItemsPayload
+    };
+
+    let issuedDocketNo = `ALT-${Date.now().toString(36).toUpperCase()}`;
+
+    try {
+      const altRes = await api.post('/alterations', unifiedPayload);
+      if (altRes.data?.success && altRes.data.data?.alteration?.alterationNo) {
+        issuedDocketNo = altRes.data.data.alteration.alterationNo;
+      } else if (altRes.data?.success && altRes.data.data?.alterationNo) {
+        issuedDocketNo = altRes.data.data.alterationNo;
+      }
+    } catch (err) {
+      console.error("Failed to post unified alteration order:", err);
+    }
+
+    // Build multi-item docket data
+    const multiDocketData = {
+      docketNo: issuedDocketNo,
+      originalInvoiceNo: invNo,
+      customerName: customerForm.name || activeCustomer.name || "Walk-in Customer",
+      customerPhone: customerForm.phone || activeCustomer.phone || "",
+      cashierName: currentUser ? currentUser.name : "Cashier",
+      items: alteredItems,
+      createdAt: new Date().toISOString()
+    };
+
+    setCompletedAlterationDocket(multiDocketData);
+    setShowAlterationDocketModal(true);
+
+    // Sync parent app state for live Invoice History
+    if (typeof onAlterationIssued === 'function') {
+      onAlterationIssued(invNo, alteredItems);
+    }
+
+    // Finish process & clear cart for next transaction
+    setLoadedOriginalInvoice(null);
+    setCart([]);
+    setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+    setSelectedCustomerId('');
+
+    if (onAddNotification) {
+      onAddNotification(
+        "Alteration Slip Issued",
+        `Alteration Slip #${issuedDocketNo} issued for ${alteredItems.length} item(s) on Bill ${invNo}. Cart cleared.`,
+        "success"
+      );
+    }
+  };
+
+  const handleOpenAlterationForSelectedProduct = (specificItem = null, specificIdx = null) => {
+    let targetIdx = specificIdx;
+    if (targetIdx === null || targetIdx === undefined) {
+      targetIdx = (selectedCartRowIndex >= 0 && selectedCartRowIndex < cart.length) ? selectedCartRowIndex : 0;
+    }
+    const targetItem = specificItem || cart[targetIdx];
+    if (!targetItem) {
+      if (onAddNotification) onAddNotification("Validation Notice", "Please select a product from the bill first.", "warning");
+      return;
+    }
+    setSelectedCartRowIndex(targetIdx);
+    setSelectedAlterationCartItem(targetItem);
+    setAltMeasurements(targetItem.alterationRecord?.measurements || {});
+    setAltOptions(targetItem.alterationRecord?.alterationDetails || []);
+    setAltCustomText(targetItem.alterationRecord?.customAlterationText || "");
+    setAltSpecialInstructions(targetItem.alterationRecord?.specialInstructions || "");
+    setShowAlterationModal(true);
   };
 
   // --- NEW ERP STATE VARIABLES ---
@@ -1471,6 +1640,25 @@ export const BillingPOSView = ({
         document.getElementById("mobileSearchInput")?.focus();
         return;
       }
+
+      // 'R' / 'r': Returns
+      if ((e.key === "r" || e.key === "R") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
+        e.preventDefault();
+        if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+        setReturnActionType("return");
+        setActivePOSMode("returns");
+        return;
+      }
+
+      // 'E' / 'e': Exchange
+      if ((e.key === "e" || e.key === "E") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
+        e.preventDefault();
+        if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+        setReturnActionType("exchange");
+        setActivePOSMode("returns");
+        return;
+      }
+
       // F4 / Alt+I: Search Item Through Item Code
       if (e.key === "F4" || (e.altKey && e.key.toLowerCase() === "i")) {
         e.preventDefault();
@@ -3203,11 +3391,19 @@ export const BillingPOSView = ({
         <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
         <div class="divider"></div>
         <div class="details">
-          <b>Receipt No:</b> ${invoice.invoiceNo || 'DRAFT'}<br>
-          <b>Date:</b> ${receiptDate}<br>
-          <b>Customer:</b> ${invoice.customerName} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
-          ${invoice.shippingDetails ? `<br><b>Transporter:</b> ${invoice.shippingDetails.transporter || 'N/A'} (LR: ${invoice.shippingDetails.trackingNo || 'N/A'})` : ''}
-          ${invoice.shippingDetails?.shippingAddress ? `<br><b>Shipping:</b> ${invoice.shippingDetails.shippingAddress}` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+            <div style="flex: 1;">
+              <b>Receipt No:</b> ${invoice.invoiceNo || invoice.billNo || 'DRAFT'}<br>
+              <b>Date:</b> ${receiptDate}<br>
+              <b>Customer:</b> ${invoice.customerName || 'Walk-in'} ${invoice.customerPhone ? `(${invoice.customerPhone})` : ''}
+              ${invoice.shippingDetails ? `<br><b>Transporter:</b> ${invoice.shippingDetails.transporter || 'N/A'} (LR: ${invoice.shippingDetails.trackingNo || 'N/A'})` : ''}
+              ${invoice.shippingDetails?.shippingAddress ? `<br><b>Shipping:</b> ${invoice.shippingDetails.shippingAddress}` : ''}
+            </div>
+            <div style="text-align: center; margin-left: 8px; shrink-0;">
+              ${generateCode128SvgString(invoice.invoiceNo || invoice.billNo || 'DRAFT', { width: 1.3, height: 36, displayValue: false, margin: 2 })}
+              <div style="font-family: monospace; font-size: 9.5px; font-weight: bold; letter-spacing: 0.5px; margin-top: 1px;">${invoice.invoiceNo || invoice.billNo || 'DRAFT'}</div>
+            </div>
+          </div>
         </div>
         <div class="divider"></div>
         <table>
@@ -3569,31 +3765,171 @@ export const BillingPOSView = ({
 
   // --- REDESIGNED POS BILLING LOGIC ---
   const executeSmartSearch = async (query, clearInputFn) => {
-    const q = query.trim();
+    const q = (query || "").trim();
     if (!q) return;
 
+    // Helper: Load full invoice details into POS Billing Window
+    const loadInvoiceIntoPOS = (invData) => {
+      const inv = invData.bill || invData.saleBill || invData;
+      const rawItems = invData.items || inv.items || [];
+      const cust = inv.customerId || inv.customer || {};
+
+      const custName = inv.customerName || (typeof cust === 'object' ? cust.name : '') || 'Walk-in Customer';
+      const custPhone = inv.customerPhone || (typeof cust === 'object' ? cust.phone : '') || '';
+      let resolvedCustomerId = (typeof cust === 'object' && cust.customerId) ? cust.customerId : '';
+      if (!resolvedCustomerId && custPhone) {
+        const found = (customers || []).find(c => c.phone === custPhone || c.mobile === custPhone);
+        if (found && found.customerId) resolvedCustomerId = found.customerId;
+        else resolvedCustomerId = `CUST-${custPhone.slice(-4)}`;
+      }
+      if (!resolvedCustomerId && typeof cust === 'object' && (cust._id || cust.id)) {
+        resolvedCustomerId = `CUST-${(cust._id || cust.id).toString().slice(-4).toUpperCase()}`;
+      }
+      if (!resolvedCustomerId && custName && !custName.toLowerCase().includes('walk-in')) {
+        resolvedCustomerId = 'CUST-0001';
+      }
+      const custGstin = (typeof cust === 'object' ? (cust.gstin || cust.gstNo) : '') || '';
+      const custLoyalty = (typeof cust === 'object' ? (cust.loyaltyPoints || 0) : 0);
+
+      // 1. Populate Customer / CRM Strip
+      setCustomerForm({
+        phone: custPhone,
+        name: custName,
+        customerId: resolvedCustomerId,
+        gstin: custGstin,
+        lf: '2588'
+      });
+      setSelectedCustomerId((typeof cust === 'object' && (cust._id || cust.id)) ? (cust._id || cust.id) : '');
+      setCustomerSearchQuery(custPhone || custName || '');
+
+      // 2. Populate Billing Grid with all original items
+      const formattedItems = rawItems.map((item, idx) => {
+        const piece = item.inventoryPieceId || item.piece || {};
+        const prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
+        const sPrice = Number(item.sellingPrice ?? item.price ?? item.mrp ?? prod.sellingPrice ?? 0);
+        const mrpVal = Number(item.mrp ?? prod.mrp ?? prod.defaultMRP ?? sPrice);
+        const nameVal = item.name || item.itemName || (typeof prod === 'object' ? (prod.itemName || prod.name) : '') || 'Original Item';
+        const barcodeVal = item.barcode || (piece && piece.barcode) || (typeof prod === 'object' ? prod.barcode : '') || '';
+        const designVal = item.designNo || (typeof prod === 'object' ? (prod.designNo || prod.sku) : '') || '';
+        const itemCodeVal = item.itemCode || (typeof prod === 'object' ? (prod.itemCode || prod.productCode) : '') || '';
+        const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company) : '') || (piece && piece.firmId?.name) || 'Primary Store Firm';
+        const sizeVal = item.size || (piece && piece.size) || (typeof prod === 'object' ? prod.size : '') || 'FS';
+        const colorVal = item.color || item.primaryColor || (piece && piece.primaryColor) || (typeof prod === 'object' ? (prod.primaryColor || prod.color) : '') || 'Standard';
+        const uniqueCodeVal = item.uniqueCode || (piece && piece.uniqueCode) || (piece && piece.barcode) || barcodeVal || '';
+
+        return {
+          cartItemId: `cart-item-orig-${Date.now()}-${idx}`,
+          productId: (typeof prod === 'object' ? (prod._id || prod.id) : null) || item.productId,
+          name: nameVal,
+          itemName: nameVal,
+          barcode: barcodeVal,
+          barcodeNo: barcodeVal,
+          subItem: item.subItem || (typeof prod === 'object' ? (prod.subItem || prod.category) : '') || '',
+          firmName: firmVal,
+          company: firmVal,
+          designNo: designVal,
+          itemCode: itemCodeVal,
+          ipn: item.ipn || (piece && piece.ipn) || '',
+          sku: designVal || itemCodeVal,
+          size: sizeVal,
+          color: colorVal,
+          primaryColor: colorVal,
+          secondaryColor: item.secondaryColor || (piece && piece.secondaryColor) || '',
+          hsn: item.hsn || (typeof prod === 'object' ? (prod.hsn || prod.hsnCode) : '') || '',
+          mrp: mrpVal,
+          price: sPrice,
+          sellingPrice: sPrice,
+          discount: Number(item.discountAmount || item.discount || 0),
+          gstPercent: Number(item.gstPercent || (typeof prod === 'object' ? prod.gstPercent : 0) || 0),
+          totalPrice: Number(item.finalPrice || item.totalPrice || (sPrice * (item.quantity || 1))),
+          quantity: Number(item.quantity || 1),
+          uniqueCode: uniqueCodeVal,
+          hasAlteration: Boolean(item.hasAlteration),
+          alterationRecord: item.alterationRecord || null
+        };
+      });
+
+      setCart(formattedItems);
+      const unifiedInv = {
+        ...inv,
+        items: formattedItems,
+        customerName: custName,
+        customerPhone: custPhone,
+        invoiceNo: inv.billNo || inv.invoiceNo
+      };
+      setLoadedOriginalInvoice(unifiedInv);
+      if (typeof clearInputFn === 'function') clearInputFn("");
+      if (onAddNotification) {
+        onAddNotification(
+          "Original Bill Loaded",
+          `Loaded Invoice ${inv.billNo || inv.invoiceNo} (${formattedItems.length} item${formattedItems.length === 1 ? '' : 's'})`,
+          "success"
+        );
+      }
+    };
+
+    // 1. Check if scanned value is a Bill Barcode (e.g. starts with INV- or BILL-)
+    const isExplicitBillPattern = /^inv-|^bill-/i.test(q);
+    if (isExplicitBillPattern) {
+      try {
+        const billRes = await api.get(`/billing/${encodeURIComponent(q)}`);
+        if (billRes.data?.success && billRes.data.data) {
+          loadInvoiceIntoPOS(billRes.data.data);
+          return;
+        }
+      } catch (err) {
+        // Check in-memory invoices fallback
+        const localBill = (invoices || []).find(inv => (inv.invoiceNo || inv.billNo || '').toLowerCase() === q.toLowerCase());
+        if (localBill) {
+          loadInvoiceIntoPOS(localBill);
+          return;
+        }
+        if (onAddNotification) onAddNotification("Invoice Not Found", `No invoice found for "${q}"`, "danger");
+        return;
+      }
+    }
+
+    // 2. Normal Product Lookup flow
     try {
       const res = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
       if (res.data.success) {
         const items = res.data.data;
-        if (items.length === 0) {
-          if (onAddNotification) onAddNotification("Not Found", "No product found for this code", "danger");
-        } else if (items.length === 1 || items.find(i => i.barcode === q)) {
-          // Auto add exact match or single result
-          const match = items.find(i => i.barcode === q) || items[0];
-          handleAddProductToCart(match);
-          if (onAddNotification) onAddNotification("Added", `${match.name} added to bill`, "success");
-          clearInputFn("");
-        } else {
-          // Multiple matches -> Open Selection Popup
-          setDesignSelectionItems(items);
-          setSelectedDesignItemIdx(0);
-          setIsDesignSelectionPopupOpen(true);
+        if (items.length > 0) {
+          if (loadedOriginalInvoice) setLoadedOriginalInvoice(null);
+
+          if (items.length === 1 || items.find(i => i.barcode === q)) {
+            const match = items.find(i => i.barcode === q) || items[0];
+            handleAddProductToCart(match);
+            if (onAddNotification) onAddNotification("Added", `${match.name} added to bill`, "success");
+            if (typeof clearInputFn === 'function') clearInputFn("");
+          } else {
+            setDesignSelectionItems(items);
+            setSelectedDesignItemIdx(0);
+            setIsDesignSelectionPopupOpen(true);
+          }
+          return;
         }
       }
     } catch (err) {
-      console.error("Smart barcode search failed:", err);
+      console.error("Smart barcode product search failed:", err);
     }
+
+    // 3. Fallback: Check if scanned value matches an invoice without INV- prefix
+    try {
+      const billRes = await api.get(`/billing/${encodeURIComponent(q)}`);
+      if (billRes.data?.success && billRes.data.data) {
+        loadInvoiceIntoPOS(billRes.data.data);
+        return;
+      }
+    } catch (e) { }
+
+    const localBillFallback = (invoices || []).find(inv => (inv.invoiceNo || inv.billNo || '').toLowerCase() === q.toLowerCase());
+    if (localBillFallback) {
+      loadInvoiceIntoPOS(localBillFallback);
+      return;
+    }
+
+    if (onAddNotification) onAddNotification("Not Found", "No product or invoice found for this code", "danger");
   };
 
   const handleSmartBarcodeKeyDown = async (e) => {
@@ -4005,14 +4341,14 @@ export const BillingPOSView = ({
                   />
                 </div>
 
-                {/* Customer ID (New field in Row 1) */}
+                {/* Customer ID (Row 1) */}
                 <div className="flex relative items-center border border-slate-300 bg-white overflow-hidden">
                   <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold text-indigo-700">Cust ID</span>
                   <input
                     type="text"
                     readOnly
                     className={`flex-1 min-w-0 p-1 text-[10px] outline-none bg-slate-50 uppercase font-mono font-bold ${customerForm.customerId ? 'text-indigo-600 cursor-pointer hover:underline' : 'text-slate-400'}`}
-                    value={customerForm.customerId || 'AUTO-GEN'}
+                    value={customerForm.customerId || (customerForm.phone && customerForm.phone.length >= 10 ? `CUST-${customerForm.phone.slice(-4)}` : 'AUTO-GEN')}
                     onClick={() => { if (customerForm.customerId) handleOpenCustomerHistory(); }}
                     placeholder="Cust ID"
                   />
@@ -4061,6 +4397,84 @@ export const BillingPOSView = ({
                 <div className="hidden md:block"></div>
                 <div className="hidden md:block"></div>
               </div>
+
+              {/* Loaded Original Bill Banner */}
+              {loadedOriginalInvoice && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 mt-1 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-indigo-600 text-white font-extrabold text-[9px] px-2 py-0.5 rounded uppercase tracking-wider">
+                      Original Bill Loaded
+                    </span>
+                    <span
+                      onClick={() => setShowBillPreviewInvoice(loadedOriginalInvoice)}
+                      className="font-mono font-black text-indigo-700 hover:text-indigo-900 cursor-pointer underline text-xs"
+                      title="Click to view full receipt"
+                    >
+                      {loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo}
+                    </span>
+                    <span className="text-slate-500 font-medium text-[10px]">
+                      ({loadedOriginalInvoice.date ? new Date(loadedOriginalInvoice.date).toLocaleDateString('en-IN') : ''} • ₹{(loadedOriginalInvoice.grandTotal || 0).toLocaleString()} • {loadedOriginalInvoice.paymentMethod || 'Paid'})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAlterationForSelectedProduct()}
+                      className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black px-2.5 py-1 rounded shadow-xs cursor-pointer flex items-center gap-1 uppercase tracking-wider"
+                    >
+                      <Scissors className="w-3 h-3" /> Alteration (Alt+A)
+                    </button>
+                    {cart.some(i => i.hasAlteration) && (
+                      <button
+                        type="button"
+                        onClick={handleCompleteAllBillActions}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black px-3 py-1 rounded shadow-md cursor-pointer flex items-center gap-1.5 uppercase tracking-wider"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5 text-white" />
+                        <span>Complete & Issue Slips ({cart.filter(i => i.hasAlteration).length})</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                        setReturnActionType("return");
+                        setReturnedItemIds([]);
+                        setShowReturnExchangeModal(true);
+                      }}
+                      className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black px-2.5 py-1 rounded shadow-xs cursor-pointer flex items-center gap-1 uppercase tracking-wider"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Returns (R)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                        setReturnActionType("exchange");
+                        setExchangeOldItemIdx(0);
+                        setExchangeSelectedNewProduct(null);
+                        setShowReturnExchangeModal(true);
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black px-2.5 py-1 rounded shadow-xs cursor-pointer flex items-center gap-1 uppercase tracking-wider"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Exchange (E)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoadedOriginalInvoice(null);
+                        setCart([]);
+                        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+                        setSelectedCustomerId('');
+                      }}
+                      className="text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
+                      title="Clear Loaded Bill"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -4131,8 +4545,19 @@ export const BillingPOSView = ({
                       const hsnDisplay = item.hsn || item.hsnCode || item.hsnId?.code || '';
 
                       return (
-                        <tr key={idx} className={`border-b border-slate-200 transition-colors ${firmStyle.rowClass}`}>
-                          <td className="border-r border-slate-300 p-1 text-center">{idx + 1}</td>
+                        <tr
+                          key={idx}
+                          onClick={() => {
+                            setSelectedCartRowIndex(idx);
+                            setFocusedAlterationIndex(idx);
+                          }}
+                          className={`border-b border-slate-200 transition-all cursor-pointer ${firmStyle.rowClass} ${
+                            selectedCartRowIndex === idx
+                              ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
+                              : ''
+                          }`}
+                        >
+                          <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>{nameDisplay}</td>
                           <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap overflow-hidden">
@@ -4302,9 +4727,10 @@ export const BillingPOSView = ({
                       <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
                       <td className="border-r border-slate-300 p-0.5">
                         <input
+                          id="posBarcodeInput"
                           type="text"
                           className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase shadow-inner"
-                          placeholder="Barcode / Code"
+                          placeholder="(Alt+B)"
                           value={barcodeInput}
                           onChange={(e) => setBarcodeInput(e.target.value)}
                           onKeyDown={handleSmartBarcodeKeyDown}
@@ -4346,7 +4772,7 @@ export const BillingPOSView = ({
 
                         {/* Interactive Detailed Item Table Dropdown List */}
                         {isItemDropdownOpen && (
-                          <div 
+                          <div
                             id="item-search-fixed-dropdown"
                             style={{
                               position: 'fixed',
@@ -4501,7 +4927,7 @@ export const BillingPOSView = ({
                         />
 
                         {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
-                          <div 
+                          <div
                             id="design-no-fixed-dropdown"
                             style={{
                               position: 'fixed',
@@ -4626,7 +5052,7 @@ export const BillingPOSView = ({
                           id="itemCodeSearchInput"
                           type="text"
                           className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
-                          placeholder="SEARCH"
+                          placeholder="SEARCH(F4)"
                           value={itemCodeSearchInput}
                           onChange={(e) => setItemCodeSearchInput(e.target.value)}
                           onKeyDown={handleItemCodeKeyDown}
@@ -4732,7 +5158,7 @@ export const BillingPOSView = ({
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                   {[
                     { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => { setCart([]); setCustomerForm({ phone: '', name: '', title: 'Mr.', lf: '2588' }); setSelectedCustomerId(""); } },
-                    { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => setShowAlterationModal(true) },
+                    { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => handleOpenAlterationForSelectedProduct() },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
                     { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
                     { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
@@ -4745,9 +5171,17 @@ export const BillingPOSView = ({
                     { id: "viewTotals", label: "Cash Summary", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
-                    { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
+                    { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
+                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                      setReturnActionType("return");
+                      setActivePOSMode("returns");
+                    } },
+                    { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
+                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                      setReturnActionType("exchange");
+                      setActivePOSMode("returns");
+                    } },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
-                    { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setActivePOSMode("returns") },
                     { id: "adjustments", label: "Adjustments (A)", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
                     { id: "clearBill", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => setCart([]) },
                     { id: "viewHolds", label: "View Holds (F5)", icon: <Clock className="w-5 h-5 text-orange-600 mx-auto" />, onClick: handleResumeBill },
@@ -4846,7 +5280,11 @@ export const BillingPOSView = ({
                         key={idx}
                         id={`alt-panel-item-${idx}`}
                         className={`p-2 rounded-lg transition-all flex flex-col gap-1 cursor-pointer select-none ${cardStyle}`}
-                        onClick={handleToggleAlterationMark}
+                        onClick={() => {
+                          setSelectedCartRowIndex(idx);
+                          setFocusedAlterationIndex(idx);
+                          handleOpenAlterationForSelectedProduct(item, idx);
+                        }}
                       >
                         <div className="flex items-start gap-2">
                           {isFocused && (
@@ -4968,8 +5406,8 @@ export const BillingPOSView = ({
                               🔁 EXCHANGED
                             </span>
                           )}
-                          {Boolean(inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))) && (
-                            <span className="bg-amber-100 text-amber-800 border border-amber-200 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                          {Boolean(inv.hasAlteration || inv.alterationBill || (inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')))) && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
                               ✂ ALTERATION
                             </span>
                           )}
@@ -7984,10 +8422,10 @@ export const BillingPOSView = ({
 
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg border border-indigo-500/30">
-                          Target Invoice: INV-2026-LIVE
+                          {loadedOriginalInvoice ? `Billed Invoice: ${loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo}` : 'Target Invoice: LIVE'}
                         </span>
                         <span className="text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg border border-emerald-500/30">
-                          {activeCustomer.name} ({activeCustomer.phone})
+                          {customerForm.name || activeCustomer.name} ({customerForm.phone || activeCustomer.phone || 'Walk-in'})
                         </span>
                       </div>
                     </div>
@@ -8190,7 +8628,7 @@ export const BillingPOSView = ({
                   className="px-6 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center gap-2 cursor-pointer"
                 >
                   <Scissors className="w-4 h-4" />
-                  <span>Save Alteration Record</span>
+                  <span>{loadedOriginalInvoice ? 'Issue Alteration Slip (No Re-Billing)' : 'Save Alteration Record'}</span>
                 </button>
               )}
             </div>
@@ -8438,6 +8876,554 @@ export const BillingPOSView = ({
           </div>
         </div>
       )}
+
+      {/* MODAL: COMPLETED ALTERATION SLIP DOCKET */}
+      {showAlterationDocketModal && completedAlterationDocket && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[120] font-sans animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 text-rose-600">
+                <Scissors className="w-5 h-5" />
+                <span className="text-sm font-bold uppercase tracking-wide">
+                  Alteration Slip Issued
+                </span>
+              </div>
+              <button
+                onClick={() => setShowAlterationDocketModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Docket Ticket View (Supports Multiple Garments) */}
+            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-96 overflow-y-auto">
+              <div className="text-center font-bold text-slate-900 text-sm">
+                ZIVA FASHION BOUTIQUE
+                <p className="text-[10px] text-rose-600 uppercase font-black tracking-widest mt-0.5">
+                  OFFICIAL ALTERATION JOB DOCKET
+                </p>
+                <span className="inline-block bg-slate-900 text-white text-[10px] px-2 py-0.5 rounded font-mono mt-1 font-bold">
+                  {completedAlterationDocket.docketNo}
+                </span>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="space-y-1 text-[11px]">
+                <p>Date: <strong>{new Date(completedAlterationDocket.createdAt).toLocaleString('en-IN')}</strong></p>
+                <p>Ref Bill: <strong className="text-indigo-600">{completedAlterationDocket.originalInvoiceNo}</strong></p>
+                <p>Customer: <strong>{completedAlterationDocket.customerName}</strong> {completedAlterationDocket.customerPhone ? `(${completedAlterationDocket.customerPhone})` : ''}</p>
+                <p>Cashier: {completedAlterationDocket.cashierName}</p>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {/* Multi-Garment List */}
+              {(() => {
+                const itemsList = completedAlterationDocket.items || (completedAlterationDocket.item ? [completedAlterationDocket.item] : []);
+                return itemsList.map((itm, iIdx) => {
+                  const rec = itm.alterationRecord || completedAlterationDocket;
+                  return (
+                    <div key={iIdx} className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 mb-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-extrabold text-slate-900 text-xs">{iIdx + 1}. {itm.name}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">Size: {itm.size || 'M'} | Col: {itm.color || 'Std'} | Code: {itm.barcode || itm.uniqueCode || 'N/A'}</p>
+                        </div>
+                        <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded uppercase">
+                          {rec.tailorName || 'Master Tailor'}
+                        </span>
+                      </div>
+
+                      {rec.alterationDetails?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {rec.alterationDetails.map((req, rIdx) => (
+                            <span key={rIdx} className="bg-rose-50 text-rose-700 font-bold text-[9px] px-2 py-0.5 rounded border border-rose-200">
+                              {req}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {rec.customInstructions && (
+                        <p className="text-[9.5px] text-slate-600 italic">"{rec.customInstructions}"</p>
+                      )}
+
+                      {Object.keys(rec.measurements || {}).filter(k => rec.measurements[k]).length > 0 && (
+                        <div className="pt-1 border-t border-slate-100 grid grid-cols-3 gap-1 text-[9px]">
+                          {Object.entries(rec.measurements).filter(([_, v]) => v).map(([k, v]) => (
+                            <span key={k}><strong>{k}:</strong> {v}"</span>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-[9.5px] text-amber-700 font-bold">
+                        Delivery: {rec.deliveryDate ? new Date(rec.deliveryDate).toLocaleDateString('en-IN') : 'Standard'} {rec.deliveryTime || ''}
+                      </p>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-2 font-sans text-xs">
+              <button
+                onClick={() => setShowAlterationDocketModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Close & Next Bill
+              </button>
+              <button
+                onClick={() => {
+                  const docket = completedAlterationDocket;
+                  const itemsList = docket.items || (docket.item ? [docket.item] : []);
+                  const htmlContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                      <meta charset="UTF-8">
+                      <title>Alteration Slip ${docket.docketNo}</title>
+                      <style>
+                        body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; line-height: 1.4; }
+                        .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                        .section { border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-bottom: 8px; font-size: 12px; }
+                        .bold { font-weight: bold; }
+                        .badge { background: #000; color: #fff; padding: 3px 8px; font-weight: bold; font-size: 11px; display: inline-block; margin-top: 5px; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="header">
+                        <h2 style="margin:0;">ZIVA FASHION BOUTIQUE</h2>
+                        <p style="margin:2px 0; font-size:11px;">OFFICIAL ALTERATION SLIP</p>
+                        <div class="badge">${docket.docketNo}</div>
+                      </div>
+                      <div class="section">
+                        <div><b>Date:</b> ${new Date(docket.createdAt).toLocaleString('en-IN')}</div>
+                        <div><b>Ref Sale Bill:</b> ${docket.originalInvoiceNo}</div>
+                        <div><b>Customer:</b> ${docket.customerName} ${docket.customerPhone ? `(${docket.customerPhone})` : ''}</div>
+                      </div>
+                      ${itemsList.map((itm, iIdx) => {
+                        const rec = itm.alterationRecord || docket;
+                        return `
+                          <div class="section">
+                            <b>${iIdx + 1}. GARMENT:</b> ${itm.name} (${itm.size || 'M'} / ${itm.color || 'Std'})<br/>
+                            <b>Barcode:</b> ${itm.barcode || itm.uniqueCode || 'N/A'}<br/>
+                            <b>Tailor:</b> ${rec.tailorName || 'Master Tailor'}<br/>
+                            <b>Delivery:</b> ${rec.deliveryDate ? new Date(rec.deliveryDate).toLocaleDateString('en-IN') : 'Standard'} ${rec.deliveryTime || ''}<br/>
+                            <b>INSTRUCTIONS:</b><br/>
+                            ${rec.alterationDetails?.join(', ') || 'Custom Fitting'}<br/>
+                            ${rec.customInstructions ? `<i>${rec.customInstructions}</i><br/>` : ''}
+                            ${Object.entries(rec.measurements || {}).filter(([_, v]) => v).map(([k, v]) => `<span><b>${k}:</b> ${v}" </span>`).join(' | ')}
+                          </div>
+                        `;
+                      }).join('')}
+                      <div style="text-align: center; font-size: 10px; margin-top: 15px;">
+                        *** Please present this slip during delivery collection ***
+                      </div>
+                    <script>window.onload = function() { setTimeout(function() { window.print(); }, 400); }</script>
+                    </body>
+                    </html>
+                  `;
+                  const blob = new Blob(["\ufeff" + htmlContent], { type: "text/html;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, "_blank");
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Alteration Slip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RETURN & EXCHANGE POPUP MODAL (DIRECTLY IN BILLING) */}
+      {showReturnExchangeModal && selectedInvoiceForReturn && (() => {
+        let implicitDiscount = 0;
+        if (selectedInvoiceForReturn.subTotal && selectedInvoiceForReturn.grandTotal < selectedInvoiceForReturn.subTotal) {
+          implicitDiscount = selectedInvoiceForReturn.subTotal - selectedInvoiceForReturn.grandTotal;
+        } else if (selectedInvoiceForReturn.amountPaid !== undefined && selectedInvoiceForReturn.amountPaid < selectedInvoiceForReturn.grandTotal && selectedInvoiceForReturn.amountPaid > 0) {
+          implicitDiscount = selectedInvoiceForReturn.grandTotal - selectedInvoiceForReturn.amountPaid;
+        }
+
+        const hasManualAdj = selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0;
+        const totalAdjAmt = (hasManualAdj ? (selectedInvoiceForReturn.billAdjustment.operation === 'Charge' ? -selectedInvoiceForReturn.billAdjustment.amount : selectedInvoiceForReturn.billAdjustment.amount) : 0) + implicitDiscount;
+
+        return (
+          <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="bg-slate-50 border border-slate-300 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-scale-up">
+              
+              {/* Modal Header */}
+              <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center">
+                    {returnActionType === 'return' ? <RotateCcw className="w-4 h-4 text-rose-400" /> : <RefreshCw className="w-4 h-4 text-indigo-400" />}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black tracking-wide text-white uppercase flex items-center gap-2">
+                      <span>{returnActionType === 'return' ? 'Process Item Return' : 'Process Item Exchange'}</span>
+                      <span className="text-[11px] bg-slate-800 text-amber-300 border border-amber-400/40 px-2 py-0.5 rounded font-mono font-bold">
+                        {selectedInvoiceForReturn.invoiceNo}
+                      </span>
+                    </h3>
+                    <p className="text-[10.5px] text-slate-400">
+                      Customer: <strong className="text-white">{selectedInvoiceForReturn.customerName}</strong> ({selectedInvoiceForReturn.customerPhone || 'Walk-in'}) • Total: <strong className="text-emerald-400">₹{(selectedInvoiceForReturn.grandTotal || 0).toLocaleString()}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setReturnActionType('return')}
+                      className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer ${returnActionType === 'return' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Return
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReturnActionType('exchange')}
+                      className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer ${returnActionType === 'exchange' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Exchange
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setShowReturnExchangeModal(false)}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                  
+                  {/* Left Column: Bill Details */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 md:col-span-4 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
+                      Original Bill Info
+                    </h4>
+                    <div className="space-y-2 text-xs font-medium">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Invoice No:</span>
+                        <span className="font-mono font-bold text-indigo-600">{selectedInvoiceForReturn.invoiceNo}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Customer:</span>
+                        <span className="font-bold text-slate-800">{selectedInvoiceForReturn.customerName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Mobile:</span>
+                        <span className="font-mono text-slate-700">{selectedInvoiceForReturn.customerPhone || 'Walk-in'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Date:</span>
+                        <span className="font-mono text-slate-700">
+                          {selectedInvoiceForReturn.date ? new Date(selectedInvoiceForReturn.date).toLocaleDateString('en-IN') : '-'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Grand Total:</span>
+                        <span className="font-mono font-bold text-slate-900">₹{(selectedInvoiceForReturn.grandTotal || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Payment:</span>
+                        <span className="font-bold text-emerald-600">{selectedInvoiceForReturn.paymentMethod || 'Cash'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Workflow Panels */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 md:col-span-8 space-y-4">
+                    {returnActionType === 'return' ? (
+                      /* Return Form */
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Reason for Return:</label>
+                          <select
+                            value={returnReason}
+                            onChange={(e) => setReturnReason(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
+                          >
+                            <option value="">None / Fast Checkout</option>
+                            <option value="Defective / Damaged">Defective / Damaged Garment</option>
+                            <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
+                            <option value="Customer Changed Mind">Customer Changed Mind</option>
+                            <option value="Quality Dissatisfaction">Quality Dissatisfaction</option>
+                            <option value="Other">Other (Specify)</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-700 uppercase">Select Items to Return:</label>
+                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-56 overflow-y-auto space-y-2">
+                            {(selectedInvoiceForReturn.items || []).map((item, idx) => {
+                              const targetId = item.productId || item.id || item._id || idx;
+                              const isChecked = returnedItemIds.includes(targetId);
+                              return (
+                                <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setReturnedItemIds(prev => isChecked ? prev.filter(id => id !== targetId) : [...prev, targetId]);
+                                      }}
+                                      className="w-4 h-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+                                    />
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                        <span>{item.name || item.itemName}</span>
+                                        {item.isReturned && <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">RETURNED</span>}
+                                        {item.isExchanged && <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">EXCHANGED</span>}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity || 1}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-bold font-mono text-slate-800">
+                                    ₹{(item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))).toLocaleString()}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Refund Summary */}
+                        <div className="flex justify-between items-center bg-rose-50 p-3 rounded-xl border border-rose-200">
+                          <span className="text-xs font-bold text-rose-900">Refund Amount:</span>
+                          <span className="font-mono font-black text-rose-600 text-base">
+                            ₹{(selectedInvoiceForReturn.items || [])
+                              .filter((item, idx) => returnedItemIds.includes(item.productId || item.id || item._id || idx))
+                              .reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0)
+                              .toLocaleString()}
+                          </span>
+                        </div>
+
+                        <label className="flex items-center gap-2 bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={returnApprovedCheckbox}
+                            onChange={(e) => setReturnApprovedCheckbox(e.target.checked)}
+                            className="w-4 h-4 text-rose-600 rounded border-amber-300 focus:ring-rose-500 cursor-pointer shrink-0"
+                          />
+                          <span>I approve this return & confirm physical garment condition.</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={!returnApprovedCheckbox || returnedItemIds.length === 0 || isProcessingReturn}
+                          onClick={async () => {
+                            if (isProcessingReturn) return;
+                            setIsProcessingReturn(true);
+                            try {
+                              const returnedItems = (selectedInvoiceForReturn.items || []).filter((item, idx) => returnedItemIds.includes(item.productId || item.id || item._id || idx));
+                              const refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+                              
+                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                              await api.post(`/returns`, {
+                                saleBillId: invId,
+                                saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customerId,
+                                refundMode: returnRefundMode,
+                                reason: returnReason || 'Standard Return',
+                                items: returnedItems.map(it => ({
+                                  barcode: it.barcode || it.itemCode || it.designNo || '',
+                                  refundRate: it.totalPrice || it.price || 0,
+                                  condition: 'RESELLABLE'
+                                })),
+                                forceApprove: true
+                              });
+
+                              if (onAddNotification) {
+                                onAddNotification("Return Processed", `Return of ₹${refundAmt.toLocaleString()} completed successfully.`, "success");
+                              }
+
+                              setShowReturnExchangeModal(false);
+                              setSelectedInvoiceForReturn(null);
+                              setLoadedOriginalInvoice(null);
+                              setCart([]);
+                              setReturnedItemIds([]);
+                              setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+                              setSelectedCustomerId('');
+                            } catch (err) {
+                              console.error(err);
+                              if (onAddNotification) onAddNotification("Return Error", err.response?.data?.message || err.message, "danger");
+                            } finally {
+                              setIsProcessingReturn(false);
+                            }
+                          }}
+                          className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                        >
+                          {isProcessingReturn ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                          <span>Confirm & Process Return</span>
+                        </button>
+                      </div>
+                    ) : (
+                      /* Exchange Form */
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Garment to Return:</label>
+                          <select
+                            value={exchangeOldItemIdx}
+                            onChange={(e) => setExchangeOldItemIdx(Number(e.target.value))}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            {(selectedInvoiceForReturn.items || []).map((item, idx) => (
+                              <option key={idx} value={idx}>
+                                {item.name || item.itemName} ({item.size || 'M'}/{item.color || 'Std'}) - ₹{(item.totalPrice || item.price || 0).toLocaleString()}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Replacement Product:</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={exchangeNewSearchQuery}
+                              onChange={(e) => setExchangeNewSearchQuery(e.target.value)}
+                              placeholder="Search replacement item by name, barcode or SKU..."
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+
+                          {exchangeNewSearchQuery && (
+                            <div className="border border-slate-200 rounded-xl mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white shadow-md">
+                              {(products || [])
+                                .filter(p => (p.name || p.itemName || '').toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) || (p.barcode || '').includes(exchangeNewSearchQuery) || (p.sku || p.designNo || '').includes(exchangeNewSearchQuery))
+                                .slice(0, 15)
+                                .map((p, idx) => (
+                                  <div
+                                    key={idx}
+                                    onClick={() => {
+                                      setExchangeSelectedNewProduct(p);
+                                      setExchangeNewSearchQuery("");
+                                    }}
+                                    className="p-2 text-xs hover:bg-indigo-50 cursor-pointer flex justify-between items-center"
+                                  >
+                                    <div>
+                                      <p className="font-bold text-slate-800">{p.name || p.itemName}</p>
+                                      <p className="text-[10px] text-slate-400">Barcode: {p.barcode || p.sku || 'N/A'}</p>
+                                    </div>
+                                    <span className="font-mono font-bold text-indigo-600">₹{(p.sellingPrice || p.price || p.mrp || 0).toLocaleString()}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {exchangeSelectedNewProduct && (
+                          <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-200 flex justify-between items-center">
+                            <div>
+                              <p className="text-xs font-bold text-indigo-950">New Item Selected: {exchangeSelectedNewProduct.name || exchangeSelectedNewProduct.itemName}</p>
+                              <p className="text-[10px] text-indigo-600">Price: ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setExchangeSelectedNewProduct(null)}
+                              className="text-indigo-400 hover:text-indigo-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          disabled={!exchangeSelectedNewProduct || isProcessingReturn}
+                          onClick={async () => {
+                            if (isProcessingReturn) return;
+                            setIsProcessingReturn(true);
+                            try {
+                              const oldItem = (selectedInvoiceForReturn.items || [])[exchangeOldItemIdx] || (selectedInvoiceForReturn.items || [])[0];
+                              const oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                              const newPrice = exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0;
+                              const priceDiff = newPrice - oldPrice;
+
+                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                              await api.post(`/exchanges`, {
+                                originalBillId: invId,
+                                originalBillNo: selectedInvoiceForReturn.invoiceNo,
+                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customerId,
+                                returnedBarcode: oldItem.barcode || oldItem.itemCode || oldItem.designNo || '',
+                                newBarcode: exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.id || '',
+                                returnedValue: oldPrice,
+                                newItemValue: newPrice,
+                                remarks: exchangeReason || 'Product Exchange',
+                                forceApprove: true
+                              });
+
+                              const docket = {
+                                docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+                                originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
+                                customerName: selectedInvoiceForReturn.customerName,
+                                customerPhone: selectedInvoiceForReturn.customerPhone,
+                                reason: exchangeReason || 'Customer Exchange',
+                                oldItem: {
+                                  name: oldItem.name || oldItem.itemName,
+                                  size: oldItem.size || 'M',
+                                  color: oldItem.color || 'Std',
+                                  price: oldPrice
+                                },
+                                newItem: {
+                                  name: exchangeSelectedNewProduct.name || exchangeSelectedNewProduct.itemName,
+                                  size: exchangeSelectedNewProduct.size || 'M',
+                                  color: exchangeSelectedNewProduct.color || 'Std',
+                                  price: newPrice,
+                                  sku: exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.sku || 'N/A'
+                                },
+                                priceDiff,
+                                cashierName: currentUser?.name || 'Cashier',
+                                createdAt: new Date().toISOString()
+                              };
+
+                              setCompletedExchangeSlip(docket);
+                              setShowExchangeSlipModal(true);
+
+                              if (onAddNotification) {
+                                onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully.`, "success");
+                              }
+
+                              setShowReturnExchangeModal(false);
+                              setSelectedInvoiceForReturn(null);
+                              setLoadedOriginalInvoice(null);
+                              setCart([]);
+                              setExchangeSelectedNewProduct(null);
+                              setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+                              setSelectedCustomerId('');
+                            } catch (err) {
+                              console.error(err);
+                              if (onAddNotification) onAddNotification("Exchange Error", err.response?.data?.message || err.message, "danger");
+                            } finally {
+                              setIsProcessingReturn(false);
+                            }
+                          }}
+                          className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeSelectedNewProduct && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                        >
+                          {isProcessingReturn ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          <span>Confirm & Issue Exchange</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* BILL ADJUSTMENT MODAL */}
       {showAdjustmentModal && (() => {

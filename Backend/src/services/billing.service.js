@@ -24,8 +24,19 @@ class BillingService {
       // Only auto-create a customer if a real name is provided (not 'Walk-in Customer')
       const custName = (billData.customerName || '').trim();
       if (!customer && custName && !custName.toLowerCase().includes('walk-in')) {
+        const count = await Customer.countDocuments({ tenantId });
+        let nextNum = count + 1;
+        let candidate = `CUST-${String(nextNum).padStart(4, '0')}`;
+        let exists = await Customer.findOne({ tenantId, customerId: candidate });
+        while (exists) {
+          nextNum++;
+          candidate = `CUST-${String(nextNum).padStart(4, '0')}`;
+          exists = await Customer.findOne({ tenantId, customerId: candidate });
+        }
+
         customer = await Customer.create({
           tenantId,
+          customerId: candidate,
           name: custName,
           phone: billData.customerPhone,
           createdBy: userId
@@ -651,18 +662,30 @@ class BillingService {
       }
     });
 
-    // Fetch Alterations for all bills
+    // Fetch Alterations for all bills (matching by both ObjectId and billNo)
     const Alteration = require('../models/alteration/Alteration');
     const AlterationItem = require('../models/alteration/AlterationItem');
-    const alterations = billIds.length > 0 ? await Alteration.find({ saleBillId: { $in: billIds }, tenantId }) : [];
+    const billNumbers = bills.map(b => b.billNo).filter(Boolean);
+    const alterations = (billIds.length > 0 || billNumbers.length > 0) ? await Alteration.find({
+      tenantId,
+      $or: [
+        { saleBillId: { $in: billIds } },
+        { invoiceNumber: { $in: billNumbers } }
+      ]
+    }) : [];
     const alterationIds = alterations.map(a => a._id);
     const alterationItems = alterationIds.length > 0 ? await AlterationItem.find({ alterationId: { $in: alterationIds }, tenantId }) : [];
 
     const alterationByBill = new Map();
+    const altByBillNo = new Map();
     alterations.forEach(alt => {
-      const bId = alt.saleBillId.toString();
       const items = alterationItems.filter(ai => ai.alterationId.toString() === alt._id.toString());
-      alterationByBill.set(bId, { alt, items });
+      if (alt.saleBillId) {
+        alterationByBill.set(alt.saleBillId.toString(), { alt, items });
+      }
+      if (alt.invoiceNumber) {
+        altByBillNo.set(alt.invoiceNumber, { alt, items });
+      }
     });
 
     const enrichedBills = bills.map(b => {
@@ -676,12 +699,19 @@ class BillingService {
         computedMode = `ADVANCE + ${bObj.paymentMethod || 'CASH'}`;
       }
 
-      const altInfo = alterationByBill.get(bIdStr);
+      const altInfo = alterationByBill.get(bIdStr) || altByBillNo.get(bObj.billNo);
       let billItems = itemsByBill.get(bIdStr) || bObj.items || [];
 
       if (altInfo) {
         billItems = billItems.map(item => {
-          const altItem = altInfo.items.find(ai => ai.inventoryPieceId.toString() === item.inventoryPieceId?.toString());
+          const altItem = altInfo.items.find(ai => {
+            const aiPieceId = ai.inventoryPieceId?._id?.toString() || ai.inventoryPieceId?.toString();
+            const itmPieceId = item.inventoryPieceId?._id?.toString() || item.inventoryPieceId?.toString();
+            if (aiPieceId && itmPieceId && aiPieceId === itmPieceId) return true;
+            if (ai.pieceName && (ai.pieceName === item.itemName || ai.pieceName === item.name)) return true;
+            if (altInfo.items.length === 1) return true;
+            return false;
+          });
           if (altItem) {
             return {
               ...item,
@@ -703,6 +733,8 @@ class BillingService {
 
       return {
         ...bObj,
+        hasAlteration: Boolean(altInfo || bObj.hasAlteration),
+        alterationBill: altInfo?.alt || null,
         paymentMethod: computedMode || (bObj.dueAmount > 0 ? "Credit" : "Cash"),
         paymentTransactions: pInfo?.txs || bObj.paymentTransactions,
         items: billItems
@@ -720,18 +752,25 @@ class BillingService {
     };
   }
 
-  static async getSaleBillById(id, tenantId) {
-    const bill = await SaleBill.findOne({ _id: id, tenantId, isDeleted: false })
+  static async getSaleBillById(idOrBillNo, tenantId) {
+    const mongoose = require('mongoose');
+    let query = { tenantId, isDeleted: false };
+    if (mongoose.Types.ObjectId.isValid(idOrBillNo) && idOrBillNo.toString().length === 24) {
+      query.$or = [{ _id: idOrBillNo }, { billNo: idOrBillNo }];
+    } else {
+      query.billNo = idOrBillNo;
+    }
+    const bill = await SaleBill.findOne(query)
       .populate('customerId firmId warehouseId salesmanId');
     if (!bill) throw new ApiError(404, 'Sale Bill not found.');
 
-    const items = await SaleItem.find({ saleBillId: id, tenantId })
+    const items = await SaleItem.find({ saleBillId: bill._id, tenantId })
       .populate({
         path: 'inventoryPieceId',
         populate: { path: 'productId' }
       });
 
-    const payments = await Payment.find({ saleBillId: id, tenantId });
+    const payments = await Payment.find({ saleBillId: bill._id, tenantId });
     const paymentIds = payments.map(p => p._id);
     const transactions = paymentIds.length > 0 ? await PaymentTransaction.find({ paymentId: { $in: paymentIds }, tenantId }) : [];
 
@@ -740,9 +779,15 @@ class BillingService {
       .filter(tx => tx.mode !== PAYMENT_MODE.DUE && tx.mode !== PAYMENT_MODE.ADVANCE && tx.mode !== 'Advance')
       .reduce((acc, tx) => acc + (tx.amount || 0), 0);
 
+    const Alteration = require('../models/alteration/Alteration');
+    const alteration = await Alteration.findOne({
+      tenantId,
+      $or: [{ saleBillId: bill._id }, { invoiceNumber: bill.billNo }]
+    });
+
     const remainingAmount = Math.max(0, bill.grandTotal - advanceApplied - previouslyPaidAmount);
 
-    return { bill, items, payment: payments[0] || null, payments, transactions, previouslyPaidAmount, advanceApplied, remainingAmount };
+    return { bill: { ...bill.toObject(), hasAlteration: Boolean(alteration || bill.hasAlteration) }, items, alteration, payment: payments[0] || null, payments, transactions, previouslyPaidAmount, advanceApplied, remainingAmount };
   }
 
   static async getBillPayments(billId, tenantId) {

@@ -17,6 +17,7 @@
     "currency-breakdown-ui": "^1.0.21",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "jsbarcode": "^3.12.3",
     "jszip": "^3.10.1",
     "lucide-react": "^0.546.0",
     "moment": "^2.30.1",

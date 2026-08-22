@@ -70,6 +70,8 @@ const normalizeInvoice = (b) => {
       alterationStatus: i.alterationStatus || (i.hasAlteration ? 'PENDING' : 'NONE'),
       alterationRecord: i.alterationRecord
     })),
+    hasAlteration: Boolean(b.hasAlteration || b.alterationBill || rawItems.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))),
+    alterationBill: b.alterationBill || null,
     subTotal: b.subTotal || b.grandTotal || 0,
     discount: b.discountAmount || b.discount || 0,
     grandTotal: b.grandTotal || b.totalAmount || 0,
@@ -635,7 +637,26 @@ export const BillingSalesView = ({
               <tbody>
                 {filteredInvoices.map((inv, idx) => (
                   <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
-                    <td className="p-3 font-bold text-slate-800">{inv.invoiceNo}</td>
+                    <td className="p-3 font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{inv.invoiceNo}</span>
+                        {Boolean(inv.hasAlteration || inv.alterationBill || (inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')))) && (
+                          <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                            ✂ ALTERATION
+                          </span>
+                        )}
+                        {Boolean(inv.hasReturn || (inv.items && inv.items.some(i => i.isReturned))) && (
+                          <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                            ↩ RETURN
+                          </span>
+                        )}
+                        {Boolean(inv.hasExchange || (inv.items && inv.items.some(i => i.isExchanged))) && (
+                          <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                            🔁 EXCHANGE
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-3 font-mono text-[10px]">{new Date(inv.date || inv.createdAt).toLocaleDateString()}</td>
                     <td className="p-3 font-medium">{inv.customerName}</td>
                     <td className="p-3">{inv.salespersonName || 'Counter Cashier'}</td>

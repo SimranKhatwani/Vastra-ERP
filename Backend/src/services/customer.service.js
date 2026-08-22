@@ -15,9 +15,16 @@ class CustomerService {
       throw new ApiError(400, `Customer with phone '${customerData.phone}' already exists.`);
     }
 
-    // Auto-generate customerId
+    // Auto-generate unique customerId
     const customerCount = await Customer.countDocuments({ tenantId });
-    const generatedCustomerId = `CUST-${String(customerCount + 1).padStart(4, '0')}`;
+    let nextNum = customerCount + 1;
+    let generatedCustomerId = customerData.customerId || `CUST-${String(nextNum).padStart(4, '0')}`;
+    let exists = await Customer.findOne({ tenantId, customerId: generatedCustomerId });
+    while (exists) {
+      nextNum++;
+      generatedCustomerId = `CUST-${String(nextNum).padStart(4, '0')}`;
+      exists = await Customer.findOne({ tenantId, customerId: generatedCustomerId });
+    }
 
     const payload = {
       ...customerData,
@@ -62,12 +69,13 @@ class CustomerService {
         { name: searchRegex },
         { phone: searchRegex },
         { email: searchRegex },
-        { gstin: searchRegex }
+        { gstin: searchRegex },
+        { customerId: searchRegex }
       ];
     }
 
     const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 20;
+    const limit = parseInt(query.limit) || 50;
     const skip = (page - 1) * limit;
 
     const customers = await Customer.find(filter)
@@ -75,10 +83,18 @@ class CustomerService {
       .skip(skip)
       .limit(limit);
 
+    const enrichedCustomers = customers.map(c => {
+      const cObj = c.toObject();
+      return {
+        ...cObj,
+        customerId: cObj.customerId || (cObj.phone ? `CUST-${cObj.phone.slice(-4)}` : `CUST-${cObj._id.toString().slice(-4).toUpperCase()}`)
+      };
+    });
+
     const total = await Customer.countDocuments(filter);
 
     return {
-      customers,
+      customers: enrichedCustomers,
       pagination: {
         total,
         page,

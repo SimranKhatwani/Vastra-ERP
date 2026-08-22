@@ -115,6 +115,8 @@ const normalizeInvoice = (b) => {
       alterationStatus: i.alterationStatus || (i.hasAlteration ? 'PENDING' : 'NONE'),
       alterationRecord: i.alterationRecord
     })),
+    hasAlteration: Boolean(b.hasAlteration || b.alterationBill || rawItems.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))),
+    alterationBill: b.alterationBill || null,
     subTotal: b.subTotal || b.grandTotal || 0,
     discount: b.discountAmount || b.discount || 0,
     grandTotal: b.grandTotal || b.totalAmount || 0,
@@ -1032,6 +1034,39 @@ export default function App() {
     }
   };
 
+  const handleAlterationIssued = (invoiceNo, alteredItems = []) => {
+    setInvoices(prev => prev.map(inv => {
+      const match = (inv.billNo === invoiceNo || inv.invoiceNo === invoiceNo);
+      if (match) {
+        return {
+          ...inv,
+          hasAlteration: true,
+          items: (inv.items || []).map(it => {
+            const altMatch = alteredItems.find(ai => (ai.barcode && ai.barcode === it.barcode) || (ai.name === it.name));
+            if (altMatch) {
+              return { ...it, hasAlteration: true, alterationRecord: altMatch.alterationRecord };
+            }
+            return it;
+          })
+        };
+      }
+      return inv;
+    }));
+
+    // Re-fetch in background to synchronize complete database state
+    setTimeout(async () => {
+      try {
+        const resInvoices = await api.get(`/billing?limit=500`);
+        const fetchedInvoices = extractBillsArray(resInvoices.data);
+        if (fetchedInvoices.length > 0) {
+          setInvoices(fetchedInvoices.map(i => normalizeInvoice(i)).filter(Boolean));
+        }
+      } catch (e) {
+        console.warn("Error refetching invoices after alteration:", e);
+      }
+    }, 400);
+  };
+
   const handleAddPurchaseOrder = async (po) => {
     try {
       if (po?.skipApiPost) {
@@ -1878,6 +1913,7 @@ export default function App() {
               onRetryWhatsApp={handleRetryWhatsApp}
               quickArticulateItem={quickArticulateItem}
               clearQuickArticulateItem={() => setQuickArticulateItem(null)}
+              onAlterationIssued={handleAlterationIssued}
             />
           </div>
 
