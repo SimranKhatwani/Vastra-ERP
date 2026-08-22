@@ -9,22 +9,23 @@ const { formatExportData } = require('../helpers/export.helper');
 
 class ExchangeService {
   static async createExchange(exchangeData, userId, tenantId) {
-    const returnedPiece = await InventoryPiece.findOne({ barcode: exchangeData.returnedBarcode, tenantId });
-    if (!returnedPiece) {
-      throw new ApiError(404, `Returned item with barcode '${exchangeData.returnedBarcode}' not found.`);
+    const returnedPieces = await InventoryPiece.find({ barcode: { $in: exchangeData.returnedBarcodes }, tenantId });
+    if (!returnedPieces || returnedPieces.length !== exchangeData.returnedBarcodes.length) {
+      throw new ApiError(404, `Some returned items were not found.`);
     }
 
-    const newPiece = await InventoryPiece.findOne({ barcode: exchangeData.newBarcode, tenantId });
-    if (!newPiece) {
-      throw new ApiError(404, `New item with barcode '${exchangeData.newBarcode}' not found.`);
+    const newPieces = await InventoryPiece.find({ barcode: { $in: exchangeData.newBarcodes }, tenantId });
+    if (!newPieces || newPieces.length !== exchangeData.newBarcodes.length) {
+      throw new ApiError(404, `Some new items were not found.`);
     }
 
-    if (newPiece.status !== INVENTORY_STATUS.AVAILABLE) {
-      throw new ApiError(400, `New item '${exchangeData.newBarcode}' is not available for sale.`);
+    const unavailableNewPieces = newPieces.filter(p => p.status !== INVENTORY_STATUS.AVAILABLE);
+    if (unavailableNewPieces.length > 0) {
+      throw new ApiError(400, `Some new items are not available for sale: ${unavailableNewPieces.map(p => p.barcode).join(', ')}`);
     }
 
-    const returnedValue = exchangeData.returnedValue || returnedPiece.mrp;
-    const newItemValue = exchangeData.newItemValue || newPiece.mrp;
+    const returnedValue = exchangeData.returnedValue || returnedPieces.reduce((sum, p) => sum + (p.mrp || 0), 0);
+    const newItemValue = exchangeData.newItemValue || newPieces.reduce((sum, p) => sum + (p.mrp || 0), 0);
     const netDifference = newItemValue - returnedValue;
 
     const exchange = await Exchange.create({
@@ -41,74 +42,78 @@ class ExchangeService {
       createdBy: userId
     });
 
-    // Update returned piece status and restore Product stock
-    returnedPiece.status = INVENTORY_STATUS.AVAILABLE;
-    returnedPiece.sold = false;
-    returnedPiece.returned = true;
-    returnedPiece.currentLocation = 'WAREHOUSE';
-    returnedPiece.updatedBy = userId;
-    await returnedPiece.save();
+    // Update returned pieces status and restore Product stock
+    for (const returnedPiece of returnedPieces) {
+      returnedPiece.status = INVENTORY_STATUS.AVAILABLE;
+      returnedPiece.sold = false;
+      returnedPiece.returned = true;
+      returnedPiece.currentLocation = 'WAREHOUSE';
+      returnedPiece.updatedBy = userId;
+      await returnedPiece.save();
 
-    if (returnedPiece.productId) {
-      const Product = require('../models/Product');
-      await Product.updateOne(
-        { _id: returnedPiece.productId },
-        {
-          $inc: {
-            stock: 1,
-            availableStock: 1,
-            soldQuantity: -1
+      if (returnedPiece.productId) {
+        const Product = require('../models/Product');
+        await Product.updateOne(
+          { _id: returnedPiece.productId },
+          {
+            $inc: {
+              stock: 1,
+              availableStock: 1,
+              soldQuantity: -1
+            }
           }
-        }
-      );
+        );
+      }
+
+      await InventoryLifecycle.create({
+        tenantId,
+        inventoryPieceId: returnedPiece._id,
+        barcode: returnedPiece.barcode,
+        eventType: LIFECYCLE_EVENT.EXCHANGE,
+        fromLocation: 'CUSTOMER',
+        toLocation: 'WAREHOUSE',
+        referenceId: exchange._id,
+        referenceModel: 'Exchange',
+        performedBy: userId,
+        notes: `Exchanged in return for new items`
+      });
     }
 
-    await InventoryLifecycle.create({
-      tenantId,
-      inventoryPieceId: returnedPiece._id,
-      barcode: returnedPiece.barcode,
-      eventType: LIFECYCLE_EVENT.EXCHANGE,
-      fromLocation: 'CUSTOMER',
-      toLocation: 'WAREHOUSE',
-      referenceId: exchange._id,
-      referenceModel: 'Exchange',
-      performedBy: userId,
-      notes: `Exchanged in return for barcode ${newPiece.barcode}`
-    });
+    // Update new pieces status and decrement Product stock
+    for (const newPiece of newPieces) {
+      newPiece.status = INVENTORY_STATUS.SOLD;
+      newPiece.sold = true;
+      newPiece.currentLocation = 'CUSTOMER';
+      newPiece.updatedBy = userId;
+      await newPiece.save();
 
-    // Update new piece status and decrement Product stock
-    newPiece.status = INVENTORY_STATUS.SOLD;
-    newPiece.sold = true;
-    newPiece.currentLocation = 'CUSTOMER';
-    newPiece.updatedBy = userId;
-    await newPiece.save();
-
-    if (newPiece.productId) {
-      const Product = require('../models/Product');
-      await Product.updateOne(
-        { _id: newPiece.productId },
-        {
-          $inc: {
-            stock: -1,
-            availableStock: -1,
-            soldQuantity: 1
+      if (newPiece.productId) {
+        const Product = require('../models/Product');
+        await Product.updateOne(
+          { _id: newPiece.productId },
+          {
+            $inc: {
+              stock: -1,
+              availableStock: -1,
+              soldQuantity: 1
+            }
           }
-        }
-      );
-    }
+        );
+      }
 
-    await InventoryLifecycle.create({
-      tenantId,
-      inventoryPieceId: newPiece._id,
-      barcode: newPiece.barcode,
-      eventType: LIFECYCLE_EVENT.EXCHANGE,
-      fromLocation: 'WAREHOUSE',
-      toLocation: 'CUSTOMER',
-      referenceId: exchange._id,
-      referenceModel: 'Exchange',
-      performedBy: userId,
-      notes: `Issued in exchange for barcode ${returnedPiece.barcode}`
-    });
+      await InventoryLifecycle.create({
+        tenantId,
+        inventoryPieceId: newPiece._id,
+        barcode: newPiece.barcode,
+        eventType: LIFECYCLE_EVENT.EXCHANGE,
+        fromLocation: 'WAREHOUSE',
+        toLocation: 'CUSTOMER',
+        referenceId: exchange._id,
+        referenceModel: 'Exchange',
+        performedBy: userId,
+        notes: `Issued in exchange for returned items`
+      });
+    }
 
     if (exchangeData.originalBillId) {
       const saleBill = await SaleBill.findOne({ _id: exchangeData.originalBillId, tenantId });
@@ -117,13 +122,15 @@ class ExchangeService {
         saleBill.exchangedAmount = (saleBill.exchangedAmount || 0) + returnedValue;
         
         let allExchanged = true;
-        const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: returnedPiece._id, tenantId });
-        if (saleItem) {
-          saleItem.isExchanged = true;
-          saleItem.exchangedFor = newPiece.barcode;
-          saleItem.exchangeReason = exchangeData.remarks;
-          saleItem.exchangedAt = new Date();
-          await saleItem.save();
+        for (const returnedPiece of returnedPieces) {
+          const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: returnedPiece._id, tenantId });
+          if (saleItem) {
+            saleItem.isExchanged = true;
+            saleItem.exchangedFor = newPieces.map(p => p.barcode).join(', ');
+            saleItem.exchangeReason = exchangeData.remarks;
+            saleItem.exchangedAt = new Date();
+            await saleItem.save();
+          }
         }
         
         const allSaleItems = await SaleItem.find({ saleBillId: saleBill._id, tenantId });

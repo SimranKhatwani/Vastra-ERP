@@ -767,7 +767,10 @@ class BillingService {
     const items = await SaleItem.find({ saleBillId: bill._id, tenantId })
       .populate({
         path: 'inventoryPieceId',
-        populate: { path: 'productId' }
+        populate: { 
+          path: 'productId',
+          populate: { path: 'firmId' }
+        }
       });
 
     const payments = await Payment.find({ saleBillId: bill._id, tenantId });

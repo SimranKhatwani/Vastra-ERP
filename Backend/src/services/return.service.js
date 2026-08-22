@@ -15,10 +15,20 @@ class ReturnService {
    * Return Validation Engine
    * Validates if piece can be returned based on barcode/uniqueCode, sale bill match, alteration status, discount rules.
    */
-  static async validateReturn(barcode, uniqueCode, saleBillNo, tenantId) {
+  static async validateReturn(barcode, uniqueCode, saleBillNo, tenantId, inventoryPieceId) {
     const pieceQuery = { tenantId, isDeleted: false };
-    if (barcode) pieceQuery.barcode = barcode;
-    if (uniqueCode) pieceQuery.uniqueCode = uniqueCode;
+    if (inventoryPieceId) {
+      pieceQuery._id = inventoryPieceId;
+    } else if (barcode && uniqueCode) {
+      pieceQuery.$or = [
+        { barcode: barcode }, { uniqueCode: barcode },
+        { barcode: uniqueCode }, { uniqueCode: uniqueCode }
+      ];
+    } else if (barcode) {
+      pieceQuery.$or = [{ barcode: barcode }, { uniqueCode: barcode }];
+    } else if (uniqueCode) {
+      pieceQuery.$or = [{ barcode: uniqueCode }, { uniqueCode: uniqueCode }];
+    }
 
     const piece = await InventoryPiece.findOne(pieceQuery).populate('productId');
     if (!piece) {
@@ -67,7 +77,7 @@ class ReturnService {
     }
 
     for (const item of returnData.items) {
-      const validation = await this.validateReturn(item.barcode, item.uniqueCode, returnData.saleBillNo, tenantId);
+      const validation = await this.validateReturn(item.barcode, item.uniqueCode, returnData.saleBillNo, tenantId, item.inventoryPieceId);
       if (!validation.valid && !returnData.forceApprove) {
         throw new ApiError(400, `Return validation failed for ${item.barcode}: ${validation.reason}`);
       }
@@ -88,55 +98,67 @@ class ReturnService {
     });
 
     for (const item of returnData.items) {
-      const piece = await InventoryPiece.findOne({ barcode: item.barcode, tenantId });
-      if (!piece) {
-        throw new ApiError(404, `Barcode '${item.barcode}' not found.`);
+      let query = { tenantId };
+      if (item.inventoryPieceId) {
+        query._id = item.inventoryPieceId;
+      } else if (item.barcode) {
+        query.$or = [{ barcode: item.barcode }, { uniqueCode: item.barcode }];
+      } else {
+        throw new ApiError(400, "Item barcode/uniqueCode/inventoryPieceId missing in return payload.");
       }
+      const piece = await InventoryPiece.findOne(query);
+      if (!piece && !item.inventoryPieceId) {
+        throw new ApiError(404, `Barcode/UniqueCode '${item.barcode}' not found.`);
+      }
+
+      const invPieceIdToUse = piece ? piece._id : item.inventoryPieceId;
 
       await ReturnItem.create({
         tenantId,
         returnId: returnDoc._id,
-        inventoryPieceId: piece._id,
-        refundRate: item.refundRate || piece.mrp,
+        inventoryPieceId: invPieceIdToUse,
+        refundRate: item.refundRate || (piece ? piece.mrp : 0),
         condition: item.condition || 'RESELLABLE',
         createdBy: userId
       });
 
-      const newStatus = item.condition === 'RESELLABLE' ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.DAMAGED;
-      piece.status = newStatus;
-      piece.returned = true;
-      piece.sold = false;
-      piece.currentLocation = 'WAREHOUSE';
-      piece.updatedBy = userId;
-      await piece.save();
+      if (piece) {
+        const newStatus = item.condition === 'RESELLABLE' ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.DAMAGED;
+        piece.status = newStatus;
+        piece.returned = true;
+        piece.sold = false;
+        piece.currentLocation = 'WAREHOUSE';
+        piece.updatedBy = userId;
+        await piece.save();
 
-      // Synchronize Product master stock in MongoDB
-      if (piece.productId && item.condition === 'RESELLABLE') {
-        const Product = require('../models/Product');
-        await Product.updateOne(
-          { _id: piece.productId },
-          {
-            $inc: {
-              stock: 1,
-              availableStock: 1,
-              soldQuantity: -1
+        // Synchronize Product master stock in MongoDB
+        if (piece.productId && item.condition === 'RESELLABLE') {
+          const Product = require('../models/Product');
+          await Product.updateOne(
+            { _id: piece.productId },
+            {
+              $inc: {
+                stock: 1,
+                availableStock: 1,
+                soldQuantity: -1
+              }
             }
-          }
-        );
-      }
+          );
+        }
 
-      await InventoryLifecycle.create({
-        tenantId,
-        inventoryPieceId: piece._id,
-        barcode: piece.barcode,
-        eventType: LIFECYCLE_EVENT.RETURN,
-        fromLocation: 'CUSTOMER',
-        toLocation: 'WAREHOUSE',
-        referenceId: returnDoc._id,
-        referenceModel: 'Return',
-        performedBy: userId,
-        notes: `Returned: ${returnData.reason || 'Customer Return'}`
-      });
+        await InventoryLifecycle.create({
+          tenantId,
+          inventoryPieceId: piece._id,
+          barcode: piece.barcode,
+          eventType: LIFECYCLE_EVENT.RETURN,
+          fromLocation: 'CUSTOMER',
+          toLocation: 'WAREHOUSE',
+          referenceId: returnDoc._id,
+          referenceModel: 'Return',
+          performedBy: userId,
+          notes: `Returned: ${returnData.reason || 'Customer Return'}`
+        });
+      }
     }
 
     if (returnData.customerId && returnData.refundMode === 'ADD_TO_ADVANCE') {
@@ -174,9 +196,17 @@ class ReturnService {
         
         let allReturned = true;
         for (const item of returnData.items) {
-          const piece = await InventoryPiece.findOne({ barcode: item.barcode, tenantId });
-          if (piece) {
-            const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: piece._id, tenantId });
+          let query = { tenantId };
+          if (item.inventoryPieceId) {
+            query._id = item.inventoryPieceId;
+          } else if (item.barcode) {
+            query.$or = [{ barcode: item.barcode }, { uniqueCode: item.barcode }];
+          }
+          const piece = await InventoryPiece.findOne(query);
+          
+          const invPieceIdToUse = item.inventoryPieceId || (piece ? piece._id : null);
+          if (invPieceIdToUse) {
+            const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: invPieceIdToUse, tenantId });
             if (saleItem) {
               saleItem.isReturned = true;
               saleItem.returnReason = returnData.reason;
@@ -184,10 +214,13 @@ class ReturnService {
               await saleItem.save();
             }
           }
+          
+          const remainingUnreturned = await SaleItem.countDocuments({ saleBillId: saleBill._id, isReturned: false, tenantId });
+          if (remainingUnreturned > 0) {
+            allReturned = false;
+          }
         }
         
-        const allSaleItems = await SaleItem.find({ saleBillId: saleBill._id, tenantId });
-        allReturned = allSaleItems.length > 0 && allSaleItems.every(si => si.isReturned);
         saleBill.status = allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED';
         await saleBill.save();
       }

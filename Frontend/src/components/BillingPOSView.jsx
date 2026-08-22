@@ -54,12 +54,12 @@ const generateUniqueItemCode = (designNo, size, index = 0) => {
 
 export const getFirmStyle = (firmName = '') => {
   const norm = String(firmName || '').trim().toLowerCase();
-  if (!norm || norm === '-' || norm === 'n/a' || norm === '—') {
+  if (!norm || norm === '-' || norm === 'n/a' || norm === '-') {
     return {
       rowClass: 'bg-white hover:bg-slate-50 border-l-4 border-l-slate-300',
       badgeClass: 'bg-slate-100 text-slate-700 border border-slate-300 font-semibold',
       tagColor: 'slate',
-      firmName: firmName || '—'
+      firmName: firmName || '-'
     };
   }
 
@@ -336,8 +336,8 @@ export const BillingPOSView = ({
               itemName: p.itemName || p.name || 'Item',
               barcode: p.barcode || (p.pieces && p.pieces[0]?.barcode) || '',
               subItem: p.subItem || (typeof p.category === 'string' ? p.category : p.categoryId?.name) || '',
-              firmName: p.firmName || p.company || (p.pieces && p.pieces[0]?.firmId?.name) || 'Primary Store Firm',
-              company: p.company || p.firmName || (p.pieces && p.pieces[0]?.firmId?.name) || 'Primary Store Firm',
+              firmName: p.firmName || p.company || (p.pieces && p.pieces[0]?.firmId?.name) || '',
+              company: p.company || p.firmName || (p.pieces && p.pieces[0]?.firmId?.name) || '',
               designNo: p.designNo || p.sku || '',
               itemCode: p.itemCode || p.productCode || p.sku || '',
               ipn: p.ipn || p.pieces?.[0]?.ipn || '',
@@ -599,8 +599,8 @@ export const BillingPOSView = ({
               itemName: name,
               barcode: barcode,
               uniqueCode: pc.uniqueCode || pc.barcode || p.uniqueCode || '',
-              firmName: pc.firmId?.name || p.firmName || p.company || 'Primary Store Firm',
-              company: pc.firmId?.name || p.company || p.firmName || 'Primary Store Firm',
+              firmName: pc.firmId?.name || p.firmName || p.company || '',
+              company: pc.firmId?.name || p.company || p.firmName || '',
               size: size,
               color: color,
               primaryColor: color,
@@ -625,8 +625,8 @@ export const BillingPOSView = ({
         if (!uniqueVariantsMap.has(variantKey)) {
           uniqueVariantsMap.set(variantKey, {
             ...p,
-            firmName: p.firmName || p.company || 'Primary Store Firm',
-            company: p.company || p.firmName || 'Primary Store Firm'
+            firmName: p.firmName || p.company || '',
+            company: p.company || p.firmName || ''
           });
         }
       }
@@ -746,6 +746,7 @@ export const BillingPOSView = ({
   const [exchangeOldItemIdx, setExchangeOldItemIdx] = useState(0);
   const [exchangeNewSearchQuery, setExchangeNewSearchQuery] = useState("");
   const [exchangeSelectedNewProduct, setExchangeSelectedNewProduct] = useState(null);
+  const [exchangeCart, setExchangeCart] = useState([]);
   const [showReturnExchangeModal, setShowReturnExchangeModal] = useState(false);
   const [showExchangeSlipModal, setShowExchangeSlipModal] = useState(false);
   const [completedExchangeSlip, setCompletedExchangeSlip] = useState(null);
@@ -889,7 +890,7 @@ export const BillingPOSView = ({
       if (qty <= 1) {
         result.push({
           ...item,
-          unitId: item.unitId || `${baseId}-u1`,
+          unitId: item.unitId || `${baseId}-${origIdx}-u1`,
           quantity: 1,
           price: unitPrice,
           totalPrice: unitPrice
@@ -898,7 +899,7 @@ export const BillingPOSView = ({
         for (let i = 1; i <= qty; i++) {
           result.push({
             ...item,
-            unitId: `${baseId}-u${i}`,
+            unitId: `${baseId}-${origIdx}-u${i}`,
             unitIndex: i,
             totalQty: qty,
             quantity: 1,
@@ -1644,7 +1645,7 @@ export const BillingPOSView = ({
       // 'R' / 'r': Returns
       if ((e.key === "r" || e.key === "R") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
         e.preventDefault();
-        if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
         setReturnActionType("return");
         setActivePOSMode("returns");
         return;
@@ -1653,7 +1654,7 @@ export const BillingPOSView = ({
       // 'E' / 'e': Exchange
       if ((e.key === "e" || e.key === "E") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
         e.preventDefault();
-        if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
         setReturnActionType("exchange");
         setActivePOSMode("returns");
         return;
@@ -2224,8 +2225,8 @@ export const BillingPOSView = ({
           barcode: barcodeVal,
           barcodeNo: barcodeVal,
           subItem: subItemVal,
-          firmName: prod.firmName || prod.company || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || 'Primary Store Firm',
-          company: prod.company || prod.firmName || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || 'Primary Store Firm',
+          firmName: prod.firmName || prod.company || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || '',
+          company: prod.company || prod.firmName || prod.firm || (prod.pieces && prod.pieces[0]?.firmId?.name) || '',
           designNo: designNoVal,
           itemCode: itemCodeVal,
           ipn: ipnVal,
@@ -3805,21 +3806,45 @@ export const BillingPOSView = ({
       // 2. Populate Billing Grid with all original items
       const formattedItems = rawItems.map((item, idx) => {
         const piece = item.inventoryPieceId || item.piece || {};
-        const prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
+        let prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
+        
+        // Hydrate from fully-populated frontend products state if possible
+        const stateProduct = products?.find(p => 
+          (p._id === (prod._id || prod)) || 
+          (p.id === (prod.id || prod._id || prod)) || 
+          (item.barcode && p.barcode === item.barcode) ||
+          (piece && piece.barcode && p.barcode === piece.barcode) ||
+          (item.barcode && p.pieces?.some(pp => pp.barcode === item.barcode))
+        );
+        
+        console.log("DEBUG HYDRATION:", {
+          itemIdx: idx,
+          prodIdFromBackend: prod._id || prod.id || prod,
+          pieceIdFromBackend: piece._id || piece.id,
+          foundStateProduct: !!stateProduct,
+          stateProductFirm: stateProduct?.firmName || stateProduct?.company,
+          stateProductDesign: stateProduct?.designNo || stateProduct?.sku
+        });
+
+        if (stateProduct) {
+          prod = { ...prod, ...stateProduct };
+        }
         const sPrice = Number(item.sellingPrice ?? item.price ?? item.mrp ?? prod.sellingPrice ?? 0);
         const mrpVal = Number(item.mrp ?? prod.mrp ?? prod.defaultMRP ?? sPrice);
         const nameVal = item.name || item.itemName || (typeof prod === 'object' ? (prod.itemName || prod.name) : '') || 'Original Item';
         const barcodeVal = item.barcode || (piece && piece.barcode) || (typeof prod === 'object' ? prod.barcode : '') || '';
         const designVal = item.designNo || (typeof prod === 'object' ? (prod.designNo || prod.sku) : '') || '';
         const itemCodeVal = item.itemCode || (typeof prod === 'object' ? (prod.itemCode || prod.productCode) : '') || '';
-        const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company) : '') || (piece && piece.firmId?.name) || 'Primary Store Firm';
-        const sizeVal = item.size || (piece && piece.size) || (typeof prod === 'object' ? prod.size : '') || 'FS';
-        const colorVal = item.color || item.primaryColor || (piece && piece.primaryColor) || (typeof prod === 'object' ? (prod.primaryColor || prod.color) : '') || 'Standard';
+        const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company || prod.firmId?.name) : '') || (piece && piece.firmId?.name) || '';
+        const sizeVal = item.size || (piece && piece.size) || (typeof prod === 'object' ? prod.size : '') || '';
+        const colorVal = item.color || item.primaryColor || (piece && piece.primaryColor) || (typeof prod === 'object' ? (prod.primaryColor || prod.color) : '') || '';
         const uniqueCodeVal = item.uniqueCode || (piece && piece.uniqueCode) || (piece && piece.barcode) || barcodeVal || '';
 
         return {
           cartItemId: `cart-item-orig-${Date.now()}-${idx}`,
           productId: (typeof prod === 'object' ? (prod._id || prod.id) : null) || item.productId,
+          id: item._id || item.id || undefined,
+          inventoryPieceId: item.inventoryPieceId || (piece && piece._id) || (piece && piece.id) || undefined,
           name: nameVal,
           itemName: nameVal,
           barcode: barcodeVal,
@@ -3844,6 +3869,12 @@ export const BillingPOSView = ({
           totalPrice: Number(item.finalPrice || item.totalPrice || (sPrice * (item.quantity || 1))),
           quantity: Number(item.quantity || 1),
           uniqueCode: uniqueCodeVal,
+          isReturned: Boolean(item.isReturned),
+          returnedAt: item.returnedAt || null,
+          returnReason: item.returnReason || '',
+          isExchanged: Boolean(item.isExchanged),
+          exchangedFor: item.exchangedFor || '',
+          exchangeReason: item.exchangeReason || '',
           hasAlteration: Boolean(item.hasAlteration),
           alterationRecord: item.alterationRecord || null
         };
@@ -4437,7 +4468,7 @@ export const BillingPOSView = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                        setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
                         setReturnActionType("return");
                         setReturnedItemIds([]);
                         setShowReturnExchangeModal(true);
@@ -4449,7 +4480,7 @@ export const BillingPOSView = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                        setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
                         setReturnActionType("exchange");
                         setExchangeOldItemIdx(0);
                         setExchangeSelectedNewProduct(null);
@@ -4533,7 +4564,7 @@ export const BillingPOSView = ({
 
                       const barcodeDisplay = item.barcode || item.barcodeNo || item.productId?.barcode || item.pieces?.[0]?.barcode || '';
                       const nameDisplay = item.itemName || item.name || item.productId?.itemName || item.productId?.name || '';
-                      const firmDisplay = item.firmName || item.company || item.productId?.firmName || item.productId?.company || item.piece?.firmId?.name || (item.pieces && item.pieces[0]?.firmId?.name) || 'Primary Store Firm';
+                      const firmDisplay = item.firmName || item.company || item.productId?.firmName || item.productId?.company || item.piece?.firmId?.name || (item.pieces && item.pieces[0]?.firmId?.name) || '';
                       const firmStyle = getFirmStyle(firmDisplay);
                       const subItemDisplay = item.subItem || item.productId?.subItem || (typeof item.category === 'string' ? item.category : item.category?.name) || '';
                       const designNoDisplay = item.designNo || item.productId?.designNo || item.sku || '';
@@ -5172,12 +5203,12 @@ export const BillingPOSView = ({
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
-                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
                       setReturnActionType("return");
                       setActivePOSMode("returns");
                     } },
                     { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
-                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn(loadedOriginalInvoice);
+                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
                       setReturnActionType("exchange");
                       setActivePOSMode("returns");
                     } },
@@ -5817,7 +5848,8 @@ export const BillingPOSView = ({
                           </label>
                           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
                             {selectedInvoiceForReturn.items.map((item, idx) => {
-                              const isChecked = returnedItemIds.includes(item.productId || item.id);
+                              const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                              const isChecked = returnedItemIds.includes(targetId);
                               return (
                                 <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
                                   <div className="flex items-center gap-3">
@@ -5832,7 +5864,7 @@ export const BillingPOSView = ({
                                             message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
                                           });
                                         }
-                                        const targetId = item.productId || item.id;
+                                        const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
                                         setReturnedItemIds((prev) =>
                                           isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
                                         );
@@ -5893,7 +5925,7 @@ export const BillingPOSView = ({
                           <span className="font-mono font-black text-rose-600 text-base">
                             ₹{(() => {
                               let rAmt = selectedInvoiceForReturn.items
-                                .filter((item) => returnedItemIds.includes(item.productId || item.id))
+                                .filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`))
                                 .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
                               if (totalAdjAmt > 0) {
                                 const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
@@ -5964,7 +5996,7 @@ export const BillingPOSView = ({
                             setIsProcessingReturn(true);
                             try {
                               const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
-                              const returnedItems = selectedInvoiceForReturn.items.filter(item => returnedItemIds.includes(item.productId || item.id));
+                              const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
                               let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
 
                               if (totalAdjAmt > 0) {
@@ -5981,8 +6013,8 @@ export const BillingPOSView = ({
                                 refundAmt = Math.floor(refundAmt);
                               }
 
-                              const updatedItems = selectedInvoiceForReturn.items.map(item => {
-                                if (returnedItemIds.includes(item.productId || item.id)) {
+                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                if (returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) {
                                   return {
                                     ...item,
                                     isReturned: true,
@@ -6014,8 +6046,7 @@ export const BillingPOSView = ({
                               try {
                                 const token = localStorage.getItem("token");
                                 const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                                const returnItemsPayload = returnedItemIds.map(id => {
-                                  const item = selectedInvoiceForReturn.items.find(i => i._id === id || i.id === id);
+                                const returnItemsPayload = returnedItems.map(item => {
                                   let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
 
                                   // Adjust for proportional short-pay/discounts if any
@@ -6029,11 +6060,15 @@ export const BillingPOSView = ({
                                     }
                                   }
                                   return {
-                                    barcode: item?.barcode || item?.designNo || item?.itemCode || '',
+                                    inventoryPieceId: item?.inventoryPieceId,
+                                    barcode: item?.barcode || item?.uniqueCode || item?.designNo || item?.itemCode || '',
                                     refundRate: Math.floor(itemPrice),
                                     condition: 'RESELLABLE'
                                   };
                                 });
+
+                                console.log("DEBUG PAYLOAD - Items:", JSON.stringify(returnItemsPayload, null, 2));
+                                console.log("DEBUG PAYLOAD - Invoice:", JSON.stringify(selectedInvoiceForReturn, null, 2));
 
                                 await api.post(`/returns`, {
                                   saleBillId: invId,
@@ -6120,33 +6155,56 @@ export const BillingPOSView = ({
                           </select>
                         </div>
 
-                        {/* Step A: Select Item from Original Invoice to Exchange */}
-                        <div>
+                        {/* Step A: Choose Item to Return */}
+                        <div className="mb-4">
                           <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                            1. Select Item from Invoice to Return / Swap Out:
+                            1. Select Items from Invoice to Return / Swap Out:
                           </label>
-                          <select
-                            value={exchangeOldItemIdx}
-                            onChange={(e) => {
-                              const idx = Number(e.target.value);
-                              const item = selectedInvoiceForReturn.items[idx];
-                              if (item && (item.hasAlteration || !!item.alterationRecord)) {
-                                setReturnWarning({
-                                  show: true,
-                                  title: "Alteration Detected",
-                                  message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
-                                });
-                              }
-                              setExchangeOldItemIdx(idx);
-                            }}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
-                          >
-                            {selectedInvoiceForReturn.items.map((item, idx) => (
-                              <option key={idx} value={idx}>
-                                {item.name} ({item.size || 'M'}/{item.color || 'Std'}) — ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
+                            {selectedInvoiceForReturn.items.map((item, idx) => {
+                              const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                              const isChecked = returnedItemIds.includes(targetId);
+                              return (
+                                <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                          setReturnWarning({
+                                            show: true,
+                                            title: "Alteration Detected",
+                                            message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                                          });
+                                        }
+                                        setReturnedItemIds((prev) =>
+                                          isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+                                        );
+                                      }}
+                                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                        <span>{item.name}</span>
+                                        {item.isExchanged && (
+                                          <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            EXCHANGED
+                                          </span>
+                                        )}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        Size: {item.size || 'M'} / Color: {item.color || 'Std'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="font-mono font-bold text-slate-600 text-xs">
+                                    ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         {/* Step B: Search/Enter Product ID or Barcode for New Product */}
@@ -6169,7 +6227,12 @@ export const BillingPOSView = ({
                                   (p.productCode && p.productCode.toLowerCase() === q) ||
                                   (p.name && p.name.toLowerCase() === q)
                                 );
-                                if (match) setExchangeSelectedNewProduct(match);
+                                if (match) {
+                                  if (!exchangeCart.find(i => (i.id || i._id) === (match.id || match._id))) {
+                                    setExchangeCart([...exchangeCart, match]);
+                                  }
+                                  setExchangeNewSearchQuery("");
+                                }
                               }}
                               placeholder="Enter product ID, barcode (e.g. BAR-001) or product name..."
                               className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
@@ -6188,8 +6251,10 @@ export const BillingPOSView = ({
                                   <div
                                     key={p._id || p.id}
                                     onClick={() => {
-                                      setExchangeSelectedNewProduct(p);
-                                      setExchangeNewSearchQuery(`${p.name} (${p.size || 'M'}/${p.color || 'Std'})`);
+                                      if (!exchangeCart.find(i => (i.id || i._id) === (p.id || p._id))) {
+                                        setExchangeCart([...exchangeCart, p]);
+                                      }
+                                      setExchangeNewSearchQuery("");
                                     }}
                                     className="p-2.5 hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors"
                                   >
@@ -6208,28 +6273,41 @@ export const BillingPOSView = ({
                           )}
                         </div>
 
-                        {/* Selected New Product Card */}
-                        {exchangeSelectedNewProduct && (
-                          <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex justify-between items-center text-xs">
-                            <div>
-                              <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Item:</p>
-                              <p className="font-extrabold text-slate-900">{exchangeSelectedNewProduct.name}</p>
-                              <p className="text-[10px] text-slate-500 font-mono">
-                                SKU/ID: {exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.id} | Size: {exchangeSelectedNewProduct.size || 'M'} / {exchangeSelectedNewProduct.color || 'Std'}
-                              </p>
-                            </div>
-                            <span className="font-mono font-black text-indigo-700 text-sm">
-                              ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}
-                            </span>
+                        {/* Selected New Products Cart */}
+                        {exchangeCart.length > 0 && (
+                          <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex flex-col gap-2 text-xs">
+                            <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Items:</p>
+                            {exchangeCart.map((cartItem, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border border-indigo-100 shadow-sm">
+                                <div>
+                                  <p className="font-extrabold text-slate-900">{cartItem.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono">
+                                    SKU/ID: {cartItem.productCode || cartItem.barcode || cartItem.id} | Size: {cartItem.size || 'M'} / {cartItem.color || 'Std'}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-black text-indigo-700 text-sm">
+                                    ₹{(cartItem.sellingPrice || cartItem.price || 0).toLocaleString()}
+                                  </span>
+                                  <button
+                                    onClick={() => setExchangeCart(exchangeCart.filter(i => (i.id || i._id) !== (cartItem.id || cartItem._id)))}
+                                    className="text-rose-500 hover:text-rose-700 p-1"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
 
                         {/* Price Difference Summary */}
                         {(() => {
-                          const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                          if (!oldItem || !exchangeSelectedNewProduct) return null;
+                          const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                          if (returnedItems.length === 0 || exchangeCart.length === 0) return null;
 
-                          let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                          let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+                          
                           if (totalAdjAmt > 0) {
                             const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                             const adjustmentRatio = totalAdjAmt / totalItemsPrice;
@@ -6244,7 +6322,7 @@ export const BillingPOSView = ({
                             oldPrice = Math.floor(oldPrice);
                           }
 
-                          const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                          const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
                           const priceDiff = newPrice - oldPrice;
 
                           return (
@@ -6269,14 +6347,16 @@ export const BillingPOSView = ({
 
                         <button
                           type="button"
+                          disabled={isProcessingReturn || returnedItemIds.length === 0 || exchangeCart.length === 0}
                           onClick={async () => {
                             if (isProcessingReturn) return;
                             setIsProcessingReturn(true);
                             try {
-                              const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx] || selectedInvoiceForReturn.items[0];
-                              if (!oldItem || !exchangeSelectedNewProduct) return;
+                              const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                              if (returnedItems.length === 0 || exchangeCart.length === 0) return;
 
-                              let oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
+                              let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+                              
                               if (totalAdjAmt > 0) {
                                 const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                                 const adjustmentRatio = totalAdjAmt / totalItemsPrice;
@@ -6291,7 +6371,7 @@ export const BillingPOSView = ({
                                 oldPrice = Math.floor(oldPrice);
                               }
 
-                              const newPrice = (exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0);
+                              const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
                               const priceDiff = newPrice - oldPrice;
 
                               const docket = {
@@ -6301,16 +6381,16 @@ export const BillingPOSView = ({
                                 customerPhone: selectedInvoiceForReturn.customerPhone,
                                 reason: exchangeReason,
                                 oldItem: {
-                                  name: oldItem.name,
-                                  size: oldItem.size || 'Std',
-                                  color: oldItem.color || 'Std',
+                                  name: returnedItems.map(i => i.name).join(', '),
+                                  size: 'Mixed',
+                                  color: 'Mixed',
                                   price: oldPrice
                                 },
                                 newItem: {
-                                  name: exchangeSelectedNewProduct.name,
-                                  sku: exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.productCode || exchangeSelectedNewProduct.id,
-                                  size: exchangeSelectedNewProduct.size || 'M',
-                                  color: exchangeSelectedNewProduct.color || 'Standard',
+                                  name: exchangeCart.map(i => i.name).join(', '),
+                                  sku: exchangeCart.map(i => i.sku || i.productCode || i.id).join(', '),
+                                  size: 'Mixed',
+                                  color: 'Mixed',
                                   price: newPrice
                                 },
                                 priceDiff,
@@ -6319,11 +6399,12 @@ export const BillingPOSView = ({
                               };
 
                               const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
-                                if (idx === exchangeOldItemIdx) {
+                                const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                                if (returnedItemIds.includes(targetId)) {
                                   return {
                                     ...item,
                                     isExchanged: true,
-                                    exchangedFor: exchangeSelectedNewProduct.name,
+                                    exchangedFor: exchangeCart.map(i => i.name).join(', '),
                                     exchangeReason
                                   };
                                 }
@@ -6343,13 +6424,12 @@ export const BillingPOSView = ({
                               try {
                                 const token = localStorage.getItem("token");
                                 const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                                const oldItem = selectedInvoiceForReturn.items[exchangeOldItemIdx];
                                 await api.post(`/exchanges`, {
                                   originalBillId: invId,
                                   originalBillNo: selectedInvoiceForReturn.invoiceNo,
                                   customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
-                                  returnedBarcode: oldItem?.barcode || oldItem?.designNo || oldItem?.itemCode || '',
-                                  newBarcode: exchangeSelectedNewProduct?.barcode || exchangeSelectedNewProduct?.productCode || exchangeSelectedNewProduct?.sku || exchangeSelectedNewProduct?.id || '',
+                                  returnedBarcodes: returnedItems.map(i => i.barcode || i.designNo || i.itemCode || ''),
+                                  newBarcodes: exchangeCart.map(i => i.barcode || i.productCode || i.sku || i.id || ''),
                                   returnedValue: oldPrice,
                                   newItemValue: newPrice,
                                   remarks: exchangeReason,
@@ -6378,14 +6458,15 @@ export const BillingPOSView = ({
 
                               // Auto-clear search & selection data after completing exchange
                               setSelectedInvoiceForReturn(null);
-                              setExchangeSelectedNewProduct(null);
+                              setExchangeCart([]);
                               setExchangeNewSearchQuery("");
                               setReturnSearchQuery("");
+                              setReturnedItemIds([]);
                             } finally {
                               setIsProcessingReturn(false);
                             }
                           }}
-                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeSelectedNewProduct && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeCart.length > 0 && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                         >
                           {isProcessingReturn ? (
                             <>
@@ -9050,6 +9131,7 @@ export const BillingPOSView = ({
         }
 
         const hasManualAdj = selectedInvoiceForReturn.billAdjustment && selectedInvoiceForReturn.billAdjustment.amount > 0;
+        const hasImplicitAdj = implicitDiscount > 0;
         const totalAdjAmt = (hasManualAdj ? (selectedInvoiceForReturn.billAdjustment.operation === 'Charge' ? -selectedInvoiceForReturn.billAdjustment.amount : selectedInvoiceForReturn.billAdjustment.amount) : 0) + implicitDiscount;
 
         return (
@@ -9143,30 +9225,52 @@ export const BillingPOSView = ({
 
                   {/* Right Column: Workflow Panels */}
                   <div className="bg-white rounded-xl border border-slate-200 p-4 md:col-span-8 space-y-4">
-                    {returnActionType === 'return' ? (
-                      /* Return Form */
+                    {/* ─── RETURN PANEL WORKFLOW ─── */}
+                    {returnActionType === 'return' && (
                       <div className="space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                          <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Process Item Return & Credit Refund</span>
+                          </h4>
+                        </div>
+
+                        {/* Reason for Return */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Reason for Return:</label>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Reason for Return:
+                          </label>
                           <select
                             value={returnReason}
                             onChange={(e) => setReturnReason(e.target.value)}
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-rose-500"
                           >
-                            <option value="">None / Fast Checkout</option>
+                            <option value="">None / Optional (Fast Checkout)</option>
                             <option value="Defective / Damaged">Defective / Damaged Garment</option>
                             <option value="Wrong Size / Fit Issue">Wrong Size / Fit Issue</option>
                             <option value="Customer Changed Mind">Customer Changed Mind</option>
                             <option value="Quality Dissatisfaction">Quality Dissatisfaction</option>
-                            <option value="Other">Other (Specify)</option>
+                            <option value="Other">Other (Specify Custom Text)</option>
                           </select>
+                          {returnReason === "Other" && (
+                            <input
+                              type="text"
+                              value={returnCustomReason}
+                              onChange={(e) => setReturnCustomReason(e.target.value)}
+                              placeholder="Enter specific return reason details..."
+                              className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium"
+                            />
+                          )}
                         </div>
 
+                        {/* Select Items to Return */}
                         <div className="space-y-2">
-                          <label className="block text-xs font-bold text-slate-700 uppercase">Select Items to Return:</label>
-                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-56 overflow-y-auto space-y-2">
-                            {(selectedInvoiceForReturn.items || []).map((item, idx) => {
-                              const targetId = item.productId || item.id || item._id || idx;
+                          <label className="block text-xs font-bold text-slate-700 uppercase">
+                            Select Items to Return:
+                          </label>
+                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
+                            {selectedInvoiceForReturn.items.map((item, idx) => {
+                              const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
                               const isChecked = returnedItemIds.includes(targetId);
                               return (
                                 <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
@@ -9175,23 +9279,49 @@ export const BillingPOSView = ({
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
-                                        setReturnedItemIds(prev => isChecked ? prev.filter(id => id !== targetId) : [...prev, targetId]);
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                          setReturnWarning({
+                                            show: true,
+                                            title: "Alteration Detected",
+                                            message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
+                                          });
+                                        }
+                                        const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                                        setReturnedItemIds((prev) =>
+                                          isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+                                        );
                                       }}
                                       className="w-4 h-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
                                     />
                                     <div>
                                       <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                        <span>{item.name || item.itemName}</span>
-                                        {item.isReturned && <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">RETURNED</span>}
-                                        {item.isExchanged && <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">EXCHANGED</span>}
+                                        <span>{item.name}</span>
+                                        {item.isReturned && (
+                                          <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            RETURNED
+                                          </span>
+                                        )}
+                                        {item.isExchanged && (
+                                          <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            EXCHANGED
+                                          </span>
+                                        )}
                                       </p>
                                       <p className="text-[10px] text-slate-400 font-mono">
-                                        Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity || 1}
+                                        Size: {item.size || 'M'} | Color: {item.color || 'Std'} | Qty: {item.quantity}
                                       </p>
+                                      {!!(item.hasAlteration || item.alterationRecord) && (
+                                        <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
+                                          <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                          <span>
+                                            <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <span className="text-xs font-bold font-mono text-slate-800">
-                                    ₹{(item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))).toLocaleString()}
+                                    ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
                                   </span>
                                 </div>
                               );
@@ -9199,221 +9329,583 @@ export const BillingPOSView = ({
                           </div>
                         </div>
 
-                        {/* Refund Summary */}
-                        <div className="flex justify-between items-center bg-rose-50 p-3 rounded-xl border border-rose-200">
-                          <span className="text-xs font-bold text-rose-900">Refund Amount:</span>
+                        {(hasManualAdj || hasImplicitAdj) && (
+                          <div className="bg-orange-50 p-3 rounded-xl border border-orange-200 flex items-start gap-2.5 animate-fade-in mb-3">
+                            <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-orange-800 font-bold text-xs block">Manual Bill Adjustment / Short Pay Applied</span>
+                              <span className="text-orange-600 text-[10.5px] font-medium leading-tight block mt-0.5">
+                                This bill had a net adjustment of -₹{totalAdjAmt}. The estimated refund amount is proportionally adjusted downwards.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Refund Estimate */}
+                        <div className="flex justify-between items-center bg-rose-50 p-3.5 rounded-xl border border-rose-200">
+                          <span className="text-xs font-bold text-rose-900">Estimated Refund Amount:</span>
                           <span className="font-mono font-black text-rose-600 text-base">
-                            ₹{(selectedInvoiceForReturn.items || [])
-                              .filter((item, idx) => returnedItemIds.includes(item.productId || item.id || item._id || idx))
-                              .reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0)
-                              .toLocaleString()}
+                            ₹{(() => {
+                              let rAmt = selectedInvoiceForReturn.items
+                                .filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`))
+                                .reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = rAmt * adjustmentRatio;
+                                rAmt -= proportionalAdjustment;
+                                rAmt = Math.floor(rAmt);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = rAmt * adjustmentRatio;
+                                rAmt += proportionalAdjustment;
+                                rAmt = Math.floor(rAmt);
+                              }
+                              return rAmt.toLocaleString();
+                            })()}
                           </span>
                         </div>
 
-                        <label className="flex items-center gap-2 bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer">
+                        {/* Advance / Wallet Logic */}
+                        <div className="flex flex-col gap-3 mt-4">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Select Refund Destination:</label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div
+                              onClick={() => setReturnRefundMode('DIRECT_REFUND')}
+                              className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'DIRECT_REFUND' ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'DIRECT_REFUND' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
+                                {returnRefundMode === 'DIRECT_REFUND' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                              </div>
+                              <div>
+                                <p className={`text-sm font-bold ${returnRefundMode === 'DIRECT_REFUND' ? 'text-indigo-900' : 'text-slate-700'}`}>Refund to Customer</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Give money back directly</p>
+                              </div>
+                            </div>
+
+                            <div
+                              onClick={() => setReturnRefundMode('ADD_TO_ADVANCE')}
+                              className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'bg-amber-50 border-amber-500 shadow-sm' : 'bg-white border-slate-200 hover:border-amber-300'}`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
+                                {returnRefundMode === 'ADD_TO_ADVANCE' && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                              </div>
+                              <div>
+                                <p className={`text-sm font-bold ${returnRefundMode === 'ADD_TO_ADVANCE' ? 'text-amber-900' : 'text-slate-700'}`}>Save to Wallet</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Keep as advance for future</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Mandatory Approval Checkbox */}
+
+                        <label className="flex items-center gap-2.5 bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer mt-4">
                           <input
                             type="checkbox"
                             checked={returnApprovedCheckbox}
                             onChange={(e) => setReturnApprovedCheckbox(e.target.checked)}
                             className="w-4 h-4 text-rose-600 rounded border-amber-300 focus:ring-rose-500 cursor-pointer shrink-0"
                           />
-                          <span>I approve this return & confirm physical garment condition.</span>
+                          <span>I approve this return request & confirm physical garment condition has been verified.</span>
                         </label>
 
                         <button
                           type="button"
-                          disabled={!returnApprovedCheckbox || returnedItemIds.length === 0 || isProcessingReturn}
                           onClick={async () => {
                             if (isProcessingReturn) return;
                             setIsProcessingReturn(true);
                             try {
-                              const returnedItems = (selectedInvoiceForReturn.items || []).filter((item, idx) => returnedItemIds.includes(item.productId || item.id || item._id || idx));
-                              const refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-                              
-                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                              await api.post(`/returns`, {
-                                saleBillId: invId,
-                                saleBillNo: selectedInvoiceForReturn.invoiceNo,
-                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customerId,
-                                refundMode: returnRefundMode,
-                                reason: returnReason || 'Standard Return',
-                                items: returnedItems.map(it => ({
-                                  barcode: it.barcode || it.itemCode || it.designNo || '',
-                                  refundRate: it.totalPrice || it.price || 0,
-                                  condition: 'RESELLABLE'
-                                })),
-                                forceApprove: true
-                              });
+                              const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
+                              const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                              let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
 
-                              if (onAddNotification) {
-                                onAddNotification("Return Processed", `Return of ₹${refundAmt.toLocaleString()} completed successfully.`, "success");
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                refundAmt -= proportionalAdjustment;
+                                refundAmt = Math.floor(refundAmt);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                refundAmt += proportionalAdjustment;
+                                refundAmt = Math.floor(refundAmt);
                               }
 
-                              setShowReturnExchangeModal(false);
+                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                if (returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) {
+                                  return {
+                                    ...item,
+                                    isReturned: true,
+                                    returnReason: finalReason,
+                                    returnedAt: new Date().toISOString()
+                                  };
+                                }
+                                return item;
+                              });
+
+                              const allRet = updatedItems.every(i => i.isReturned);
+                              const updatedInvoice = {
+                                ...selectedInvoiceForReturn,
+                                hasReturn: true,
+                                returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                                status: allRet ? 'Returned' : 'Partially Returned',
+                                items: updatedItems
+                              };
+
+                              let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
+                              if (finalCustomerId === "c-walkin") finalCustomerId = null;
+
+                              if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
+                                setShowReturnCustomerModal(true);
+                                return;
+                              }
+
+                              // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                              try {
+                                const token = localStorage.getItem("token");
+                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                const returnItemsPayload = returnedItems.map(item => {
+                                  let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+
+                                  // Adjust for proportional short-pay/discounts if any
+                                  if (selectedInvoiceForReturn.billAdjustment) {
+                                    const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
+                                    const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                    if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                                      itemPrice -= (itemPrice * adjustmentRatio);
+                                    } else {
+                                      itemPrice += (itemPrice * adjustmentRatio);
+                                    }
+                                  }
+                                  return {
+                                    inventoryPieceId: item?.inventoryPieceId,
+                                    barcode: item?.barcode || item?.uniqueCode || item?.designNo || item?.itemCode || '',
+                                    refundRate: Math.floor(itemPrice),
+                                    condition: 'RESELLABLE'
+                                  };
+                                });
+
+                                console.log("DEBUG PAYLOAD - Items:", JSON.stringify(returnItemsPayload, null, 2));
+                                console.log("DEBUG PAYLOAD - Invoice:", JSON.stringify(selectedInvoiceForReturn, null, 2));
+
+                                await api.post(`/returns`, {
+                                  saleBillId: invId,
+                                  saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                                  customerId: finalCustomerId,
+                                  refundMode: returnRefundMode,
+                                  reason: finalReason,
+                                  items: returnItemsPayload,
+                                  forceApprove: true
+                                });
+                              } catch (apiErr) {
+                                console.warn("Backend return endpoint call error:", apiErr.message);
+                                if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
+                                return; // Stop execution to prevent desync
+                              }
+
+                              // Update local invoices list so Invoice History reflects returned status immediately
+                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                              if (invoices) {
+                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                if (idx !== -1) invoices[idx] = updatedInvoice;
+                              }
+
+                              if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
+                                onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
+                              }
+
+                              if (onAddNotification) {
+                                onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
+                              }
+
+                              // Auto-clear data and reset selection
+                              if (loadedOriginalInvoice?.invoiceNo === selectedInvoiceForReturn.invoiceNo || loadedOriginalInvoice?._id === selectedInvoiceForReturn._id) {
+                                setCart([]);
+                                setLoadedOriginalInvoice(null);
+                                setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '' });
+                                setSelectedCustomerId('');
+                                setCustomerSearchQuery('');
+                              }
+                              
                               setSelectedInvoiceForReturn(null);
-                              setLoadedOriginalInvoice(null);
-                              setCart([]);
                               setReturnedItemIds([]);
-                              setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-                              setSelectedCustomerId('');
-                            } catch (err) {
-                              console.error(err);
-                              if (onAddNotification) onAddNotification("Return Error", err.response?.data?.message || err.message, "danger");
+                              setReturnApprovedCheckbox(false);
+                              setReturnSearchQuery("");
+                              setReturnReason("Defective / Damaged");
+                              setReturnCustomReason("");
                             } finally {
                               setIsProcessingReturn(false);
                             }
                           }}
-                          className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          disabled={isProcessingReturn || (!returnApprovedCheckbox || returnedItemIds.length === 0)}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                         >
-                          {isProcessingReturn ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                          <span>Confirm & Process Return</span>
+                          {isProcessingReturn ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Processing Return...
+                            </>
+                          ) : (
+                            "Approve Return & Credit Customer Wallet"
+                          )}
                         </button>
                       </div>
-                    ) : (
-                      /* Exchange Form */
+                    )}
+
+                    {/* ─── EXCHANGE PANEL WORKFLOW ─── */}
+                    {returnActionType === 'exchange' && (
                       <div className="space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                          <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <RefreshCw className="w-4 h-4" />
+                            <span>Process Product Exchange & Issue Docket</span>
+                          </h4>
+                        </div>
+
+                        {/* Reason for Exchange */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Garment to Return:</label>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Reason for Exchange:
+                          </label>
                           <select
-                            value={exchangeOldItemIdx}
-                            onChange={(e) => setExchangeOldItemIdx(Number(e.target.value))}
+                            value={exchangeReason}
+                            onChange={(e) => setExchangeReason(e.target.value)}
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                           >
-                            {(selectedInvoiceForReturn.items || []).map((item, idx) => (
-                              <option key={idx} value={idx}>
-                                {item.name || item.itemName} ({item.size || 'M'}/{item.color || 'Std'}) - ₹{(item.totalPrice || item.price || 0).toLocaleString()}
-                              </option>
-                            ))}
+                            <option value="Size / Fit Swap">Size / Fit Swap</option>
+                            <option value="Color Swap">Color / Hue Swap</option>
+                            <option value="Defective Replacement">Defective Item Replacement</option>
+                            <option value="Product Upgrade">Product Upgrade / Variant Change</option>
+                            <option value="Customer Preference">Customer Preference Change</option>
                           </select>
                         </div>
 
+                        {/* Step A: Choose Item to Return */}
+                        <div className="mb-4">
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            1. Select Items from Invoice to Return / Swap Out:
+                          </label>
+                          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-60 overflow-y-auto space-y-2">
+                            {selectedInvoiceForReturn.items.map((item, idx) => {
+                              const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                              const isChecked = returnedItemIds.includes(targetId);
+                              return (
+                                <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                          setReturnWarning({
+                                            show: true,
+                                            title: "Alteration Detected",
+                                            message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                                          });
+                                        }
+                                        setReturnedItemIds((prev) =>
+                                          isChecked ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+                                        );
+                                      }}
+                                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                        <span>{item.name}</span>
+                                        {item.isExchanged && (
+                                          <span className="bg-indigo-100 text-indigo-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
+                                            EXCHANGED
+                                          </span>
+                                        )}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        Size: {item.size || 'M'} / Color: {item.color || 'Std'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="font-mono font-bold text-slate-600 text-xs">
+                                    ₹{(item.totalPrice || item.price * item.quantity).toLocaleString()}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Step B: Search/Enter Product ID or Barcode for New Product */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Replacement Product:</label>
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            2. Search or Enter Product ID / Barcode for New Exchanged Item:
+                          </label>
                           <div className="relative">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
                             <input
                               type="text"
                               value={exchangeNewSearchQuery}
-                              onChange={(e) => setExchangeNewSearchQuery(e.target.value)}
-                              placeholder="Search replacement item by name, barcode or SKU..."
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                              onChange={(e) => {
+                                setExchangeNewSearchQuery(e.target.value);
+                                const q = e.target.value.trim().toLowerCase();
+                                const match = products.find(p =>
+                                  (p._id && p._id.toLowerCase() === q) ||
+                                  (p.id && p.id.toLowerCase() === q) ||
+                                  (p.barcode && p.barcode.toLowerCase() === q) ||
+                                  (p.productCode && p.productCode.toLowerCase() === q) ||
+                                  (p.name && p.name.toLowerCase() === q)
+                                );
+                                if (match) {
+                                  if (!exchangeCart.find(i => (i.id || i._id) === (match.id || match._id))) {
+                                    setExchangeCart([...exchangeCart, match]);
+                                  }
+                                  setExchangeNewSearchQuery("");
+                                }
+                              }}
+                              placeholder="Enter product ID, barcode (e.g. BAR-001) or product name..."
+                              className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                           </div>
 
+                          {/* Matching Product Dropdown */}
                           {exchangeNewSearchQuery && (
-                            <div className="border border-slate-200 rounded-xl mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white shadow-md">
-                              {(products || [])
-                                .filter(p => (p.name || p.itemName || '').toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) || (p.barcode || '').includes(exchangeNewSearchQuery) || (p.sku || p.designNo || '').includes(exchangeNewSearchQuery))
-                                .slice(0, 15)
-                                .map((p, idx) => (
+                            <div className="bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs font-sans">
+                              {products
+                                .filter(p =>
+                                  (p.name || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase()) ||
+                                  (p.productCode || p.barcode || p.sku || p.id || "").toLowerCase().includes(exchangeNewSearchQuery.toLowerCase())
+                                )
+                                .map(p => (
                                   <div
-                                    key={idx}
+                                    key={p._id || p.id}
                                     onClick={() => {
-                                      setExchangeSelectedNewProduct(p);
+                                      if (!exchangeCart.find(i => (i.id || i._id) === (p.id || p._id))) {
+                                        setExchangeCart([...exchangeCart, p]);
+                                      }
                                       setExchangeNewSearchQuery("");
                                     }}
-                                    className="p-2 text-xs hover:bg-indigo-50 cursor-pointer flex justify-between items-center"
+                                    className="p-2.5 hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors"
                                   >
                                     <div>
-                                      <p className="font-bold text-slate-800">{p.name || p.itemName}</p>
-                                      <p className="text-[10px] text-slate-400">Barcode: {p.barcode || p.sku || 'N/A'}</p>
+                                      <p className="font-bold text-slate-800">{p.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono">
+                                        ID/Barcode: {p.productCode || p.barcode || p.id} | Size: {p.size || 'M'} | Stock: {p.stock || p.stockQuantity || 10}
+                                      </p>
                                     </div>
-                                    <span className="font-mono font-bold text-indigo-600">₹{(p.sellingPrice || p.price || p.mrp || 0).toLocaleString()}</span>
+                                    <span className="font-mono font-bold text-indigo-600">
+                                      ₹{(p.sellingPrice || p.price || 0).toLocaleString()}
+                                    </span>
                                   </div>
                                 ))}
                             </div>
                           )}
                         </div>
 
-                        {exchangeSelectedNewProduct && (
-                          <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-200 flex justify-between items-center">
-                            <div>
-                              <p className="text-xs font-bold text-indigo-950">New Item Selected: {exchangeSelectedNewProduct.name || exchangeSelectedNewProduct.itemName}</p>
-                              <p className="text-[10px] text-indigo-600">Price: ₹{(exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0).toLocaleString()}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setExchangeSelectedNewProduct(null)}
-                              className="text-indigo-400 hover:text-indigo-600"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
+                        {/* Selected New Products Cart */}
+                        {exchangeCart.length > 0 && (
+                          <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 flex flex-col gap-2 text-xs">
+                            <p className="text-[10px] font-bold uppercase text-indigo-500">Selected New Exchanged Items:</p>
+                            {exchangeCart.map((cartItem, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border border-indigo-100 shadow-sm">
+                                <div>
+                                  <p className="font-extrabold text-slate-900">{cartItem.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono">
+                                    SKU/ID: {cartItem.productCode || cartItem.barcode || cartItem.id} | Size: {cartItem.size || 'M'} / {cartItem.color || 'Std'}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-black text-indigo-700 text-sm">
+                                    ₹{(cartItem.sellingPrice || cartItem.price || 0).toLocaleString()}
+                                  </span>
+                                  <button
+                                    onClick={() => setExchangeCart(exchangeCart.filter(i => (i.id || i._id) !== (cartItem.id || cartItem._id)))}
+                                    className="text-rose-500 hover:text-rose-700 p-1"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
 
+                        {/* Price Difference Summary */}
+                        {(() => {
+                          const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                          if (returnedItems.length === 0 || exchangeCart.length === 0) return null;
+
+                          let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+                          
+                          if (totalAdjAmt > 0) {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                            const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                            const proportionalAdjustment = oldPrice * adjustmentRatio;
+                            oldPrice -= proportionalAdjustment;
+                            oldPrice = Math.floor(oldPrice);
+                          } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                            const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                            const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                            const proportionalAdjustment = oldPrice * adjustmentRatio;
+                            oldPrice += proportionalAdjustment;
+                            oldPrice = Math.floor(oldPrice);
+                          }
+
+                          const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
+                          const priceDiff = newPrice - oldPrice;
+
+                          return (
+                            <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Original Item Value:</span>
+                                <span>- ₹{oldPrice.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">New Item Value:</span>
+                                <span>+ ₹{newPrice.toLocaleString()}</span>
+                              </div>
+                              <div className="border-t border-slate-700 pt-2 flex justify-between font-bold text-sm">
+                                <span className="font-sans">Net Adjustment:</span>
+                                <span className={priceDiff > 0 ? 'text-amber-400' : priceDiff < 0 ? 'text-emerald-400' : 'text-white'}>
+                                  {priceDiff > 0 ? `+ ₹${priceDiff.toLocaleString()} (Payable)` : priceDiff < 0 ? `- ₹${Math.abs(priceDiff).toLocaleString()} (Refund)` : '₹0 (Even Swap)'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <button
                           type="button"
-                          disabled={!exchangeSelectedNewProduct || isProcessingReturn}
+                          disabled={isProcessingReturn || returnedItemIds.length === 0 || exchangeCart.length === 0}
                           onClick={async () => {
                             if (isProcessingReturn) return;
                             setIsProcessingReturn(true);
                             try {
-                              const oldItem = (selectedInvoiceForReturn.items || [])[exchangeOldItemIdx] || (selectedInvoiceForReturn.items || [])[0];
-                              const oldPrice = oldItem.totalPrice || ((oldItem.sellingPrice || oldItem.price || 0) * (oldItem.quantity || 1));
-                              const newPrice = exchangeSelectedNewProduct.sellingPrice || exchangeSelectedNewProduct.price || 0;
-                              const priceDiff = newPrice - oldPrice;
+                              const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                              if (returnedItems.length === 0 || exchangeCart.length === 0) return;
 
-                              const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                              await api.post(`/exchanges`, {
-                                originalBillId: invId,
-                                originalBillNo: selectedInvoiceForReturn.invoiceNo,
-                                customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customerId,
-                                returnedBarcode: oldItem.barcode || oldItem.itemCode || oldItem.designNo || '',
-                                newBarcode: exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.sku || exchangeSelectedNewProduct.id || '',
-                                returnedValue: oldPrice,
-                                newItemValue: newPrice,
-                                remarks: exchangeReason || 'Product Exchange',
-                                forceApprove: true
-                              });
+                              let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+                              
+                              if (totalAdjAmt > 0) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                oldPrice -= proportionalAdjustment;
+                                oldPrice = Math.floor(oldPrice);
+                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                oldPrice += proportionalAdjustment;
+                                oldPrice = Math.floor(oldPrice);
+                              }
+
+                              const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
+                              const priceDiff = newPrice - oldPrice;
 
                               const docket = {
                                 docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
                                 originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
                                 customerName: selectedInvoiceForReturn.customerName,
                                 customerPhone: selectedInvoiceForReturn.customerPhone,
-                                reason: exchangeReason || 'Customer Exchange',
+                                reason: exchangeReason,
                                 oldItem: {
-                                  name: oldItem.name || oldItem.itemName,
-                                  size: oldItem.size || 'M',
-                                  color: oldItem.color || 'Std',
+                                  name: returnedItems.map(i => i.name).join(', '),
+                                  size: 'Mixed',
+                                  color: 'Mixed',
                                   price: oldPrice
                                 },
                                 newItem: {
-                                  name: exchangeSelectedNewProduct.name || exchangeSelectedNewProduct.itemName,
-                                  size: exchangeSelectedNewProduct.size || 'M',
-                                  color: exchangeSelectedNewProduct.color || 'Std',
-                                  price: newPrice,
-                                  sku: exchangeSelectedNewProduct.barcode || exchangeSelectedNewProduct.sku || 'N/A'
+                                  name: exchangeCart.map(i => i.name).join(', '),
+                                  sku: exchangeCart.map(i => i.sku || i.productCode || i.id).join(', '),
+                                  size: 'Mixed',
+                                  color: 'Mixed',
+                                  price: newPrice
                                 },
                                 priceDiff,
-                                cashierName: currentUser?.name || 'Cashier',
+                                cashierName: currentUser ? currentUser.name : "Store Cashier",
                                 createdAt: new Date().toISOString()
                               };
+
+                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                                if (returnedItemIds.includes(targetId)) {
+                                  return {
+                                    ...item,
+                                    isExchanged: true,
+                                    exchangedFor: exchangeCart.map(i => i.name).join(', '),
+                                    exchangeReason
+                                  };
+                                }
+                                return item;
+                              });
+
+                              const allEx = updatedItems.every(i => i.isExchanged);
+                              const updatedInvoice = {
+                                ...selectedInvoiceForReturn,
+                                hasExchange: true,
+                                exchangeSlip: docket,
+                                status: allEx ? 'Exchanged' : 'Partially Exchanged',
+                                items: updatedItems
+                              };
+
+                              // Call Backend API to process exchange in MongoDB
+                              try {
+                                const token = localStorage.getItem("token");
+                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                await api.post(`/exchanges`, {
+                                  originalBillId: invId,
+                                  originalBillNo: selectedInvoiceForReturn.invoiceNo,
+                                  customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                                  returnedBarcodes: returnedItems.map(i => i.barcode || i.designNo || i.itemCode || ''),
+                                  newBarcodes: exchangeCart.map(i => i.barcode || i.productCode || i.sku || i.id || ''),
+                                  returnedValue: oldPrice,
+                                  newItemValue: newPrice,
+                                  remarks: exchangeReason,
+                                  forceApprove: true
+                                });
+                              } catch (apiErr) {
+                                console.warn("Backend exchange endpoint call error:", apiErr.message);
+                                if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
+                                return; // Stop execution to prevent desync
+                              }
+
+                              // Update local invoices list so Invoice History reflects exchanged status immediately
+                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                              if (invoices) {
+                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                if (idx !== -1) invoices[idx] = updatedInvoice;
+                              }
 
                               setCompletedExchangeSlip(docket);
                               setShowExchangeSlipModal(true);
 
                               if (onAddNotification) {
-                                onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully.`, "success");
+                                onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
                               }
 
-                              setShowReturnExchangeModal(false);
+                              // Auto-clear search & selection data after completing exchange
                               setSelectedInvoiceForReturn(null);
-                              setLoadedOriginalInvoice(null);
-                              setCart([]);
-                              setExchangeSelectedNewProduct(null);
-                              setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-                              setSelectedCustomerId('');
-                            } catch (err) {
-                              console.error(err);
-                              if (onAddNotification) onAddNotification("Exchange Error", err.response?.data?.message || err.message, "danger");
+                              setExchangeCart([]);
+                              setExchangeNewSearchQuery("");
+                              setReturnSearchQuery("");
+                              setReturnedItemIds([]);
                             } finally {
                               setIsProcessingReturn(false);
                             }
                           }}
-                          className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeSelectedNewProduct && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeCart.length > 0 && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                         >
-                          {isProcessingReturn ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                          <span>Confirm & Issue Exchange</span>
+                          {isProcessingReturn ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Processing Exchange...
+                            </>
+                          ) : (
+                            "Confirm Exchange & Deduct Difference"
+                          )}
                         </button>
                       </div>
                     )}
