@@ -1,4 +1,17 @@
 import { generateCode128SvgString } from './barcode128.helper';
+import QRCode from 'qrcode-svg';
+
+const INSTAGRAM_URL = "https://www.instagram.com/nfs_palam/";
+const instagramQrSvg = new QRCode({
+  content: INSTAGRAM_URL,
+  padding: 2,
+  width: 55,
+  height: 55,
+  color: "#000000",
+  background: "#ffffff",
+  ecl: "M",
+  container: "svg-viewbox"
+}).svg();
 
 const svgIcons = {
   qrPlace: `<svg width="55" height="55" viewBox="0 0 25 25" fill="#000"><path d="M2 2h7v7H2zM3 3v5h5V3zM4 4h3v3H4z"/><path d="M16 2h7v7h-7zM17 3v5h5V3zM18 4h3v3h-3z"/><path d="M2 16h7v7H2zM3 17v5h5v-5zM4 18h3v3H4z"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="13" y="4" width="1" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="12" y="5" width="2" height="1"/><rect x="11" y="6" width="1" height="1"/><rect x="13" y="6" width="2" height="1"/><rect x="10" y="7" width="2" height="1"/><rect x="14" y="7" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="13" y="8" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="4" y="10" width="2" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="9" y="10" width="3" height="1"/><rect x="13" y="10" width="1" height="1"/><rect x="15" y="10" width="2" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="20" y="10" width="2" height="1"/><rect x="3" y="11" width="1" height="1"/><rect x="5" y="11" width="1" height="1"/><rect x="8" y="11" width="2" height="1"/><rect x="11" y="11" width="1" height="1"/><rect x="14" y="11" width="2" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="19" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="2" y="12" width="2" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="12" y="12" width="2" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="18" y="12" width="2" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="3" y="13" width="1" height="1"/><rect x="5" y="13" width="2" height="1"/><rect x="8" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="13" y="13" width="1" height="1"/><rect x="15" y="13" width="2" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="7" y="14" width="2" height="1"/><rect x="11" y="14" width="2" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="17" y="14" width="2" height="1"/><rect x="20" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/><rect x="12" y="16" width="2" height="1"/><rect x="15" y="16" width="1" height="1"/><rect x="17" y="16" width="1" height="1"/><rect x="19" y="16" width="2" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/><rect x="13" y="17" width="1" height="1"/><rect x="16" y="17" width="2" height="1"/><rect x="19" y="17" width="1" height="1"/><rect x="21" y="17" width="1" height="1"/><rect x="10" y="18" width="2" height="1"/><rect x="14" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="20" y="18" width="2" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="13" y="19" width="2" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="18" y="19" width="1" height="1"/><rect x="21" y="19" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="15" y="20" width="2" height="1"/><rect x="19" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/><rect x="11" y="21" width="2" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="17" y="21" width="2" height="1"/><rect x="20" y="21" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="13" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="19" y="22" width="2" height="1"/><rect x="22" y="22" width="1" height="1"/></svg>`,
@@ -631,7 +644,9 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
           <div style="display:flex; align-items:center; gap:5px;">
-             ${svgIcons.qrPlace}
+             <div style="width: 55px; height: 55px; flex-shrink: 0; display: flex; justify-content: center; align-items: center;">
+               ${instagramQrSvg}
+             </div>
              <div style="font-size: 8px; padding: 2px; display: flex; flex-direction: column; justify-content: center;">
                  <div style="font-size: 7px; font-weight:bold; margin-bottom: 1px;">SCAN TO FOLLOW</div>
                  <div class="font-bold" style="font-size: 10px; margin-bottom: 1px;">@nfs_palam</div>
