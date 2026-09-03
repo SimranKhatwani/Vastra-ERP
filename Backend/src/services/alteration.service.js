@@ -282,6 +282,7 @@ class AlterationService {
       const items = itemsByAltId.get(alt._id.toString()) || [];
       const firstItem = items[0] || {};
       const piece = firstItem.inventoryPieceId || {};
+      const product = piece.productId || {};
       const productName = firstItem.productName || firstItem.pieceName || product.name || product.itemName || 'Altered Garment';
       const size = firstItem.size || piece.size || product.size || 'FS';
       const color = firstItem.color || piece.primaryColor || product.color || 'Standard';

@@ -1,4 +1,5 @@
 import api from '../api/axios';
+import { generateCode128SvgString } from "../helpers/barcode128.helper";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search,
@@ -41,7 +42,8 @@ import {
   Star,
   RefreshCw,
   Shirt,
-  MoreHorizontal
+  MoreHorizontal,
+  Copy
 } from "lucide-react";
 
 export const ArticulationView = ({
@@ -249,7 +251,40 @@ export const ArticulationView = ({
   // ─── THREE NEW ENTERPRISE TABS & WHATSAPP STATE ───
   // 'dashboard' | 'reports' | 'tracking'
   const [activeStudioTab, setActiveStudioTab] = useState(initialTab || "dashboard");
-  const [alterationRecords, setAlterationRecords] = useState(defaultAlterationsList);
+  const [alterationRecords, setAlterationRecords] = useState([]);
+  
+  const alterationRecordsWithSequence = useMemo(() => {
+    if (!alterationRecords || !Array.isArray(alterationRecords)) return [];
+
+    // 1. Group records by saleBillId or invoiceNumber
+    const groups = {};
+    alterationRecords.forEach(record => {
+      if (!record) return;
+      const billId = record.saleBillId || record.invoiceId || record.invoiceNumber || 'unknown';
+      if (!groups[billId]) groups[billId] = [];
+      groups[billId].push(record);
+    });
+
+    // 2. Sort items within each group by createdAt ascending to determine their sequence (1st created is 1st item)
+    for (const key in groups) {
+      groups[key].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    }
+
+    // 3. Assign the sequence to each record
+    return alterationRecords.map(record => {
+      if (!record) return record;
+      const billId = record.saleBillId || record.invoiceId || record.invoiceNumber || 'unknown';
+      if (billId === 'unknown') {
+        return { ...record, alterationSequence: '1/1' };
+      }
+      const group = groups[billId];
+      const index = group.findIndex(r => r._id === record._id);
+      return {
+        ...record,
+        alterationSequence: `${index + 1}/${group.length}`
+      };
+    });
+  }, [alterationRecords]);
   const [pendingAlterations, setPendingAlterations] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const [alterationsFilterStatus, setAlterationsFilterStatus] = useState(initialFilterStatus || "All");
@@ -324,22 +359,73 @@ export const ArticulationView = ({
     }
   };
 
-  const generateInvoiceReceiptHTML = (inv) => {
-    if (!inv) return "";
-    const receiptDate = inv.date || inv.billDate || inv.createdAt
-      ? new Date(inv.date || inv.billDate || inv.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-      : '-';
+  const unrollInvoiceItems = (items = []) => {
+    const result = [];
+    (items || []).forEach((item, origIdx) => {
+      const qty = Number(item.quantity) || 1;
+      const unitPrice = item.price || (item.totalPrice ? Math.round(item.totalPrice / qty) : 0);
+      const baseId = item.productId || item.id || `item-${origIdx}`;
 
-    const items = inv.items || inv.saleItems || inv.billItems || [];
-    const custName = inv.customerName || inv.customerId?.name || inv.customer?.name || "Walk-in Customer";
-    const custPhone = inv.customerPhone || inv.customerId?.phone || inv.customer?.phone || "";
+      if (qty <= 1) {
+        result.push({
+          ...item,
+          unitId: item.unitId || `${baseId}-${origIdx}-u1`,
+          quantity: 1,
+          price: unitPrice,
+          totalPrice: unitPrice
+        });
+      } else {
+        for (let i = 1; i <= qty; i++) {
+          result.push({
+            ...item,
+            unitId: `${baseId}-${origIdx}-u${i}`,
+            unitIndex: i,
+            totalQty: qty,
+            quantity: 1,
+            price: unitPrice,
+            totalPrice: unitPrice,
+            name: `${item.name} (Piece #${i} of ${qty})`
+          });
+        }
+      }
+    });
+    return result;
+  };
+
+  const generateInvoiceReceiptHTML = (invoice) => {
+    if (!invoice) return "";
+    const receiptDate = invoice.date || invoice.billDate || invoice.createdAt ? new Date(invoice.date || invoice.billDate || invoice.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
+
+    let implicitDiscount = 0;
+    let overpaidAmount = 0;
+    const paymentSplits = invoice.transactions || invoice.splitPayments || [];
+
+    if (paymentSplits.length > 0) {
+      const totalSplitPaid = paymentSplits.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
+      const hasDue = paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
+      if (totalSplitPaid < invoice.grandTotal && !hasDue && totalSplitPaid > 0) {
+        implicitDiscount = invoice.grandTotal - totalSplitPaid;
+      } else if (totalSplitPaid > invoice.grandTotal && !hasDue) {
+        overpaidAmount = totalSplitPaid - invoice.grandTotal;
+      }
+    } else if (invoice.amountPaid !== undefined && invoice.amountPaid > 0) {
+      if (invoice.amountPaid < invoice.grandTotal) {
+        implicitDiscount = invoice.grandTotal - invoice.amountPaid;
+      } else if (invoice.amountPaid > invoice.grandTotal) {
+        overpaidAmount = invoice.amountPaid - invoice.grandTotal;
+      }
+    }
+
+    const displayGrandTotal = implicitDiscount > 0 ? (invoice.grandTotal - implicitDiscount) : invoice.grandTotal;
+    const displayPaymentMode = (invoice.paymentMethod || invoice.paymentMode || 'Cash') + (implicitDiscount > 0 ? ' + ADJUSTMENT' : '');
 
     return `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Receipt ${inv.invoiceNo || inv.billNo || 'INVOICE'}</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>Receipt ${invoice.invoiceNo || invoice.billNo || 'DRAFT'}</title>
         <style>
           body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
           .text-center { text-align: center; }
@@ -354,63 +440,78 @@ export const ArticulationView = ({
         </style>
       </head>
       <body>
-        <div class="text-center header">VASTRA ERP — SHOWROOM RECEIPT</div>
-        <div class="text-center details">Original Sales Bill & Tax Invoice</div>
+        <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
+        <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
         <div class="divider"></div>
         <div class="details">
-          <b>Receipt No:</b> ${inv.invoiceNo || inv.billNo || 'N/A'}<br>
-          <b>Date:</b> ${receiptDate}<br>
-          <b>Customer:</b> ${custName} ${custPhone ? `(${custPhone})` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+            <div style="flex: 1;">
+              <b>Receipt No:</b> ${invoice.invoiceNo || invoice.billNo || 'DRAFT'}<br>
+              <b>Date:</b> ${receiptDate}<br>
+              <b>Customer:</b> ${invoice.customerName || invoice.customerId?.name || invoice.customer?.name || 'Walk-in'} ${invoice.customerPhone || invoice.customerId?.phone || invoice.customer?.phone ? `(${invoice.customerPhone || invoice.customerId?.phone || invoice.customer?.phone})` : ''}
+              ${invoice.shippingDetails ? `<br><b>Transporter:</b> ${invoice.shippingDetails.transporter || 'N/A'} (LR: ${invoice.shippingDetails.trackingNo || 'N/A'})` : ''}
+              ${invoice.shippingDetails?.shippingAddress ? `<br><b>Shipping:</b> ${invoice.shippingDetails.shippingAddress}` : ''}
+            </div>
+            <div style="text-align: center; margin-left: 8px; shrink-0;">
+              ${generateCode128SvgString(invoice.invoiceNo || invoice.billNo || 'DRAFT', { width: 1.3, height: 36, displayValue: false, margin: 2 })}
+              <div style="font-family: monospace; font-size: 9.5px; font-weight: bold; letter-spacing: 0.5px; margin-top: 1px;">${invoice.invoiceNo || invoice.billNo || 'DRAFT'}</div>
+            </div>
+          </div>
         </div>
         <div class="divider"></div>
         <table>
           <thead>
             <tr>
               <th>Item Description</th>
+              <th class="text-center">HSN/SAC</th>
               <th class="text-right">Qty</th>
               <th class="text-right">Price</th>
               <th class="text-right">Total</th>
             </tr>
           </thead>
           <tbody>
-            ${items.map(item => {
-              const isAlt = Boolean(item.hasAlteration || item.alterationRecord || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE'));
-              return `
+            ${unrollInvoiceItems(invoice.items || invoice.saleItems || invoice.billItems || [])
+        .map(
+          (item) => `
                 <tr>
                   <td>
-                    ${item.name || item.productName || item.itemName || 'Garment Item'} (${item.size || 'FS'}/${item.color || item.primaryColor || 'Std'})
-                    ${isAlt ? '<br/><b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
+                    ${item.name || item.productName || item.itemName || 'Garment Item'} (${item.size || 'FS'}/${item.color || item.primaryColor || 'Std'}) ${Boolean(item.hasAlteration || item.alterationRecord || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE')) ? '<b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
+                    ${item.uniqueCode || item.barcode || item.sku ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode || item.barcode || item.sku}</span>` : ''}
                   </td>
+                  <td class="text-center">${item.hsn || 'N/A'}</td>
                   <td class="text-right">${item.quantity || item.qty || 1}</td>
                   <td class="text-right">&#8377;${(Number(item.price || item.sellingPrice || 0)).toLocaleString('en-IN')}</td>
-                  <td class="text-right">&#8377;${(Number(item.totalPrice || item.finalPrice || (item.sellingPrice || item.price || 0) * (item.quantity || 1))).toLocaleString('en-IN')}</td>
+                  <td class="text-right">&#8377;${(Number(item.totalPrice || item.finalPrice || (item.sellingPrice || item.price || 0) * (item.quantity || item.qty || 1)) || 0).toLocaleString('en-IN')}</td>
                 </tr>
-              `;
-            }).join('')}
+                ${item.isReturned ? `<tr><td colSpan="5" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">\u27F2 [RETURNED ITEM]</td></tr>` : ''}
+                ${item.isExchanged ? `<tr><td colSpan="5" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">\u21C4 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
+              `,
+        )
+        .join("")}
           </tbody>
         </table>
         <div class="divider"></div>
         <table>
           <tr>
             <td>Subtotal:</td>
-            <td class="text-right">&#8377;${(Number(inv.subTotal || inv.grandTotal || 0)).toLocaleString('en-IN')}</td>
+            <td class="text-right">&#8377;${(Number(invoice.subTotal || invoice.grandTotal || 0)).toLocaleString('en-IN')}</td>
           </tr>
-          ${(inv.discountTotal || inv.discountAmount || 0) > 0 ? `
+          ${(invoice.discountTotal || invoice.discountAmount || implicitDiscount || 0) > 0 ? `
             <tr>
               <td>Discount:</td>
-              <td class="text-right">-&#8377;${(Number(inv.discountTotal || inv.discountAmount || 0)).toLocaleString('en-IN')}</td>
+              <td class="text-right">-&#8377;${(Number(invoice.discountTotal || invoice.discountAmount || implicitDiscount || 0)).toLocaleString('en-IN')}</td>
             </tr>
           ` : ''}
           <tr class="totals">
             <td>Grand Total:</td>
-            <td class="text-right">&#8377;${(Number(inv.grandTotal || inv.totalAmount || 0)).toLocaleString('en-IN')}</td>
+            <td class="text-right">&#8377;${(Number(displayGrandTotal || 0)).toLocaleString('en-IN')}</td>
           </tr>
         </table>
         <div class="divider"></div>
         <div class="details">
-          <div class="text-center"><b>Payment Mode:</b> ${inv.paymentMethod || inv.paymentMode || 'Cash'}</div>
+          <div class="text-center"><b>Payment Mode:</b> ${displayPaymentMode}</div>
           <div class="text-center">
-            <b>Status:</b> ${(inv.status || 'Paid').toUpperCase()}<br>
+            <b>Status:</b> ${(invoice.status || 'Paid').toUpperCase()}<br><br>
             Thank you for shopping with us!<br>
             Powered by Vastra ERP Billing
           </div>
@@ -928,8 +1029,8 @@ export const ArticulationView = ({
     if (onAddNotification) onAddNotification("Downloaded", `Alteration slip downloaded for ${ticket.alterationId}.`, "success");
   };
 
-  const fetchPendingAlterations = async () => {
-    setLoadingPending(true);
+  const fetchPendingAlterations = async (isInitialLoad = false) => {
+    if (isInitialLoad) setLoadingPending(true);
     try {
       const res = await api.get(`/alterations/pending-items`);
       const data = res.data;
@@ -940,9 +1041,8 @@ export const ArticulationView = ({
       }
     } catch (err) {
       console.error("Failed to fetch pending alterations:", err);
-      setPendingAlterations([]);
     } finally {
-      setLoadingPending(false);
+      if (isInitialLoad) setLoadingPending(false);
     }
   };
 
@@ -953,12 +1053,12 @@ export const ArticulationView = ({
       if (data.success && data.data && data.data.length > 0) {
         const sorted = data.data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         setAlterationRecords(sorted);
-      } else {
-        setAlterationRecords(defaultAlterationsList);
+      } else if (data.success && data.data && data.data.length === 0) {
+        setAlterationRecords([]);
       }
     } catch (err) {
       console.error("Failed to fetch alterations:", err);
-      setAlterationRecords(defaultAlterationsList);
+      // Removed fallback to defaultAlterationsList to prevent UI fluctuation on transient errors
     }
   };
 
@@ -980,10 +1080,10 @@ export const ArticulationView = ({
 
   useEffect(() => {
     fetchAlterations();
-    fetchPendingAlterations();
+    fetchPendingAlterations(true);
     const interval = setInterval(() => {
       fetchAlterations();
-      fetchPendingAlterations();
+      fetchPendingAlterations(false);
     }, 6000);
     return () => clearInterval(interval);
   }, []);
@@ -1944,6 +2044,7 @@ export const ArticulationView = ({
                   <thead>
                     <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
                       <th className="p-3.5">Ticket #</th>
+                      <th className="p-3.5">Alt Seq</th>
                       <th className="p-3.5">Invoice No</th>
                       <th className="p-3.5">Customer</th>
                       <th className="p-3.5">Product / Garment</th>
@@ -1956,7 +2057,7 @@ export const ArticulationView = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
-                    {alterationRecords
+                    {alterationRecordsWithSequence
                       .filter(a => {
                         const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
                         if (!matchesStatus) return false;
@@ -2002,17 +2103,35 @@ export const ArticulationView = ({
                         const isReadyForDelivery = alt.status === "Ready for Delivery";
                         return (
                           <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-3.5 font-mono font-bold text-rose-600 whitespace-nowrap">
-                              {alt.alterationId || `ALT-${alt._id.slice(-6)}`}
+                            <td className="p-2 font-mono font-bold text-rose-600 whitespace-nowrap text-[10px]">
+                              <div className="flex items-center gap-1">
+                                <span>{alt.alterationId || `ALT-${alt._id.slice(-6)}`}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const text = alt.alterationId || `ALT-${alt._id.slice(-6)}`;
+                                    navigator.clipboard.writeText(text);
+                                    if (onAddNotification) onAddNotification("Copied", `Ticket ${text} copied to clipboard`, "success");
+                                  }}
+                                  className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                                  title="Copy Ticket ID"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
                             </td>
-                            <td className="p-3.5 whitespace-nowrap">
+                            <td className="p-2 whitespace-nowrap text-center font-mono font-bold text-slate-600 bg-slate-50 border-r border-l border-slate-100 text-[10px]">
+                              {alt.alterationSequence}
+                            </td>
+                            <td className="p-2 whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => handleOpenInvoicePreview(alt.invoiceNumber || alt.invoiceId, alt.saleBillId)}
-                                className="font-mono font-extrabold text-indigo-600 hover:text-indigo-900 hover:underline bg-indigo-50/70 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-100 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                className="font-mono font-bold text-indigo-600 hover:text-indigo-900 hover:underline bg-indigo-50/70 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-100 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[10px]"
                                 title="Click to view full Invoice Receipt"
                               >
-                                <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                <FileText className="w-3 h-3 text-indigo-500" />
                                 <span>{alt.invoiceNumber || alt.invoiceId}</span>
                               </button>
                             </td>
@@ -2029,25 +2148,25 @@ export const ArticulationView = ({
                             <td className="p-3.5 font-bold text-slate-700">
                               {alt.tailorName || 'Unassigned'}
                             </td>
-                            <td className="p-3.5 max-w-xs">
-                              <div className="space-y-1">
+                            <td className="p-2 max-w-sm">
+                              <div className="flex flex-col gap-0.5">
                                 {alt.alterationDetails && alt.alterationDetails.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
+                                  <div className="flex flex-wrap gap-0.5">
                                     {alt.alterationDetails.map((d, i) => (
-                                      <span key={i} className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      <span key={i} className="bg-rose-50 text-rose-700 px-1 py-[1px] rounded text-[9px] font-bold leading-tight">
                                         {d}
                                       </span>
                                     ))}
                                   </div>
                                 )}
                                 {mKeys.length > 0 && (
-                                  <p className="text-[10px] font-mono text-slate-500 truncate">
+                                  <p className="text-[9px] font-mono text-slate-500 truncate leading-tight">
                                     {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
                                     {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
                                   </p>
                                 )}
                                 {alt.specialInstructions && (
-                                  <p className="text-[10px] text-slate-400 italic truncate" title={alt.specialInstructions}>
+                                  <p className="text-[9px] text-slate-400 italic truncate leading-tight" title={alt.specialInstructions}>
                                     "{alt.specialInstructions}"
                                   </p>
                                 )}
@@ -3086,37 +3205,45 @@ export const ArticulationView = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 font-sans shrink-0">
-              <button
-                type="button"
-                onClick={() => setPreviewBillInvoice(null)}
-                className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
-              >
-                Close (Esc)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDownloadPreviewBill(previewBillInvoice)}
-                className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePrintPreviewBill(previewBillInvoice)}
-                className="py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print Bill</span>
-              </button>
+            <div className="flex flex-col gap-2 pt-1 font-sans shrink-0">
+              <div className="flex gap-2 w-full">
+                <button
+                  type="button"
+                  onClick={() => handlePrintPreviewBill(previewBillInvoice)}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Shortcut: F10"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>PRINT</span>
+                  <span className="bg-black/25 text-blue-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/20 normal-case ml-0.5">F10</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPreviewBill(previewBillInvoice)}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Shortcut: F11"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>DOWNLOAD HTML</span>
+                  <span className="bg-black/25 text-emerald-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/20 normal-case ml-0.5">F11</span>
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => handleWhatsAppPreviewBill(previewBillInvoice)}
-                className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
+                title="Shortcut: F12"
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>WhatsApp</span>
+                <MessageSquare className="w-4 h-4" />
+                <span>SEND BILL DIRECTLY TO WHATSAPP</span>
+                <span className="bg-black/30 text-emerald-100 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-white/30 normal-case ml-1">F12</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewBillInvoice(null)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0 flex items-center justify-center gap-1 mt-1"
+              >
+                <span>Close (Esc)</span>
               </button>
             </div>
 
