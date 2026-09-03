@@ -1,5 +1,6 @@
 import api from '../api/axios';
 import { generateCode128SvgString } from "../helpers/barcode128.helper";
+import { generateReceiptHTMLContent as generateInvoiceReceiptHTML } from '../helpers/printTemplate.helper';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search,
@@ -392,134 +393,6 @@ export const ArticulationView = ({
     return result;
   };
 
-  const generateInvoiceReceiptHTML = (invoice) => {
-    if (!invoice) return "";
-    const receiptDate = invoice.date || invoice.billDate || invoice.createdAt ? new Date(invoice.date || invoice.billDate || invoice.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
-
-    let implicitDiscount = 0;
-    let overpaidAmount = 0;
-    const paymentSplits = invoice.transactions || invoice.splitPayments || [];
-
-    if (paymentSplits.length > 0) {
-      const totalSplitPaid = paymentSplits.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
-      const hasDue = paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
-      if (totalSplitPaid < invoice.grandTotal && !hasDue && totalSplitPaid > 0) {
-        implicitDiscount = invoice.grandTotal - totalSplitPaid;
-      } else if (totalSplitPaid > invoice.grandTotal && !hasDue) {
-        overpaidAmount = totalSplitPaid - invoice.grandTotal;
-      }
-    } else if (invoice.amountPaid !== undefined && invoice.amountPaid > 0) {
-      if (invoice.amountPaid < invoice.grandTotal) {
-        implicitDiscount = invoice.grandTotal - invoice.amountPaid;
-      } else if (invoice.amountPaid > invoice.grandTotal) {
-        overpaidAmount = invoice.amountPaid - invoice.grandTotal;
-      }
-    }
-
-    const displayGrandTotal = implicitDiscount > 0 ? (invoice.grandTotal - implicitDiscount) : invoice.grandTotal;
-    const displayPaymentMode = (invoice.paymentMethod || invoice.paymentMode || 'Cash') + (implicitDiscount > 0 ? ' + ADJUSTMENT' : '');
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Receipt ${invoice.invoiceNo || invoice.billNo || 'DRAFT'}</title>
-        <style>
-          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 380px; margin: 0 auto; }
-          .text-center { text-align: center; }
-          .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
-          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-          table { width: 100%; font-size: 11px; }
-          th { text-align: left; }
-          .text-right { text-align: right; }
-          .totals { font-weight: bold; }
-          .footer { font-size: 10px; margin-top: 20px; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
-        <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
-        <div class="divider"></div>
-        <div class="details">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-            <div style="flex: 1;">
-              <b>Receipt No:</b> ${invoice.invoiceNo || invoice.billNo || 'DRAFT'}<br>
-              <b>Date:</b> ${receiptDate}<br>
-              <b>Customer:</b> ${invoice.customerName || invoice.customerId?.name || invoice.customer?.name || 'Walk-in'} ${invoice.customerPhone || invoice.customerId?.phone || invoice.customer?.phone ? `(${invoice.customerPhone || invoice.customerId?.phone || invoice.customer?.phone})` : ''}
-              ${invoice.shippingDetails ? `<br><b>Transporter:</b> ${invoice.shippingDetails.transporter || 'N/A'} (LR: ${invoice.shippingDetails.trackingNo || 'N/A'})` : ''}
-              ${invoice.shippingDetails?.shippingAddress ? `<br><b>Shipping:</b> ${invoice.shippingDetails.shippingAddress}` : ''}
-            </div>
-            <div style="text-align: center; margin-left: 8px; shrink-0;">
-              ${generateCode128SvgString(invoice.invoiceNo || invoice.billNo || 'DRAFT', { width: 1.3, height: 36, displayValue: false, margin: 2 })}
-              <div style="font-family: monospace; font-size: 9.5px; font-weight: bold; letter-spacing: 0.5px; margin-top: 1px;">${invoice.invoiceNo || invoice.billNo || 'DRAFT'}</div>
-            </div>
-          </div>
-        </div>
-        <div class="divider"></div>
-        <table>
-          <thead>
-            <tr>
-              <th>Item Description</th>
-              <th class="text-center">HSN/SAC</th>
-              <th class="text-right">Qty</th>
-              <th class="text-right">Price</th>
-              <th class="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${unrollInvoiceItems(invoice.items || invoice.saleItems || invoice.billItems || [])
-        .map(
-          (item) => `
-                <tr>
-                  <td>
-                    ${item.name || item.productName || item.itemName || 'Garment Item'} (${item.size || 'FS'}/${item.color || item.primaryColor || 'Std'}) ${Boolean(item.hasAlteration || item.alterationRecord || item.alterationId || (item.alterationStatus && item.alterationStatus !== 'NONE')) ? '<b style="color:#be123c; font-size:9px;">[ALTERATION]</b>' : ''}
-                    ${item.uniqueCode || item.barcode || item.sku ? `<br/><span style="font-size: 9px; color: #555;">Code: ${item.uniqueCode || item.barcode || item.sku}</span>` : ''}
-                  </td>
-                  <td class="text-center">${item.hsn || 'N/A'}</td>
-                  <td class="text-right">${item.quantity || item.qty || 1}</td>
-                  <td class="text-right">&#8377;${(Number(item.price || item.sellingPrice || 0)).toLocaleString('en-IN')}</td>
-                  <td class="text-right">&#8377;${(Number(item.totalPrice || item.finalPrice || (item.sellingPrice || item.price || 0) * (item.quantity || item.qty || 1)) || 0).toLocaleString('en-IN')}</td>
-                </tr>
-                ${item.isReturned ? `<tr><td colSpan="5" style="color:#e11d48; font-weight:bold; font-size:9.5px; padding:2px 4px;">\u27F2 [RETURNED ITEM]</td></tr>` : ''}
-                ${item.isExchanged ? `<tr><td colSpan="5" style="color:#4f46e5; font-weight:bold; font-size:9.5px; padding:2px 4px;">\u21C4 [EXCHANGED FOR: ${item.exchangedFor || 'New Garment'}]</td></tr>` : ''}
-              `,
-        )
-        .join("")}
-          </tbody>
-        </table>
-        <div class="divider"></div>
-        <table>
-          <tr>
-            <td>Subtotal:</td>
-            <td class="text-right">&#8377;${(Number(invoice.subTotal || invoice.grandTotal || 0)).toLocaleString('en-IN')}</td>
-          </tr>
-          ${(invoice.discountTotal || invoice.discountAmount || implicitDiscount || 0) > 0 ? `
-            <tr>
-              <td>Discount:</td>
-              <td class="text-right">-&#8377;${(Number(invoice.discountTotal || invoice.discountAmount || implicitDiscount || 0)).toLocaleString('en-IN')}</td>
-            </tr>
-          ` : ''}
-          <tr class="totals">
-            <td>Grand Total:</td>
-            <td class="text-right">&#8377;${(Number(displayGrandTotal || 0)).toLocaleString('en-IN')}</td>
-          </tr>
-        </table>
-        <div class="divider"></div>
-        <div class="details">
-          <div class="text-center"><b>Payment Mode:</b> ${displayPaymentMode}</div>
-          <div class="text-center">
-            <b>Status:</b> ${(invoice.status || 'Paid').toUpperCase()}<br><br>
-            Thank you for shopping with us!<br>
-            Powered by Vastra ERP Billing
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  };
 
   const handlePrintPreviewBill = (inv) => {
     if (!inv) return;
@@ -1969,7 +1842,7 @@ export const ArticulationView = ({
                   type="text"
                   value={alterationSearchQuery}
                   onChange={(e) => setAlterationSearchQuery(e.target.value)}
-                  placeholder="Search customer name, phone, invoice #, ticket #, tailor..."
+                  placeholder="Search customer name, phone, invoice #, ticket #, unique code, barcode..."
                   className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all shadow-2xs"
                 />
                 {alterationSearchQuery && (
@@ -2043,17 +1916,17 @@ export const ArticulationView = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
-                      <th className="p-3.5">Ticket #</th>
-                      <th className="p-3.5">Alt Seq</th>
-                      <th className="p-3.5">Invoice No</th>
+                      <th className="p-3.5 w-24">Ticket #</th>
+                      <th className="p-3.5 w-16">Alt Seq</th>
+                      <th className="p-3.5 w-28">Invoice No</th>
                       <th className="p-3.5">Customer</th>
                       <th className="p-3.5">Product / Garment</th>
-                      <th className="p-3.5">Master Tailor</th>
-                      <th className="p-3.5">Measurements & Details</th>
-                      <th className="p-3.5">Delivery & Priority</th>
-                      <th className="p-3.5">Status Workflow</th>
-                      <th className="p-3.5">Customer Notification</th>
-                      <th className="p-3.5">Job Ticket Slip</th>
+                      <th className="p-3.5 w-24">Master Tailor</th>
+                      <th className="p-3.5 w-40">Measurements & Details</th>
+                      <th className="p-3.5 w-28">Delivery & Priority</th>
+                      <th className="p-3.5 w-32">Status Workflow</th>
+                      <th className="p-3.5 w-36">Customer Notification</th>
+                      <th className="p-3.5 w-24">Job Ticket Slip</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
@@ -2095,6 +1968,8 @@ export const ArticulationView = ({
                           (a.alterationId || "").toLowerCase().includes(q) ||
                           (a.productName || "").toLowerCase().includes(q) ||
                           (a.sku || "").toLowerCase().includes(q) ||
+                          (a.uniqueCode || "").toLowerCase().includes(q) ||
+                          (a.barcode || "").toLowerCase().includes(q) ||
                           (a.tailorName || "").toLowerCase().includes(q)
                         );
                       })
@@ -2103,14 +1978,14 @@ export const ArticulationView = ({
                         const isReadyForDelivery = alt.status === "Ready for Delivery";
                         return (
                           <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-2 font-mono font-bold text-rose-600 whitespace-nowrap text-[10px]">
+                            <td className="p-2 font-mono font-bold text-rose-600 whitespace-nowrap text-xs">
                               <div className="flex items-center gap-1">
-                                <span>{alt.alterationId || `ALT-${alt._id.slice(-6)}`}</span>
+                                <span>{alt.alterationId}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const text = alt.alterationId || `ALT-${alt._id.slice(-6)}`;
+                                    const text = alt.alterationId;
                                     navigator.clipboard.writeText(text);
                                     if (onAddNotification) onAddNotification("Copied", `Ticket ${text} copied to clipboard`, "success");
                                   }}
@@ -2148,27 +2023,25 @@ export const ArticulationView = ({
                             <td className="p-3.5 font-bold text-slate-700">
                               {alt.tailorName || 'Unassigned'}
                             </td>
-                            <td className="p-2 max-w-sm">
-                              <div className="flex flex-col gap-0.5">
+                            <td className="p-2 max-w-[12rem]">
+                              <div className="flex flex-wrap gap-1 leading-tight">
                                 {alt.alterationDetails && alt.alterationDetails.length > 0 && (
-                                  <div className="flex flex-wrap gap-0.5">
-                                    {alt.alterationDetails.map((d, i) => (
-                                      <span key={i} className="bg-rose-50 text-rose-700 px-1 py-[1px] rounded text-[9px] font-bold leading-tight">
-                                        {d}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  alt.alterationDetails.map((d, i) => (
+                                    <span key={i} className="bg-rose-50 text-rose-700 px-1 py-[1px] rounded text-[10px] font-bold">
+                                      {d}
+                                    </span>
+                                  ))
                                 )}
                                 {mKeys.length > 0 && (
-                                  <p className="text-[9px] font-mono text-slate-500 truncate leading-tight">
+                                  <span className="text-[10px] font-mono text-slate-500">
                                     {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
                                     {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
-                                  </p>
+                                  </span>
                                 )}
                                 {alt.specialInstructions && (
-                                  <p className="text-[9px] text-slate-400 italic truncate leading-tight" title={alt.specialInstructions}>
+                                  <span className="text-[10px] text-slate-400 italic" title={alt.specialInstructions}>
                                     "{alt.specialInstructions}"
-                                  </p>
+                                  </span>
                                 )}
                               </div>
                             </td>
