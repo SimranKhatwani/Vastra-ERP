@@ -67,6 +67,23 @@ class BillingController {
     }
     return res.status(200).json(new ApiResponse(200, exportResult.content, 'Sale bills exported successfully.'));
   });
+
+  static updatePaymentMethod = asyncHandler(async (req, res) => {
+    const { paymentMethod, splitPayments } = req.body;
+    if (!paymentMethod) {
+      return res.status(400).json(new ApiResponse(400, null, 'paymentMethod is required.'));
+    }
+    const SaleBill = require('../models/billing/SaleBill');
+    const bill = await SaleBill.findOne({ _id: req.params.id, tenantId: req.tenantId, isDeleted: false });
+    if (!bill) return res.status(404).json(new ApiResponse(404, null, 'Sale Bill not found.'));
+    bill.paymentMethod = paymentMethod;
+    if (splitPayments && Array.isArray(splitPayments)) {
+      bill.splitPayments = splitPayments;
+    }
+    bill.updatedBy = req.user.id;
+    await bill.save();
+    return res.status(200).json(new ApiResponse(200, bill, 'Payment method updated successfully.'));
+  });
 }
 
 module.exports = BillingController;

@@ -38,25 +38,34 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
   const receiptDate = invoice.date ? new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/') : '-';
   const receiptTime = invoice.date ? new Date(invoice.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase() : '-';
   
-  let implicitDiscount = 0;
   const paymentSplits = invoice.transactions || invoice.splitPayments || [];
   let totalPaid = 0;
 
   if (paymentSplits.length > 0) {
-    totalPaid = paymentSplits.reduce((acc, sp) => acc + (Number(sp.amount) || 0), 0);
-    const hasDue = paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE');
-    if (totalPaid < invoice.grandTotal && !hasDue && totalPaid > 0) {
-      implicitDiscount = invoice.grandTotal - totalPaid;
-    }
+    // Exclude DUE mode from totalPaid — DUE is the unpaid portion, not cash received
+    totalPaid = paymentSplits.reduce((acc, sp) => {
+      const mode = (sp.method || sp.mode || '').toUpperCase();
+      if (mode === 'DUE' || mode === 'CREDIT') return acc;
+      return acc + (Number(sp.amount) || 0);
+    }, 0);
   } else if (invoice.amountPaid !== undefined && invoice.amountPaid > 0) {
     totalPaid = invoice.amountPaid;
-    if (invoice.amountPaid < invoice.grandTotal) {
-      implicitDiscount = invoice.grandTotal - invoice.amountPaid;
-    }
   }
 
-  const dueAmount = Math.max(0, invoice.grandTotal - totalPaid - implicitDiscount);
-  const displayGrandTotal = implicitDiscount > 0 ? (invoice.grandTotal - implicitDiscount) : invoice.grandTotal;
+  // Bill adjustment: only count as special discount if it's a Discount operation
+  const billAdj = invoice.billAdjustment || {};
+  const billAdjAmt = Number(billAdj.amount || invoice.billAdjustmentAmount || 0);
+  const billAdjOperation = billAdj.operation || 'Discount';
+  const specialDiscountAmt = billAdjOperation === 'Discount' ? Number(invoice.specialDiscount || billAdjAmt || 0) : 0;
+  const serviceChargeAmt = billAdjOperation === 'Charge' ? billAdjAmt : 0;
+
+  const dueAmount = Math.max(0, Number((invoice.grandTotal - totalPaid).toFixed(2)));
+  const displayGrandTotal = Number(invoice.grandTotal) || 0;
+
+  // Show due info ONLY when "Due" was explicitly selected as payment method
+  const isDueSelected =
+    paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE') ||
+    ['DUE', 'CREDIT'].includes((invoice.paymentMethod || invoice.paymentMode || '').toUpperCase());
 
   const getPaymentModesText = () => {
     if (paymentSplits.length > 0) {
@@ -507,7 +516,8 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <div class="section-black-header" style="text-align: left;">BILL SUMMARY</div>
             <div class="summary-row"><div>Gross Amount</div><div>:</div><div style="width: 45px; text-align: right;">₹${(Number(invoice.subTotal) || 0).toFixed(2)}</div></div>
             <div class="summary-row"><div>Total Discount</div><div>:</div><div style="width: 45px; text-align: right;">₹${(Number(invoice.discountTotal) || 0).toFixed(2)}</div></div>
-            <div class="summary-row"><div>Special Discount</div><div>:</div><div style="width: 45px; text-align: right;">-₹${(Number(implicitDiscount) || 0).toFixed(2)}</div></div>
+            ${specialDiscountAmt > 0 ? `<div class="summary-row"><div>Bill Adjustment (Discount)</div><div>:</div><div style="width: 45px; text-align: right;">-₹${specialDiscountAmt.toFixed(2)}</div></div>` : ''}
+            ${serviceChargeAmt > 0 ? `<div class="summary-row"><div>Service Charge</div><div>:</div><div style="width: 45px; text-align: right;">+₹${serviceChargeAmt.toFixed(2)}</div></div>` : ''}
             <div class="summary-row"><div>Round Off</div><div>:</div><div style="width: 45px; text-align: right;">₹0.00</div></div>
             
             <div class="final-amount-box">
@@ -542,11 +552,18 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <div class="section-black-header" style="text-align: left;">PAYMENT DETAILS</div>
             <div class="payment-content">
                 ${paymentSplits.length > 0 ? 
-                  paymentSplits.map(sp => `<div class="info-row"><div class="info-label" style="width: 65px;">${(sp.method || sp.mode || 'CASH').toUpperCase()}</div><div>: &#8377;${(Number(sp.amount)||0).toFixed(2)}</div></div>`).join('')
+                  paymentSplits.map(sp => {
+                    const modeRaw = (sp.method || sp.mode || 'CASH').toUpperCase();
+                    const modeLabel = modeRaw === 'POINTS' || modeRaw === 'POINTS_REDEEM' ? 'LOYALTY PTS' :
+                      modeRaw === 'GIFT_VOUCHER' ? 'GIFT VOUCHER' :
+                      modeRaw === 'ADVANCE' ? 'ADVANCE USED' : modeRaw;
+                    return `<div class="info-row"><div class="info-label" style="width: 65px;">${modeLabel}</div><div>: &#8377;${(Number(sp.amount)||0).toFixed(2)}</div></div>`;
+                  }).join('') +
+                  (isDueSelected && dueAmount > 0 && !paymentSplits.some(sp => (sp.method || sp.mode || '').toUpperCase() === 'DUE') ? `<div class="info-row"><div class="info-label" style="width: 65px;">DUE / UNPAID</div><div>: &#8377;${dueAmount.toFixed(2)}</div></div>` : '')
                   :
                   `<div class="info-row"><div class="info-label" style="width: 65px;">Payment Mode</div><div>: ${getPaymentModesText()}</div></div>
                    <div class="info-row"><div class="info-label" style="width: 65px;">Amount Paid</div><div>: &#8377;${totalPaid.toFixed(2)}</div></div>
-                   <div class="info-row"><div class="info-label" style="width: 65px;">Balance Amount</div><div>: &#8377;${dueAmount.toFixed(2)}</div></div>`
+                   ${isDueSelected && dueAmount > 0 ? `<div class="info-row"><div class="info-label" style="width: 65px;">Due Balance</div><div>: &#8377;${dueAmount.toFixed(2)}</div></div>` : ''}`
                 }
               </div>
             </div>
@@ -601,11 +618,16 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           </div>
         </div>
         
-        <!-- Due Highlight Box (Conditional) -->
-        ${dueAmount > 0 ? `
-        <div class="due-box" style="border: 1px solid #000; padding: 4px; margin-bottom: 5px; font-weight: bold; display: flex; justify-content: space-between; font-size: 11px;">
-          <div>CREDIT / DUE AMOUNT</div>
-          <div>₹${dueAmount.toFixed(2)}</div>
+        <!-- Due Highlight Box (Conditional - Prominent Black/White Box for Counter Staff) -->
+        ${isDueSelected && dueAmount > 0 ? `
+        <div class="due-box" style="border: 2px solid #000; background: #fff; padding: 4px 6px; margin: 6px 0; font-family: Arial, sans-serif;">
+          <div style="background: #000; color: #fff; text-align: center; font-weight: 900; font-size: 11px; padding: 3px 0; letter-spacing: 1px; text-transform: uppercase;">
+            ⚠️ OUTSTANDING CREDIT / DUE ⚠️
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px; font-weight: 900; font-size: 13px; color: #000;">
+            <div>CREDIT / DUE AMOUNT:</div>
+            <div style="font-size: 15px; font-family: monospace;">₹${dueAmount.toFixed(2)}</div>
+          </div>
         </div>
         ` : ''}
         

@@ -40,7 +40,8 @@ import {
   Banknote,
   Wallet,
   Loader2,
-  ImageIcon
+  ImageIcon,
+  Pencil
 } from "lucide-react";
 
 const generateUniqueItemCode = (designNo, size, index = 0) => {
@@ -819,6 +820,7 @@ export const BillingPOSView = ({
       setSelectedCustomerId(targetInv.customerId || targetInv.customer?.id || "");
       setCustomerSearch(targetInv.customerName || "");
       setPaymentMethod(targetInv.paymentMethod || "Cash");
+      setShowBillPreviewInvoice(targetInv); // ← Open receipt preview for the loaded bill
       if (onAddNotification) onAddNotification("Previous Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo} (${targetIdx + 1}/${list.length})`, "success");
     }
   };
@@ -841,6 +843,7 @@ export const BillingPOSView = ({
       setSelectedCustomerId(targetInv.customerId || targetInv.customer?.id || "");
       setCustomerSearch(targetInv.customerName || "");
       setPaymentMethod(targetInv.paymentMethod || "Cash");
+      setShowBillPreviewInvoice(targetInv); // ← Open receipt preview for the loaded bill
       if (onAddNotification) onAddNotification("Next Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo} (${targetIdx + 1}/${list.length})`, "success");
     }
   };
@@ -998,6 +1001,14 @@ export const BillingPOSView = ({
   const [showDueCustomerModal, setShowDueCustomerModal] = useState(false);
   const [dueCustName, setDueCustName] = useState("");
   const [dueCustPhone, setDueCustPhone] = useState("");
+
+  // Edit Payment Method modal state
+  const [editPayMethodModal, setEditPayMethodModal] = useState(null); // { inv } | null
+  const [editPayMethodValue, setEditPayMethodValue] = useState("");
+  const [isSavingPayMethod, setIsSavingPayMethod] = useState(false);
+  const [editPartSplits, setEditPartSplits] = useState({}); // { Cash: '200', UPI: '300', ... }
+
+  const PART_PAY_METHODS = ["Cash", "Card", "UPI", "Cheque", "Net Banking", "Due", "Gift Voucher", "Other"];
 
   // WhatsApp dispatch state (for receipt modal)
   // 'idle' | 'sending' | 'success' | 'failed' | 'no_number'
@@ -1704,6 +1715,19 @@ export const BillingPOSView = ({
       if (e.key === "F9") {
         e.preventDefault();
         handleOpenDraftPreview();
+        return;
+      }
+      // F10: Print Bill Shortcut (Global)
+      if (e.key === "F10" || e.code === "F10" || e.keyCode === 121) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (showBillPreviewInvoice) {
+          if (!isPrinting) handlePrintAction();
+        } else if (showPaymentModal) {
+          handleCheckoutSubmit(false, false, true);
+        } else if (cart.length > 0) {
+          handleOpenDraftPreview();
+        }
         return;
       }
 
@@ -2590,44 +2614,38 @@ export const BillingPOSView = ({
 
       setPaymentType("Part Payment");
 
-      setPartPaymentAmounts((prev) => {
-        const currentPointsRedeem = Number(prev["Points Redeem"]) || 0;
-        const currentAdvance = Number(prev["Advance"]) || 0;
-        let newPointsRedeem = currentPointsRedeem;
-        let newAdvance = currentAdvance;
+      // Compute new amounts (do NOT spread prev — start fresh to avoid stale Card/UPI values)
+      let newPointsRedeem = 0;
+      let newAdvance = 0;
 
-        if (category === "loyalty") {
-          const remainingForLoyalty = Math.max(0, grandTotal - currentAdvance);
-          const applyLoyalty = Math.min(loyalty, remainingForLoyalty);
-          newPointsRedeem = applyLoyalty;
-          if (newPointsRedeem + newAdvance > grandTotal) {
-            newAdvance = Math.max(0, grandTotal - newPointsRedeem);
-          }
-        } else {
-          const remainingForAdvance = Math.max(0, grandTotal - currentPointsRedeem);
-          let targetCategoryBalance = 0;
-          if (category === "overpaid") targetCategoryBalance = fallbackOverpaid;
-          else if (category === "return") targetCategoryBalance = returnAmt;
-          else if (category === "prepaid") targetCategoryBalance = prepaidAmt;
-          else if (category === "all") targetCategoryBalance = wallet;
+      if (category === "loyalty") {
+        const applyLoyalty = Math.min(loyalty, grandTotal);
+        newPointsRedeem = applyLoyalty;
+      } else {
+        let targetCategoryBalance = 0;
+        if (category === "overpaid") targetCategoryBalance = fallbackOverpaid;
+        else if (category === "return") targetCategoryBalance = returnAmt;
+        else if (category === "prepaid") targetCategoryBalance = prepaidAmt;
+        else if (category === "all") targetCategoryBalance = wallet;
 
-          const applyAdvance = Math.min(targetCategoryBalance, remainingForAdvance);
-          newAdvance = applyAdvance;
-        }
+        newAdvance = Math.min(targetCategoryBalance, grandTotal);
+      }
 
-        const remainingUnpaid = Math.max(0, Number((grandTotal - newPointsRedeem - newAdvance).toFixed(2)));
+      // Reset all part-payment amounts to avoid stale values from previous interactions
+      const freshAmounts = {
+        Card: '', UPI: '', Advance: newAdvance > 0 ? newAdvance.toString() : '',
+        Due: '', 'Gift Voucher': '', 'Points Redeem': newPointsRedeem > 0 ? newPointsRedeem.toString() : '', Other: ''
+      };
+      setPartPaymentAmounts(freshAmounts);
 
-        return {
-          ...prev,
-          "Points Redeem": newPointsRedeem > 0 ? newPointsRedeem.toString() : "",
-          "Advance": newAdvance > 0 ? newAdvance.toString() : "",
-          "Due": prev["Due"] || ""
-        };
-      });
+      // Auto-confirm the modes that were just set so they appear in compiledTransactions
+      const autoConfirmed = {};
+      if (newPointsRedeem > 0) autoConfirmed['Points Redeem'] = true;
+      if (newAdvance > 0) autoConfirmed['Advance'] = true;
 
       await new Promise(resolve => setTimeout(resolve, 300));
       setAllocatedFullPaymentMode(null);
-      setConfirmedPartPaymentModes({});
+      setConfirmedPartPaymentModes(autoConfirmed);
       setShowPaymentModal(true);
     } catch (err) {
       console.error("Error applying category advance:", err);
@@ -2741,9 +2759,11 @@ export const BillingPOSView = ({
       let loyaltyPointsUsed = 0;
 
       if (paymentType === "Part Payment") {
-        computedAmountPaid = cashTotal + ["Card", "UPI"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-        advanceApplied = Number(partPaymentAmounts["Advance"]) || 0;
-        loyaltyPointsUsed = Number(partPaymentAmounts["Points Redeem"]) || 0;
+        // Only count confirmed payment modes (excluding Due which is the unpaid portion)
+        computedAmountPaid = cashTotal + ["Card", "UPI", "Gift Voucher", "Other"].reduce((acc, m) =>
+          acc + (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0), 0);
+        advanceApplied = confirmedPartPaymentModes["Advance"] ? (Number(partPaymentAmounts["Advance"]) || 0) : 0;
+        loyaltyPointsUsed = confirmedPartPaymentModes["Points Redeem"] ? (Number(partPaymentAmounts["Points Redeem"]) || 0) : 0;
       } else if (paymentMethod === "Cash") {
         computedAmountPaid = cashTotal > 0 ? cashTotal : grandTotal;
       } else if (paymentMethod === "Credit" || paymentMethod === "Due") {
@@ -2791,7 +2811,7 @@ export const BillingPOSView = ({
         ? [
           ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
           ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"]
-            .filter(m => Number(partPaymentAmounts[m]) > 0)
+            .filter(m => confirmedPartPaymentModes[m] && Number(partPaymentAmounts[m]) > 0)
             .map(m => {
               let mode = m.toUpperCase().replace(/\s+/g, '_');
               if (mode === 'POINTS_REDEEM') mode = 'POINTS';
@@ -2800,12 +2820,7 @@ export const BillingPOSView = ({
         ]
         : [
           {
-            mode: paymentMethod === 'Cash' ? 'CASH'
-              : (paymentMethod === 'Card' ? 'CARD'
-                : (paymentMethod === 'UPI' ? 'UPI'
-                  : (paymentMethod === 'Advance' ? 'ADVANCE'
-                    : (paymentMethod === 'Points Redeem' ? 'POINTS'
-                      : (paymentMethod === 'Due' ? 'DUE' : paymentMethod.toUpperCase()))))),
+            mode: allocatedFullPaymentMode ? (allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') === 'POINTS_REDEEM' ? 'POINTS' : allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_')) : 'CASH',
             amount: grandTotal
           }
         ];
@@ -2839,17 +2854,20 @@ export const BillingPOSView = ({
         employeeName: cashier.name,
         salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
         billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
+        specialDiscount: billAdjustment && billAdjustment.amount > 0 ? billAdjustment.amount : 0,
         notes: [otherBillDetails.transporter && `Transporter: ${otherBillDetails.transporter}`, otherBillDetails.trackingNo && `LR: ${otherBillDetails.trackingNo}`, otherBillDetails.shippingAddress && `Shipping: ${otherBillDetails.shippingAddress}`].filter(Boolean).join(' | ') || undefined,
         shippingDetails: (otherBillDetails.transporter || otherBillDetails.trackingNo || otherBillDetails.shippingAddress) ? otherBillDetails : undefined,
       };
 
-      // If Credit, add outstanding balance to Customer's profile
-      if (paymentMethod === "Credit") {
-        onUpdateCustomerBalance(selectedCustomerId, grandTotal);
+      // Automatically log any outstanding due/credit balance to Customer's ledger
+      const totalPaidAmt = compiledTransactions.reduce((acc, t) => acc + (t.mode === 'DUE' ? 0 : t.amount), 0);
+      const outstandingDueAmt = Math.max(0, Number((grandTotal - totalPaidAmt).toFixed(2)));
+      if (outstandingDueAmt > 0 && selectedCustomerId && onUpdateCustomerBalance) {
+        onUpdateCustomerBalance(selectedCustomerId, outstandingDueAmt);
         onAddNotification(
-          "Credit Balance Logged",
-          `₹${grandTotal.toLocaleString()} logged to ${activeCustomer.name}'s credit ledger.`,
-          "info",
+          "Credit/Due Balance Logged",
+          `₹${outstandingDueAmt.toLocaleString('en-IN')} logged to ${currentActiveCustomer.name}'s credit ledger.`,
+          "info"
         );
       }
 
@@ -2897,6 +2915,14 @@ export const BillingPOSView = ({
       };
 
       setCompletedInvoice(mergedInvoice);
+
+      // ← Immediately add to local invoiceList so "Previous Bill" shows the latest bill
+      //    without waiting for the parent component to re-render with a fresh invoices prop
+      setInvoiceList(prev => {
+        const already = (prev || []).some(inv => (inv._id || inv.invoiceNo) === (mergedInvoice._id || mergedInvoice.invoiceNo));
+        return already ? prev : [...(prev || []), mergedInvoice];
+      });
+
       handleClearBillContext("Invoice Compiled Successfully", `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`);
       
       setCouponCode("");
@@ -3225,8 +3251,8 @@ export const BillingPOSView = ({
     const compiledTransactions = paymentType === "Part Payment"
       ? [
         ...(cashTotal > 0 ? [{ mode: "CASH", amount: cashTotal }] : []),
-        ...["Card", "UPI", "Advance", "Due", "Gift Voucher", , "Points Redeem", "Other"]
-          .filter(m => Number(partPaymentAmounts[m]) > 0)
+        ...["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"]
+          .filter(m => confirmedPartPaymentModes[m] && Number(partPaymentAmounts[m]) > 0)
           .map(m => {
             let mode = m.toUpperCase().replace(/\s+/g, '_');
             if (mode === 'POINTS_REDEEM') mode = 'POINTS';
@@ -3235,7 +3261,7 @@ export const BillingPOSView = ({
       ]
       : [
         {
-          mode: allocatedFullPaymentMode ? allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') : 'CASH',
+          mode: allocatedFullPaymentMode ? (allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_') === 'POINTS_REDEEM' ? 'POINTS' : allocatedFullPaymentMode.toUpperCase().replace(/\s+/g, '_')) : 'CASH',
           amount: grandTotal
         }
       ];
@@ -3270,6 +3296,8 @@ export const BillingPOSView = ({
       loyaltyPointsUsed: Number(partPaymentAmounts["Points Redeem"]) || 0,
       loyaltyPointsEarned: (activeCustomer && (activeCustomer.id || activeCustomer._id) !== "c-walkin") ? Math.floor(grandTotal / 100) : 0,
       splitPayments: compiledTransactions.map(t => ({ method: t.mode, amount: t.amount })),
+      specialDiscount: billAdjustment && billAdjustment.amount > 0 ? billAdjustment.amount : 0,
+      billAdjustment: billAdjustment && billAdjustment.amount > 0 ? billAdjustment : undefined,
       isDraftPreview: true,
       notes: [otherBillDetails.transporter && `Transporter: ${otherBillDetails.transporter}`, otherBillDetails.trackingNo && `LR: ${otherBillDetails.trackingNo}`, otherBillDetails.shippingAddress && `Shipping: ${otherBillDetails.shippingAddress}`].filter(Boolean).join(' | ') || undefined,
       shippingDetails: (otherBillDetails.transporter || otherBillDetails.trackingNo || otherBillDetails.shippingAddress) ? otherBillDetails : undefined
@@ -3288,6 +3316,45 @@ export const BillingPOSView = ({
       }
     } catch (err) {
       console.error("Generate Bill Error:", err);
+    }
+  };
+
+  const handleDirectPrint = (invoice) => {
+    if (!invoice) return;
+    try {
+      const htmlContent = generateReceiptHTMLContent(invoice, true);
+      const printFrame = document.createElement("iframe");
+      printFrame.style.position = "fixed";
+      printFrame.style.right = "0";
+      printFrame.style.bottom = "0";
+      printFrame.style.width = "0";
+      printFrame.style.height = "0";
+      printFrame.style.border = "0";
+      document.body.appendChild(printFrame);
+
+      const frameWin = printFrame.contentWindow || printFrame.contentDocument;
+      const doc = frameWin.document || frameWin;
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          frameWin.focus();
+          frameWin.print();
+        } catch (err) {
+          console.error("Frame print error:", err);
+        }
+        setTimeout(() => {
+          try {
+            if (printFrame.parentNode) {
+              printFrame.parentNode.removeChild(printFrame);
+            }
+          } catch (e) {}
+        }, 2000);
+      }, 300);
+    } catch (err) {
+      console.error("handleDirectPrint Error:", err);
     }
   };
 
@@ -5248,6 +5315,16 @@ export const BillingPOSView = ({
                               <span>Exchange Slip</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => {
+                              setEditPayMethodModal({ inv });
+                              setEditPayMethodValue(inv.paymentMethod || "Cash");
+                            }}
+                            className="text-amber-500 hover:text-amber-700 p-1 rounded hover:bg-amber-50 cursor-pointer transition-colors"
+                            title="Edit Payment Method"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={async () => {
                               if (window.confirm("Are you sure you want to permanently delete this invoice? This will revert inventory back to available stock.")) {
@@ -8440,8 +8517,170 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* MODAL: EDIT PAYMENT METHOD */}
+      {editPayMethodModal && (() => {
+        const inv = editPayMethodModal.inv;
+        const invId = inv._id || inv.id;
+        const isPartPay = editPayMethodValue === 'Part Payment';
+        const splitTotal = Object.values(editPartSplits).reduce((s, v) => s + (Number(v) || 0), 0);
+        const grandTotalAmt = Number(inv.grandTotal) || 0;
+        const splitRemaining = grandTotalAmt - splitTotal;
+
+        const handleSave = async () => {
+          if (!editPayMethodValue) return;
+          if (isPartPay) {
+            const activeSplits = Object.entries(editPartSplits).filter(([, v]) => Number(v) > 0);
+            if (activeSplits.length === 0) {
+              if (onAddNotification) onAddNotification("Error", "Enter amount for at least one payment method.", "danger");
+              return;
+            }
+          }
+          setIsSavingPayMethod(true);
+          try {
+            const body = { paymentMethod: editPayMethodValue };
+            if (isPartPay) {
+              body.splitPayments = Object.entries(editPartSplits)
+                .filter(([, v]) => Number(v) > 0)
+                .map(([method, amount]) => ({ method, amount: Number(amount) }));
+            }
+            await api.patch(`/billing/${invId}/payment-method`, body);
+            setInvoiceList(prev => (prev || []).map(i =>
+              (i._id || i.id) === invId ? { ...i, paymentMethod: editPayMethodValue, splitPayments: body.splitPayments || i.splitPayments } : i
+            ));
+            if (onAddNotification) onAddNotification("Payment Updated", `Payment method changed to ${editPayMethodValue} for ${inv.invoiceNo}`, "success");
+            setEditPayMethodModal(null);
+          } catch (err) {
+            if (onAddNotification) onAddNotification("Error", err?.response?.data?.message || "Failed to update payment method", "danger");
+          } finally {
+            setIsSavingPayMethod(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <Pencil className="w-4 h-4" />
+                  <span className="font-bold text-sm uppercase tracking-wide">Edit Payment Method</span>
+                </div>
+                <button onClick={() => setEditPayMethodModal(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-5 h-5" /></button>
+              </div>
+
+              {/* Body */}
+              <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                {/* Invoice info bar */}
+                <div className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100 flex flex-wrap gap-x-3 gap-y-1">
+                  <span><span className="font-semibold text-slate-700">Invoice:</span> {inv.invoiceNo}</span>
+                  <span className="text-slate-300">|</span>
+                  <span><span className="font-semibold text-slate-700">Customer:</span> {inv.customerName || 'Walk-in'}</span>
+                  <span className="text-slate-300">|</span>
+                  <span><span className="font-semibold text-slate-700">Total:</span> ₹{grandTotalAmt.toLocaleString()}</span>
+                </div>
+
+                {/* Payment Method dropdown */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Payment Method</label>
+                  <select
+                    value={editPayMethodValue}
+                    onChange={e => {
+                      setEditPayMethodValue(e.target.value);
+                      setEditPartSplits({});
+                    }}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-white cursor-pointer"
+                  >
+                    {["Cash", "Card", "UPI", "Due", "Credit", "Part Payment", "Cheque", "Net Banking", "Gift Voucher", "Other"].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Part Payment Sub-options */}
+                {isPartPay && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">Split Amounts</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        splitRemaining < 0 ? 'bg-red-100 text-red-600' :
+                        splitRemaining === 0 ? 'bg-green-100 text-green-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {splitRemaining < 0 ? '⚠ Over by ₹' + Math.abs(splitRemaining).toLocaleString() :
+                         splitRemaining === 0 ? '✓ Balanced' :
+                         'Remaining: ₹' + splitRemaining.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {PART_PAY_METHODS.map(method => (
+                        <div key={method} className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer w-32 shrink-0">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                              checked={editPartSplits[method] !== undefined}
+                              onChange={e => {
+                                setEditPartSplits(prev => {
+                                  const next = { ...prev };
+                                  if (e.target.checked) next[method] = '';
+                                  else delete next[method];
+                                  return next;
+                                });
+                              }}
+                            />
+                            <span className="text-xs font-semibold text-slate-700">{method}</span>
+                          </label>
+                          {editPartSplits[method] !== undefined && (
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="0.00"
+                                value={editPartSplits[method]}
+                                onChange={e => setEditPartSplits(prev => ({ ...prev, [method]: e.target.value }))}
+                                className="w-full border border-slate-300 rounded-lg pl-7 pr-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-xs font-bold pt-1 border-t border-amber-200">
+                      <span className="text-slate-600">Split Total:</span>
+                      <span className={splitTotal > grandTotalAmt ? 'text-red-600' : 'text-emerald-700'}>₹{splitTotal.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 px-5 pb-5 pt-3 border-t border-slate-100">
+                <button
+                  onClick={() => setEditPayMethodModal(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isSavingPayMethod || (isPartPay && splitTotal === 0)}
+                  onClick={handleSave}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all
+                    ${ isSavingPayMethod || (isPartPay && splitTotal === 0)
+                      ? 'bg-amber-300 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 cursor-pointer shadow-md' }`}
+                >
+                  {isSavingPayMethod ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* MODAL: BILL RECEIPT PREVIEW */}
       {showBillPreviewInvoice && (
+
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[120] font-sans animate-fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
@@ -11271,9 +11510,12 @@ export const BillingPOSView = ({
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                                if (partTot < grandTotal) {
-                                  setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
+                                // Only count confirmed modes (except Due) for validation
+                                const confirmedTot = cashTot + ["Card", "UPI", "Advance", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) =>
+                                  acc + (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0), 0) +
+                                  (confirmedPartPaymentModes["Due"] ? (Number(partPaymentAmounts["Due"]) || 0) : 0);
+                                if (confirmedTot < grandTotal) {
+                                  setPaymentWarning(`Total Confirmed Amount (₹${confirmedTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
                                 }
                                 const saved2 = await handleCheckoutSubmit(false, true, true);
@@ -11298,7 +11540,9 @@ export const BillingPOSView = ({
                       {/* Pay Advance Button below editor */}
                       {(() => {
                         const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === 'Advance' ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        // Only count confirmed modes (excluding Advance) for remaining calc
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) =>
+                          m === 'Advance' ? acc : acc + (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0), 0);
                         const remainingUnpaidAdv = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
                         const advVal = Number(partPaymentAmounts["Advance"]) || 0;
                         const displayAdvVal = paymentType === 'Full Payment' ? grandTotal : (advVal > 0 ? advVal : remainingUnpaidAdv);
@@ -11308,7 +11552,8 @@ export const BillingPOSView = ({
                             type="button"
                             onClick={() => {
                               if (paymentType === 'Part Payment') {
-                                if (confirmedPartPaymentModes['Advance'] || advVal > 0) {
+                                if (confirmedPartPaymentModes['Advance']) {
+                                  // Deselect: only when confirmed
                                   setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
                                   setPartPaymentAmounts(p => ({ ...p, Advance: '' }));
                                 } else {
@@ -11376,15 +11621,19 @@ export const BillingPOSView = ({
                                   }
                                   return;
                                 }
-                                if (confirmedPartPaymentModes[paymentMethod] || Number(partPaymentAmounts[paymentMethod]) > 0) {
+                                if (confirmedPartPaymentModes[paymentMethod]) {
+                                  // Deselect: clear amount and unconfirm
                                   setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' }));
                                   setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                                const partTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
-                                if (partTot < grandTotal) {
-                                  setPaymentWarning(`Total Distributed Amount (₹${partTot}) does not match Bill Amount (₹${grandTotal})!`);
+                                // Only count confirmed modes for validation (plus current method's typed amount)
+                                const currentAmt = Number(partPaymentAmounts[paymentMethod]) || 0;
+                                const confirmedTot = cashTot + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) =>
+                                  acc + (m === paymentMethod ? currentAmt : (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0)), 0);
+                                if (confirmedTot < grandTotal) {
+                                  setPaymentWarning(`Total Confirmed Amount (₹${confirmedTot}) does not match Bill Amount (₹${grandTotal})!`);
                                   return;
                                 }
                                 setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
@@ -11409,7 +11658,9 @@ export const BillingPOSView = ({
                       {/* Pay Button below manual editor */}
                       {(() => {
                         const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === paymentMethod ? acc : acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                        // Only count confirmed modes (excluding current method) when computing remaining
+                        const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) =>
+                          m === paymentMethod ? acc : acc + (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0), 0);
                         const remainingUnpaidMode = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
                         const currentVal = Number(partPaymentAmounts[paymentMethod]) || 0;
                         const displayVal = paymentType === 'Full Payment' ? grandTotal : (currentVal > 0 ? currentVal : remainingUnpaidMode);
@@ -11419,25 +11670,14 @@ export const BillingPOSView = ({
                             type="button"
                             onClick={() => {
                               if (paymentType === 'Part Payment') {
-                                if (confirmedPartPaymentModes[paymentMethod] || currentVal > 0) {
-                                  setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' }));
+                                if (confirmedPartPaymentModes[paymentMethod]) {
                                   setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
+                                  setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' }));
                                 } else {
                                   let newPart = { ...partPaymentAmounts };
                                   if (currentVal <= 0 && remainingUnpaidMode > 0) {
                                     newPart[paymentMethod] = remainingUnpaidMode.toString();
                                     setPartPaymentAmounts(newPart);
-                                  } else if (currentVal <= 0 && remainingUnpaidMode === 0) {
-                                    const activeOtherModes = ["Card", "UPI", "Due", "Gift Voucher", "Other"].filter(m => m !== paymentMethod && Number(partPaymentAmounts[m]) > 0);
-                                    if (activeOtherModes.length === 1) {
-                                      const prevMode = activeOtherModes[0];
-                                      const prevAmt = partPaymentAmounts[prevMode];
-                                      newPart[prevMode] = '';
-                                      newPart[paymentMethod] = prevAmt;
-                                      setPartPaymentAmounts(newPart);
-                                      setConfirmedPartPaymentModes(p => ({ ...p, [prevMode]: false, [paymentMethod]: true }));
-                                      return;
-                                    }
                                   }
                                   setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
                                 }
@@ -11506,21 +11746,23 @@ export const BillingPOSView = ({
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Allocated Payment Modes</div>
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
+                      // Show only confirmed amounts in the summary (unconfirmed are still being edited)
                       const rows = [
                         { label: "Cash", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Cash' ? cashTotal : 0) : cashTotal },
-                        { label: "Card", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Card' ? grandTotal : 0) : (Number(partPaymentAmounts['Card']) || 0) },
-                        { label: "UPI", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'UPI' ? grandTotal : 0) : (Number(partPaymentAmounts['UPI']) || 0) },
-                        { label: "Advance Used", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Advance' ? grandTotal : 0) : (Number(partPaymentAmounts['Advance']) || 0) },
-                        { label: "Points Redeem", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Points Redeem' ? grandTotal : 0) : (Number(partPaymentAmounts['Points Redeem']) || 0) },
-                        { label: "Due Balance", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Due' ? grandTotal : 0) : (Number(partPaymentAmounts['Due']) || 0) },
-                        { label: "Gift Voucher / Other", val: (Number(partPaymentAmounts['Gift Voucher']) || 0) + (Number(partPaymentAmounts['Other']) || 0) },
-                      ];
-                      return rows.map((row, idx) => (
+                        { label: "Card", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Card' ? grandTotal : 0) : (confirmedPartPaymentModes['Card'] ? (Number(partPaymentAmounts['Card']) || 0) : 0) },
+                        { label: "UPI", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'UPI' ? grandTotal : 0) : (confirmedPartPaymentModes['UPI'] ? (Number(partPaymentAmounts['UPI']) || 0) : 0) },
+                        { label: "Advance Used", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Advance' ? grandTotal : 0) : (confirmedPartPaymentModes['Advance'] ? (Number(partPaymentAmounts['Advance']) || 0) : 0) },
+                        { label: "Points Redeem", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Points Redeem' ? grandTotal : 0) : (confirmedPartPaymentModes['Points Redeem'] ? (Number(partPaymentAmounts['Points Redeem']) || 0) : 0) },
+                        { label: "Due Balance", val: paymentType === 'Full Payment' ? (allocatedFullPaymentMode === 'Due' ? grandTotal : 0) : (confirmedPartPaymentModes['Due'] ? (Number(partPaymentAmounts['Due']) || 0) : 0) },
+                        { label: "Gift Voucher", val: confirmedPartPaymentModes['Gift Voucher'] ? (Number(partPaymentAmounts['Gift Voucher']) || 0) : 0 },
+                        { label: "Other", val: confirmedPartPaymentModes['Other'] ? (Number(partPaymentAmounts['Other']) || 0) : 0 },
+                      ].filter(row => row.val > 0);
+                      return rows.length > 0 ? rows.map((row, idx) => (
                         <div key={idx} className="flex justify-between items-center text-slate-600 text-[11px]">
                           <span>{row.label}</span>
-                          <span className={row.val > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}>₹{row.val.toLocaleString()}</span>
+                          <span className="text-emerald-700 font-bold">₹{row.val.toLocaleString()}</span>
                         </div>
-                      ));
+                      )) : <div className="text-slate-400 text-[11px] italic">No payments confirmed yet</div>;
                     })()}
                   </div>
 
@@ -11528,7 +11770,9 @@ export const BillingPOSView = ({
                   <div className="pt-2 border-t border-slate-200 space-y-1.5">
                     {(() => {
                       const cashTotal = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => acc + (Number(partPaymentAmounts[m]) || 0), 0);
+                      // Only count confirmed amounts for total display
+                      const partTotal = cashTotal + ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) =>
+                        acc + (confirmedPartPaymentModes[m] ? (Number(partPaymentAmounts[m]) || 0) : 0), 0);
                       const totalPaidDisplay = paymentType === 'Full Payment' ? (allocatedFullPaymentMode ? (allocatedFullPaymentMode === 'Cash' ? cashTotal : grandTotal) : 0) : partTotal;
                       const remainingDue = Math.max(0, grandTotal - totalPaidDisplay);
                       const changeReturn = Math.max(0, totalPaidDisplay - grandTotal);
