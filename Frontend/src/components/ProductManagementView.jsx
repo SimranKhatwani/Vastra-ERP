@@ -382,8 +382,8 @@ export const ProductManagementView = ({
     setFormDescription("");
     setFormVariants([]);
     setFormPurchasePrice(0);
+    setFormWSP(0);
     setFormMRP(0);
-    setFormSellingPrice(0);
     setFormStock(0);
     setFormMinStock(5);
     setShowProductModal(true);
@@ -402,6 +402,7 @@ export const ProductManagementView = ({
   const [formRack, setFormRack] = useState("");
   const [formHSN, setFormHSN] = useState("");
   const [formCreatedDate, setFormCreatedDate] = useState("");
+  const [formWSP, setFormWSP] = useState(0);
 
   // Open Edit Modal
   const openEditModal = (prod) => {
@@ -442,9 +443,9 @@ export const ProductManagementView = ({
     setFormHSN(prod.hsn || '');
     setFormSize(prod.size);
     setFormVariants(prod.variants || []);
-    setFormPurchasePrice(prod.purchaseRate ?? prod.purchasePrice ?? 0);
-    setFormMRP(prod.mrp ?? prod.defaultMRP ?? 0);
-    setFormSellingPrice(prod.afterGST ?? prod.wspAfterGST ?? prod.sellingPrice ?? 0);
+    setFormPurchasePrice(prod.purchaseRate || prod.purchasePrice || 0);
+    setFormWSP(prod.wspAfterGST || prod.afterGST || prod.purchaseRate || prod.purchasePrice || 0);
+    setFormMRP(prod.mrp || prod.defaultMRP || 0);
     setFormStock(prod.stock || 0);
     setFormMinStock(prod.minStockAlert || 5);
     setFormCreatedDate(prod.formattedDate || '—');
@@ -467,7 +468,10 @@ export const ProductManagementView = ({
         size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
         batch: formBatch,
         purchasePrice: formPurchasePrice,
-        sellingPrice: formSellingPrice,
+        purchaseRate: formPurchasePrice,
+        wspAfterGST: formWSP,
+        afterGST: formWSP,
+        sellingPrice: formMRP,
         mrp: formMRP,
         gstPercent: 0,
         stock: formStock,
@@ -500,7 +504,10 @@ export const ProductManagementView = ({
           batch: formBatch,
           description: formDescription || (formBatch ? `Batch: ${formBatch}` : ''),
           purchasePrice: formPurchasePrice,
-          sellingPrice: formSellingPrice,
+          purchaseRate: formPurchasePrice,
+          wspAfterGST: formWSP,
+          afterGST: formWSP,
+          sellingPrice: formMRP,
           mrp: formMRP,
           gstPercent: 0,
           stock: formStock,
@@ -797,9 +804,9 @@ export const ProductManagementView = ({
                       </>
                     ) : (
                       <>
-                        <th className="p-3.5 text-right">Cost Price</th>
+                        <th className="p-3.5 text-right">Purchase Rate</th>
+                        <th className="p-3.5 text-right">WSP (After GST)</th>
                         <th className="p-3.5 text-right">Retail MRP</th>
-                        <th className="p-3.5 text-right">Selling Price</th>
                         <th className="p-3.5 text-center">In Stock</th>
                       </>
                     )}
@@ -888,14 +895,14 @@ export const ProductManagementView = ({
                           </>
                         ) : (
                           <>
-                            <td className="p-3.5 text-right font-mono">
-                              ₹{p.purchasePrice}
+                            <td className="p-3.5 text-right font-mono font-medium text-slate-700">
+                              ₹{p.purchaseRate || p.purchasePrice || 0}
                             </td>
-                            <td className="p-3.5 text-right font-mono text-slate-400 line-through">
-                              ₹{p.mrp}
+                            <td className="p-3.5 text-right font-mono font-medium text-slate-700">
+                              ₹{p.wspAfterGST || p.afterGST || p.purchaseRate || p.purchasePrice || 0}
                             </td>
-                            <td className="p-3.5 text-right font-mono font-bold text-indigo-600">
-                              ₹{p.sellingPrice}
+                            <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                              ₹{p.mrp || p.defaultMRP || 0}
                             </td>
                             <td className="p-3.5 text-center font-bold font-mono">
                               {p.stock}
@@ -1367,13 +1374,13 @@ export const ProductManagementView = ({
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    After GST (WSP)
+                    WSP (After GST)
                   </label>
                   <input
                     type="number"
-                    value={formSellingPrice}
+                    value={formWSP}
                     onChange={(e) =>
-                      setFormSellingPrice(Number(e.target.value))
+                      setFormWSP(Number(e.target.value))
                     }
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
                   />
@@ -1381,13 +1388,15 @@ export const ProductManagementView = ({
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    Retail Price (MRP)
+                    Retail MRP (Selling Price)
                   </label>
                   <input
                     type="number"
                     value={formMRP}
-                    onChange={(e) => setFormMRP(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
+                    onChange={(e) =>
+                      setFormMRP(Number(e.target.value))
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono font-bold text-slate-900"
                   />
                 </div>
 

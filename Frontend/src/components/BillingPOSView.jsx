@@ -583,8 +583,8 @@ export const BillingPOSView = ({
         availablePieces.forEach(pc => {
           const size = (pc.size || p.size || 'FREE').trim();
           const color = (pc.primaryColor || pc.color || p.primaryColor || p.color || '-').trim();
-          const mrp = Number(pc.mrp ?? p.mrp ?? p.defaultMRP ?? p.sellingPrice ?? 0);
-          const price = Number(pc.sellingPrice ?? pc.wspAfterGST ?? p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0);
+          const mrp = Number(pc.mrp || p.mrp || p.defaultMRP || p.sellingPrice || 0);
+          const price = Number(pc.mrp || p.mrp || p.defaultMRP || pc.sellingPrice || p.sellingPrice || 0);
           const name = p.itemName || p.name || 'Unnamed Item';
           const barcode = (pc.barcode || pc.uniqueCode || p.barcode || p.uniqueCode || '').trim();
 
@@ -2231,8 +2231,8 @@ export const BillingPOSView = ({
   const finalizeAddToCart = (prod, customQty, customSize, customColor, spId, spName, wId, wName) => {
     setCart((prev) => {
       const newItems = [];
-      const sPrice = Number(prod.sellingPrice) ?? Number(prod.price) ?? Number(prod.mrp) ?? Number(prod.defaultMRP) ?? 0;
-      const mrpVal = Number(prod.mrp) ?? Number(prod.defaultMRP) ?? sPrice;
+      const sPrice = Number(prod.mrp) || Number(prod.defaultMRP) || Number(prod.sellingPrice) || Number(prod.price) || 0;
+      const mrpVal = Number(prod.mrp) || Number(prod.defaultMRP) || sPrice;
       const itemNameVal = prod.itemName || prod.name || 'Unnamed Item';
       const barcodeVal = prod.barcode || prod.barcodeNo || (prod.pieces && prod.pieces[0]?.barcode) || '';
       const subItemVal = prod.subItem || (typeof prod.category === 'string' ? prod.category : prod.categoryId?.name) || '';

@@ -19,16 +19,17 @@ const { INVENTORY_STATUS, LIFECYCLE_EVENT } = require('../constants/status');
  * Flexible column key resolver matching exact or case-insensitive column names from client PT Excel sheets
  */
 const getVal = (row, ...keys) => {
+  if (!row) return '';
   for (const k of keys) {
     if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
       return row[k];
     }
   }
-  // Case-insensitive & trimmed key lookup
+  // Case-insensitive & space/punctuation-insensitive key lookup
   const rowKeys = Object.keys(row);
   for (const k of keys) {
-    const target = k.trim().toLowerCase();
-    const matchedKey = rowKeys.find(rk => rk.trim().toLowerCase() === target);
+    const target = String(k).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const matchedKey = rowKeys.find(rk => String(rk).replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === target);
     if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null && String(row[matchedKey]).trim() !== '') {
       return row[matchedKey];
     }
@@ -328,8 +329,43 @@ class PTImportService {
           mrp = 0;
         }
 
+        const taxRate = parseFloat(getVal(
+          row,
+          'gstOnPurchase',
+          'GST on Purchase',
+          'GST ON PURCHASE',
+          'Gst On Purchase',
+          'Tax Rate',
+          'taxRate',
+          'Tax',
+          'tax',
+          'GST',
+          'gst',
+          'GST %',
+          'Tax %',
+          'GST Rate',
+          'gstRate'
+        ) || 0);
+
+        const typeOfGstRaw = String(getVal(
+          row,
+          'typeOfGst',
+          'Type of GST (I/E)',
+          'Type of GST',
+          'GST Type',
+          'GST I/E',
+          'Type Of GST',
+          'TYPE OF GST'
+        ) || 'E').toUpperCase().trim();
+        const typeOfGstNormalized = ['I', 'E'].includes(typeOfGstRaw) ? typeOfGstRaw : 'E';
+
         let wspAfterGST = parseFloat(getVal(
           row,
+          'wspAfterGst',
+          'wspAfterGST',
+          'WSP AFTER GST',
+          'WSP After GST',
+          'Wsp After Gst',
           'AFTER GST',
           'After GST',
           'After Gst',
@@ -345,8 +381,6 @@ class PTImportService {
           'COST AFTER GST',
           'Landed Cost',
           'LANDED COST',
-          'WSP After GST',
-          'WSP AFTER GST',
           'WSP (After GST)',
           'WSP(After GST)',
           'WSP',
@@ -357,7 +391,11 @@ class PTImportService {
         ) || 0);
 
         if (!wspAfterGST || isNaN(wspAfterGST) || wspAfterGST <= 0) {
-          wspAfterGST = purchaseRate;
+          if (purchaseRate > 0 && taxRate > 0 && typeOfGstNormalized === 'E') {
+            wspAfterGST = parseFloat((purchaseRate + (purchaseRate * taxRate / 100)).toFixed(2));
+          } else {
+            wspAfterGST = purchaseRate;
+          }
         }
 
         let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE') || '').trim();
@@ -367,18 +405,12 @@ class PTImportService {
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
         const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
-        const taxRate = parseFloat(getVal(row, 'Tax', 'tax', 'Tax Rate', 'GST') || 0);
         const lineTotal = parseFloat(getVal(row, 'Net Amount', 'netAmount', 'Value', 'lineTotal') || (qty * purchaseRate));
 
         const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
         const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
         const itemImage = String(getVal(row, 'itemImage', 'item image', 'image', 'photo') || '').trim();
-        
         const hsnCode = String(getVal(row, 'hsnCode', 'HSN CODE', 'HSN/SAC', 'HSN', 'HSN Code', 'HSN No', 'HSN No.', 'HSN NO', 'HSN NO.') || '').trim();
-
-        const typeOfGstRaw = String(getVal(row, 'typeOfGst', 'Type of GST (I/E)', 'Type of GST', 'GST Type', 'GST I/E') || 'E').toUpperCase().trim();
-        const typeOfGstNormalized = ['I', 'E'].includes(typeOfGstRaw) ? typeOfGstRaw : 'E';
-
         const gstStatus = String(getVal(row, 'gstStatus', 'GST Status', 'Tax Status', 'GST_STATUS', 'TAX_STATUS') || '').trim();
 
         const discountStatusRaw = String(getVal(
@@ -600,6 +632,8 @@ class PTImportService {
                 description: batch ? `Batch: ${batch}` : (normalizedSubItem ? `${itemName} - ${normalizedSubItem}` : itemName),
                 batch: batch || '',
                 defaultMRP: mrp,
+                purchaseRate: purchaseRate || 0,
+                wspAfterGST: wspAfterGST || 0,
                 imageUrl: itemImage || undefined,
                 typeOfGst: typeOfGstNormalized,
                 gstStatus: gstStatus,
@@ -663,8 +697,36 @@ class PTImportService {
                 product.markModified('discountStatus');
                 updated = true;
               }
+              // Always update pricing fields from the latest PT file and sync existing inventory pieces
+              if (mrp && mrp > 0) {
+                product.defaultMRP = mrp;
+                product.markModified('defaultMRP');
+                updated = true;
+              }
+              if (purchaseRate && purchaseRate > 0) {
+                product.purchaseRate = purchaseRate;
+                product.markModified('purchaseRate');
+                updated = true;
+              }
+              if (wspAfterGST && wspAfterGST > 0) {
+                product.wspAfterGST = wspAfterGST;
+                product.markModified('wspAfterGST');
+                updated = true;
+              }
+              if (batch && product.batch !== batch) {
+                product.batch = batch;
+                product.description = `Batch: ${batch}`;
+                product.markModified('batch');
+                product.markModified('description');
+                updated = true;
+              }
               if (updated) {
                 await product.save({ session });
+                await InventoryPiece.updateMany(
+                  { productId: product._id, tenantId },
+                  { $set: { purchaseRate: product.purchaseRate, wspAfterGST: product.wspAfterGST, mrp: product.defaultMRP } },
+                  { session }
+                );
               }
             }
             productCache.set(productKey, product);

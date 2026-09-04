@@ -108,6 +108,17 @@ const productSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  purchaseRate: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  wspAfterGST: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
   typeOfGst: {
     type: String,
     enum: ['I', 'E'],

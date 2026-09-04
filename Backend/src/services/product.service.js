@@ -83,6 +83,7 @@ class ProductService {
     const productIds = products.map(p => p._id);
     const InventoryPiece = require('../models/InventoryPiece');
     const pieces = await InventoryPiece.find({ productId: { $in: productIds }, tenantId, isDeleted: false })
+      .sort({ createdAt: -1 })  // newest first so latest import prices are at [0]
       .populate('firmId warehouseId')
       .populate({
         path: 'purchaseBillId',
@@ -111,6 +112,9 @@ class ProductService {
 
       const resolvedFirmName = pObj.firmName || pPieces[0]?.firmId?.name || pObj.firmId?.name || 'New Fashion Style';
 
+      // Find best piece for price data: prefer piece with non-zero wspAfterGST (newest import)
+      const pricePiece = pPieces.find(pc => pc.wspAfterGST > 0) || pPieces[0];
+
       return {
         ...pObj,
         name: pObj.itemName || '-',
@@ -133,13 +137,12 @@ class ProductService {
         color: pObj.color || pObj.primaryColor || colors || '-',
         primaryColor: pObj.primaryColor || pObj.color || colors || '-',
         secondaryColor: pObj.secondaryColor || secondaryColors || '-',
-        hsn: pObj.hsnId?.hsnCode || 'N/A',
-        purchaseRate: pPieces[0]?.purchaseRate ?? pObj.purchaseRate ?? pObj.purchasePrice ?? 0,
-        purchasePrice: pPieces[0]?.purchaseRate ?? pObj.purchaseRate ?? pObj.purchasePrice ?? 0,
-        mrp: pPieces[0]?.mrp ?? pObj.defaultMRP ?? pObj.mrp ?? 0,
-        sellingPrice: pPieces[0]?.wspAfterGST ?? pPieces[0]?.mrp ?? pObj.defaultMRP ?? pObj.sellingPrice ?? 0,
-        wspAfterGST: pPieces[0]?.wspAfterGST ?? pObj.wspAfterGST ?? pPieces[0]?.purchaseRate ?? 0,
-        afterGST: pPieces[0]?.wspAfterGST ?? pObj.wspAfterGST ?? pPieces[0]?.purchaseRate ?? 0,
+        purchaseRate: pObj.purchaseRate || pricePiece?.purchaseRate || pObj.purchasePrice || 0,
+        purchasePrice: pObj.purchaseRate || pricePiece?.purchaseRate || pObj.purchasePrice || 0,
+        mrp: pObj.defaultMRP || pricePiece?.mrp || pObj.mrp || 0,
+        sellingPrice: pObj.defaultMRP || pricePiece?.mrp || pObj.mrp || 0,
+        wspAfterGST: (pricePiece?.wspAfterGST > pricePiece?.purchaseRate ? pricePiece.wspAfterGST : null) || (pObj.wspAfterGST > pObj.purchaseRate ? pObj.wspAfterGST : null) || pObj.wspAfterGST || pricePiece?.wspAfterGST || pObj.purchaseRate || pricePiece?.purchaseRate || 0,
+        afterGST: (pricePiece?.wspAfterGST > pricePiece?.purchaseRate ? pricePiece.wspAfterGST : null) || (pObj.wspAfterGST > pObj.purchaseRate ? pObj.wspAfterGST : null) || pObj.wspAfterGST || pricePiece?.wspAfterGST || pObj.purchaseRate || pricePiece?.purchaseRate || 0,
         vendorName: pPieces[0]?.purchaseBillId?.vendorId?.name || 'N/A',
         vendorCode: pPieces[0]?.purchaseBillId?.vendorId?.vendorCode || 'N/A',
         purchaseDate: pPieces[0]?.purchaseBillId?.billDate 
@@ -149,7 +152,7 @@ class ProductService {
           ? new Date(pPieces[0].purchaseBillId.billDate).toLocaleDateString() 
           : 'N/A',
         purchaseInvoice: pPieces[0]?.purchaseBillId?.billNo || 'N/A',
-        landedCost: pPieces[0]?.purchaseRate || 0,
+        landedCost: pricePiece?.purchaseRate || 0,
         company: resolvedFirmName,
         firmName: resolvedFirmName,
         rackLocation: pPieces[0]?.rack || 'Shelf A1',
