@@ -2621,7 +2621,7 @@ export const BillingPOSView = ({
           ...prev,
           "Points Redeem": newPointsRedeem > 0 ? newPointsRedeem.toString() : "",
           "Advance": newAdvance > 0 ? newAdvance.toString() : "",
-          "UPI": remainingUnpaid > 0 && !prev["Card"] && !prev["Due"] ? remainingUnpaid.toString() : (prev["UPI"] || "")
+          "Due": prev["Due"] || ""
         };
       });
 
@@ -3265,6 +3265,11 @@ export const BillingPOSView = ({
       employeeId: finalEmployeeId && finalEmployeeId.length === 24 ? finalEmployeeId : undefined,
       employeeName: cashier.name,
       salespersonName: selectedSalesperson ? selectedSalesperson.name : "Admin (Self)",
+      customer: activeCustomer,
+      loyaltyPointsRedeemed: Number(partPaymentAmounts["Points Redeem"]) || 0,
+      loyaltyPointsUsed: Number(partPaymentAmounts["Points Redeem"]) || 0,
+      loyaltyPointsEarned: (activeCustomer && (activeCustomer.id || activeCustomer._id) !== "c-walkin") ? Math.floor(grandTotal / 100) : 0,
+      splitPayments: compiledTransactions.map(t => ({ method: t.mode, amount: t.amount })),
       isDraftPreview: true,
       notes: [otherBillDetails.transporter && `Transporter: ${otherBillDetails.transporter}`, otherBillDetails.trackingNo && `LR: ${otherBillDetails.trackingNo}`, otherBillDetails.shippingAddress && `Shipping: ${otherBillDetails.shippingAddress}`].filter(Boolean).join(' | ') || undefined,
       shippingDetails: (otherBillDetails.transporter || otherBillDetails.trackingNo || otherBillDetails.shippingAddress) ? otherBillDetails : undefined
@@ -10960,16 +10965,8 @@ export const BillingPOSView = ({
                     key={method}
                     onClick={() => {
                       setPaymentMethod(method);
-                      if (paymentType === 'Part Payment' && method !== 'Cash' && method !== 'Advance') {
-                        setPartPaymentAmounts(p => {
-                          if (!p[method]) {
-                            const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
-                            const otherTot = ["Card", "UPI", "Advance", "Due", "Gift Voucher", "Points Redeem", "Other"].reduce((acc, m) => m === method ? acc : acc + (Number(p[m]) || 0), 0);
-                            const remaining = Math.max(0, Number((grandTotal - cashTot - otherTot).toFixed(2)));
-                            if (remaining > 0) return { ...p, [method]: remaining.toString() };
-                          }
-                          return p;
-                        });
+                      if (paymentType === 'Full Payment') {
+                        setAllocatedFullPaymentMode(method);
                       }
                     }}
                     className={`flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-left transition-all font-bold cursor-pointer ${paymentMethod === method ? "bg-indigo-50 text-indigo-700 border-l-4 border-l-indigo-600 shadow-sm z-10" : "text-slate-600 hover:bg-slate-50 border-l-4 border-l-transparent"}`}
@@ -11311,10 +11308,15 @@ export const BillingPOSView = ({
                             type="button"
                             onClick={() => {
                               if (paymentType === 'Part Payment') {
-                                if (advVal <= 0 && remainingUnpaidAdv > 0) {
-                                  setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaidAdv.toString() }));
+                                if (confirmedPartPaymentModes['Advance'] || advVal > 0) {
+                                  setConfirmedPartPaymentModes(p => ({ ...p, Advance: false }));
+                                  setPartPaymentAmounts(p => ({ ...p, Advance: '' }));
+                                } else {
+                                  if (advVal <= 0 && remainingUnpaidAdv > 0) {
+                                    setPartPaymentAmounts(p => ({ ...p, Advance: remainingUnpaidAdv.toString() }));
+                                  }
+                                  setConfirmedPartPaymentModes(p => ({ ...p, Advance: true }));
                                 }
-                                setConfirmedPartPaymentModes(p => ({ ...p, Advance: true }));
                               }
                             }}
                             className={`w-full py-3 ${paymentType === 'Part Payment' && confirmedPartPaymentModes['Advance'] ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'} text-white rounded-xl font-extrabold uppercase text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
@@ -11358,8 +11360,8 @@ export const BillingPOSView = ({
                       </div>
 
                       <div className="grid grid-cols-4 gap-2 w-full">
-                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' })) }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
-                        <button onClick={() => { if (paymentType === 'Part Payment') setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1) })) }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
+                        <button onClick={() => { if (paymentType === 'Part Payment') { setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' })); setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false })); } }} className={`col-span-2 py-3 bg-red-100 hover:bg-red-200 border border-red-200 rounded font-bold text-red-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>CLR</button>
+                        <button onClick={() => { if (paymentType === 'Part Payment') { setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: (p[paymentMethod]?.toString() || '').slice(0, -1) })); setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false })); } }} className={`col-span-2 py-3 bg-orange-100 hover:bg-orange-200 border border-orange-200 rounded font-bold text-orange-700 shadow-sm active:scale-95 transition-transform text-lg cursor-pointer ${paymentType === 'Full Payment' ? 'opacity-50 cursor-not-allowed' : ''}`}>BCK</button>
 
                         {['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3', '=', '0', '00', '.', 'Pay'].map((btn, i) => (
                           <button
@@ -11367,7 +11369,16 @@ export const BillingPOSView = ({
                             onClick={() => {
                               if (btn === 'Pay') {
                                 if (paymentType === 'Full Payment') {
-                                  setAllocatedFullPaymentMode(paymentMethod);
+                                  if (allocatedFullPaymentMode === paymentMethod) {
+                                    setAllocatedFullPaymentMode(null);
+                                  } else {
+                                    setAllocatedFullPaymentMode(paymentMethod);
+                                  }
+                                  return;
+                                }
+                                if (confirmedPartPaymentModes[paymentMethod] || Number(partPaymentAmounts[paymentMethod]) > 0) {
+                                  setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' }));
+                                  setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
                                   return;
                                 }
                                 const cashTot = [500, 200, 100, 50, 20, 10, 5, 2, 1].reduce((acc, note) => acc + (Number(cashDenominations[note]) || 0) * note, 0);
@@ -11408,14 +11419,34 @@ export const BillingPOSView = ({
                             type="button"
                             onClick={() => {
                               if (paymentType === 'Part Payment') {
-                                let newPart = { ...partPaymentAmounts };
-                                if (currentVal <= 0 && remainingUnpaidMode > 0) {
-                                  newPart[paymentMethod] = remainingUnpaidMode.toString();
-                                  setPartPaymentAmounts(newPart);
+                                if (confirmedPartPaymentModes[paymentMethod] || currentVal > 0) {
+                                  setPartPaymentAmounts(p => ({ ...p, [paymentMethod]: '' }));
+                                  setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: false }));
+                                } else {
+                                  let newPart = { ...partPaymentAmounts };
+                                  if (currentVal <= 0 && remainingUnpaidMode > 0) {
+                                    newPart[paymentMethod] = remainingUnpaidMode.toString();
+                                    setPartPaymentAmounts(newPart);
+                                  } else if (currentVal <= 0 && remainingUnpaidMode === 0) {
+                                    const activeOtherModes = ["Card", "UPI", "Due", "Gift Voucher", "Other"].filter(m => m !== paymentMethod && Number(partPaymentAmounts[m]) > 0);
+                                    if (activeOtherModes.length === 1) {
+                                      const prevMode = activeOtherModes[0];
+                                      const prevAmt = partPaymentAmounts[prevMode];
+                                      newPart[prevMode] = '';
+                                      newPart[paymentMethod] = prevAmt;
+                                      setPartPaymentAmounts(newPart);
+                                      setConfirmedPartPaymentModes(p => ({ ...p, [prevMode]: false, [paymentMethod]: true }));
+                                      return;
+                                    }
+                                  }
+                                  setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
                                 }
-                                setConfirmedPartPaymentModes(p => ({ ...p, [paymentMethod]: true }));
                               } else if (paymentType === 'Full Payment') {
-                                setAllocatedFullPaymentMode(paymentMethod);
+                                if (allocatedFullPaymentMode === paymentMethod) {
+                                  setAllocatedFullPaymentMode(null);
+                                } else {
+                                  setAllocatedFullPaymentMode(paymentMethod);
+                                }
                               }
                             }}
                             className={`w-full py-3 ${(paymentType === 'Full Payment' && allocatedFullPaymentMode === paymentMethod) ||

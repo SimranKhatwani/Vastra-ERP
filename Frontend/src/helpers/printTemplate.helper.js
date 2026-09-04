@@ -22,7 +22,7 @@ const svgIcons = {
   pin: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
   document: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`,
   user: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`,
-  mobile: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.5"><rect x="6" y="2" width="12" height="20" rx="2" ry="2" stroke-width="1.5"/><circle cx="16" cy="16" r="5.5" fill="#000" stroke="none"/><path d="M14 16 l1.5 1.5 l3 -3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  mobile: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.5"><rect x="6" y="2" width="12" height="20" rx="2" ry="2" stroke-width="1.5"/><circle cx="16" cy="16" r="5.5" fill="#000" stroke="none"/><path d="M14 16 l1.5 1.5 l3 -3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   sewing: `<svg width="35" height="28" viewBox="0 0 100 100" fill="#000"><path d="M10 80 H90 V90 H10 Z"/><path d="M15 80 V60 H70 C80 60, 80 30, 70 30 H25 V45 H15 V25 H75 C95 25, 95 65, 75 65 H25 V80 Z"/><rect x="40" y="10" width="4" height="20"/><circle cx="42" cy="15" r="6"/><rect x="20" y="45" width="4" height="20"/><circle cx="22" cy="70" r="4" fill="none" stroke="#000" stroke-width="3"/></svg>`,
   new: `<svg width="30" height="30" viewBox="0 0 100 100" fill="#000"><polygon points="50,5 60,20 78,15 80,33 95,43 85,57 95,71 80,80 78,95 60,90 50,105 40,90 22,95 20,80 5,71 15,57 5,43 20,33 22,15 40,20"/><text x="50" y="56" font-family="Arial" font-size="28" font-weight="900" fill="#fff" text-anchor="middle">NEW</text></svg>`,
   percent: `<svg width="30" height="30" viewBox="0 0 100 100" fill="#000"><polygon points="50,5 60,20 78,15 80,33 95,43 85,57 95,71 80,80 78,95 60,90 50,105 40,90 22,95 20,80 5,71 15,57 5,43 20,33 22,15 40,20"/><text x="50" y="59" font-family="Arial" font-size="40" font-weight="900" fill="#fff" text-anchor="middle">%</text></svg>`,
@@ -157,7 +157,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         .header-title-box {
           flex: 1;
           text-align: center;
-          margin-left: 5px;
+          margin-left: 3px;
         }
         .tax-invoice-label {
           font-size: 11px;
@@ -355,7 +355,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           flex: 1;
           font-size: 9px;
         }
-        .payment-content { padding: 2px 0; font-weight: bold;}
+        .payment-content { padding: 2px 0; font-weight: bold; white-space: nowrap; }
         .loyalty-box {
           flex: 1.3;
         }
@@ -541,16 +541,20 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           <div class="payment-box">
             <div class="section-black-header" style="text-align: left;">PAYMENT DETAILS</div>
             <div class="payment-content">
-              <div class="info-row"><div class="info-label" style="width: 75px;">Payment Mode</div><div>: ${getPaymentModesText()}</div></div>
-              <div class="info-row"><div class="info-label" style="width: 75px;">Amount Paid</div><div>: ₹${totalPaid.toFixed(2)}</div></div>
-              <div class="info-row"><div class="info-label" style="width: 75px;">Balance Amount</div><div>: ₹${dueAmount.toFixed(2)}</div></div>
+                ${paymentSplits.length > 0 ? 
+                  paymentSplits.map(sp => `<div class="info-row"><div class="info-label" style="width: 65px;">${(sp.method || sp.mode || 'CASH').toUpperCase()}</div><div>: &#8377;${(Number(sp.amount)||0).toFixed(2)}</div></div>`).join('')
+                  :
+                  `<div class="info-row"><div class="info-label" style="width: 65px;">Payment Mode</div><div>: ${getPaymentModesText()}</div></div>
+                   <div class="info-row"><div class="info-label" style="width: 65px;">Amount Paid</div><div>: &#8377;${totalPaid.toFixed(2)}</div></div>
+                   <div class="info-row"><div class="info-label" style="width: 65px;">Balance Amount</div><div>: &#8377;${dueAmount.toFixed(2)}</div></div>`
+                }
+              </div>
             </div>
-          </div>
-          
-          <div style="flex:0.6; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 2px;">
+            
+            <div style="flex:0.6; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 2px;">
              <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
                ${svgIcons.mobile}
-               <div style="font-family: 'Brush Script MT', cursive; font-size: 24px; font-weight: 500; line-height: 0.9; margin-left: 5px;">Thank<br>You!</div>
+               <div style="font-family: 'Brush Script MT', cursive; font-size: 18px; font-weight: 500; line-height: 0.9; margin-left: 3px;">Thank<br>You!</div>
              </div>
              <div style="text-align: center; font-size: 7px; font-weight: bold; margin-top: 4px;">VISIT AGAIN</div>
           </div>
@@ -561,14 +565,14 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <table class="tax-table" style="width: 100%;">
               <thead>
                 <tr>
-                  <th>Prev. Points</th>
-                  <th>Points Earned</th>
-                  <th>Points Redeemed</th>
-                  <th>Current Balance</th>
+                  <th style="font-size: 6px; font-weight: normal; padding: 2px;">Prev.</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Earned</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Redeemed</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Balance</th>
                 </tr>
               </thead>
               <tbody>
-                <tr class="text-center font-bold">
+                <tr class="text-center font-bold" style="font-size: 8px;">
                   <td>${invoice.customer?.loyaltyPoints || 0}</td>
                   <td>${invoice.loyaltyPointsEarned || 0}</td>
                   <td>${invoice.loyaltyPointsRedeemed || 0}</td>
@@ -579,14 +583,14 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             ` : `<table class="tax-table" style="width: 100%;">
               <thead>
                 <tr>
-                  <th>Prev. Points</th>
-                  <th>Points Earned</th>
-                  <th>Points Redeemed</th>
-                  <th>Current Balance</th>
+                  <th style="font-size: 6px; font-weight: normal; padding: 2px;">Prev.</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Earned</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Redeemed</th>
+                    <th style="font-size: 6px; font-weight: normal; padding: 2px;">Balance</th>
                 </tr>
               </thead>
               <tbody>
-                <tr class="text-center font-bold">
+                <tr class="text-center font-bold" style="font-size: 8px;">
                   <td>0</td>
                   <td>0</td>
                   <td>0</td>
