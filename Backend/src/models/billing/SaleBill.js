@@ -43,6 +43,54 @@ const saleBillSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  isGstApplied: {
+    type: Boolean,
+    default: false
+  },
+  gstRate: {
+    type: Number,
+    default: 0
+  },
+  cgstRate: {
+    type: Number,
+    default: 0
+  },
+  sgstRate: {
+    type: Number,
+    default: 0
+  },
+  igstRate: {
+    type: Number,
+    default: 0
+  },
+  taxableAmount: {
+    type: Number,
+    default: 0
+  },
+  cgstAmount: {
+    type: Number,
+    default: 0
+  },
+  sgstAmount: {
+    type: Number,
+    default: 0
+  },
+  igstAmount: {
+    type: Number,
+    default: 0
+  },
+  totalTax: {
+    type: Number,
+    default: 0
+  },
+  taxDetails: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  taxBreakdown: {
+    type: mongoose.Schema.Types.Mixed,
+    default: []
+  },
   grandTotal: {
     type: Number,
     required: true,

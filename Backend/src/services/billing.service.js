@@ -302,6 +302,35 @@ class BillingService {
     }
     const resolvedCommAmount = grandTotal * (resolvedCommPercentage / 100);
 
+    // Extract tax configuration and breakup from billData
+    const isGstApplied = Boolean(billData.isGstApplied || billData.taxDetails?.isApplied);
+    const gstRate = Number(billData.gstRate || billData.taxDetails?.gstRate || 0);
+    const cgstRate = Number(billData.cgstRate || billData.taxDetails?.cgstRate || 0);
+    const sgstRate = Number(billData.sgstRate || billData.taxDetails?.sgstRate || 0);
+    const igstRate = Number(billData.igstRate || billData.taxDetails?.igstRate || 0);
+    const taxableAmount = Number(billData.taxableAmount || billData.taxDetails?.taxableAmount || 0);
+    const cgstAmount = Number(billData.cgstAmount || billData.taxDetails?.cgstAmount || 0);
+    const sgstAmount = Number(billData.sgstAmount || billData.taxDetails?.sgstAmount || 0);
+    const igstAmount = Number(billData.igstAmount || billData.taxDetails?.igstAmount || 0);
+    const totalTax = Number(billData.totalTax || billData.taxDetails?.totalTax || billData.gstTotal || 0);
+
+    const taxDetails = billData.taxDetails || {
+      isApplied: isGstApplied,
+      gstRate,
+      cgstRate,
+      sgstRate,
+      igstRate,
+      taxableAmount,
+      cgstAmount,
+      sgstAmount,
+      igstAmount,
+      totalTax
+    };
+
+    const taxBreakdown = (Array.isArray(billData.taxBreakdown) && billData.taxBreakdown.length > 0)
+      ? billData.taxBreakdown
+      : (isGstApplied ? [{ gstPercent: gstRate, taxableAmount, cgst: cgstAmount, sgst: sgstAmount, igst: igstAmount, totalTax }] : [{ gstPercent: 0, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }]);
+
     // 2. Create Sale Bill
     const saleBill = await SaleBill.create({
       tenantId,
@@ -316,6 +345,19 @@ class BillingService {
       manualDiscountAmount,
       manualChargeAmount,
       manualAdjustmentReason,
+      taxAmount: totalTax,
+      isGstApplied,
+      gstRate,
+      cgstRate,
+      sgstRate,
+      igstRate,
+      taxableAmount,
+      cgstAmount,
+      sgstAmount,
+      igstAmount,
+      totalTax,
+      taxDetails,
+      taxBreakdown,
       grandTotal,
       paidAmount: totalPaid,
       dueAmount,

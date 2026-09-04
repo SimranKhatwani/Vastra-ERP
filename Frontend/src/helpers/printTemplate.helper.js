@@ -76,26 +76,94 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
 
   const getTaxBreakdownHTML = () => {
     const taxRows = [];
+    const taxMap = new Map();
+
+    const tDet = invoice.taxDetails || {};
+    const isApplied = invoice.isGstApplied !== undefined ? invoice.isGstApplied : tDet.isApplied;
+
     if (invoice.taxBreakdown && invoice.taxBreakdown.length > 0) {
       invoice.taxBreakdown.forEach(tb => {
-        taxRows.push(`
-          <tr>
-            <td class="text-center font-bold">${tb.gstPercent || '-'}%</td>
-            <td>${(Number(tb.taxableAmount) || 0).toFixed(2)}</td>
-            <td>${(Number(tb.cgst) || 0).toFixed(2)}</td>
-            <td>${(Number(tb.sgst) || 0).toFixed(2)}</td>
-            <td>${(Number(tb.totalTax) || 0).toFixed(2)}</td>
-          </tr>
-        `);
+        const rate = Number(tb.gstPercent || tb.rate || 0);
+        const taxable = Number(tb.taxableAmount || 0);
+        const cgst = Number(tb.cgst || 0);
+        const sgst = Number(tb.sgst || 0);
+        const igst = Number(tb.igst || 0);
+        const totalTax = Number(tb.totalTax || (cgst + sgst + igst) || 0);
+
+        taxMap.set(rate, {
+          gstPercent: rate,
+          taxableAmount: taxable,
+          cgst,
+          sgst,
+          igst,
+          totalTax
+        });
+      });
+    } else if (tDet.isApplied && tDet.gstRate > 0) {
+      taxMap.set(tDet.gstRate, {
+        gstPercent: tDet.gstRate,
+        taxableAmount: tDet.taxableAmount || 0,
+        cgst: tDet.cgstAmount || 0,
+        sgst: tDet.sgstAmount || 0,
+        igst: tDet.igstAmount || 0,
+        totalTax: tDet.totalTax || 0
+      });
+    } else if ((invoice.isGstApplied || invoice.gstRate > 0 || invoice.totalTax > 0 || invoice.taxAmount > 0) && (invoice.isGstApplied !== false)) {
+      const rate = Number(invoice.gstRate || 18);
+      const taxable = Number(invoice.taxableAmount || 0);
+      const cgst = Number(invoice.cgstAmount || 0);
+      const sgst = Number(invoice.sgstAmount || 0);
+      const igst = Number(invoice.igstAmount || 0);
+      const totalTax = Number(invoice.totalTax || invoice.taxAmount || invoice.gstTotal || (cgst + sgst + igst) || 0);
+      taxMap.set(rate, {
+        gstPercent: rate,
+        taxableAmount: taxable,
+        cgst,
+        sgst,
+        igst,
+        totalTax
+      });
+    }
+
+    const validTaxEntries = Array.from(taxMap.values()).filter(t => t.gstPercent > 0 && t.totalTax > 0);
+
+    if (isApplied !== false && validTaxEntries.length > 0) {
+      validTaxEntries.forEach(tb => {
+        if (tb.igst > 0) {
+          taxRows.push(`
+            <tr>
+              <td class="text-center font-bold">${tb.gstPercent}% (IGST)</td>
+              <td>&#8377;${tb.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td colspan="2" class="text-center">&#8377;${tb.igst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (IGST)</td>
+              <td>&#8377;${tb.totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          `);
+        } else {
+          taxRows.push(`
+            <tr>
+              <td class="text-center font-bold">${tb.gstPercent}%</td>
+              <td>&#8377;${tb.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td>&#8377;${tb.cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td>&#8377;${tb.sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td>&#8377;${tb.totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          `);
+        }
       });
     } else {
+      // IF GST IS NOT APPLIED:
+      // Taxable Amount = ₹0.00
+      // Total Tax = ₹0.00
+      // CGST = ₹0.00
+      // SGST = ₹0.00
+      // IGST = ₹0.00
       taxRows.push(`
         <tr>
-          <td class="text-center font-bold">-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
+          <td class="text-center font-bold">0%</td>
+          <td>&#8377;0.00</td>
+          <td>&#8377;0.00</td>
+          <td>&#8377;0.00</td>
+          <td>&#8377;0.00</td>
         </tr>
       `);
     }

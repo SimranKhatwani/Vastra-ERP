@@ -322,6 +322,88 @@ export const BillingPOSView = ({
   const [rightColumnTab, setRightColumnTab] = useState("catalog");
   const [showAllCatalogItems, setShowAllCatalogItems] = useState(false);
 
+  // Optional GST Configuration States
+  const [isGstApplied, setIsGstApplied] = useState(false);
+  const [gstRateInput, setGstRateInput] = useState("18");
+  const [cgstRateInput, setCgstRateInput] = useState("9");
+  const [sgstRateInput, setSgstRateInput] = useState("9");
+  const [igstRateInput, setIgstRateInput] = useState("0");
+  const [gstTaxType, setGstTaxType] = useState("INTRA");
+
+  const handleGstRateChange = (val) => {
+    setGstRateInput(val);
+    const num = Number(val) || 0;
+    if (gstTaxType === "INTER") {
+      setIgstRateInput(String(num));
+      setCgstRateInput("0");
+      setSgstRateInput("0");
+    } else {
+      const half = num / 2;
+      setCgstRateInput(String(half));
+      setSgstRateInput(String(half));
+      setIgstRateInput("0");
+    }
+  };
+
+  const handleCgstRateChange = (val) => {
+    setCgstRateInput(val);
+    const cNum = Number(val) || 0;
+    const sNum = Number(sgstRateInput) || 0;
+    setGstRateInput(String(cNum + sNum));
+    setIgstRateInput("0");
+    setGstTaxType("INTRA");
+  };
+
+  const handleSgstRateChange = (val) => {
+    setSgstRateInput(val);
+    const sNum = Number(val) || 0;
+    const cNum = Number(cgstRateInput) || 0;
+    setGstRateInput(String(cNum + sNum));
+    setIgstRateInput("0");
+    setGstTaxType("INTRA");
+  };
+
+  const handleIgstRateChange = (val) => {
+    setIgstRateInput(val);
+    const iNum = Number(val) || 0;
+    setGstRateInput(String(iNum));
+    setCgstRateInput("0");
+    setSgstRateInput("0");
+    setGstTaxType("INTER");
+  };
+
+  const handleApplyGst = () => {
+    const gRate = Number(gstRateInput) || 0;
+    const cRate = Number(cgstRateInput) || 0;
+    const sRate = Number(sgstRateInput) || 0;
+    const iRate = Number(igstRateInput) || 0;
+
+    if (gRate < 0) {
+      if (onAddNotification) onAddNotification("Validation Error", "GST Rate cannot be negative", "warning");
+      return;
+    }
+
+    if (iRate > 0) {
+      if (Math.abs(iRate - gRate) > 0.01) {
+        if (onAddNotification) onAddNotification("Validation Error", `IGST (${iRate}%) must equal GST % (${gRate}%)`, "warning");
+        return;
+      }
+    } else {
+      if (Math.abs((cRate + sRate) - gRate) > 0.01) {
+        if (onAddNotification) onAddNotification("Validation Error", `CGST (${cRate}%) + SGST (${sRate}%) must equal GST % (${gRate}%)`, "warning");
+        return;
+      }
+    }
+
+    setIsGstApplied(true);
+    if (onAddNotification) onAddNotification("GST Applied", `GST (${gRate}%) applied to bill.`, "success");
+  };
+
+  const handleRemoveGst = () => {
+    setIsGstApplied(false);
+    if (onAddNotification) onAddNotification("GST Removed", "GST tax removed from bill.", "info");
+  };
+
   useEffect(() => {
     if (activeModule === "billing") {
       const pendingItem = localStorage.getItem("pending_pos_cart_item");
@@ -2391,7 +2473,20 @@ export const BillingPOSView = ({
   };
 
   // Calculations
-  const { subTotal, discountTotal, couponDiscount, gstTotal, grandTotal, appliedDiscountsList } = React.useMemo(() => {
+  const {
+    subTotal,
+    discountTotal,
+    couponDiscount,
+    gstTotal,
+    grandTotal,
+    appliedDiscountsList,
+    taxableAmount,
+    cgstAmount,
+    sgstAmount,
+    igstAmount,
+    totalTax,
+    taxDetails
+  } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0; // Item level discounts
 
@@ -2507,28 +2602,73 @@ export const BillingPOSView = ({
     }
 
     const totalOverallDiscount = discountTotal + totalRuleDiscount;
-    let taxable = Math.max(0, subTotal - totalOverallDiscount);
+    let netBillAmount = Math.max(0, subTotal - totalOverallDiscount);
 
     if (billAdjustment && billAdjustment.amount > 0) {
       if (billAdjustment.operation === 'Charge') {
-        taxable += billAdjustment.amount;
+        netBillAmount += billAdjustment.amount;
       } else if (billAdjustment.operation === 'Discount') {
-        taxable = Math.max(0, taxable - billAdjustment.amount);
+        netBillAmount = Math.max(0, netBillAmount - billAdjustment.amount);
       }
     }
 
-    const gstTotal = 0;
-    const grandTotal = taxable;
+    const grandTotal = netBillAmount;
+
+    let computedTaxableAmount = 0;
+    let computedCgstAmount = 0;
+    let computedSgstAmount = 0;
+    let computedIgstAmount = 0;
+    let computedTotalTax = 0;
+
+    const gRate = Number(gstRateInput) || 0;
+    const cRate = Number(cgstRateInput) || 0;
+    const sRate = Number(sgstRateInput) || 0;
+    const iRate = Number(igstRateInput) || 0;
+
+    if (isGstApplied && gRate > 0 && grandTotal > 0) {
+      computedTaxableAmount = parseFloat((grandTotal / (1 + (gRate / 100))).toFixed(2));
+      computedTotalTax = parseFloat((grandTotal - computedTaxableAmount).toFixed(2));
+
+      if (iRate > 0) {
+        computedIgstAmount = computedTotalTax;
+        computedCgstAmount = 0;
+        computedSgstAmount = 0;
+      } else {
+        const sumRates = (cRate + sRate) || gRate;
+        computedCgstAmount = parseFloat((computedTotalTax * (cRate / sumRates)).toFixed(2));
+        computedSgstAmount = parseFloat((computedTotalTax - computedCgstAmount).toFixed(2));
+        computedIgstAmount = 0;
+      }
+    }
+
+    const taxDetails = {
+      isApplied: isGstApplied,
+      gstRate: gRate,
+      cgstRate: cRate,
+      sgstRate: sRate,
+      igstRate: iRate,
+      taxableAmount: isGstApplied ? computedTaxableAmount : 0,
+      cgstAmount: isGstApplied ? computedCgstAmount : 0,
+      sgstAmount: isGstApplied ? computedSgstAmount : 0,
+      igstAmount: isGstApplied ? computedIgstAmount : 0,
+      totalTax: isGstApplied ? computedTotalTax : 0
+    };
 
     return {
       subTotal,
       discountTotal: totalOverallDiscount,
       couponDiscount,
-      gstTotal,
+      gstTotal: isGstApplied ? computedTotalTax : 0,
       grandTotal,
-      appliedDiscountsList
+      appliedDiscountsList,
+      taxableAmount: isGstApplied ? computedTaxableAmount : 0,
+      cgstAmount: isGstApplied ? computedCgstAmount : 0,
+      sgstAmount: isGstApplied ? computedSgstAmount : 0,
+      igstAmount: isGstApplied ? computedIgstAmount : 0,
+      totalTax: isGstApplied ? computedTotalTax : 0,
+      taxDetails
     };
-  }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, cgstRate, sgstRate, discountRules, products, activeCustomer, billAdjustment]);
+  }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, discountRules, products, activeCustomer, billAdjustment, isGstApplied, gstRateInput, cgstRateInput, sgstRateInput, igstRateInput]);
 
   const handleOpenPaymentFlow = async () => {
     if (cart.length === 0) {
@@ -2829,6 +2969,20 @@ export const BillingPOSView = ({
         ? (compiledTransactions.length > 1 ? compiledTransactions.map(t => t.mode).join(' + ') : (compiledTransactions[0]?.mode || 'Split'))
         : paymentMethod;
 
+      // Build taxBreakdown for the invoice
+      const taxBreakdown = isGstApplied && totalTax > 0
+        ? [
+            {
+              gstPercent: Number(gstRateInput) || 0,
+              taxableAmount,
+              cgst: cgstAmount,
+              sgst: sgstAmount,
+              igst: igstAmount,
+              totalTax
+            }
+          ]
+        : [{ gstPercent: 0, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }];
+
       const newInvoice = {
         invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
         date: new Date().toISOString(),
@@ -2842,6 +2996,18 @@ export const BillingPOSView = ({
         couponDiscount,
         gstTotal,
         grandTotal,
+        isGstApplied,
+        gstRate: Number(gstRateInput) || 0,
+        cgstRate: Number(cgstRateInput) || 0,
+        sgstRate: Number(sgstRateInput) || 0,
+        igstRate: Number(igstRateInput) || 0,
+        taxableAmount,
+        cgstAmount,
+        sgstAmount,
+        igstAmount,
+        totalTax,
+        taxDetails,
+        taxBreakdown,
         paymentMethod: displayPaymentMode,
         paymentTransactions: compiledTransactions,
         splitPayments: compiledTransactions.map(t => ({ method: t.mode, amount: t.amount })),
@@ -4906,73 +5072,178 @@ export const BillingPOSView = ({
               {/* Bottom Left Summary & Bottom Action Toolbar */}
               <div className="flex flex-col bg-[#e1e1e1] p-1 gap-1">
 
-                {/* Summary Block */}
-                <div className="bg-white border border-slate-400 w-[400px] p-1 shadow-sm">
-                  <table className="w-full text-xs font-bold text-slate-700 table-fixed">
-                    <tbody>
-                      <tr>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Gross Amt</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-blue-600 w-24">{(subTotal || 0).toFixed(2)}</td>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Disc Amt</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-red-600 w-24">{(discountTotal || 0).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Net Amt</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-blue-600">{(grandTotal || 0).toFixed(2)}</td>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Payable</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600">{(grandTotal || 0).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Quantity</td>
-                        <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600" colSpan={3}>{cart.reduce((a, b) => a + b.quantity, 0)} PCS</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  {/* Applied Discount Block */}
-                  {appliedDiscountsList && appliedDiscountsList.length > 0 && (
-                    <div className="w-[400px] mt-1 space-y-1">
-                      {appliedDiscountsList.map(d => (
-                        <div key={d.id} className="bg-indigo-50 border border-indigo-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-indigo-800">
-                          <span>Applied: {d.name} ({d.amount} OFF)</span>
-                          <button
-                            onClick={() => {
-                              if (d.type === 'Manual') {
-                                setManualDiscountIds(prev => prev.filter(id => id !== d.id));
-                              } else if (d.type === 'Legacy') {
-                                setCouponCode("");
-                              } else {
-                                setRejectedAutoDiscountIds(prev => [...prev, d.id]);
-                              }
-                            }}
-                            className="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* Bill Adjustment Block */}
-                  {billAdjustment && billAdjustment.amount > 0 && (
-                    <div className="w-[400px] mt-1 space-y-1">
-                      <div className="bg-yellow-50 border border-yellow-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-slate-800">
-                        <span>Bill Adjustment ({billAdjustment.operation === 'Charge' ? 'Service Charge' : 'Discount'})</span>
-                        <div className="flex items-center gap-2">
-                          <span className={billAdjustment.operation === 'Charge' ? "text-emerald-600" : "text-red-600"}>
-                            {billAdjustment.operation === 'Charge' ? '+' : '-'}₹{(billAdjustment.amount || 0).toLocaleString()}
-                          </span>
-                          <button
-                            onClick={() => {
-                              setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
-                            }}
-                            className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
-                          >
-                            Remove
-                          </button>
+                {/* Summary & GST Configuration Container */}
+                <div className="flex flex-wrap items-start gap-1.5">
+                  {/* Summary Block */}
+                  <div className="bg-white border border-slate-400 w-[390px] p-1 shadow-sm">
+                    <table className="w-full text-xs font-bold text-slate-700 table-fixed">
+                      <tbody>
+                        <tr>
+                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Gross Amt</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600 w-24">{(subTotal || 0).toFixed(2)}</td>
+                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Disc Amt</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-red-600 w-24">{(discountTotal || 0).toFixed(2)}</td>
+                        </tr>
+                        {isGstApplied && (
+                          <>
+                            <tr>
+                              <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Taxable Amt</td>
+                              <td className="border border-slate-300 p-1 px-2 text-right text-slate-800 font-mono">₹{(taxableAmount || 0).toFixed(2)}</td>
+                              <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Total Tax</td>
+                              <td className="border border-slate-300 p-1 px-2 text-right text-purple-700 font-mono">₹{(totalTax || 0).toFixed(2)}</td>
+                            </tr>
+                            {igstAmount > 0 ? (
+                              <tr>
+                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">IGST ({gstRateInput}%)</td>
+                                <td className="border border-slate-300 p-1 px-2 text-right text-purple-600 font-mono" colSpan={3}>₹{igstAmount.toFixed(2)}</td>
+                              </tr>
+                            ) : (
+                              <tr>
+                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">CGST ({cgstRateInput}%)</td>
+                                <td className="border border-slate-300 p-1 px-2 text-right text-indigo-600 font-mono">₹{cgstAmount.toFixed(2)}</td>
+                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">SGST ({sgstRateInput}%)</td>
+                                <td className="border border-slate-300 p-1 px-2 text-right text-indigo-600 font-mono">₹{sgstAmount.toFixed(2)}</td>
+                              </tr>
+                            )}
+                          </>
+                        )}
+                        <tr>
+                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Net Amt</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600">{(grandTotal || 0).toFixed(2)}</td>
+                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Payable</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600">{(grandTotal || 0).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Quantity</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600" colSpan={3}>{cart.reduce((a, b) => a + b.quantity, 0)} PCS</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    {/* Applied Discount Block */}
+                    {appliedDiscountsList && appliedDiscountsList.length > 0 && (
+                      <div className="w-full mt-1 space-y-1">
+                        {appliedDiscountsList.map(d => (
+                          <div key={d.id} className="bg-indigo-50 border border-indigo-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-indigo-800">
+                            <span>Applied: {d.name} ({d.amount} OFF)</span>
+                            <button
+                              onClick={() => {
+                                if (d.type === 'Manual') {
+                                  setManualDiscountIds(prev => prev.filter(id => id !== d.id));
+                                } else if (d.type === 'Legacy') {
+                                  setCouponCode("");
+                                } else {
+                                  setRejectedAutoDiscountIds(prev => [...prev, d.id]);
+                                }
+                              }}
+                              className="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Bill Adjustment Block */}
+                    {billAdjustment && billAdjustment.amount > 0 && (
+                      <div className="w-full mt-1 space-y-1">
+                        <div className="bg-yellow-50 border border-yellow-200 p-2 shadow-sm rounded-md flex justify-between items-center text-xs font-bold text-slate-800">
+                          <span>Bill Adjustment ({billAdjustment.operation === 'Charge' ? 'Service Charge' : 'Discount'})</span>
+                          <div className="flex items-center gap-2">
+                            <span className={billAdjustment.operation === 'Charge' ? "text-emerald-600" : "text-red-600"}>
+                              {billAdjustment.operation === 'Charge' ? '+' : '-'}₹{(billAdjustment.amount || 0).toLocaleString()}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+                              }}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-0.5 rounded shadow-sm text-[10px] cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* GST CONFIGURATION PANEL */}
+                  <div className="bg-white border border-slate-400 p-2 shadow-sm rounded-sm text-xs space-y-2 w-[340px]">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                      <span className="font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1">
+                        GST CONFIGURATION
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${isGstApplied ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                        {isGstApplied ? 'GST Applied ✓' : 'GST Inactive'}
+                      </span>
                     </div>
-                  )}
+
+                    <div className="grid grid-cols-4 gap-1.5 items-center font-mono">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">GST %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={gstRateInput}
+                          onChange={(e) => handleGstRateChange(e.target.value)}
+                          className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">CGST %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          value={cgstRateInput}
+                          onChange={(e) => handleCgstRateChange(e.target.value)}
+                          className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">SGST %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          value={sgstRateInput}
+                          onChange={(e) => handleSgstRateChange(e.target.value)}
+                          className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">IGST %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={igstRateInput}
+                          onChange={(e) => handleIgstRateChange(e.target.value)}
+                          className="w-full border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 gap-2">
+                      {isGstApplied ? (
+                        <button
+                          type="button"
+                          onClick={handleRemoveGst}
+                          className="w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                        >
+                          Remove GST
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleApplyGst}
+                          className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                        >
+                          APPLY GST
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Action Toolbar */}
