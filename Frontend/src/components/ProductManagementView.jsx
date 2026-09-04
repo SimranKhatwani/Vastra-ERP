@@ -162,9 +162,28 @@ export const ProductManagementView = ({
     (localProducts || []).forEach(p => {
       const sz = safeStr(p.size);
       if (sz) sz.split(',').forEach(s => set.add(s.trim()));
+      if (Array.isArray(p.variants)) {
+        p.variants.forEach(v => {
+          if (v && v.size) set.add(String(v.size).trim());
+        });
+      }
     });
     return Array.from(set).filter(Boolean);
   }, [localProducts]);
+
+  // Modal Sizing Code List (includes real product sizes, variants, PT sizes, and standards)
+  const modalSizesList = React.useMemo(() => {
+    const set = new Set();
+    if (formSize) set.add(String(formSize).trim());
+    (formVariants || []).forEach(v => {
+      if (v && v.size) set.add(String(v.size).trim());
+    });
+    (dynamicSizesList || []).forEach(s => {
+      if (s) set.add(String(s).trim());
+    });
+    ["Free Size", "FS", "XS", "S", "M", "L", "XL", "XXL", "3XL"].forEach(s => set.add(s));
+    return Array.from(set).filter(Boolean);
+  }, [formSize, formVariants, dynamicSizesList]);
 
   // Dynamic Colors List
   const dynamicColorsList = React.useMemo(() => {
@@ -359,6 +378,8 @@ export const ProductManagementView = ({
     setFormBarcode("");
     setFormColor("");
     setFormSize("M");
+    setFormBatch("");
+    setFormDescription("");
     setFormVariants([]);
     setFormPurchasePrice(0);
     setFormMRP(0);
@@ -374,6 +395,8 @@ export const ProductManagementView = ({
   const [formItemCode, setFormItemCode] = useState("");
   const [formUniqueCode, setFormUniqueCode] = useState("");
   const [formIPN, setFormIPN] = useState("");
+  const [formBatch, setFormBatch] = useState("");
+  const [formDescription, setFormDescription] = useState("");
   const [formSecondaryColor, setFormSecondaryColor] = useState("");
   const [formCompany, setFormCompany] = useState("");
   const [formRack, setFormRack] = useState("");
@@ -410,6 +433,8 @@ export const ProductManagementView = ({
     setFormBarcode(prod.barcode);
     setFormUniqueCode(prod.uniqueCode || '');
     setFormIPN(prod.ipn || '');
+    setFormBatch(prod.batch || prod.pieces?.[0]?.batch || '');
+    setFormDescription(prod.description || (prod.batch ? `Batch: ${prod.batch}` : ''));
     setFormColor(prod.primaryColor || prod.color || '');
     setFormSecondaryColor(prod.secondaryColor || '');
     setFormCompany(prod.company || prod.firmName || '');
@@ -417,9 +442,9 @@ export const ProductManagementView = ({
     setFormHSN(prod.hsn || '');
     setFormSize(prod.size);
     setFormVariants(prod.variants || []);
-    setFormPurchasePrice(prod.purchasePrice || 0);
-    setFormMRP(prod.mrp || 0);
-    setFormSellingPrice(prod.sellingPrice || 0);
+    setFormPurchasePrice(prod.purchaseRate ?? prod.purchasePrice ?? 0);
+    setFormMRP(prod.mrp ?? prod.defaultMRP ?? 0);
+    setFormSellingPrice(prod.afterGST ?? prod.wspAfterGST ?? prod.sellingPrice ?? 0);
     setFormStock(prod.stock || 0);
     setFormMinStock(prod.minStockAlert || 5);
     setFormCreatedDate(prod.formattedDate || '—');
@@ -440,6 +465,7 @@ export const ProductManagementView = ({
         barcode: formBarcode,
         color: formColor || "Classic White",
         size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
+        batch: formBatch,
         purchasePrice: formPurchasePrice,
         sellingPrice: formSellingPrice,
         mrp: formMRP,
@@ -452,7 +478,7 @@ export const ProductManagementView = ({
             : formStock <= formMinStock
               ? "Low Stock"
               : "In Stock",
-        description: `Premium newly created apparel by ${formBrand}. Perfect fit tailored item.`,
+        description: formDescription || (formBatch ? `Batch: ${formBatch}` : `Apparel by ${formBrand}`),
       };
       onAddProduct(newProd);
       onAddNotification(
@@ -471,6 +497,8 @@ export const ProductManagementView = ({
           barcode: formBarcode,
           color: formColor,
           size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
+          batch: formBatch,
+          description: formDescription || (formBatch ? `Batch: ${formBatch}` : ''),
           purchasePrice: formPurchasePrice,
           sellingPrice: formSellingPrice,
           mrp: formMRP,
@@ -812,12 +840,17 @@ export const ProductManagementView = ({
                               <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-tight font-bold shrink-0 ${firmStyle.badgeClass}`}>
                                 {firmName}
                               </span>
+                              {p.batch && (
+                                <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
+                                  Batch: {p.batch}
+                                </span>
+                              )}
                               <p className="font-bold text-slate-800 leading-tight">
                                 {p.name}
                               </p>
                             </div>
                             <span className="text-[10px] text-slate-400 font-medium">
-                              {p.category} | {p.brand}
+                              {p.category} | {p.brand} {p.description ? `• ${p.description}` : ''}
                             </span>
                           </div>
                         </td>
@@ -1135,6 +1168,24 @@ export const ProductManagementView = ({
                         className="w-full bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-600"
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Batch No. (PT File)
+                      </label>
+                      <input
+                        type="text"
+                        value={formBatch}
+                        onChange={(e) => {
+                          setFormBatch(e.target.value);
+                          if (!formDescription || formDescription.startsWith('Batch:')) {
+                            setFormDescription(e.target.value ? `Batch: ${e.target.value}` : '');
+                          }
+                        }}
+                        placeholder="e.g. BATCH-01"
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-700"
+                      />
+                    </div>
                   </>
                 )}
 
@@ -1269,24 +1320,40 @@ export const ProductManagementView = ({
                     disabled={formCategory.toLowerCase().includes("saree")}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {["XS", "S", "M", "L", "XL", "XXL", "3XL", "FS"].map(s => {
-                       const variant = formVariants.find(v => v.size === s);
+                    {modalSizesList.map(s => {
+                       const variant = (formVariants || []).find(v => v && v.size === s);
                        let emoji = "🔴 "; // Default to Out of Stock for unconfigured sizes
                        if (variant) {
                           if (variant.stock <= 0) emoji = "🔴 ";
                           else if (variant.stock <= (variant.minStockAlert || 5)) emoji = "🟡 ";
+                          else emoji = "🟢 ";
+                       } else if (s === formSize && formStock > 0) {
+                          if (formStock <= (formMinStock || 5)) emoji = "🟡 ";
                           else emoji = "🟢 ";
                        }
                        return <option key={s} value={s}>{emoji}{s}</option>;
                     })}
                   </select>
                 </div>
+
+                <div className="col-span-1 sm:col-span-2 md:col-span-3">
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Product Description / Batch Info
+                  </label>
+                  <input
+                    type="text"
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    placeholder="e.g. Batch: B-101 | Premium Fabric"
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-700"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3">
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    Buy Price (Cost)
+                    Purchase Rate (Cost)
                   </label>
                   <input
                     type="number"
@@ -1300,19 +1367,7 @@ export const ProductManagementView = ({
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
-                    Retail Price (MRP)
-                  </label>
-                  <input
-                    type="number"
-                    value={formMRP}
-                    onChange={(e) => setFormMRP(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 mb-1 font-semibold">
-                    POS Selling Price
+                    After GST (WSP)
                   </label>
                   <input
                     type="number"
@@ -1320,6 +1375,18 @@ export const ProductManagementView = ({
                     onChange={(e) =>
                       setFormSellingPrice(Number(e.target.value))
                     }
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
+                    Retail Price (MRP)
+                  </label>
+                  <input
+                    type="number"
+                    value={formMRP}
+                    onChange={(e) => setFormMRP(Number(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono"
                   />
                 </div>

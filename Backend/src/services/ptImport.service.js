@@ -292,17 +292,78 @@ class PTImportService {
         const primaryColor = String(getVal(row, 'colorPrimary', 'color', 'COLOR', 'Color', 'COLOR (P)', 'COLOR(P)', 'Colour', 'COLOUR', 'COLOUR (P)', 'COLOUR(P)', 'Primary Color', 'Primary Colour', 'PRIMARY COLOR', 'Shade', 'SHADE', 'Shade No', 'SHADE NO', 'Col', 'COL', 'Clr', 'CLR') || '').trim();
         const secondaryColor = String(getVal(row, 'secondaryColor', 'Secondary Color', 'COLOR (S)', 'COLOR(S)', 'Colour (S)', 'COLOUR (S)', 'COLOUR(S)', 'Secondary Colour', 'SECONDARY COLOR') || '').trim();
 
-        let mrp = parseFloat(getVal(row, 'MRP', 'mrp', 'Selling Price', 'sellingPrice', 'Sales Price') || 0);
-        const purchaseRate = parseFloat(getVal(row, 'P. RATE', 'P.Rate', 'Purchase Rate', 'purchaseRate', 'Rate') || 0);
+        let mrp = parseFloat(getVal(
+          row,
+          'MRP',
+          'mrp',
+          'M.R.P.',
+          'M.R.P',
+          'Retail Price',
+          'Retail MRP',
+          'Selling Price',
+          'sellingPrice',
+          'Sales Price',
+          'R. Rate',
+          'R.Rate',
+          'Retail Rate'
+        ) || 0);
+
+        const purchaseRate = parseFloat(getVal(
+          row,
+          'P. RATE',
+          'P.Rate',
+          'P_RATE',
+          'P RATE',
+          'Purchase Rate',
+          'purchaseRate',
+          'PURCHASE RATE',
+          'Buy Price',
+          'Cost Price',
+          'Rate',
+          'RATE',
+          'P. Rate'
+        ) || 0);
+
         if (!mrp || isNaN(mrp) || mrp < 0) {
           mrp = 0;
         }
-        const wspAfterGST = parseFloat(getVal(row, 'WSP', 'wsp', 'WSP After GST') || purchaseRate);
+
+        let wspAfterGST = parseFloat(getVal(
+          row,
+          'AFTER GST',
+          'After GST',
+          'After Gst',
+          'After Tax',
+          'AFTER TAX',
+          'Rate After GST',
+          'RATE AFTER GST',
+          'Rate (After GST)',
+          'P. Rate After GST',
+          'P.Rate After GST',
+          'Purchase Rate After GST',
+          'Cost After GST',
+          'COST AFTER GST',
+          'Landed Cost',
+          'LANDED COST',
+          'WSP After GST',
+          'WSP AFTER GST',
+          'WSP (After GST)',
+          'WSP(After GST)',
+          'WSP',
+          'wsp',
+          'Wsp',
+          'Net Rate',
+          'NET RATE'
+        ) || 0);
+
+        if (!wspAfterGST || isNaN(wspAfterGST) || wspAfterGST <= 0) {
+          wspAfterGST = purchaseRate;
+        }
 
         let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE') || '').trim();
         let uniqueCode = String(getVal(row, 'Unique Code', 'uniqueCode', 'UNIQUE CODE') || '').trim();
         let ipn = String(getVal(row, 'IPN', 'ipn', 'IPN No') || '').trim();
-        const batch = String(getVal(row, 'Batch', 'batch') || '').trim();
+        const batch = String(getVal(row, 'Batch', 'batch', 'BATCH', 'Batch No', 'Batch No.', 'BATCH NO', 'BATCH NO.', 'Batch Number', 'BATCH NUMBER', 'Lot No', 'Lot No.', 'LOT NO', 'Lot', 'LOT', 'Lot Number', 'BATCH_NO', 'Batch_No', 'Batch#') || '').trim();
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
         const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
@@ -536,6 +597,8 @@ class PTImportService {
                 hsnId: hsn ? hsn._id : undefined,
                 gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
+                description: batch ? `Batch: ${batch}` : (normalizedSubItem ? `${itemName} - ${normalizedSubItem}` : itemName),
+                batch: batch || '',
                 defaultMRP: mrp,
                 imageUrl: itemImage || undefined,
                 typeOfGst: typeOfGstNormalized,

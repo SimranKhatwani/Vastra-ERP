@@ -86,6 +86,11 @@ const productSchema = new mongoose.Schema({
     default: 'TOP'
   },
   description: String,
+  batch: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   hsnId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'HSN'
