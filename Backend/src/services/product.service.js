@@ -115,6 +115,13 @@ class ProductService {
       // Find best piece for price data: prefer piece with non-zero wspAfterGST (newest import)
       const pricePiece = pPieces.find(pc => pc.wspAfterGST > 0) || pPieces[0];
 
+      const goodsReturnedPieces = pPieces.filter(pc => pc.status === 'GOODS_RETURNED' || pc.returned === true);
+      const inGRQty = goodsReturnedPieces.length;
+      
+      const computedStatus = inGRQty > 0 
+        ? `IN GR (${inGRQty} Pcs)` 
+        : (calculatedStock > 0 ? 'In Stock' : 'Out of Stock');
+
       return {
         ...pObj,
         name: pObj.itemName || '-',
@@ -126,6 +133,9 @@ class ProductService {
         imageUrl: pObj.imageUrl || '',
         stock: calculatedStock,
         availableStock: calculatedStock,
+        inGRQty,
+        goodsReturnedQuantity: inGRQty,
+        status: computedStatus,
         soldQuantity: pPieces.filter(pc => pc.status === 'SOLD').length || Number(pObj.soldQuantity || 0),
         totalPieces: pPieces.length,
         barcode: pObj.barcode || pPieces[0]?.barcode || '',
@@ -155,7 +165,7 @@ class ProductService {
         landedCost: pricePiece?.purchaseRate || 0,
         company: resolvedFirmName,
         firmName: resolvedFirmName,
-        rackLocation: pPieces[0]?.rack || 'Shelf A1',
+        rackLocation: pPieces[0]?.rack || 'SHOWROOM',
         pieces: pPieces
       };
     });

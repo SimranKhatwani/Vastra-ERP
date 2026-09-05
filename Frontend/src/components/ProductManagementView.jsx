@@ -235,18 +235,26 @@ export const ProductManagementView = ({
     const colorVal = safeStr(p.primaryColor, safeStr(p.color, '-'));
     const secondaryColorVal = safeStr(p.secondaryColor, '-');
     const hsnVal = typeof p.hsnId === 'object' && p.hsnId?.hsnCode ? p.hsnId.hsnCode : safeStr(p.hsn, 'N/A');
+    const pName = safeStr(p.itemName, safeStr(p.name, 'Unnamed Product'));
+    const itemCodeVal = safeStr(p.itemCode, safeStr(p.designNo, safeStr(p.sku, 'N/A')));
+    const designNoVal = safeStr(p.designNo, 'N/A');
+    const barcodeVal = safeStr(p.barcode, safeStr(p.pieces?.[0]?.barcode, ''));
+    const inGRQty = p.inGRQty || p.goodsReturnedQuantity || (p.pieces ? p.pieces.filter(pc => pc.status === 'GOODS_RETURNED' || pc.returned).length : 0);
+    const computedStatus = p.status && p.status.startsWith('IN GR') 
+      ? p.status 
+      : (inGRQty > 0 
+          ? `IN GR (${inGRQty} Pcs)` 
+          : ((p.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'));
 
     return {
       ...p,
       id: p._id || p.id,
-      name: safeStr(p.itemName, safeStr(p.name, 'Unnamed Product')),
-      itemName: safeStr(p.itemName, safeStr(p.name, 'Unnamed Product')),
-      subItem: safeStr(p.subItem, ''),
-      designNo: safeStr(p.designNo, 'N/A'),
-      itemCode: safeStr(p.itemCode, safeStr(p.designNo, 'N/A')),
-      sku: safeStr(p.itemCode, safeStr(p.designNo, safeStr(p.sku, 'N/A'))),
-      productCode: safeStr(p.itemCode, safeStr(p.designNo, safeStr(p.productCode, 'N/A'))),
-      barcode: safeStr(p.barcode, safeStr(p.pieces?.[0]?.barcode, '')),
+      name: pName,
+      itemName: pName,
+      itemCode: itemCodeVal,
+      sku: itemCodeVal,
+      designNo: designNoVal,
+      barcode: barcodeVal,
       uniqueCode: safeStr(p.uniqueCode, safeStr(p.pieces?.[0]?.uniqueCode, '')),
       ipn: safeStr(p.ipn, safeStr(p.pieces?.[0]?.ipn, '')),
       category: categoryName,
@@ -263,36 +271,40 @@ export const ProductManagementView = ({
       sellingPrice: p.sellingPrice ?? p.defaultMRP ?? p.price ?? 0,
       purchasePrice: p.purchasePrice ?? p.purchaseRate ?? 0,
       stock: p.stock ?? 0,
-      rackLocation: safeStr(p.rackLocation, 'Shelf A1'),
-      status: (p.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock',
+      inGRQty,
+      rackLocation: safeStr(p.rackLocation, 'SHOWROOM'),
+      status: computedStatus,
       createdAtDate: p.createdAt ? new Date(p.createdAt) : new Date(0),
       formattedDate: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
     };
   }).filter((p) => {
-    const searchLower = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !searchQuery ||
-      safeStr(p.name).toLowerCase().includes(searchLower) ||
-      safeStr(p.itemName).toLowerCase().includes(searchLower) ||
-      safeStr(p.itemCode).toLowerCase().includes(searchLower) ||
-      safeStr(p.designNo).toLowerCase().includes(searchLower) ||
-      safeStr(p.barcode).toLowerCase().includes(searchLower) ||
-      safeStr(p.uniqueCode).toLowerCase().includes(searchLower) ||
-      safeStr(p.ipn).toLowerCase().includes(searchLower);
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !searchQuery ||
+        safeStr(p.name).toLowerCase().includes(searchLower) ||
+        safeStr(p.itemName).toLowerCase().includes(searchLower) ||
+        safeStr(p.itemCode).toLowerCase().includes(searchLower) ||
+        safeStr(p.designNo).toLowerCase().includes(searchLower) ||
+        safeStr(p.barcode).toLowerCase().includes(searchLower) ||
+        safeStr(p.uniqueCode).toLowerCase().includes(searchLower) ||
+        safeStr(p.ipn).toLowerCase().includes(searchLower);
 
-    const matchesCat =
-      selectedCategory === "All" || safeStr(p.category).toLowerCase() === selectedCategory.toLowerCase();
-    const matchesBrand = selectedBrand === "All" || safeStr(p.brand).toLowerCase() === selectedBrand.toLowerCase();
-    const matchesCompany = selectedCompany === "All" || safeStr(p.company).toLowerCase() === selectedCompany.toLowerCase();
-    const matchesSize = selectedSize === "All" || safeStr(p.size).toLowerCase().includes(selectedSize.toLowerCase());
-    const matchesColor = selectedColor === "All" || safeStr(p.primaryColor).toLowerCase().includes(selectedColor.toLowerCase());
+      const matchesCat =
+        selectedCategory === "All" || safeStr(p.category).toLowerCase() === selectedCategory.toLowerCase();
+      const matchesBrand = selectedBrand === "All" || safeStr(p.brand).toLowerCase() === selectedBrand.toLowerCase();
+      const matchesCompany = selectedCompany === "All" || safeStr(p.company).toLowerCase() === selectedCompany.toLowerCase();
+      const matchesSize = selectedSize === "All" || safeStr(p.size).toLowerCase().includes(selectedSize.toLowerCase());
+      const matchesColor = selectedColor === "All" || safeStr(p.primaryColor).toLowerCase().includes(selectedColor.toLowerCase());
 
-    let matchesStatus = true;
-    if (selectedStatus === "In Stock")
-      matchesStatus = p.stock > 0;
-    else if (selectedStatus === "Low Stock")
-      matchesStatus = p.stock > 0 && p.stock <= 10;
-    else if (selectedStatus === "Out of Stock") matchesStatus = p.stock <= 0;
+      let matchesStatus = true;
+      if (selectedStatus === "In Stock")
+        matchesStatus = p.stock > 0;
+      else if (selectedStatus === "Low Stock")
+        matchesStatus = p.stock > 0 && p.stock <= 10;
+      else if (selectedStatus === "Out of Stock") 
+        matchesStatus = p.stock <= 0 && (!p.inGRQty || p.inGRQty === 0);
+      else if (selectedStatus === "In GR") 
+        matchesStatus = (p.inGRQty > 0 || (p.status && p.status.includes("IN GR")));
 
     return matchesSearch && matchesCat && matchesBrand && matchesCompany && matchesSize && matchesColor && matchesStatus && (activeSubTab === 'low_stock' ? p.stock <= 10 : true);
   }).sort((a, b) => {
@@ -744,6 +756,7 @@ export const ProductManagementView = ({
                   <option value="In Stock">In Stock</option>
                   <option value="Low Stock">Low Stock</option>
                   <option value="Out of Stock">Out of Stock</option>
+                  <option value="In GR">In GR</option>
                 </select>
               </div>
             </div>
@@ -1295,7 +1308,7 @@ export const ProductManagementView = ({
                     value={formRack}
                     onChange={(e) => setFormRack(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl"
-                    placeholder="e.g. Shelf A1"
+                    placeholder="e.g. SHOWROOM"
                   />
                 </div>
 

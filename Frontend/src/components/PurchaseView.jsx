@@ -1231,7 +1231,6 @@ export const PurchaseView = ({
 
   const tabs = [
     { id: "pos", label: "Procurement & Purchase Orders (PO)", icon: FileText },
-    { id: "returns", label: "Purchase Returns", icon: RotateCcw },
     { id: "pending", label: "Pending Tracking", icon: Clock },
     { id: "reports", label: "Purchase Reports", icon: BarChart3 },
   ];
@@ -1667,7 +1666,6 @@ export const PurchaseView = ({
 
 
 
-        {activeTab === "returns" && <PurchaseReturns purchaseReturns={purchaseReturns} setPurchaseReturns={setPurchaseReturns} vendors={vendors} products={products} purchaseInvoices={purchaseInvoices} onAddNotification={onAddNotification} />}
         {activeTab === "pending" && <PendingTracking pendingPurchases={pendingPurchases} setPendingPurchases={setPendingPurchases} onAddNotification={onAddNotification} />}
         {activeTab === "reports" && <PurchaseReportsTab purchaseReports={purchaseReports} setPurchaseReports={setPurchaseReports} onAddNotification={onAddNotification} />}
       </div>

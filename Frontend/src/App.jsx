@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Info,
   X,
+  Package,
 } from "lucide-react";
 
 // Import sub components
@@ -58,6 +59,7 @@ import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { StaffManagementView } from "./components/StaffManagementView";
+import GoodsReturnView from "./components/GoodsReturnView";
 import { AuditLogView } from "./components/AuditLogView";
 import AttendanceDashboardView from "./components/AttendanceDashboardView";
 import AttendancePolicySettings from "./components/AttendancePolicySettings";
@@ -580,6 +582,7 @@ export default function App() {
           "permissions",
           "staff-activity",
           "purchase",
+          "goods-return",
           "vendor-communication",
           "financial-management",
           "accounts-treasury",
@@ -601,6 +604,7 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "goods-return",
           "vendor-communication",
           "financial-management",
           "accounts-treasury",
@@ -631,6 +635,7 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "purchase",
+          "goods-return",
           "vendor-communication",
           "financial-management",
           "accounts-treasury",
@@ -670,6 +675,8 @@ export default function App() {
       case "accountant":
         baseModules = [
           "dashboard",
+          "purchase",
+          "goods-return",
           "financial-management",
           "accounts-treasury",
           "accounting",
@@ -694,6 +701,13 @@ export default function App() {
       // Starting list: if Admin set allowedModules, start with allowedModules; otherwise start with baseModules
       let finalModules = Array.isArray(allowedArr) ? [...allowedArr] : [...baseModules];
 
+      // Ensure newly introduced baseModules (e.g. goods-return) are preserved unless explicitly set to NO_ACCESS
+      baseModules.forEach((baseMod) => {
+        if (!finalModules.includes(baseMod) && levelsMap[baseMod] !== 'NO_ACCESS') {
+          finalModules.push(baseMod);
+        }
+      });
+
       // Enforce 3-Level explicit overrides (NO_ACCESS vs FULL_CONTROL/VIEW_ONLY)
       Object.keys(levelsMap).forEach((modId) => {
         const lvl = levelsMap[modId];
@@ -709,6 +723,9 @@ export default function App() {
         if (!finalModules.includes('vendor-communication') && levelsMap['vendor-communication'] !== 'NO_ACCESS') {
           finalModules.push('vendor-communication');
         }
+        if (!finalModules.includes('goods-return') && levelsMap['goods-return'] !== 'NO_ACCESS') {
+          finalModules.push('goods-return');
+        }
       }
 
       return finalModules;
@@ -717,6 +734,7 @@ export default function App() {
     if (['admin', 'businessadmin', 'superadmin', 'manager', 'accountant'].includes(roleKey)) {
       if (!baseModules.includes('staff-activity')) baseModules.push('staff-activity');
       if (!baseModules.includes('vendor-communication')) baseModules.push('vendor-communication');
+      if (!baseModules.includes('goods-return')) baseModules.push('goods-return');
     }
 
     return baseModules;
@@ -1418,6 +1436,7 @@ export default function App() {
     { id: "billing-sales", label: "Billing & Sales Management", icon: ShoppingCart },
     { id: "discount-offers", label: "Discount & Offer Engine", icon: Percent },
     { id: "purchase", label: "Procurements & POs (Purchase Management)", icon: FileText },
+    { id: "goods-return", label: "Goods Return (GR)", icon: Package },
     { id: "vendor-communication", label: "Vendor Communication Card", icon: Building2 },
     { id: "financial-management", label: "Financial Management", icon: BarChart3 },
     { id: "accounts-treasury", label: "Accounts & Treasury", icon: Wallet },
@@ -2038,6 +2057,16 @@ export default function App() {
               onAddPurchaseOrder={handleAddPurchaseOrder}
               onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
               onDeletePurchaseOrder={handleDeletePurchaseOrder}
+              onAddNotification={addToastNotification}
+            />
+          )}
+
+          {activeModule === "goods-return" && (
+            <GoodsReturnView
+              products={products}
+              vendors={vendors}
+              purchaseBills={purchaseInvoices}
+              currentUser={currentUser}
               onAddNotification={addToastNotification}
             />
           )}

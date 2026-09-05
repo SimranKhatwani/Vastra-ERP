@@ -29,7 +29,8 @@ import {
   Receipt,
   ShieldAlert,
   Globe,
-  Terminal
+  Terminal,
+  Package
 } from "lucide-react";
 import api from '../api/axios';
 
@@ -59,6 +60,7 @@ export const PermissionsView = ({
     { id: "inventory", name: "Inventory Management Module", category: "Inventory & Stock", icon: Warehouse, desc: "Adjust stock levels, warehouse counts & low stock alerts" },
     { id: "stock-management", name: "Stock Management Module", category: "Inventory & Stock", icon: ClipboardCheck, desc: "Barcode stock verification, batch transfers & audits" },
     { id: "purchase", name: "Procurements & POs (Purchase)", category: "Procurement", icon: Briefcase, desc: "Supplier purchase bills, GRNs & vendor outstanding ledgers" },
+    { id: "goods-return", name: "Goods Return (GR)", category: "Procurement", icon: Package, desc: "Piece & value tracking, party auto-split, CN settlement & physical return audit" },
     { id: "vendor-communication", name: "Vendor Communication Card", category: "Procurement", icon: Building2, desc: "Vendor relationship hub, agreements, timeline & follow-ups" },
     { id: "financial-management", name: "Financial Management", category: "Finance & Accounts", icon: DollarSign, desc: "Revenue vs expenses, profit margins & financial ledgers" },
     { id: "accounts-treasury", name: "Accounts & Treasury", category: "Finance & Accounts", icon: Wallet, desc: "Cash drawer, bank deposits, payment gateways & petty cash" },
