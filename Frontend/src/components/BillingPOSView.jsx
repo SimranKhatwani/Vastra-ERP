@@ -2612,8 +2612,6 @@ export const BillingPOSView = ({
       }
     }
 
-    const grandTotal = netBillAmount;
-
     let computedTaxableAmount = 0;
     let computedCgstAmount = 0;
     let computedSgstAmount = 0;
@@ -2625,9 +2623,10 @@ export const BillingPOSView = ({
     const sRate = Number(sgstRateInput) || 0;
     const iRate = Number(igstRateInput) || 0;
 
-    if (isGstApplied && gRate > 0 && grandTotal > 0) {
-      computedTaxableAmount = parseFloat((grandTotal / (1 + (gRate / 100))).toFixed(2));
-      computedTotalTax = parseFloat((grandTotal - computedTaxableAmount).toFixed(2));
+    // GST is added ON TOP of the net bill amount (exclusive tax model)
+    if (isGstApplied && gRate > 0 && netBillAmount > 0) {
+      computedTaxableAmount = parseFloat(netBillAmount.toFixed(2));
+      computedTotalTax = parseFloat((netBillAmount * gRate / 100).toFixed(2));
 
       if (iRate > 0) {
         computedIgstAmount = computedTotalTax;
@@ -2640,6 +2639,9 @@ export const BillingPOSView = ({
         computedIgstAmount = 0;
       }
     }
+
+    // Grand total = net amount + GST tax (if applied)
+    const grandTotal = parseFloat((netBillAmount + computedTotalTax).toFixed(2));
 
     const taxDetails = {
       isApplied: isGstApplied,
@@ -2660,6 +2662,7 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal: isGstApplied ? computedTotalTax : 0,
       grandTotal,
+      netBillAmount,
       appliedDiscountsList,
       taxableAmount: isGstApplied ? computedTaxableAmount : 0,
       cgstAmount: isGstApplied ? computedCgstAmount : 0,
@@ -3063,9 +3066,28 @@ export const BillingPOSView = ({
       }
 
       // Merge cart item alteration metadata onto completed invoice items so receipt ALWAYS displays full alteration details!
+      // IMPORTANT: GST fields must be preserved from newInvoice because savedInvoice (from backend)
+      // may not return/store these frontend-computed fields, causing them to be undefined/overwritten.
       const mergedInvoice = {
         ...newInvoice,
         ...(savedInvoice || {}),
+        // Always preserve GST/tax fields from newInvoice (source of truth for tax calculation)
+        isGstApplied: newInvoice.isGstApplied,
+        gstRate: newInvoice.gstRate,
+        cgstRate: newInvoice.cgstRate,
+        sgstRate: newInvoice.sgstRate,
+        igstRate: newInvoice.igstRate,
+        taxableAmount: newInvoice.taxableAmount,
+        cgstAmount: newInvoice.cgstAmount,
+        sgstAmount: newInvoice.sgstAmount,
+        igstAmount: newInvoice.igstAmount,
+        totalTax: newInvoice.totalTax,
+        gstTotal: newInvoice.gstTotal,
+        taxDetails: newInvoice.taxDetails,
+        taxBreakdown: newInvoice.taxBreakdown,
+        grandTotal: newInvoice.grandTotal,
+        subTotal: newInvoice.subTotal,
+        discountTotal: newInvoice.discountTotal,
         paymentMethod: newInvoice.paymentMethod || savedInvoice?.paymentMethod || "Cash",
         splitPayments: newInvoice.splitPayments || savedInvoice?.splitPayments,
         paymentTransactions: newInvoice.paymentTransactions || savedInvoice?.paymentTransactions,

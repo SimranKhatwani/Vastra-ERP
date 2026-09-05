@@ -59,8 +59,17 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
   const specialDiscountAmt = billAdjOperation === 'Discount' ? Number(invoice.specialDiscount || billAdjAmt || 0) : 0;
   const serviceChargeAmt = billAdjOperation === 'Charge' ? billAdjAmt : 0;
 
-  const dueAmount = Math.max(0, Number((invoice.grandTotal - totalPaid).toFixed(2)));
-  const displayGrandTotal = Number(invoice.grandTotal) || 0;
+  // displayGrandTotal must always be the GST-inclusive final amount.
+  // If the backend stored grandTotal is less than what was actually paid (totalPaid),
+  // it means the backend has pre-GST grandTotal — use totalPaid as the source of truth.
+  let displayGrandTotal = Number(invoice.grandTotal) || 0;
+  if (totalPaid > 0 && totalPaid > displayGrandTotal) {
+    // totalPaid reflects the actual GST-inclusive amount charged
+    displayGrandTotal = totalPaid;
+  }
+
+  // dueAmount must be relative to the correct GST-inclusive grandTotal
+  const dueAmount = Math.max(0, Number((displayGrandTotal - totalPaid).toFixed(2)));
 
   // Show due info ONLY when "Due" was explicitly selected as payment method
   const isDueSelected =
@@ -79,8 +88,8 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     const taxMap = new Map();
 
     const tDet = invoice.taxDetails || {};
-    const isApplied = invoice.isGstApplied !== undefined ? invoice.isGstApplied : tDet.isApplied;
 
+    // Priority 1: Use taxBreakdown array (most detailed)
     if (invoice.taxBreakdown && invoice.taxBreakdown.length > 0) {
       invoice.taxBreakdown.forEach(tb => {
         const rate = Number(tb.gstPercent || tb.rate || 0);
@@ -89,17 +98,14 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         const sgst = Number(tb.sgst || 0);
         const igst = Number(tb.igst || 0);
         const totalTax = Number(tb.totalTax || (cgst + sgst + igst) || 0);
-
-        taxMap.set(rate, {
-          gstPercent: rate,
-          taxableAmount: taxable,
-          cgst,
-          sgst,
-          igst,
-          totalTax
-        });
+        if (rate > 0 || totalTax > 0) {
+          taxMap.set(rate, { gstPercent: rate, taxableAmount: taxable, cgst, sgst, igst, totalTax });
+        }
       });
-    } else if (tDet.isApplied && tDet.gstRate > 0) {
+    }
+
+    // Priority 2: Use taxDetails object
+    if (taxMap.size === 0 && tDet.gstRate > 0) {
       taxMap.set(tDet.gstRate, {
         gstPercent: tDet.gstRate,
         taxableAmount: tDet.taxableAmount || 0,
@@ -108,26 +114,55 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         igst: tDet.igstAmount || 0,
         totalTax: tDet.totalTax || 0
       });
-    } else if ((invoice.isGstApplied || invoice.gstRate > 0 || invoice.totalTax > 0 || invoice.taxAmount > 0) && (invoice.isGstApplied !== false)) {
-      const rate = Number(invoice.gstRate || 18);
-      const taxable = Number(invoice.taxableAmount || 0);
+    }
+
+    // Priority 3: Use individual invoice fields
+    if (taxMap.size === 0 && (invoice.totalTax > 0 || invoice.gstTotal > 0)) {
+      const rate = Number(invoice.gstRate || 0);
+      const totalTax = Number(invoice.totalTax || invoice.gstTotal || invoice.taxAmount || 0);
+      const taxable = Number(invoice.taxableAmount || (invoice.grandTotal - totalTax) || 0);
       const cgst = Number(invoice.cgstAmount || 0);
       const sgst = Number(invoice.sgstAmount || 0);
       const igst = Number(invoice.igstAmount || 0);
-      const totalTax = Number(invoice.totalTax || invoice.taxAmount || invoice.gstTotal || (cgst + sgst + igst) || 0);
-      taxMap.set(rate, {
-        gstPercent: rate,
-        taxableAmount: taxable,
-        cgst,
-        sgst,
-        igst,
-        totalTax
-      });
+      if (totalTax > 0) {
+        taxMap.set(rate, { gstPercent: rate, taxableAmount: taxable, cgst, sgst, igst, totalTax });
+      }
     }
 
-    const validTaxEntries = Array.from(taxMap.values()).filter(t => t.gstPercent > 0 && t.totalTax > 0);
+    // Priority 4: Derive from grandTotal vs (subTotal - discountTotal)
+    // This covers any bill (old or new) where grandTotal > net amount, meaning GST was added
+    if (taxMap.size === 0) {
+      const grandTotal = Number(invoice.grandTotal || 0);
+      const subTotal = Number(invoice.subTotal || 0);
+      const discountTotal = Number(invoice.discountTotal || 0);
+      const netBeforeTax = subTotal - discountTotal;
+      const derivedTax = parseFloat((grandTotal - netBeforeTax).toFixed(2));
+      if (derivedTax > 0.01 && netBeforeTax > 0) {
+        const derivedRate = parseFloat(((derivedTax / netBeforeTax) * 100).toFixed(2));
+        const halfTax = parseFloat((derivedTax / 2).toFixed(2));
+        taxMap.set(derivedRate, {
+          gstPercent: derivedRate,
+          taxableAmount: netBeforeTax,
+          cgst: halfTax,
+          sgst: parseFloat((derivedTax - halfTax).toFixed(2)),
+          igst: 0,
+          totalTax: derivedTax
+        });
+      }
+    }
 
-    if (isApplied !== false && validTaxEntries.length > 0) {
+    const validTaxEntries = Array.from(taxMap.values()).filter(t => t.totalTax > 0);
+
+    // IMPORTANT: Determine isApplied AFTER building taxMap so that Priority 4 derived
+    // tax entries are included in the check. validTaxEntries.length > 0 covers the case
+    // where GST flags are missing but tax was derived from amounts.
+    const isApplied = invoice.isGstApplied === true ||
+      (tDet.isApplied === true) ||
+      (invoice.gstTotal > 0) ||
+      (invoice.totalTax > 0) ||
+      validTaxEntries.length > 0;   // ← derived tax also counts as "applied"
+
+    if (isApplied && validTaxEntries.length > 0) {
       validTaxEntries.forEach(tb => {
         if (tb.igst > 0) {
           taxRows.push(`
@@ -151,12 +186,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         }
       });
     } else {
-      // IF GST IS NOT APPLIED:
-      // Taxable Amount = ₹0.00
-      // Total Tax = ₹0.00
-      // CGST = ₹0.00
-      // SGST = ₹0.00
-      // IGST = ₹0.00
+      // GST not applied — show mandatory 0% row
       taxRows.push(`
         <tr>
           <td class="text-center font-bold">0%</td>
@@ -171,6 +201,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
   };
 
   const items = invoice.items || [];
+
   
   const itemsHTML = items.map((item, index) => {
     return `
