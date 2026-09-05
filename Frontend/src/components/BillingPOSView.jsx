@@ -2067,14 +2067,97 @@ export const BillingPOSView = ({
     return ["XS", "S", "M", "L", "XL", "XXL", "3XL"];
   }, []);
 
+  const isSameProduct = (item1, item2) => {
+    if (!item1 || !item2) return false;
+    const id1 = String(item1.productId || item1._id || item1.id || "").trim();
+    const id2 = String(item2.productId || item2._id || item2.id || "").trim();
+    if (id1 && id2 && id1 === id2) return true;
+
+    const barcode1 = String(item1.barcode || item1.barcodeNo || item1.uniqueCode || "").trim();
+    const barcode2 = String(item2.barcode || item2.barcodeNo || item2.uniqueCode || "").trim();
+    if (barcode1 && barcode2 && barcode1 === barcode2) return true;
+
+    const sku1 = String(item1.sku || item1.designNo || item1.itemCode || "").trim();
+    const sku2 = String(item2.sku || item2.designNo || item2.itemCode || "").trim();
+    if (sku1 && sku2 && sku1.length > 0 && sku1 === sku2) return true;
+
+    return false;
+  };
+
+  const getLiveStock = (prod) => {
+    if (!prod) return 0;
+    const statusStr = String(prod.status || "").toLowerCase();
+    if (statusStr === "out of stock" || statusStr === "out_of_stock" || statusStr === "unavailable") {
+      return 0;
+    }
+    if (Array.isArray(prod.pieces)) {
+      if (prod.pieces.length === 0) {
+        const s = prod.availableStock ?? prod.stock ?? prod.stockQuantity ?? 0;
+        return Math.max(0, Number(s) || 0);
+      }
+      const availPieces = prod.pieces.filter(pc => {
+        const pcStatus = String(pc.status || "").toUpperCase();
+        return pcStatus === 'AVAILABLE' || pcStatus === 'IN STOCK' || !pc.status;
+      });
+      return availPieces.length;
+    }
+    if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+      return prod.variants.reduce((sum, v) => sum + getLiveStock(v), 0);
+    }
+    if (prod.availableStock !== undefined && prod.availableStock !== null) {
+      return Math.max(0, Number(prod.availableStock) || 0);
+    }
+    if (prod.stock !== undefined && prod.stock !== null) {
+      return Math.max(0, Number(prod.stock) || 0);
+    }
+    if (prod.stockQuantity !== undefined && prod.stockQuantity !== null) {
+      return Math.max(0, Number(prod.stockQuantity) || 0);
+    }
+    if (prod.quantity !== undefined && prod.quantity !== null && !prod.cartItemId) {
+      return Math.max(0, Number(prod.quantity) || 0);
+    }
+    const matched = (products || []).find(p => isSameProduct(p, prod));
+    if (matched && matched !== prod) {
+      return getLiveStock(matched);
+    }
+    return 0;
+  };
+
   // Action: Add product to cart with custom quantity (from articulation window)
-  const handleAddProductToCartWithQty = (prod, qty) => {
-    if (prod.stock <= 0) {
-      onAddNotification(
-        "POS Warning",
-        `${prod.name} is currently out of stock.`,
-        "warning",
-      );
+  const handleAddProductToCartWithQty = (prod, qty = 1) => {
+    if (!prod) return false;
+    const prodName = prod.name || prod.itemName || "This product";
+    const availableStock = getLiveStock(prod);
+
+    // Calculate how many units of this product are currently in cart
+    const currentInCartCount = cart.filter(item => isSameProduct(item, prod)).reduce((sum, item) => sum + (item.quantity || 1), 0);
+
+    if (availableStock <= 0) {
+      alert(`Cannot be added! "${prodName}" is out of stock.`);
+      if (onAddNotification) {
+        onAddNotification(
+          "Out of Stock",
+          `"${prodName}" is currently out of stock and cannot be added.`,
+          "danger",
+        );
+      }
+      return false;
+    }
+
+    if (currentInCartCount + qty > availableStock) {
+      const detailMsg = currentInCartCount > 0
+        ? `"${prodName}" has only ${availableStock} unit(s) in stock (${currentInCartCount} already in cart).`
+        : `Only ${availableStock} unit(s) of "${prodName}" are available in stock.`;
+
+      alert(`Cannot be added! ${detailMsg}`);
+      if (onAddNotification) {
+        onAddNotification(
+          "Stock Limit Reached",
+          detailMsg,
+          "warning",
+        );
+      }
+      return false;
     }
 
     const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
@@ -2092,6 +2175,7 @@ export const BillingPOSView = ({
       wk.id || wk._id || "w-default",
       wk.name || "In-House Tailor"
     );
+    return true;
   };
 
   // Handle articulated items forwarded from Customizer
@@ -2306,7 +2390,7 @@ export const BillingPOSView = ({
 
   // Action: Add product to cart (opens configuration modal)
   const handleAddProductToCart = (prod) => {
-    handleAddProductToCartWithQty(prod, 1);
+    return handleAddProductToCartWithQty(prod, 1);
   };
 
   // Action: Finalize product addition from configuration modal
@@ -2439,6 +2523,24 @@ export const BillingPOSView = ({
     if (delta === -1) {
       setCart((prev) => prev.filter((_, i) => i !== idx));
     } else if (delta === 1) {
+      const targetItem = cart[idx];
+      if (targetItem) {
+        const prodName = targetItem.name || targetItem.itemName || "This item";
+        const availableStock = getLiveStock(targetItem);
+        const currentInCartCount = cart.filter(i => isSameProduct(i, targetItem)).reduce((sum, item) => sum + (item.quantity || 1), 0);
+
+        if (currentInCartCount >= availableStock) {
+          alert(`Cannot add more! "${prodName}" has only ${availableStock} unit(s) in stock (${currentInCartCount} already in cart).`);
+          if (onAddNotification) {
+            onAddNotification(
+              "Stock Limit Reached",
+              `Cannot add more units of "${prodName}". Available stock: ${availableStock}.`,
+              "warning"
+            );
+          }
+          return;
+        }
+      }
       setCart((prev) => {
         const item = prev[idx];
         const newItem = {
@@ -4593,14 +4695,26 @@ export const BillingPOSView = ({
                                 min="1"
                                 value={qty}
                                 onChange={(e) => {
+                                  const requestedQty = Math.max(1, parseInt(e.target.value) || 1);
+                                  const availableStock = getLiveStock(cart[idx]);
+                                  if (availableStock > 0 && requestedQty > availableStock) {
+                                    alert(`Cannot set quantity to ${requestedQty}! Only ${availableStock} unit(s) of "${cart[idx].name || cart[idx].itemName}" are available in stock.`);
+                                    return;
+                                  }
                                   const newCart = [...cart];
-                                  newCart[idx].quantity = Math.max(1, parseInt(e.target.value) || 1);
-                                  newCart[idx].totalPrice = newCart[idx].quantity * rate;
+                                  newCart[idx].quantity = requestedQty;
+                                  newCart[idx].totalPrice = requestedQty * rate;
                                   setCart(newCart);
                                 }}
                                 className="w-10 text-center font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
                               />
                               <button onClick={() => {
+                                const availableStock = getLiveStock(cart[idx]);
+                                const currentInCartCount = cart.filter(i => isSameProduct(i, cart[idx])).reduce((sum, item) => sum + (item.quantity || 1), 0);
+                                if (availableStock > 0 && currentInCartCount >= availableStock) {
+                                  alert(`Cannot add more! "${cart[idx].name || cart[idx].itemName}" has only ${availableStock} unit(s) in stock (${currentInCartCount} already in cart).`);
+                                  return;
+                                }
                                 const newCart = [...cart];
                                 newCart[idx].quantity += 1;
                                 newCart[idx].totalPrice = newCart[idx].quantity * rate;
@@ -4860,10 +4974,12 @@ export const BillingPOSView = ({
                                             : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
                                             }`}
                                           onClick={() => {
-                                            handleAddProductToCart(p);
-                                            setItemSearchInputText("");
-                                            setIsItemDropdownOpen(false);
-                                            if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                            const added = handleAddProductToCart(p);
+                                            if (added) {
+                                              setItemSearchInputText("");
+                                              setIsItemDropdownOpen(false);
+                                              if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                            }
                                           }}
                                         >
                                           <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
@@ -5005,10 +5121,12 @@ export const BillingPOSView = ({
                                             : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50/70' : 'bg-slate-50/70 hover:bg-indigo-50/70'
                                             }`}
                                           onClick={() => {
-                                            handleAddProductToCart(p);
-                                            setDesignNoSearchInput("");
-                                            setIsDesignNoDropdownOpen(false);
-                                            if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                            const added = handleAddProductToCart(p);
+                                            if (added) {
+                                              setDesignNoSearchInput("");
+                                              setIsDesignNoDropdownOpen(false);
+                                              if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                            }
                                           }}
                                         >
                                           <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">

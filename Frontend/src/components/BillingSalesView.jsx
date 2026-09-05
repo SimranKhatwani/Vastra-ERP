@@ -1004,8 +1004,7 @@ export const BillingSalesView = ({
           { id: "wholesale-billing", label: "Wholesale Bulk Billing" },
           { id: "b2b-invoice", label: "Tax Invoice Generation (B2B)" },
           { id: "invoice-history", label: "Invoice History" },
-          { id: "outstanding-receivables", label: "Outstanding Receivables" },
-          { id: "returns-database", label: "Returns & Exchanges DB" }
+          { id: "outstanding-receivables", label: "Outstanding Receivables" }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1027,9 +1026,8 @@ export const BillingSalesView = ({
       {/* MAIN WORKSPACE GRID */}
       {activeTab === "invoice-history" && renderInvoiceHistory()}
       {activeTab === "outstanding-receivables" && renderOutstandingReceivables()}
-      {activeTab === "returns-database" && renderReturnsDatabase()}
 
-      {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && activeTab !== "returns-database" && (
+      {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
         
           {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}
