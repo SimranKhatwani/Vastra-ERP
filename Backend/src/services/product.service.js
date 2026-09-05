@@ -82,6 +82,9 @@ class ProductService {
     // Enrich products with live InventoryPiece records (stock, barcode, size, color, purchaseRate, rack, firm)
     const productIds = products.map(p => p._id);
     const InventoryPiece = require('../models/InventoryPiece');
+    const GoodsReturn = require('../models/goodsReturn/GoodsReturn');
+    const GoodsReturnItem = require('../models/goodsReturn/GoodsReturnItem');
+
     const pieces = await InventoryPiece.find({ productId: { $in: productIds }, tenantId, isDeleted: false })
       .sort({ createdAt: -1 })  // newest first so latest import prices are at [0]
       .populate('firmId warehouseId')
@@ -89,6 +92,20 @@ class ProductService {
         path: 'purchaseBillId',
         populate: { path: 'vendorId' }
       });
+
+    // Query active Goods Returns & items to sum exact return quantities
+    const activeGRs = await GoodsReturn.find({
+      tenantId,
+      overallStatus: { $nin: ['COMPLETED', 'CANCELLED'] },
+      isDeleted: false
+    }).select('_id');
+    const activeGRIds = activeGRs.map(g => g._id);
+
+    const activeGRItems = activeGRIds.length > 0 ? await GoodsReturnItem.find({
+      tenantId,
+      goodsReturnId: { $in: activeGRIds },
+      isDeleted: false
+    }) : [];
 
     const piecesByProduct = new Map();
     pieces.forEach(piece => {
@@ -99,7 +116,8 @@ class ProductService {
 
     const enrichedProducts = products.map(p => {
       const pObj = p.toObject();
-      const pPieces = piecesByProduct.get(p._id.toString()) || [];
+      const pStr = p._id.toString();
+      const pPieces = piecesByProduct.get(pStr) || [];
       const availablePieces = pPieces.filter(pc => pc.status === 'AVAILABLE');
       
       const sizes = Array.from(new Set(pPieces.map(pc => pc.size).filter(Boolean))).join(', ');
@@ -115,8 +133,20 @@ class ProductService {
       // Find best piece for price data: prefer piece with non-zero wspAfterGST (newest import)
       const pricePiece = pPieces.find(pc => pc.wspAfterGST > 0) || pPieces[0];
 
-      const goodsReturnedPieces = pPieces.filter(pc => pc.status === 'GOODS_RETURNED' || pc.returned === true);
-      const inGRQty = goodsReturnedPieces.length;
+      // Calculate total return quantity from both active GoodsReturnItems & InventoryPieces
+      const pBarcodes = new Set([pObj.barcode, ...pPieces.map(pc => pc.barcode)].filter(Boolean));
+      const pDesignNos = new Set([pObj.designNo, ...pPieces.map(pc => pc.designNo)].filter(Boolean));
+
+      const matchedGRItems = activeGRItems.filter(gi => {
+        if (gi.productId && gi.productId.toString() === pStr) return true;
+        if (gi.barcode && pBarcodes.has(gi.barcode)) return true;
+        if (gi.designNo && pDesignNos.has(gi.designNo)) return true;
+        return false;
+      });
+
+      const sumGRItemsQty = matchedGRItems.reduce((acc, gi) => acc + Number(gi.returnQuantity || 1), 0);
+      const pieceGRQty = pPieces.filter(pc => pc.status === 'GOODS_RETURNED' || pc.returned === true).length;
+      const inGRQty = Math.max(sumGRItemsQty, pieceGRQty);
       
       const computedStatus = inGRQty > 0 
         ? `IN GR (${inGRQty} Pcs)` 
