@@ -91,8 +91,8 @@ const normalizeInvoice = (b) => {
   const rawItems = (Array.isArray(b.items) && b.items.length > 0)
     ? b.items
     : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
-  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in";
-  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "";
+  const custName = b.customerId?.name || b.customerName || b.customer?.name || b.pssmRecord?.customerName || "Walk-in";
+  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || b.pssmRecord?.customerPhone || "";
 
   return {
     ...b,

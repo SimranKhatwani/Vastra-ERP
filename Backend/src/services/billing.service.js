@@ -804,8 +804,13 @@ class BillingService {
         });
       }
 
+      const resolvedCustName = bObj.customerName || (bObj.customerId?.name) || pssmInfo?.customerName || 'Walk-in';
+      const resolvedCustPhone = bObj.customerPhone || (bObj.customerId?.phone) || pssmInfo?.customerPhone || '';
+
       return {
         ...bObj,
+        customerName: resolvedCustName,
+        customerPhone: resolvedCustPhone,
         hasAlteration: Boolean(altInfo || pssmInfo || bObj.hasAlteration),
         alterationBill: altInfo?.alt || null,
         pssmRecord: pssmInfo || null,

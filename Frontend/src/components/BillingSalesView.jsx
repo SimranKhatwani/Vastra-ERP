@@ -46,8 +46,8 @@ const normalizeInvoice = (b) => {
   const rawItems = (Array.isArray(b.items) && b.items.length > 0)
     ? b.items
     : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
-  const custName = b.customerId?.name || b.customerName || b.customer?.name || "Walk-in";
-  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || "";
+  const custName = b.customerId?.name || b.customerName || b.customer?.name || b.pssmRecord?.customerName || "Walk-in";
+  const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || b.pssmRecord?.customerPhone || "";
 
   return {
     ...b,
@@ -191,6 +191,7 @@ export const BillingSalesView = ({
           status: pssm.status || 'PENDING_ASSIGNMENT',
           deliveryDate: pssm.expectedDeliveryDate,
           items: items.map(it => ({
+            _id: it._id,
             name: it.productName || it.pieceName,
             size: it.size,
             color: it.color,
@@ -214,6 +215,68 @@ export const BillingSalesView = ({
       } else {
         if (onAddNotification) onAddNotification("Error", "Could not load PSS details.", "danger");
       }
+    }
+  };
+
+  const handleCollectPSSItemFromSlip = async (itemId = null) => {
+    if (!pssSlipModalData || !pssSlipModalData.billBarcode) return;
+    try {
+      const res = await api.post('/pssm/collection', {
+        billBarcode: pssSlipModalData.billBarcode,
+        itemIds: itemId ? [itemId] : []
+      });
+      if (res.data?.success && res.data.data?.pssm) {
+        const pssm = res.data.data.pssm;
+        const items = res.data.data.items || [];
+        const allItemsCollected = items.length > 0 && items.every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+        const computedStatus = (allItemsCollected || pssm.status === 'CLOSED' || pssm.status === 'COLLECTED') ? 'CLOSED' : (pssm.status || 'PENDING');
+
+        const updatedSlip = {
+          ...pssSlipModalData,
+          status: computedStatus,
+          items: items.map(it => ({
+            _id: it._id,
+            name: it.productName || it.pieceName,
+            size: it.size,
+            color: it.color,
+            barcode: it.barcode || it.uniqueCode,
+            serviceType: it.serviceType || 'Alteration',
+            status: it.status || 'COLLECTED',
+            assignedTo: it.assignedTo || 'Pending Assignment',
+            alterationDetails: it.alterationDetails || [],
+            instructions: it.instructions || ''
+          }))
+        };
+        setPssSlipModalData(updatedSlip);
+
+        // Update invoices state in real-time
+        setInvoices(prev => (prev || []).map(i => {
+          const isMatch = (i.invoiceNo && (i.invoiceNo === pssSlipModalData.originalInvoiceNo || i.invoiceNo === pssSlipModalData.billBarcode)) ||
+                          (i.billNo && (i.billNo === pssSlipModalData.originalInvoiceNo || i.billNo === pssSlipModalData.billBarcode)) ||
+                          (i.billBarcode && (i.billBarcode === pssSlipModalData.billBarcode || i.billBarcode === pssSlipModalData.originalInvoiceNo)) ||
+                          (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipModalData.pssmNo));
+          if (isMatch) {
+            return {
+              ...i,
+              pssmStatus: computedStatus,
+              pssmRecord: updatedSlip
+            };
+          }
+          return i;
+        }));
+
+        if (onAddNotification) {
+          onAddNotification(
+            "Product Collected",
+            computedStatus === 'CLOSED'
+              ? `All garments collected! PSS docket status is now CLOSED.`
+              : `Product successfully marked as COLLECTED. Ticket status: ${computedStatus.replace(/_/g, ' ')}`,
+            "success"
+          );
+        }
+      }
+    } catch (err) {
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Collection failed.", "danger");
     }
   };
 
@@ -695,7 +758,7 @@ export const BillingSalesView = ({
                   <th className="p-3">Amount Paid</th>
                   <th className="p-3">Total Grand</th>
                   <th className="p-3">Status</th>
-                  <th className="p-3">Actions</th>
+                  <th className="p-3 whitespace-nowrap min-w-[270px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -723,30 +786,40 @@ export const BillingSalesView = ({
                         </div>
 
                         {/* LINKED PSS SLIP / TICKET */}
-                        {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
-                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-1.5 text-left text-xs space-y-0.5">
-                            <div className="flex items-center gap-1 text-[11px]">
-                              <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS:</span>
-                              <span className="font-mono font-black text-purple-700">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                        {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (() => {
+                          const pssRecordItems = inv.pssmRecord?.items || [];
+                          const allItemsCollected = pssRecordItems.length > 0 && pssRecordItems.every(i => i.status === 'COLLECTED' || i.status === 'CLOSED');
+                          const rawStatus = inv.pssmStatus || inv.pssmRecord?.status;
+                          const displayStatus = (allItemsCollected || rawStatus === 'CLOSED' || rawStatus === 'COLLECTED')
+                            ? 'CLOSED'
+                            : (rawStatus || 'PENDING');
+                          return (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-1.5 text-left text-xs space-y-0.5">
+                              <div className="flex items-center gap-1 text-[11px]">
+                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS:</span>
+                                <span className="font-mono font-black text-purple-700">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-[11px]">
+                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
+                                <span className={`font-black uppercase px-1.5 py-0.2 rounded text-[9px] border ${
+                                  displayStatus === 'CLOSED'
+                                    ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
+                                    : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : displayStatus === 'PARTIALLY_COLLECTED'
+                                    ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                    : displayStatus === 'PARTIALLY_READY'
+                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                    : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
+                                    ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                }`}>
+                                  {displayStatus.replace(/_/g, ' ')}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 text-[11px]">
-                              <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
-                              <span className={`font-black uppercase px-1.5 py-0.2 rounded text-[9px] border ${
-                                (inv.pssmStatus || inv.pssmRecord?.status) === 'READY_FOR_DELIVERY' || (inv.pssmStatus || inv.pssmRecord?.status) === 'READY'
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'PARTIALLY_READY'
-                                  ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'CLOSED'
-                                  ? 'bg-slate-200 text-slate-700 border-slate-300'
-                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'IN_PROGRESS'
-                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                  : 'bg-purple-100 text-purple-800 border-purple-300'
-                              }`}>
-                                {(inv.pssmStatus || inv.pssmRecord?.status || 'PENDING').replace(/_/g, ' ')}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="p-3 font-mono text-[10px]">{new Date(inv.date || inv.createdAt).toLocaleDateString()}</td>
@@ -766,13 +839,13 @@ export const BillingSalesView = ({
                         {inv.status}
                       </span>
                     </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <td className="p-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                         {/* VIEW INVOICE */}
                         <button
                           type="button"
                           onClick={() => handleOpenInvoiceReceipt(inv)}
-                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-black flex items-center gap-1 border border-indigo-200 cursor-pointer shadow-2xs"
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-black flex items-center gap-1 border border-indigo-200 cursor-pointer shadow-2xs shrink-0"
                           title="View / Print Original Invoice"
                         >
                           <FileText className="w-3 h-3 text-indigo-600" />
@@ -784,7 +857,7 @@ export const BillingSalesView = ({
                           <button
                             type="button"
                             onClick={() => handleOpenPSSSlip(inv)}
-                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-black flex items-center gap-1 border border-purple-200 cursor-pointer shadow-2xs"
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-black flex items-center gap-1 border border-purple-200 cursor-pointer shadow-2xs shrink-0"
                             title="View / Print Separate PSS Slip"
                           >
                             <Tag className="w-3 h-3 text-purple-600" />
@@ -809,7 +882,7 @@ export const BillingSalesView = ({
                               }
                             }
                           }}
-                          className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors inline-flex items-center"
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors inline-flex items-center shrink-0"
                           title="Delete Invoice"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1771,10 +1844,27 @@ export const BillingSalesView = ({
                   <span className="text-slate-500">Bill Barcode:</span>
                   <span className="font-bold text-slate-800">{pssSlipModalData.billBarcode}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Overall Status:</span>
-                  <span className="font-bold uppercase text-purple-700">{pssSlipModalData.status}</span>
-                </div>
+                {(() => {
+                  const allItemsCollected = (pssSlipModalData.items?.length > 0) && pssSlipModalData.items.every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+                  const displayStatus = (allItemsCollected || pssSlipModalData.status === 'CLOSED' || pssSlipModalData.status === 'COLLECTED')
+                    ? 'CLOSED'
+                    : (pssSlipModalData.status || 'PENDING');
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Overall Status:</span>
+                      <span className={`font-black uppercase px-2 py-0.5 rounded-lg text-[10px] border ${
+                        displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
+                        displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                        displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                        displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                        displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                        'bg-amber-100 text-amber-800 border-amber-200'
+                      }`}>
+                        {displayStatus.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="border border-slate-200 rounded-xl p-3 bg-white space-y-1">
@@ -1783,19 +1873,71 @@ export const BillingSalesView = ({
               </div>
 
               <div className="space-y-2">
-                <p className="font-bold uppercase text-[10px] text-slate-500 tracking-wider">Garments ({pssSlipModalData.items?.length || 0}):</p>
-                {(pssSlipModalData.items || []).map((it, i) => (
-                  <div key={i} className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 space-y-1">
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-900">{i + 1}. {it.name}</span>
-                      <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded text-[10px] uppercase">{it.serviceType}</span>
+                <div className="flex justify-between items-center">
+                  <p className="font-bold uppercase text-[10px] text-slate-500 tracking-wider">Garments ({pssSlipModalData.items?.length || 0}):</p>
+                  {(pssSlipModalData.items || []).filter(it => it.status !== 'COLLECTED').length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleCollectPSSItemFromSlip(null)}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition-all shadow-xs flex items-center gap-1"
+                      title="Mark all garments as collected by customer"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Collect All Items</span>
+                    </button>
+                  )}
+                </div>
+                {(pssSlipModalData.items || []).map((it, i) => {
+                  const isReady = it.status === 'READY';
+                  const isCollected = it.status === 'COLLECTED';
+                  return (
+                    <div key={i} className={`border rounded-xl p-2.5 space-y-1.5 transition-all ${
+                      isCollected ? 'bg-slate-50/80 border-slate-200' :
+                      isReady ? 'bg-emerald-50/70 border-emerald-300' :
+                      'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-bold text-slate-900">{i + 1}. {it.name}</span>
+                          <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded text-[9px] uppercase ml-2 inline-block">{it.serviceType}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {isCollected ? (
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 border border-slate-300 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>COLLECTED</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                isReady ? 'bg-emerald-600 text-white border-emerald-700' :
+                                it.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                'bg-amber-100 text-amber-800 border-amber-200'
+                              }`}>
+                                {(it.status || 'PENDING').replace(/_/g, ' ')}
+                              </span>
+                              {it._id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCollectPSSItemFromSlip(it._id)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                  title="Handover to customer & mark as collected"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Collect</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>Size: {it.size} | Color: {it.color} | Code: {it.barcode || 'N/A'}</span>
+                        <span className="font-semibold text-slate-700">Assigned: <b>{it.assignedTo || 'Pending'}</b></span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-slate-500 text-[11px]">
-                      <span>Size: {it.size} | Color: {it.color}</span>
-                      <span className="font-bold text-purple-700 uppercase">{it.status || 'PENDING'}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
@@ -1808,7 +1950,9 @@ export const BillingSalesView = ({
               <button
                 onClick={() => {
                   const d = pssSlipModalData;
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Priority:</b> ${d.priority}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Service:</b> ${it.serviceType}<br/><b>Status:</b> ${it.status || 'PENDING'}</div>`).join('')}<script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+                  const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span></div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo || 'Pending'}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

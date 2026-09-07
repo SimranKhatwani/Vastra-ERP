@@ -911,6 +911,7 @@ export const BillingPOSView = ({
 
   // Local Reactive Invoices State & Bill History Navigation
   const [invoiceList, setInvoiceList] = useState(invoices);
+  const setHistoryInvoices = setInvoiceList;
   const [historyViewIndex, setHistoryViewIndex] = useState(-1); // -1 = Active New Bill
 
 
@@ -1042,6 +1043,50 @@ export const BillingPOSView = ({
       }
     });
     return result;
+  };
+
+  // Helper to map PSSM records onto invoice/cart items
+  const matchAndTagPSSMOnItems = (itemsList = [], pssmData) => {
+    if (!pssmData || !pssmData.items) return itemsList;
+    const { pssm, items: pssItems } = pssmData;
+    return (itemsList || []).map(item => {
+      const pssMatch = (pssItems || []).find(pi =>
+        (pi.inventoryPieceId && item.inventoryPieceId && String(pi.inventoryPieceId) === String(item.inventoryPieceId)) ||
+        (pi.barcode && (pi.barcode === item.barcode || pi.barcode === item.uniqueCode || pi.barcode === item.barcodeNo)) ||
+        (pi.uniqueCode && (pi.uniqueCode === item.barcode || pi.uniqueCode === item.uniqueCode)) ||
+        (pi.productName && item.name && pi.productName.trim().toLowerCase() === item.name.trim().toLowerCase())
+      );
+      if (pssMatch) {
+        return {
+          ...item,
+          hasPSSM: true,
+          pssmNo: pssm.pssmNo,
+          pssmItemId: pssMatch._id,
+          pssmItemStatus: pssMatch.status || 'PENDING_ASSIGNMENT',
+          pssmServiceType: pssMatch.serviceType || 'Alteration',
+          pssmTailorName: pssMatch.assignedTo || pssm.tailorName || 'Assigned Tailor',
+          pssmBillBarcode: pssm.billBarcode || pssm.billNo || item.barcode,
+          pssmAlterationDetails: pssMatch.alterationDetails || [],
+          pssmRecord: pssm
+        };
+      }
+      return item;
+    });
+  };
+
+  const fetchAndEnrichPSSM = async (inv) => {
+    if (!inv) return null;
+    const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+    if (!barcodeToSearch) return null;
+    try {
+      const res = await api.get(`/pssm/barcode/${encodeURIComponent(barcodeToSearch)}`);
+      if (res.data?.success && res.data.data?.pssm) {
+        return res.data.data;
+      }
+    } catch (err) {
+      console.warn("Could not fetch PSSM for invoice:", err);
+    }
+    return null;
   };
 
   // New billing features states
@@ -1731,19 +1776,22 @@ export const BillingPOSView = ({
     }
   };
 
-  const handleCollectPSSItemFromSlip = async (itemId) => {
+  const handleCollectPSSItemFromSlip = async (itemId = null) => {
     if (!pssSlipData || !pssSlipData.billBarcode) return;
     try {
       const res = await api.post('/pssm/collection', {
         billBarcode: pssSlipData.billBarcode,
-        itemIds: [itemId]
+        itemIds: itemId ? [itemId] : []
       });
       if (res.data?.success && res.data.data?.pssm) {
         const pssm = res.data.data.pssm;
         const items = res.data.data.items || [];
-        setPssSlipData(prev => ({
-          ...prev,
-          status: pssm.status,
+        const allItemsCollected = items.length > 0 && items.every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+        const computedStatus = (allItemsCollected || pssm.status === 'CLOSED' || pssm.status === 'COLLECTED') ? 'CLOSED' : (pssm.status || 'PENDING');
+
+        const updatedSlip = {
+          ...pssSlipData,
+          status: computedStatus,
           items: items.map(it => ({
             _id: it._id,
             name: it.productName || it.pieceName,
@@ -1756,20 +1804,121 @@ export const BillingPOSView = ({
             alterationDetails: it.alterationDetails || [],
             instructions: it.instructions || ''
           }))
-        }));
+        };
+        setPssSlipData(updatedSlip);
+
+        // Update local invoice history in real-time
         setHistoryInvoices(prev => (prev || []).map(i => {
-          if (i.invoiceNo === pssSlipData.originalInvoiceNo || i.billBarcode === pssSlipData.billBarcode) {
+          const isMatch = (i.invoiceNo && (i.invoiceNo === pssSlipData.originalInvoiceNo || i.invoiceNo === pssSlipData.billBarcode)) ||
+                          (i.billNo && (i.billNo === pssSlipData.originalInvoiceNo || i.billNo === pssSlipData.billBarcode)) ||
+                          (i.billBarcode && (i.billBarcode === pssSlipData.billBarcode || i.billBarcode === pssSlipData.originalInvoiceNo)) ||
+                          (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipData.pssmNo));
+          if (isMatch) {
             return {
               ...i,
-              pssmStatus: pssm.status
+              pssmStatus: computedStatus,
+              pssmRecord: updatedSlip
             };
           }
           return i;
         }));
-        if (onAddNotification) onAddNotification("Item Collected", "Item marked as COLLECTED on PSS ticket.", "success");
+
+        if (onAddNotification) {
+          onAddNotification(
+            "Product Collected",
+            computedStatus === 'CLOSED'
+              ? `All garments collected! PSS docket status is now CLOSED.`
+              : `Product successfully marked as COLLECTED. Ticket status: ${computedStatus.replace(/_/g, ' ')}`,
+            "success"
+          );
+        }
       }
     } catch (err) {
       if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Collection failed.", "danger");
+    }
+  };
+
+  const handleCollectPSSItemDirectly = async (item, idx) => {
+    const billBarcode = item.pssmBillBarcode || loadedOriginalInvoice?.billBarcode || loadedOriginalInvoice?.invoiceNo || loadedOriginalInvoice?.billNo || item.barcode;
+    const itemId = item.pssmItemId;
+    if (!billBarcode) {
+      if (onAddNotification) onAddNotification("Collection Warning", "Bill barcode not found for this PSS item.", "warning");
+      return;
+    }
+
+    try {
+      const res = await api.post('/pssm/collection', {
+        billBarcode,
+        itemIds: itemId ? [itemId] : []
+      });
+
+      if (res.data?.success && res.data.data?.pssm) {
+        const pssm = res.data.data.pssm;
+        const returnedItems = res.data.data?.items || [];
+        const allCollected = returnedItems.length > 0 && returnedItems.every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+        const computedStatus = (allCollected || pssm.status === 'CLOSED' || pssm.status === 'COLLECTED') ? 'CLOSED' : (pssm.status || 'PENDING');
+
+        // 1. Update Cart state
+        setCart(prev => {
+          const next = [...prev];
+          if (next[idx]) {
+            next[idx] = {
+              ...next[idx],
+              pssmItemStatus: 'COLLECTED'
+            };
+          }
+          return next;
+        });
+
+        // 2. Update loadedOriginalInvoice
+        setLoadedOriginalInvoice(prev => {
+          if (!prev) return prev;
+          const updatedItems = (prev.items || []).map((it, i) => {
+            if (i === idx || (itemId && it.pssmItemId === itemId) || (it.barcode && it.barcode === item.barcode)) {
+              return { ...it, pssmItemStatus: 'COLLECTED' };
+            }
+            return it;
+          });
+          return {
+            ...prev,
+            items: updatedItems,
+            pssmRecord: { ...pssm, status: computedStatus }
+          };
+        });
+
+        // 3. Update invoiceList
+        if (typeof setInvoiceList === 'function') {
+          setInvoiceList(prev => (prev || []).map(i => {
+            const isMatch = (i.invoiceNo && (i.invoiceNo === billBarcode || i.invoiceNo === pssm.billNo)) ||
+                            (i.billNo && (i.billNo === billBarcode || i.billNo === pssm.billNo)) ||
+                            (i.billBarcode && (i.billBarcode === billBarcode || i.billBarcode === pssm.billBarcode)) ||
+                            (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === item.pssmNo));
+            if (isMatch) {
+              return {
+                ...i,
+                pssmStatus: computedStatus,
+                pssmRecord: { ...pssm, status: computedStatus }
+              };
+            }
+            return i;
+          }));
+        }
+
+        if (onAddNotification) {
+          onAddNotification(
+            "Product Collected",
+            computedStatus === 'CLOSED'
+              ? `All garments collected! PSS docket status is now CLOSED.`
+              : `${item.name} marked as COLLECTED.`,
+            "success"
+          );
+        }
+      } else {
+        if (onAddNotification) onAddNotification("Collection Failed", res.data?.message || "Failed to mark item as collected", "danger");
+      }
+    } catch (err) {
+      console.error("Direct collection failed:", err);
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to process collection", "danger");
     }
   };
 
@@ -4291,7 +4440,7 @@ export const BillingPOSView = ({
     if (!q) return;
 
     // Helper: Load full invoice details into POS Billing Window
-    const loadInvoiceIntoPOS = (invData) => {
+    const loadInvoiceIntoPOS = async (invData, preloadedPssm = null) => {
       const inv = invData.bill || invData.saleBill || invData;
       const rawItems = invData.items || inv.items || [];
       const cust = inv.customerId || inv.customer || {};
@@ -4325,7 +4474,7 @@ export const BillingPOSView = ({
       setCustomerSearchQuery(custPhone || custName || '');
 
       // 2. Populate Billing Grid with all original items
-      const formattedItems = rawItems.map((item, idx) => {
+      let formattedItems = rawItems.map((item, idx) => {
         const piece = item.inventoryPieceId || item.piece || {};
         let prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
         
@@ -4401,24 +4550,72 @@ export const BillingPOSView = ({
         };
       });
 
+      // 3. Check and Enrich with PSSM details
+      let pssmData = preloadedPssm;
+      if (!pssmData) {
+        const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+        if (barcodeToSearch) {
+          try {
+            const pssRes = await api.get(`/pssm/barcode/${encodeURIComponent(barcodeToSearch)}`);
+            if (pssRes.data?.success && pssRes.data.data?.pssm) {
+              pssmData = pssRes.data.data;
+            }
+          } catch (e) {
+            console.warn("Could not load PSSM in loadInvoiceIntoPOS:", e);
+          }
+        }
+      }
+
+      if (pssmData) {
+        formattedItems = matchAndTagPSSMOnItems(formattedItems, pssmData);
+      }
+
       setCart(formattedItems);
       const unifiedInv = {
         ...inv,
         items: formattedItems,
         customerName: custName,
         customerPhone: custPhone,
-        invoiceNo: inv.billNo || inv.invoiceNo
+        invoiceNo: inv.billNo || inv.invoiceNo,
+        pssmRecord: pssmData?.pssm || inv.pssmRecord || null
       };
       setLoadedOriginalInvoice(unifiedInv);
       if (typeof clearInputFn === 'function') clearInputFn("");
       if (onAddNotification) {
         onAddNotification(
           "Original Bill Loaded",
-          `Loaded Invoice ${inv.billNo || inv.invoiceNo} (${formattedItems.length} item${formattedItems.length === 1 ? '' : 's'})`,
+          `Loaded Invoice ${inv.billNo || inv.invoiceNo} (${formattedItems.length} item${formattedItems.length === 1 ? '' : 's'})${pssmData ? ' • PSSM Linked' : ''}`,
           "success"
         );
       }
     };
+
+    // 0. Check if scanned value is a PSSM Barcode / Docket (e.g. starts with PSSM- or PSS-)
+    const isExplicitPssmPattern = /^pssm-|^pss-/i.test(q);
+    if (isExplicitPssmPattern) {
+      try {
+        const pssRes = await api.get(`/pssm/barcode/${encodeURIComponent(q)}`);
+        if (pssRes.data?.success && pssRes.data.data?.pssm) {
+          const pssm = pssRes.data.data.pssm;
+          const targetBill = pssm.billNo || pssm.billBarcode;
+          if (targetBill) {
+            try {
+              const billRes = await api.get(`/billing/${encodeURIComponent(targetBill)}`);
+              if (billRes.data?.success && billRes.data.data) {
+                await loadInvoiceIntoPOS(billRes.data.data, pssRes.data.data);
+                return;
+              }
+            } catch (err) {
+              const localBill = (invoices || []).find(inv => (inv.invoiceNo || inv.billNo || '').toLowerCase() === targetBill.toLowerCase());
+              if (localBill) {
+                await loadInvoiceIntoPOS(localBill, pssRes.data.data);
+                return;
+              }
+            }
+          }
+        }
+      } catch (err) {}
+    }
 
     // 1. Check if scanned value is a Bill Barcode (e.g. starts with INV- or BILL-)
     const isExplicitBillPattern = /^inv-|^bill-/i.test(q);
@@ -4426,14 +4623,14 @@ export const BillingPOSView = ({
       try {
         const billRes = await api.get(`/billing/${encodeURIComponent(q)}`);
         if (billRes.data?.success && billRes.data.data) {
-          loadInvoiceIntoPOS(billRes.data.data);
+          await loadInvoiceIntoPOS(billRes.data.data);
           return;
         }
       } catch (err) {
         // Check in-memory invoices fallback
         const localBill = (invoices || []).find(inv => (inv.invoiceNo || inv.billNo || '').toLowerCase() === q.toLowerCase());
         if (localBill) {
-          loadInvoiceIntoPOS(localBill);
+          await loadInvoiceIntoPOS(localBill);
           return;
         }
         if (onAddNotification) onAddNotification("Invoice Not Found", `No invoice found for "${q}"`, "danger");
@@ -4972,6 +5169,15 @@ export const BillingPOSView = ({
                     >
                       <Scissors className="w-3 h-3" /> Alteration (Alt+A)
                     </button>
+                    {(loadedOriginalInvoice.pssmRecord || cart.some(i => i.hasPSSM || i.pssmNo)) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPSSSlipFromInvoice(loadedOriginalInvoice)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black px-2.5 py-1 rounded shadow-xs cursor-pointer flex items-center gap-1 uppercase tracking-wider"
+                      >
+                        <FileText className="w-3 h-3" /> PSS Slip ({cart.find(i => i.pssmNo)?.pssmNo || loadedOriginalInvoice.pssmRecord?.pssmNo})
+                      </button>
+                    )}
                     {cart.some(i => i.hasAlteration) && (
                       <button
                         type="button"
@@ -5912,6 +6118,9 @@ export const BillingPOSView = ({
                 ) : (
                   cart.map((item, idx) => {
                     const hasAlt = !!(item.hasAlteration || item.alterationRecord);
+                    const hasPSSM = !!(item.hasPSSM || item.pssmRecord || item.pssmNo);
+                    const pssStatus = item.pssmItemStatus || item.pssmRecord?.status || 'PENDING_ASSIGNMENT';
+                    const isCollected = pssStatus === 'COLLECTED' || pssStatus === 'CLOSED';
                     const isFocused = isAlterationModeActive && focusedAlterationIndex === idx;
                     const barcodeText = item.barcode || item.barcodeNo || item.uniqueCode || item.itemCode || 'N/A';
 
@@ -5938,11 +6147,17 @@ export const BillingPOSView = ({
                       }
                     };
 
-                    const cardStyle = hasAlt
-                      ? 'bg-emerald-50 border-2 border-emerald-500 ring-2 ring-emerald-400/40 shadow-sm'
-                      : (isFocused
-                        ? 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md'
-                        : 'bg-white border border-slate-300 hover:border-slate-400');
+                    const cardStyle = hasPSSM
+                      ? (isCollected
+                        ? 'bg-emerald-50/80 border-2 border-emerald-500 shadow-sm'
+                        : pssStatus === 'READY'
+                          ? 'bg-blue-50/80 border-2 border-blue-500 ring-2 ring-blue-400/30 shadow-sm'
+                          : 'bg-purple-50/80 border-2 border-purple-400 ring-2 ring-purple-400/20 shadow-sm')
+                      : (hasAlt
+                        ? 'bg-emerald-50 border-2 border-emerald-500 ring-2 ring-emerald-400/40 shadow-sm'
+                        : (isFocused
+                          ? 'bg-indigo-50/90 border-2 border-indigo-600 ring-2 ring-indigo-500/30 shadow-md'
+                          : 'bg-white border border-slate-300 hover:border-slate-400'));
 
                     return (
                       <div
@@ -5966,16 +6181,18 @@ export const BillingPOSView = ({
                               e.stopPropagation();
                               handleToggleAlterationMark();
                             }}
-                            className={`w-4 h-4 rounded mt-0.5 shrink-0 flex items-center justify-center transition-all cursor-pointer ${hasAlt
-                              ? 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-xs'
-                              : 'bg-white border-2 border-slate-400 hover:border-emerald-500'
+                            className={`w-4 h-4 rounded mt-0.5 shrink-0 flex items-center justify-center transition-all cursor-pointer ${hasPSSM
+                              ? (isCollected ? 'bg-emerald-600 border-2 border-emerald-600 text-white' : 'bg-purple-600 border-2 border-purple-600 text-white')
+                              : (hasAlt
+                                ? 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-xs'
+                                : 'bg-white border-2 border-slate-400 hover:border-emerald-500')
                               }`}
                           >
-                            {hasAlt && <Check className="w-3 h-3 text-white stroke-[3.5]" />}
+                            {(hasAlt || hasPSSM) && <Check className="w-3 h-3 text-white stroke-[3.5]" />}
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className={`font-bold truncate text-[10px] ${hasAlt ? 'text-emerald-950 font-extrabold' : (isFocused ? 'text-indigo-950 font-extrabold' : 'text-slate-800')}`} title={item.name}>
+                            <div className={`font-bold truncate text-[10px] ${hasPSSM ? (isCollected ? 'text-emerald-950 font-black' : 'text-purple-950 font-black') : (hasAlt ? 'text-emerald-950 font-extrabold' : (isFocused ? 'text-indigo-950 font-extrabold' : 'text-slate-800'))}`} title={item.name}>
                               {item.name}
                             </div>
                             <div className="text-[9.5px] font-mono text-slate-700 font-bold mt-0.5 truncate" title={`Barcode: ${barcodeText}`}>
@@ -5984,7 +6201,50 @@ export const BillingPOSView = ({
                             <div className="text-[9px] text-slate-500 font-mono">
                               Sz: {item.size || 'M'} | Col: {item.color || 'Std'} | Qty: {item.quantity}
                             </div>
-                            {hasAlt ? (
+
+                            {/* PSSM Service Details & Status */}
+                            {hasPSSM ? (
+                              <div className="mt-1 bg-white/95 border border-purple-200/90 rounded p-1 text-[9px] font-mono text-purple-900 space-y-0.5 shadow-2xs">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-bold text-purple-800 truncate text-[8.5px]">
+                                    PSS: {item.pssmNo || item.pssmRecord?.pssmNo}
+                                  </span>
+                                  <span className={`px-1 py-0.2 rounded font-black text-[7.5px] shrink-0 uppercase tracking-wider ${
+                                    isCollected
+                                      ? 'bg-emerald-600 text-white'
+                                      : pssStatus === 'READY'
+                                        ? 'bg-blue-600 text-white animate-pulse'
+                                        : 'bg-amber-500 text-white'
+                                  }`}>
+                                    {isCollected ? 'COLLECTED' : pssStatus === 'READY' ? 'READY' : (pssStatus === 'IN_PROGRESS' ? 'IN PROGRESS' : (pssStatus || 'IN PROGRESS'))}
+                                  </span>
+                                </div>
+                                <div className="text-[8px] text-slate-600 truncate">
+                                  {item.pssmServiceType || 'Alteration'} • {item.pssmTailorName || 'Tailor'}
+                                </div>
+
+                                {/* Direct Collection Button from Billing Window */}
+                                {!isCollected ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCollectPSSItemDirectly(item, idx);
+                                    }}
+                                    className="mt-1 w-full py-1 px-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[8.5px] rounded shadow-xs flex items-center justify-center gap-1 uppercase tracking-wider transition-all cursor-pointer"
+                                    title="Collect garment directly from billing window"
+                                  >
+                                    <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                    <span>Collect Product</span>
+                                  </button>
+                                ) : (
+                                  <div className="mt-0.5 w-full py-0.5 px-1 bg-emerald-100/90 border border-emerald-300 text-emerald-800 font-black text-[8px] rounded flex items-center justify-center gap-1 uppercase tracking-wider">
+                                    <Check className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" />
+                                    <span>Collected</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : hasAlt ? (
                               <div className="text-[9px] text-emerald-700 font-extrabold mt-0.5 flex items-center gap-0.5">
                                 <span>✔ Marked for Alteration</span>
                               </div>
@@ -6051,7 +6311,7 @@ export const BillingPOSView = ({
                   <th className="p-3">Total Cost</th>
                   <th className="p-3">Pay Mode</th>
                   <th className="p-3">WhatsApp</th>
-                  <th className="p-3">Actions</th>
+                  <th className="p-3 whitespace-nowrap min-w-[270px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
@@ -6084,35 +6344,45 @@ export const BillingPOSView = ({
                           </div>
 
                           {/* LINKED PSS TICKET & STATUS */}
-                          {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
-                            <div className="bg-purple-50/90 border border-purple-200/90 rounded-lg p-2 space-y-1 text-left">
-                              <div className="flex items-center gap-1.5 text-[11px]">
-                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Ticket:</span>
-                                <span className="font-mono font-extrabold text-purple-800">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                          {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (() => {
+                            const pssRecordItems = inv.pssmRecord?.items || [];
+                            const allItemsCollected = pssRecordItems.length > 0 && pssRecordItems.every(i => i.status === 'COLLECTED' || i.status === 'CLOSED');
+                            const rawStatus = inv.pssmStatus || inv.pssmRecord?.status;
+                            const displayStatus = (allItemsCollected || rawStatus === 'CLOSED' || rawStatus === 'COLLECTED')
+                              ? 'CLOSED'
+                              : (rawStatus || 'PENDING');
+                            return (
+                              <div className="bg-purple-50/90 border border-purple-200/90 rounded-lg p-2 space-y-1 text-left">
+                                <div className="flex items-center gap-1.5 text-[11px]">
+                                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Ticket:</span>
+                                  <span className="font-mono font-extrabold text-purple-800">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[11px]">
+                                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
+                                  <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${
+                                    displayStatus === 'CLOSED'
+                                      ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
+                                      : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : displayStatus === 'PARTIALLY_COLLECTED'
+                                      ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                      : displayStatus === 'PARTIALLY_READY'
+                                      ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                      : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
+                                      ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                                  }`}>
+                                    {displayStatus.replace(/_/g, ' ')}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1.5 text-[11px]">
-                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
-                                <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${
-                                  (inv.pssmStatus || inv.pssmRecord?.status) === 'READY_FOR_DELIVERY' || (inv.pssmStatus || inv.pssmRecord?.status) === 'READY'
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'PARTIALLY_READY'
-                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'CLOSED'
-                                    ? 'bg-slate-200 text-slate-700 border-slate-300'
-                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'IN_PROGRESS'
-                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                    : 'bg-purple-100 text-purple-800 border-purple-300'
-                                }`}>
-                                  {(inv.pssmStatus || inv.pssmRecord?.status || 'PENDING').replace(/_/g, ' ')}
-                                </span>
-                              </div>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="p-3">{inv.date ? new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
                       <td className="p-3 font-medium text-slate-800">
-                        {inv.customerName}
+                        {inv.customerName || inv.customerId?.name || inv.pssmRecord?.customerName || "Walk-in"}
                       </td>
                       <td className="p-3 font-mono">
                         {(inv.items || []).reduce(
@@ -6152,13 +6422,13 @@ export const BillingPOSView = ({
                           </span>
                         )}
                       </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                      <td className="p-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                           {/* SEPARATE BUTTON 1: VIEW ORIGINAL INVOICE */}
                           <button
                             type="button"
                             onClick={() => handleDownloadReceiptHTML(inv)}
-                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-indigo-200 transition-colors shadow-2xs"
+                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-indigo-200 transition-colors shadow-2xs shrink-0"
                             title="View / Print Original Invoice"
                           >
                             <FileText className="w-3 h-3 text-indigo-600" />
@@ -6170,7 +6440,7 @@ export const BillingPOSView = ({
                             <button
                               type="button"
                               onClick={() => handleOpenPSSSlipFromInvoice(inv)}
-                              className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-purple-200 transition-colors shadow-2xs"
+                              className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-purple-200 transition-colors shadow-2xs shrink-0"
                               title="View / Print Separate PSS Slip"
                             >
                               <Tag className="w-3 h-3 text-purple-600" />
@@ -6212,7 +6482,7 @@ export const BillingPOSView = ({
                               setEditPayMethodModal({ inv });
                               setEditPayMethodValue(inv.paymentMethod || "Cash");
                             }}
-                            className="text-amber-500 hover:text-amber-700 p-1 rounded hover:bg-amber-50 cursor-pointer transition-colors"
+                            className="text-amber-500 hover:text-amber-700 p-1 rounded hover:bg-amber-50 cursor-pointer transition-colors shrink-0"
                             title="Edit Payment Method"
                           >
                             <Pencil className="w-4 h-4" />
@@ -6234,7 +6504,7 @@ export const BillingPOSView = ({
                                 }
                               }
                             }}
-                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 cursor-pointer transition-colors"
+                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 cursor-pointer transition-colors shrink-0"
                             title="Delete Invoice"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -6351,6 +6621,21 @@ export const BillingPOSView = ({
                           items: unrollInvoiceItems(inv.items)
                         };
                         setSelectedInvoiceForReturn(unrolledInv);
+                        const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+                        if (barcodeToSearch) {
+                          fetchAndEnrichPSSM(inv).then(pssmData => {
+                            if (pssmData) {
+                              setSelectedInvoiceForReturn(prev => {
+                                if (!prev) return prev;
+                                return {
+                                  ...prev,
+                                  items: matchAndTagPSSMOnItems(prev.items, pssmData),
+                                  pssmRecord: pssmData.pssm
+                                };
+                              });
+                            }
+                          }).catch(() => {});
+                        }
                         setReturnSearchQuery("");
                         setReturnedItemIds([]);
                         setExchangeSelectedNewProduct(null);
@@ -6549,11 +6834,15 @@ export const BillingPOSView = ({
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
-                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord || item.hasPSSM || !!item.pssmRecord || item.pssmNo)) {
+                                          const isPSS = !!(item.hasPSSM || item.pssmRecord || item.pssmNo);
+                                          const pssStatus = item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS';
                                           setReturnWarning({
                                             show: true,
-                                            title: "Alteration Detected",
-                                            message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
+                                            title: isPSS ? "PSSM Service Detected" : "Alteration Detected",
+                                            message: isPSS
+                                              ? `This item has been submitted for PSSM (${item.pssmNo || item.pssmRecord?.pssmNo || 'Tailoring/Alteration'}). Garments currently or previously in PSSM require manager authorization before processing returns. Current Status: ${pssStatus}.`
+                                              : "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
                                           });
                                         }
                                         const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
@@ -6585,6 +6874,25 @@ export const BillingPOSView = ({
                                           <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                                           <span>
                                             <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {!!(item.hasPSSM || item.pssmRecord || item.pssmNo) && (
+                                        <div className="mt-1.5 bg-purple-50 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-mono text-purple-900 flex items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Scissors className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                            <span>
+                                              <strong>PSSM:</strong> {item.pssmNo || item.pssmRecord?.pssmNo} {item.pssmServiceType ? `(${item.pssmServiceType})` : ''} | Tailor: {item.pssmTailorName || item.pssmRecord?.tailorName || 'Assigned'}
+                                            </span>
+                                          </div>
+                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
+                                            (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
                                           </span>
                                         </div>
                                       )}
@@ -6863,11 +7171,15 @@ export const BillingPOSView = ({
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
-                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord || item.hasPSSM || !!item.pssmRecord || item.pssmNo)) {
+                                          const isPSS = !!(item.hasPSSM || item.pssmRecord || item.pssmNo);
+                                          const pssStatus = item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS';
                                           setReturnWarning({
                                             show: true,
-                                            title: "Alteration Detected",
-                                            message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                                            title: isPSS ? "PSSM Service Detected" : "Alteration Detected",
+                                            message: isPSS
+                                              ? `This item has been submitted for PSSM (${item.pssmNo || item.pssmRecord?.pssmNo || 'Tailoring/Alteration'}). Garments currently or previously in PSSM require manager authorization before processing exchanges. Current Status: ${pssStatus}.`
+                                              : "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
                                           });
                                         }
                                         setReturnedItemIds((prev) =>
@@ -6888,6 +7200,33 @@ export const BillingPOSView = ({
                                       <p className="text-[10px] text-slate-400 font-mono">
                                         Size: {item.size || 'M'} / Color: {item.color || 'Std'}
                                       </p>
+                                      {!!(item.hasAlteration || item.alterationRecord) && (
+                                        <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
+                                          <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                          <span>
+                                            <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {!!(item.hasPSSM || item.pssmRecord || item.pssmNo) && (
+                                        <div className="mt-1.5 bg-purple-50 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-mono text-purple-900 flex items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Scissors className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                            <span>
+                                              <strong>PSSM:</strong> {item.pssmNo || item.pssmRecord?.pssmNo} {item.pssmServiceType ? `(${item.pssmServiceType})` : ''} | Tailor: {item.pssmTailorName || item.pssmRecord?.tailorName || 'Assigned'}
+                                            </span>
+                                          </div>
+                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
+                                            (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <span className="font-mono font-bold text-slate-600 text-xs">
@@ -10981,16 +11320,27 @@ export const BillingPOSView = ({
                   </div>
                 )}
                 {/* Overall PSS Status */}
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
-                  <span className={`font-black uppercase px-2.5 py-1 rounded-lg text-xs border ${
-                    pssSlipData.status === 'READY_FOR_DELIVERY' || pssSlipData.status === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                    pssSlipData.status === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                    pssSlipData.status === 'CLOSED' ? 'bg-slate-200 text-slate-700 border-slate-300' :
-                    pssSlipData.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                    'bg-purple-100 text-purple-800 border-purple-300'
-                  }`}>{(pssSlipData.status || 'PENDING').replace(/_/g, ' ')}</span>
-                </div>
+                {(() => {
+                  const allItemsCollected = (pssSlipData.items?.length > 0) && pssSlipData.items.every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+                  const displayStatus = (allItemsCollected || pssSlipData.status === 'CLOSED' || pssSlipData.status === 'COLLECTED')
+                    ? 'CLOSED'
+                    : (pssSlipData.status || 'PENDING');
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
+                      <span className={`font-black uppercase px-2.5 py-1 rounded-lg text-xs border ${
+                        displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
+                        displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                        displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                        displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                        displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                        'bg-amber-100 text-amber-800 border-amber-200'
+                      }`}>
+                        {displayStatus.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Customer Info */}
@@ -11001,13 +11351,26 @@ export const BillingPOSView = ({
 
               {/* Items */}
               <div className="space-y-2">
-                <p className="text-[11px] font-black uppercase text-slate-600 tracking-wider">{pssSlipData.items?.length} Garment(s) for Service</p>
+                <div className="flex justify-between items-center">
+                  <p className="text-[11px] font-black uppercase text-slate-600 tracking-wider">{pssSlipData.items?.length} Garment(s) for Service</p>
+                  {(pssSlipData.items || []).filter(it => it.status !== 'COLLECTED').length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleCollectPSSItemFromSlip(null)}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition-all shadow-xs flex items-center gap-1"
+                      title="Mark all garments as collected by customer"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Collect All Items</span>
+                    </button>
+                  )}
+                </div>
                 {(pssSlipData.items || []).map((itm, idx) => {
                   const isReady = itm.status === 'READY';
                   const isCollected = itm.status === 'COLLECTED';
                   return (
                     <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${
-                      isCollected ? 'bg-slate-50 border-slate-200 opacity-60' :
+                      isCollected ? 'bg-slate-50/80 border-slate-200' :
                       isReady ? 'bg-emerald-50/70 border-emerald-300' :
                       'bg-white border-slate-200'
                     }`}>
@@ -11017,25 +11380,32 @@ export const BillingPOSView = ({
                           <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase mt-0.5 inline-block">{itm.serviceType}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                            isCollected ? 'bg-slate-200 text-slate-700 border-slate-300' :
-                            isReady ? 'bg-emerald-600 text-white border-emerald-700' :
-                            itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
-                            'bg-amber-100 text-amber-800 border-amber-200'
-                          }`}>
-                            {(itm.status || 'PENDING').replace(/_/g, ' ')}
-                          </span>
-
-                          {/* Quick Collect button if item is READY */}
-                          {!isCollected && isReady && itm._id && (
-                            <button
-                              type="button"
-                              onClick={() => handleCollectPSSItemFromSlip(itm._id)}
-                              className="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold cursor-pointer transition-colors shadow-2xs"
-                              title="Mark as Collected by Customer"
-                            >
-                              Collect
-                            </button>
+                          {isCollected ? (
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 border border-slate-300 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>COLLECTED</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                isReady ? 'bg-emerald-600 text-white border-emerald-700' :
+                                itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                'bg-amber-100 text-amber-800 border-amber-200'
+                              }`}>
+                                {(itm.status || 'PENDING').replace(/_/g, ' ')}
+                              </span>
+                              {itm._id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCollectPSSItemFromSlip(itm._id)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                  title="Handover to customer & mark as collected"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Collect</span>
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -11065,7 +11435,9 @@ export const BillingPOSView = ({
               <button
                 onClick={() => {
                   const d = pssSlipData;
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
+                  const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}
@@ -11261,11 +11633,15 @@ export const BillingPOSView = ({
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
-                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord || item.hasPSSM || !!item.pssmRecord || item.pssmNo)) {
+                                          const isPSS = !!(item.hasPSSM || item.pssmRecord || item.pssmNo);
+                                          const pssStatus = item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS';
                                           setReturnWarning({
                                             show: true,
-                                            title: "Alteration Detected",
-                                            message: "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
+                                            title: isPSS ? "PSSM Service Detected" : "Alteration Detected",
+                                            message: isPSS
+                                              ? `This item has been submitted for PSSM (${item.pssmNo || item.pssmRecord?.pssmNo || 'Tailoring/Alteration'}). Garments currently or previously in PSSM require manager authorization before processing returns. Current Status: ${pssStatus}.`
+                                              : "This item has been previously altered. By default, altered garments cannot be returned. Please consult the store owner for approval before proceeding."
                                           });
                                         }
                                         const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
@@ -11297,6 +11673,25 @@ export const BillingPOSView = ({
                                           <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                                           <span>
                                             <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {!!(item.hasPSSM || item.pssmRecord || item.pssmNo) && (
+                                        <div className="mt-1.5 bg-purple-50 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-mono text-purple-900 flex items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Scissors className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                            <span>
+                                              <strong>PSSM:</strong> {item.pssmNo || item.pssmRecord?.pssmNo} {item.pssmServiceType ? `(${item.pssmServiceType})` : ''} | Tailor: {item.pssmTailorName || item.pssmRecord?.tailorName || 'Assigned'}
+                                            </span>
+                                          </div>
+                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
+                                            (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
                                           </span>
                                         </div>
                                       )}
@@ -11583,11 +11978,15 @@ export const BillingPOSView = ({
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
-                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord)) {
+                                        if (!isChecked && (item.hasAlteration || !!item.alterationRecord || item.hasPSSM || !!item.pssmRecord || item.pssmNo)) {
+                                          const isPSS = !!(item.hasPSSM || item.pssmRecord || item.pssmNo);
+                                          const pssStatus = item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS';
                                           setReturnWarning({
                                             show: true,
-                                            title: "Alteration Detected",
-                                            message: "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
+                                            title: isPSS ? "PSSM Service Detected" : "Alteration Detected",
+                                            message: isPSS
+                                              ? `This item has been submitted for PSSM (${item.pssmNo || item.pssmRecord?.pssmNo || 'Tailoring/Alteration'}). Garments currently or previously in PSSM require manager authorization before processing exchanges. Current Status: ${pssStatus}.`
+                                              : "This item has been previously altered. By default, altered garments cannot be exchanged. Please consult the store owner for approval before proceeding."
                                           });
                                         }
                                         setReturnedItemIds((prev) =>
@@ -11608,6 +12007,33 @@ export const BillingPOSView = ({
                                       <p className="text-[10px] text-slate-400 font-mono">
                                         Size: {item.size || 'M'} / Color: {item.color || 'Std'}
                                       </p>
+                                      {!!(item.hasAlteration || item.alterationRecord) && (
+                                        <div className="mt-1.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg text-[10px] font-mono text-amber-900 flex items-center gap-1.5">
+                                          <Scissors className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                          <span>
+                                            <strong>Alteration:</strong> {item.alterationRecord?.garmentType || 'Custom'} fit | Tailor: {item.alterationRecord?.tailorName || item.workerName || 'Master Tailor'} | Delivery: {item.alterationRecord?.deliveryDate ? new Date(item.alterationRecord.deliveryDate).toLocaleDateString('en-IN') : 'Scheduled'}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {!!(item.hasPSSM || item.pssmRecord || item.pssmNo) && (
+                                        <div className="mt-1.5 bg-purple-50 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-mono text-purple-900 flex items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Scissors className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                            <span>
+                                              <strong>PSSM:</strong> {item.pssmNo || item.pssmRecord?.pssmNo} {item.pssmServiceType ? `(${item.pssmServiceType})` : ''} | Tailor: {item.pssmTailorName || item.pssmRecord?.tailorName || 'Assigned'}
+                                            </span>
+                                          </div>
+                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
+                                            (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <span className="font-mono font-bold text-slate-600 text-xs">

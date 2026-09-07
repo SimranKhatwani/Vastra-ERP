@@ -271,25 +271,48 @@ class AlterationService {
   }
 
   static async updateStatus(alterationId, status, userId, tenantId) {
-    const alteration = await Alteration.findOne({ _id: alterationId, tenantId });
-    if (!alteration) throw new ApiError(404, 'Alteration record not found.');
+    let alteration = await Alteration.findOne({ _id: alterationId, tenantId });
+    if (alteration) {
+      alteration.status = status;
+      alteration.updatedBy = userId;
+      await alteration.save();
 
-    alteration.status = status;
-    alteration.updatedBy = userId;
-    await alteration.save();
-
-    if (status === ALTERATION_STATUS.DELIVERED) {
-      const items = await AlterationItem.find({ alterationId, tenantId });
-      for (const item of items) {
-        const piece = await InventoryPiece.findById(item.inventoryPieceId);
-        if (piece) {
-          piece.currentLocation = 'DELIVERED_TO_CUSTOMER';
-          await piece.save();
+      if (status === ALTERATION_STATUS.DELIVERED) {
+        const items = await AlterationItem.find({ alterationId, tenantId });
+        for (const item of items) {
+          const piece = await InventoryPiece.findById(item.inventoryPieceId);
+          if (piece) {
+            piece.currentLocation = 'DELIVERED_TO_CUSTOMER';
+            await piece.save();
+          }
         }
       }
+      return alteration;
     }
 
-    return alteration;
+    // Support PSSMItem updates seamlessly from ArticulationView
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+    const PSSMService = require('./pssm.service');
+    const pssmItem = await PSSMItem.findOne({ _id: alterationId, tenantId });
+    if (pssmItem) {
+      let nextPssmStatus = 'IN_PROGRESS';
+      if (status === 'Pending' || status === 'PENDING_ASSIGNMENT') {
+        nextPssmStatus = 'PENDING_ASSIGNMENT';
+      } else if (status === 'In Progress' || status === 'Assigned' || status === 'IN_PROGRESS' || status === 'ASSIGNED') {
+        nextPssmStatus = 'IN_PROGRESS';
+      } else if (status === 'Ready for Delivery' || status === 'Ready for Trial' || status === 'READY' || status === 'COMPLETED') {
+        nextPssmStatus = 'READY';
+      } else if (status === 'Delivered' || status === 'COLLECTED' || status === 'DELIVERED') {
+        nextPssmStatus = 'COLLECTED';
+      } else if (status === 'Cancelled' || status === 'CLOSED') {
+        nextPssmStatus = 'CLOSED';
+      }
+
+      await PSSMService.updateItemStatus(pssmItem._id, nextPssmStatus, pssmItem.measurements, pssmItem.alterationDetails, userId, tenantId);
+      return { _id: pssmItem._id, status };
+    }
+
+    throw new ApiError(404, 'Alteration record not found.');
   }
 
   static async getAlterations(query = {}, tenantId) {
@@ -299,7 +322,7 @@ class AlterationService {
     if (query.search) filter.alterationNo = new RegExp(query.search, 'i');
 
     const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 50;
+    const limit = parseInt(query.limit) || 100;
     const skip = (page - 1) * limit;
 
     const alterations = await Alteration.find(filter)
@@ -372,13 +395,118 @@ class AlterationService {
       };
     });
 
+    // Also include active & recent PSSM items (Post-Sales Service records)
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+    const existingTicketNumbers = new Set(alterations.map(a => a.alterationNo));
+
+    const pssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true } })
+      .populate({
+        path: 'pssmId',
+        populate: { path: 'customerId saleBillId' }
+      })
+      .populate({
+        path: 'inventoryPieceId',
+        populate: { path: 'productId' }
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formattedPssm = pssmItems
+      .filter(pi => pi.pssmId && !existingTicketNumbers.has(pi.pssmId.pssmNo))
+      .map(pi => {
+        const pssm = pi.pssmId || {};
+        const custName = pssm.customerName || (pssm.customerId?.name) || 'Walk-in Customer';
+        const custPhone = pssm.customerPhone || (pssm.customerId?.phone) || '';
+        const invNo = pssm.billNo || pssm.billBarcode || (pssm.saleBillId ? (pssm.saleBillId.billNo || pssm.saleBillId.invoiceNo) : '');
+        const invId = pssm.saleBillId?._id || invNo;
+
+        let displayStatus = 'Pending';
+        if (pi.status === 'ASSIGNED' || pi.status === 'IN_PROGRESS') {
+          displayStatus = 'In Progress';
+        } else if (pi.status === 'READY' || pi.status === 'READY_FOR_DELIVERY') {
+          displayStatus = 'Ready for Delivery';
+        } else if (pi.status === 'COLLECTED' || pi.status === 'CLOSED') {
+          displayStatus = 'Delivered';
+        } else if (pi.status === 'PENDING_ASSIGNMENT') {
+          displayStatus = 'Pending';
+        } else if (pi.status) {
+          displayStatus = pi.status;
+        }
+
+        const altDetails = (Array.isArray(pi.alterationDetails) && pi.alterationDetails.length > 0)
+          ? pi.alterationDetails
+          : (pi.serviceType ? [pi.serviceType] : ['Standard Service']);
+
+        return {
+          _id: pi._id,
+          alterationId: pssm.pssmNo,
+          invoiceNumber: invNo,
+          invoiceId: invId,
+          saleBillId: pssm.saleBillId?._id || pssm.saleBillId || null,
+          saleBill: pssm.saleBillId || null,
+          customerName: custName,
+          customerPhone: custPhone,
+          productName: pi.productName || pi.pieceName || 'Garment Item',
+          barcode: pi.barcode || pi.uniqueCode || '',
+          uniqueCode: pi.uniqueCode || pi.barcode || '',
+          sku: pi.sku || pi.barcode || '',
+          size: pi.size || 'FS',
+          color: pi.color || 'Standard',
+          tailorName: pi.assignedTo || pssm.tailorName || 'Master Tailor',
+          priority: pi.priority === 'DELIVERY' || pssm.priority === 'DELIVERY' ? 'Urgent' : (pi.priority || pssm.priority || 'Normal'),
+          status: displayStatus,
+          rawStatus: pi.status,
+          deliveryDate: pssm.expectedDeliveryDate ? new Date(pssm.expectedDeliveryDate).toISOString().split('T')[0] : '',
+          trialDate: pssm.trialDate ? new Date(pssm.trialDate).toISOString().split('T')[0] : '',
+          alterationDetails: altDetails,
+          serviceType: pi.serviceType || altDetails.join(' + '),
+          measurements: pi.measurements || {},
+          specialInstructions: pi.instructions || '',
+          customAlterationText: pi.instructions || '',
+          totalCharges: pi.charge || pssm.totalCharges || 0,
+          items: [{
+            _id: pi._id,
+            barcode: pi.barcode || pi.uniqueCode,
+            pieceName: pi.pieceName || pi.productName,
+            instructions: pi.instructions,
+            alterationDetails: altDetails,
+            measurements: pi.measurements,
+            charge: pi.charge || 0
+          }],
+          isPssm: true,
+          pssmItemId: pi._id,
+          pssmId: pssm._id,
+          createdAt: pi.createdAt,
+          createdBy: pi.createdBy
+        };
+      })
+      .filter(record => {
+        if (query.status && record.status !== query.status && record.rawStatus !== query.status) return false;
+        if (query.tailorName && !new RegExp(query.tailorName, 'i').test(record.tailorName)) return false;
+        if (query.search) {
+          const s = query.search.toLowerCase();
+          const matches = (record.alterationId && record.alterationId.toLowerCase().includes(s)) ||
+            (record.invoiceNumber && record.invoiceNumber.toLowerCase().includes(s)) ||
+            (record.customerName && record.customerName.toLowerCase().includes(s)) ||
+            (record.customerPhone && record.customerPhone.includes(s)) ||
+            (record.productName && record.productName.toLowerCase().includes(s)) ||
+            (record.barcode && record.barcode.toLowerCase().includes(s));
+          if (!matches) return false;
+        }
+        return true;
+      });
+
+    const combined = [...formattedAlterations, ...formattedPssm].sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
     return {
-      alterations: formattedAlterations,
+      alterations: combined,
       pagination: {
-        total,
+        total: total + formattedPssm.length,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil((total + formattedPssm.length) / limit)
       }
     };
   }
@@ -386,12 +514,37 @@ class AlterationService {
   static async getAlterationById(alterationId, tenantId) {
     const alteration = await Alteration.findOne({ _id: alterationId, tenantId, isDeleted: false })
       .populate('customerId saleBillId');
-    if (!alteration) throw new ApiError(404, 'Alteration record not found.');
+    if (alteration) {
+      const items = await AlterationItem.find({ alterationId, tenantId })
+        .populate('inventoryPieceId');
+      return { alteration, items };
+    }
 
-    const items = await AlterationItem.find({ alterationId, tenantId })
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+    const pi = await PSSMItem.findOne({ _id: alterationId, tenantId })
+      .populate({
+        path: 'pssmId',
+        populate: { path: 'customerId saleBillId' }
+      })
       .populate('inventoryPieceId');
 
-    return { alteration, items };
+    if (pi) {
+      return {
+        alteration: {
+          _id: pi._id,
+          alterationNo: pi.pssmId?.pssmNo,
+          customerName: pi.pssmId?.customerName,
+          customerPhone: pi.pssmId?.customerPhone,
+          tailorName: pi.assignedTo,
+          status: pi.status,
+          expectedDeliveryDate: pi.pssmId?.expectedDeliveryDate,
+          remarks: pi.instructions
+        },
+        items: [pi]
+      };
+    }
+
+    throw new ApiError(404, 'Alteration record not found.');
   }
 
   static async getAlterationDashboard(tenantId, dateRange) {

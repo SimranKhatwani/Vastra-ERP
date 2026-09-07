@@ -376,6 +376,28 @@ class PSSMService {
       item.completedBy = userId;
     } else if (status === 'COLLECTED') {
       item.collectedAt = new Date();
+
+      try {
+        let pId = item.inventoryPieceId;
+        if (!pId && (item.barcode || item.uniqueCode)) {
+          const piece = await InventoryPiece.findOne({
+            tenantId,
+            $or: [
+              ...(item.barcode ? [{ barcode: item.barcode }] : []),
+              ...(item.uniqueCode ? [{ uniqueCode: item.uniqueCode }] : [])
+            ]
+          });
+          if (piece) pId = piece._id;
+        }
+        if (pId) {
+          await InventoryPiece.updateOne(
+            { _id: pId, tenantId },
+            { $set: { currentLocation: 'DELIVERED_TO_CUSTOMER', sold: true } }
+          );
+        }
+      } catch (e) {
+        console.warn('[PSSMService] Non-fatal piece update on status change:', e.message);
+      }
     }
 
     await item.save();
@@ -406,12 +428,97 @@ class PSSMService {
 
     const targetItemIds = itemIdsToCollect && itemIdsToCollect.length > 0
       ? itemIdsToCollect
-      : pssmData.items.filter(i => i.status === 'READY').map(i => i._id.toString());
+      : pssmData.items.filter(i => i.status !== 'COLLECTED').map(i => i._id.toString());
 
     await PSSMItem.updateMany(
       { tenantId, _id: { $in: targetItemIds } },
       { $set: { status: 'COLLECTED', collectedAt: new Date() } }
     );
+
+    // Update inventory piece to reflect customer collection
+    try {
+      const InventoryPiece = require('../models/InventoryPiece');
+      const InventoryLifecycle = require('../models/InventoryLifecycle');
+      const { LIFECYCLE_EVENT, ALTERATION_STATUS } = require('../constants/status');
+      const Alteration = require('../models/alteration/Alteration');
+      const AlterationItem = require('../models/alteration/AlterationItem');
+
+      const collectedDocs = await PSSMItem.find({ tenantId, _id: { $in: targetItemIds } });
+      for (const itm of collectedDocs) {
+        let pId = itm.inventoryPieceId;
+        if (!pId && (itm.barcode || itm.uniqueCode)) {
+          const piece = await InventoryPiece.findOne({
+            tenantId,
+            $or: [
+              ...(itm.barcode ? [{ barcode: itm.barcode }] : []),
+              ...(itm.uniqueCode ? [{ uniqueCode: itm.uniqueCode }] : [])
+            ]
+          });
+          if (piece) pId = piece._id;
+        }
+
+        if (pId) {
+          await InventoryPiece.updateOne(
+            { _id: pId, tenantId },
+            { $set: { currentLocation: 'DELIVERED_TO_CUSTOMER', sold: true } }
+          );
+
+          await InventoryLifecycle.create({
+            tenantId,
+            inventoryPieceId: pId,
+            barcode: itm.barcode,
+            eventType: LIFECYCLE_EVENT.SALE || 'SALE',
+            fromLocation: 'SHOWROOM_SERVICE',
+            toLocation: 'CUSTOMER',
+            referenceId: pssmData.pssm._id,
+            referenceModel: 'PSSM',
+            performedBy: userId,
+            notes: `Garment collected by customer: ${itm.pieceName || itm.productName}`
+          }).catch(() => {});
+        }
+      }
+
+      // Sync matching Alteration / AlterationItem records if present
+      const altMatch = await Alteration.findOne({
+        tenantId,
+        $or: [
+          { alterationNo: pssmData.pssm.pssmNo },
+          ...(pssmData.pssm.saleBillId ? [{ saleBillId: pssmData.pssm.saleBillId }] : [])
+        ]
+      });
+
+      if (altMatch) {
+        for (const itm of collectedDocs) {
+          await AlterationItem.updateMany(
+            {
+              tenantId,
+              alterationId: altMatch._id,
+              $or: [
+                ...(itm.barcode ? [{ barcode: itm.barcode }] : []),
+                ...(itm.uniqueCode ? [{ uniqueCode: itm.uniqueCode }] : []),
+                ...(itm.inventoryPieceId ? [{ inventoryPieceId: itm.inventoryPieceId }] : [])
+              ]
+            },
+            { $set: { status: 'COLLECTED' } }
+          );
+        }
+
+        const remainingAltItems = await AlterationItem.find({
+          tenantId,
+          alterationId: altMatch._id,
+          status: { $ne: 'COLLECTED' }
+        });
+
+        if (remainingAltItems.length === 0) {
+          await Alteration.updateOne(
+            { _id: altMatch._id, tenantId },
+            { $set: { status: ALTERATION_STATUS.DELIVERED, deliveredAt: new Date() } }
+          );
+        }
+      }
+    } catch (pieceErr) {
+      console.warn('[PSSMService] Non-fatal sync on collection:', pieceErr.message);
+    }
 
     await this.recalculateMasterStatus(pssmData.pssm._id, tenantId);
 
@@ -424,14 +531,17 @@ class PSSMService {
 
     let masterStatus = 'PENDING_ASSIGNMENT';
 
-    const allCollected = items.every(i => i.status === 'COLLECTED');
-    const allReady = items.every(i => i.status === 'READY' || i.status === 'COLLECTED');
-    const someReady = items.some(i => i.status === 'READY' || i.status === 'COLLECTED');
+    const allCollected = items.length > 0 && items.every(i => i.status === 'COLLECTED' || i.status === 'CLOSED');
+    const someCollected = items.some(i => i.status === 'COLLECTED' || i.status === 'CLOSED');
+    const allReady = items.every(i => i.status === 'READY' || i.status === 'COLLECTED' || i.status === 'CLOSED');
+    const someReady = items.some(i => i.status === 'READY' || i.status === 'COLLECTED' || i.status === 'CLOSED');
     const allAssigned = items.every(i => i.status !== 'PENDING_ASSIGNMENT');
     const someInProgress = items.some(i => i.status === 'IN_PROGRESS');
 
     if (allCollected) {
       masterStatus = 'CLOSED';
+    } else if (someCollected) {
+      masterStatus = 'PARTIALLY_COLLECTED';
     } else if (allReady) {
       masterStatus = 'READY_FOR_DELIVERY';
     } else if (someReady) {
