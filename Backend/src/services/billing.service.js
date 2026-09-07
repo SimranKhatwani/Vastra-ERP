@@ -730,6 +730,36 @@ class BillingService {
       }
     });
 
+    // Fetch PSSM (Post Sales Service) records for all bills
+    const PSSM = require('../models/PSSM/PSSM');
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+    const pssmRecords = (billIds.length > 0 || billNumbers.length > 0) ? await PSSM.find({
+      tenantId,
+      $or: [
+        { saleBillId: { $in: billIds } },
+        { billNo: { $in: billNumbers } },
+        { billBarcode: { $in: billNumbers } }
+      ]
+    }).lean() : [];
+    const pssmIds = pssmRecords.map(p => p._id);
+    const pssmItems = pssmIds.length > 0 ? await PSSMItem.find({ pssmId: { $in: pssmIds }, tenantId }).lean() : [];
+
+    const pssmByBill = new Map();
+    const pssmByBillNo = new Map();
+    pssmRecords.forEach(pssm => {
+      const items = pssmItems.filter(pi => pi.pssmId.toString() === pssm._id.toString());
+      const enriched = { ...pssm, items };
+      if (pssm.saleBillId) {
+        pssmByBill.set(pssm.saleBillId.toString(), enriched);
+      }
+      if (pssm.billNo) {
+        pssmByBillNo.set(pssm.billNo, enriched);
+      }
+      if (pssm.billBarcode) {
+        pssmByBillNo.set(pssm.billBarcode, enriched);
+      }
+    });
+
     const enrichedBills = bills.map(b => {
       const bObj = b.toObject();
       const bIdStr = b._id.toString();
@@ -742,6 +772,7 @@ class BillingService {
       }
 
       const altInfo = alterationByBill.get(bIdStr) || altByBillNo.get(bObj.billNo);
+      const pssmInfo = pssmByBill.get(bIdStr) || pssmByBillNo.get(bObj.billNo) || (bObj.billBarcode ? pssmByBillNo.get(bObj.billBarcode) : null);
       let billItems = itemsByBill.get(bIdStr) || bObj.items || [];
 
       if (altInfo) {
@@ -775,8 +806,12 @@ class BillingService {
 
       return {
         ...bObj,
-        hasAlteration: Boolean(altInfo || bObj.hasAlteration),
+        hasAlteration: Boolean(altInfo || pssmInfo || bObj.hasAlteration),
         alterationBill: altInfo?.alt || null,
+        pssmRecord: pssmInfo || null,
+        hasPSSM: Boolean(pssmInfo),
+        pssmNo: pssmInfo?.pssmNo || null,
+        pssmStatus: pssmInfo?.status || null,
         paymentMethod: computedMode || (bObj.dueAmount > 0 ? "Credit" : "Cash"),
         paymentTransactions: pInfo?.txs || bObj.paymentTransactions,
         items: billItems

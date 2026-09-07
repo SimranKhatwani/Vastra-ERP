@@ -536,13 +536,19 @@ export const ArticulationView = ({
       return;
     }
 
+    const effectiveDetails = altDetails.length > 0 
+      ? altDetails 
+      : (selectedAltItem.services && selectedAltItem.services.length > 0 
+          ? selectedAltItem.services 
+          : [selectedAltItem.serviceType || "Standard Service"]);
+
     const payload = {
       invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber || selectedAltInvoice._id,
       invoiceId: selectedAltInvoice._id,
       saleBillId: selectedAltInvoice._id,
       customerId: selectedAltInvoice.customerId,
-      customerName: selectedAltInvoice.customerName,
-      customerPhone: selectedAltInvoice.customerPhone,
+      customerName: selectedAltInvoice.customerName || 'Walk-in Customer',
+      customerPhone: selectedAltInvoice.customerPhone || '',
       productId: selectedAltItem.productId,
       productName: selectedAltItem.productName || selectedAltItem.name,
       barcode: selectedAltItem.barcode || selectedAltItem.sku,
@@ -554,17 +560,18 @@ export const ArticulationView = ({
       status: "Pending",
       deliveryDate: altDeliveryDate,
       trialDate: altTrialDate,
-      alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
+      serviceType: selectedAltItem.serviceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Alteration'),
+      alterationDetails: effectiveDetails,
       customAlterationText: altCustomText,
-      specialInstructions: altCustomText,
+      specialInstructions: altCustomText || effectiveDetails.join(', '),
       measurements: altMeasurements,
       charge: Number(altCharges || 0),
       items: [{
         barcode: selectedAltItem.barcode || selectedAltItem.sku || selectedAltItem.uniqueCode,
         inventoryPieceId: selectedAltItem.inventoryPieceId || selectedAltItem._id,
         pieceName: selectedAltItem.productName || selectedAltItem.name,
-        instructions: altDetails.join(', ') || altCustomText || 'Custom Fitting',
-        alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
+        instructions: effectiveDetails.join(', ') || altCustomText || 'Standard Service',
+        alterationDetails: effectiveDetails,
         measurements: altMeasurements,
         charge: Number(altCharges || 0)
       }]
@@ -602,15 +609,15 @@ export const ArticulationView = ({
           sku: selectedAltItem.sku || selectedAltItem.barcode || '',
           size: selectedAltItem.size || 'M',
           color: selectedAltItem.color || 'Standard',
-          serviceType: selectedAltItem.serviceType || 'Alteration',
+          serviceType: selectedAltItem.serviceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Alteration'),
           tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
           priority: altPriority || 'Normal',
           status: "Pending",
           deliveryDate: altDeliveryDate,
           trialDate: altTrialDate,
-          alterationDetails: altDetails.length > 0 ? altDetails : ["Custom Fit"],
+          alterationDetails: effectiveDetails,
           customAlterationText: altCustomText,
-          specialInstructions: altCustomText,
+          specialInstructions: altCustomText || effectiveDetails.join(', '),
           measurements: altMeasurements,
           createdAt: new Date().toISOString()
         };
@@ -709,6 +716,31 @@ export const ArticulationView = ({
     }
   }, [activeStudioTab, filterDateRange, filterEmployee, filterStatus, filterPriority]);
 
+  const getServiceWhatsAppMessage = (target) => {
+    if (!target) return "";
+    const svcRaw = target.serviceType || (Array.isArray(target.alterationDetails) && target.alterationDetails.length > 0 ? target.alterationDetails.join(', ') : '') || target.instructions || '';
+    const cleanServices = svcRaw
+      ? svcRaw.split(/[+,/]/).map(s => s.trim()).filter(Boolean)
+      : [];
+    
+    let actionWord = "service";
+    if (cleanServices.length > 0) {
+      actionWord = cleanServices.join(" & ");
+    } else {
+      actionWord = "alteration";
+    }
+
+    const isDryCl = actionWord.toLowerCase().includes('dry clean');
+    const isEmb   = actionWord.toLowerCase().includes('embroid');
+    const isIron  = actionWord.toLowerCase().includes('iron');
+    const headingWord = isDryCl ? 'Dry Cleaning'
+      : isEmb ? 'Embroidery Work'
+      : isIron ? 'Ironing'
+      : actionWord;
+
+    return `Hello ${target.customerName},\n\nYour ${headingWord} for Invoice ${target.invoiceNumber || target.invoiceId || ''} is now completed and ready for pickup.\n\nGarment: ${target.productName || target.pieceName || 'Item'}\nService: ${headingWord}\nDelivery Date: ${target.deliveryDate || target.expectedDeliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Service Dept`;
+  };
+
   const handleConfirmSendWhatsApp = async (target) => {
     if (!target) return;
     try {
@@ -729,7 +761,7 @@ export const ArticulationView = ({
           onAddNotification("WhatsApp Web Relay", `Opened pre-filled message for ${target.customerName}.`, "info");
         }
         const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
-        const msg = `Hello ${target.customerName},\n\nYour alteration for Invoice ${target.invoiceNumber || target.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${target.productName}\n\nDelivery Date:\n${target.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`;
+        const msg = getServiceWhatsAppMessage(target);
         const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
         window.open(fallbackUrl, "_blank");
       }
@@ -737,7 +769,7 @@ export const ArticulationView = ({
       console.error("WhatsApp notification error:", err);
       setWhatsappModalTarget(null);
       const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
-      const msg = `Hello ${target.customerName},\n\nYour alteration for Invoice ${target.invoiceNumber || target.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${target.productName}\n\nDelivery Date:\n${target.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`;
+      const msg = getServiceWhatsAppMessage(target);
       const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
       window.open(fallbackUrl, "_blank");
     }
@@ -814,8 +846,8 @@ export const ArticulationView = ({
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>ALTERATION TYPES:</b><br>
-          ${(ticket.alterationDetails || ['Custom Fit']).map(d => `✓ ${d}`).join('<br>')}
+          <b>REQUIRED SERVICES / WORK:</b><br>
+          ${((ticket.alterationDetails && ticket.alterationDetails.length > 0) ? ticket.alterationDetails : [ticket.serviceType || 'Standard Service']).map(d => `✓ ${d}`).join('<br>')}
           ${ticket.customAlterationText ? `<br><b>Custom Note:</b> ${ticket.customAlterationText}` : ''}
         </div>
         <div class="divider"></div>
@@ -889,8 +921,8 @@ export const ArticulationView = ({
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>ALTERATION TYPES:</b><br>
-          ${(ticket.alterationDetails || ['Custom Fit']).map(d => `✓ ${d}`).join('<br>')}
+          <b>REQUIRED SERVICES / WORK:</b><br>
+          ${((ticket.alterationDetails && ticket.alterationDetails.length > 0) ? ticket.alterationDetails : [ticket.serviceType || 'Standard Service']).map(d => `✓ ${d}`).join('<br>')}
           ${ticket.customAlterationText ? `<br><b>Custom Note:</b> ${ticket.customAlterationText}` : ''}
         </div>
         <div class="divider"></div>
@@ -2188,8 +2220,14 @@ export const ArticulationView = ({
                             </td>
                             <td className="p-2 max-w-[12rem]">
                               <div className="flex flex-wrap gap-1 leading-tight">
-                                {alt.alterationDetails && alt.alterationDetails.length > 0 && (
-                                  alt.alterationDetails.map((d, i) => (
+                                {/* Service Type Badge */}
+                                {alt.serviceType && alt.serviceType !== 'Alteration' && (
+                                  <span className="bg-indigo-50 text-indigo-700 px-1.5 py-[1px] rounded text-[10px] font-black border border-indigo-200 uppercase">
+                                    {alt.serviceType}
+                                  </span>
+                                )}
+                                {alt.alterationDetails && alt.alterationDetails.length > 0 && alt.alterationDetails.some(d => d && d !== 'Custom Fit' && d !== 'Standard Service') && (
+                                  alt.alterationDetails.filter(d => d && d !== 'Custom Fit' && d !== 'Standard Service').map((d, i) => (
                                     <span key={i} className="bg-rose-50 text-rose-700 px-1 py-[1px] rounded text-[10px] font-bold">
                                       {d}
                                     </span>
@@ -2201,7 +2239,7 @@ export const ArticulationView = ({
                                     {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
                                   </span>
                                 )}
-                                {alt.specialInstructions && (
+                                {alt.specialInstructions && alt.specialInstructions !== 'Custom Fitting' && alt.specialInstructions !== 'Standard Service' && (
                                   <span className="text-[10px] text-slate-400 italic" title={alt.specialInstructions}>
                                     "{alt.specialInstructions}"
                                   </span>
@@ -2722,7 +2760,7 @@ export const ArticulationView = ({
 
             {/* MESSAGE PREVIEW BOX */}
             <div className="p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-[11px] text-emerald-900 leading-relaxed font-mono whitespace-pre-line shadow-2xs">
-              {`Hello ${whatsappModalTarget.customerName},\n\nYour alteration for Invoice ${whatsappModalTarget.invoiceNumber || whatsappModalTarget.invoiceId} is now completed and ready for pickup.\n\nProduct:\n${whatsappModalTarget.productName}\n\nDelivery Date:\n${whatsappModalTarget.deliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Tailoring Dept`}
+              {getServiceWhatsAppMessage(whatsappModalTarget)}
             </div>
 
             {/* CONFIRMATION YES / NO BUTTONS */}
@@ -2823,9 +2861,9 @@ export const ArticulationView = ({
 
               {/* Alterations */}
               <div>
-                <p className="font-bold text-slate-900 uppercase mb-1">Alteration Types:</p>
+                <p className="font-bold text-slate-900 uppercase mb-1">Services / Work:</p>
                 <div className="flex flex-wrap gap-1">
-                  {(selectedJobTicket.alterationDetails || ['Custom Fit']).map((d, i) => (
+                  {((selectedJobTicket.alterationDetails && selectedJobTicket.alterationDetails.length > 0) ? selectedJobTicket.alterationDetails : [selectedJobTicket.serviceType || 'Standard Service']).map((d, i) => (
                     <span key={i} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
                       ✓ {d}
                     </span>
@@ -3391,11 +3429,6 @@ export const ArticulationView = ({
                       </div>
                       <p className="text-xs text-slate-300 mt-1">
                         Customer: <strong className="text-white">{collectionData.pssm?.customerName}</strong> ({collectionData.pssm?.customerPhone || 'N/A'})
-                        {collectionData.pssm?.inseamBookCode && (
-                          <span className="ml-2 font-mono text-[11px] text-amber-300">
-                            | Inseam Code: {collectionData.pssm.inseamBookCode}
-                          </span>
-                        )}
                       </p>
                     </div>
 

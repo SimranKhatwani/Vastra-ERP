@@ -41,7 +41,8 @@ import {
   Wallet,
   Loader2,
   ImageIcon,
-  Pencil
+  Pencil,
+  Tag
 } from "lucide-react";
 
 const generateUniqueItemCode = (designNo, size, index = 0) => {
@@ -1572,7 +1573,6 @@ export const BillingPOSView = ({
         customerId: pssInvoice.customerId || activeCustomer?._id,
         customerName: pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer',
         customerPhone: pssInvoice.customerPhone || activeCustomer?.phone || '',
-        inseamBookCode: pssInseamBookCode.trim(),
         salesmanName: pssSalesmanName || pssInvoice?.salesmanName || '',
         customerWaitingOption: pssCustomerWaitingOption,
         priority: derivedPriority,
@@ -1580,22 +1580,28 @@ export const BillingPOSView = ({
         tailorName: isDirect ? (pssGeneralTailor || selectedItems[0]?.tailorName || 'Master Tailor') : '',
         expectedDeliveryDate: pssGeneralDeliveryDate || selectedItems[0]?.deliveryDate,
         remarks: pssGeneralRemarks,
-        items: selectedItems.map(item => ({
-          inventoryPieceId: item.inventoryPieceId || item._id,
-          pieceName: item.name,
-          productName: item.name,
-          barcode: item.barcode,
-          uniqueCode: item.uniqueCode,
-          sku: item.sku || item.barcode,
-          size: item.size,
-          color: item.color,
-          serviceType: item.serviceType || pssGeneralService,
-          assignedTo: isDirect ? (item.tailorName || pssGeneralTailor || 'Master Tailor') : '',
-          alterationDetails: item.selectedOptions || [],
-          measurements: item.measurements || {},
-          instructions: item.instructions || (item.selectedOptions?.length > 0 ? item.selectedOptions.join(', ') : 'Standard Service'),
-          charge: Number(item.charge || 0)
-        }))
+        items: selectedItems.map(item => {
+          const itemServices = Array.isArray(item.services) && item.services.length > 0
+            ? item.services
+            : [item.serviceType || pssGeneralService || 'Alteration'];
+          return {
+            inventoryPieceId: item.inventoryPieceId || item._id,
+            pieceName: item.name,
+            productName: item.name,
+            barcode: item.barcode,
+            uniqueCode: item.uniqueCode,
+            sku: item.sku || item.barcode,
+            size: item.size,
+            color: item.color,
+            services: itemServices,
+            serviceType: itemServices[0] || 'Alteration',
+            assignedTo: isDirect ? (item.tailorName || pssGeneralTailor || 'Master Tailor') : '',
+            alterationDetails: itemServices,
+            measurements: item.measurements || {},
+            instructions: itemServices.join(' + '),
+            charge: Number(item.charge || 0)
+          };
+        })
       };
 
       const res = await api.post('/pssm', payload);
@@ -1616,24 +1622,43 @@ export const BillingPOSView = ({
         customerWaitingOption: pssCustomerWaitingOption,
         priority: derivedPriority,
         allowWhatsApp: pssAllowWhatsApp,
-        inseamBookCode: pssInseamBookCode.trim(),
         cashierName: currentUser ? currentUser.name : 'Cashier',
         deliveryDate: pssGeneralDeliveryDate,
-        items: selectedItems.map(itm => ({
-          name: itm.name,
-          size: itm.size,
-          color: itm.color,
-          barcode: itm.barcode || itm.uniqueCode,
-          serviceType: itm.serviceType || pssGeneralService,
-          assignedTo: isDirect ? (itm.tailorName || pssGeneralTailor || 'Master Tailor') : 'Pending Assignment',
-          alterationDetails: itm.selectedOptions || [],
-          instructions: itm.instructions || ''
-        })),
+        items: selectedItems.map(itm => {
+          const itmServices = Array.isArray(itm.services) && itm.services.length > 0
+            ? itm.services
+            : [itm.serviceType || pssGeneralService || 'Alteration'];
+          return {
+            name: itm.name,
+            size: itm.size,
+            color: itm.color,
+            barcode: itm.barcode || itm.uniqueCode,
+            services: itmServices,
+            serviceType: itmServices.join(' + '),
+            assignedTo: isDirect ? (itm.tailorName || pssGeneralTailor || 'Master Tailor') : 'Pending Assignment',
+            alterationDetails: itmServices,
+            instructions: itmServices.join(' + ')
+          };
+        }),
         createdAt: new Date().toISOString()
       };
 
       setPssSlipData(slipData);
       setShowPSSServiceSelectModal(false);
+
+      // Maintain original invoice immutability while updating local invoice history with linked PSS reference
+      setHistoryInvoices(prev => (prev || []).map(item => {
+        if ((item._id && item._id === pssInvoice._id) || item.invoiceNo === pssInvoice.invoiceNo || (item.billNo && item.billNo === pssInvoice.invoiceNo)) {
+          return {
+            ...item,
+            hasPSSM: true,
+            pssmNo: issuedPssmNo,
+            pssmStatus: 'PENDING_ASSIGNMENT',
+            pssmRecord: slipData
+          };
+        }
+        return item;
+      }));
 
       if (onAddNotification) {
         onAddNotification(
@@ -1653,6 +1678,98 @@ export const BillingPOSView = ({
       }
     } finally {
       setIsSubmittingPSS(false);
+    }
+  };
+
+  const handleOpenPSSSlipFromInvoice = async (inv) => {
+    if (!inv) return;
+    try {
+      const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+      const res = await api.get(`/pssm/barcode/${encodeURIComponent(barcodeToSearch)}`);
+      if (res.data?.success && res.data.data?.pssm) {
+        const pssm = res.data.data.pssm;
+        const items = res.data.data.items || [];
+        const slip = {
+          pssmNo: pssm.pssmNo,
+          originalInvoiceNo: pssm.billNo || inv.invoiceNo,
+          billBarcode: pssm.billBarcode || barcodeToSearch,
+          customerName: pssm.customerName || inv.customerName,
+          customerPhone: pssm.customerPhone || inv.customerPhone,
+          salesmanName: pssm.salesmanName || inv.salesmanName || 'Sales Staff',
+          customerWaitingOption: pssm.customerWaitingOption || 'Will Come Later',
+          priority: pssm.priority || 'NORMAL',
+          status: pssm.status || 'PENDING_ASSIGNMENT',
+          cashierName: currentUser ? currentUser.name : 'Cashier',
+          deliveryDate: pssm.expectedDeliveryDate,
+          allowWhatsApp: pssm.allowWhatsApp !== false,
+          items: items.map(it => ({
+            _id: it._id,
+            name: it.productName || it.pieceName,
+            size: it.size,
+            color: it.color,
+            barcode: it.barcode || it.uniqueCode,
+            serviceType: it.serviceType || 'Alteration',
+            status: it.status || 'PENDING_ASSIGNMENT',
+            assignedTo: it.assignedTo || 'Pending Assignment',
+            alterationDetails: it.alterationDetails || [],
+            instructions: it.instructions || ''
+          })),
+          createdAt: pssm.createdAt
+        };
+        setPssSlipData(slip);
+      } else if (inv.pssmRecord) {
+        setPssSlipData(inv.pssmRecord);
+      } else {
+        if (onAddNotification) onAddNotification("PSS Info", "No active PSS record found for this invoice.", "info");
+      }
+    } catch (err) {
+      if (inv.pssmRecord) {
+        setPssSlipData(inv.pssmRecord);
+      } else {
+        if (onAddNotification) onAddNotification("Error", "Could not load PSS details.", "danger");
+      }
+    }
+  };
+
+  const handleCollectPSSItemFromSlip = async (itemId) => {
+    if (!pssSlipData || !pssSlipData.billBarcode) return;
+    try {
+      const res = await api.post('/pssm/collection', {
+        billBarcode: pssSlipData.billBarcode,
+        itemIds: [itemId]
+      });
+      if (res.data?.success && res.data.data?.pssm) {
+        const pssm = res.data.data.pssm;
+        const items = res.data.data.items || [];
+        setPssSlipData(prev => ({
+          ...prev,
+          status: pssm.status,
+          items: items.map(it => ({
+            _id: it._id,
+            name: it.productName || it.pieceName,
+            size: it.size,
+            color: it.color,
+            barcode: it.barcode || it.uniqueCode,
+            serviceType: it.serviceType || 'Alteration',
+            status: it.status || 'COLLECTED',
+            assignedTo: it.assignedTo || 'Pending Assignment',
+            alterationDetails: it.alterationDetails || [],
+            instructions: it.instructions || ''
+          }))
+        }));
+        setHistoryInvoices(prev => (prev || []).map(i => {
+          if (i.invoiceNo === pssSlipData.originalInvoiceNo || i.billBarcode === pssSlipData.billBarcode) {
+            return {
+              ...i,
+              pssmStatus: pssm.status
+            };
+          }
+          return i;
+        }));
+        if (onAddNotification) onAddNotification("Item Collected", "Item marked as COLLECTED on PSS ticket.", "success");
+      }
+    } catch (err) {
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Collection failed.", "danger");
     }
   };
 
@@ -5944,24 +6061,52 @@ export const BillingPOSView = ({
                   return (
                     <tr key={inv._id || inv.id || idx} className="hover:bg-slate-50/50">
                       <td className="p-3 font-mono font-bold text-indigo-600">
-                        <div className="flex items-center gap-1.5">
-                          <span className="cursor-pointer hover:underline" onClick={() => handleDownloadReceiptHTML(inv)}>
-                            {inv.invoiceNo}
-                          </span>
-                          {isReturned && (
-                            <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                              ↩ RETURNED
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="cursor-pointer hover:underline text-slate-900 font-extrabold" onClick={() => handleDownloadReceiptHTML(inv)}>
+                              {inv.invoiceNo}
                             </span>
-                          )}
-                          {isExchanged && (
-                            <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                              🔁 EXCHANGED
-                            </span>
-                          )}
-                          {Boolean(inv.hasAlteration || inv.alterationBill || (inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')))) && (
-                            <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                              ✂ ALTERATION
-                            </span>
+                            {isReturned && (
+                              <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                                ↩ RETURNED
+                              </span>
+                            )}
+                            {isExchanged && (
+                              <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                                🔁 EXCHANGED
+                              </span>
+                            )}
+                            {Boolean(inv.hasAlteration && !inv.hasPSSM) && (
+                              <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                                ✂ ALTERATION
+                              </span>
+                            )}
+                          </div>
+
+                          {/* LINKED PSS TICKET & STATUS */}
+                          {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
+                            <div className="bg-purple-50/90 border border-purple-200/90 rounded-lg p-2 space-y-1 text-left">
+                              <div className="flex items-center gap-1.5 text-[11px]">
+                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Ticket:</span>
+                                <span className="font-mono font-extrabold text-purple-800">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[11px]">
+                                <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
+                                <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${
+                                  (inv.pssmStatus || inv.pssmRecord?.status) === 'READY_FOR_DELIVERY' || (inv.pssmStatus || inv.pssmRecord?.status) === 'READY'
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'PARTIALLY_READY'
+                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'CLOSED'
+                                    ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                    : (inv.pssmStatus || inv.pssmRecord?.status) === 'IN_PROGRESS'
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : 'bg-purple-100 text-purple-800 border-purple-300'
+                                }`}>
+                                  {(inv.pssmStatus || inv.pssmRecord?.status || 'PENDING').replace(/_/g, ' ')}
+                                </span>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -6008,14 +6153,30 @@ export const BillingPOSView = ({
                         )}
                       </td>
                       <td className="p-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* SEPARATE BUTTON 1: VIEW ORIGINAL INVOICE */}
                           <button
+                            type="button"
                             onClick={() => handleDownloadReceiptHTML(inv)}
-                            className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold text-xs cursor-pointer"
+                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-indigo-200 transition-colors shadow-2xs"
+                            title="View / Print Original Invoice"
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Receipt</span>
+                            <FileText className="w-3 h-3 text-indigo-600" />
+                            <span>VIEW INVOICE</span>
                           </button>
+
+                          {/* SEPARATE BUTTON 2: VIEW PSS SLIP (IF LINKED) */}
+                          {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPSSSlipFromInvoice(inv)}
+                              className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer border border-purple-200 transition-colors shadow-2xs"
+                              title="View / Print Separate PSS Slip"
+                            >
+                              <Tag className="w-3 h-3 text-purple-600" />
+                              <span>VIEW PSS</span>
+                            </button>
+                          )}
                           {isExchanged && (
                             <button
                               onClick={() => {
@@ -10342,29 +10503,7 @@ export const BillingPOSView = ({
             {/* Modal Content Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 erp-hide-scrollbar">
 
-              {/* 1. Customer Inseam Code Section */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
-                    <Ruler className="w-4 h-4 text-indigo-600" />
-                    Customer Inseam Book Linkage (Optional)
-                  </label>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Links to Customer Record</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      placeholder="Scan or enter Customer Inseam Book Code (e.g. INSEAM-1058)..."
-                      value={pssInseamBookCode}
-                      onChange={(e) => setPssInseamBookCode(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. Per-Item Service Selection */}
+              {/* Per-Item Service Selection */}
               <div className="space-y-3">
                 <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center justify-between">
                   <span>Garments Pending Service Setup ({pssConfigItems.filter(i => i.selectedForPSS).length} Items)</span>
@@ -10373,6 +10512,7 @@ export const BillingPOSView = ({
 
                 <div className="space-y-3">
                   {pssConfigItems.filter(i => i.selectedForPSS).map((item, idx) => {
+                    const selectedServices = Array.isArray(item.services) ? item.services : (item.serviceType ? [item.serviceType] : ['Alteration']);
                     return (
                       <div
                         key={item.itemKey || idx}
@@ -10393,60 +10533,85 @@ export const BillingPOSView = ({
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-extrabold uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              PENDING {item.serviceType || 'SERVICE'}
-                            </span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {selectedServices.map(sv => (
+                              <span key={sv} className="text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
+                                {sv}
+                              </span>
+                            ))}
                           </div>
                         </div>
 
-                        {/* Item Service Selection & Tailor Assignment */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Multi-Service Selection */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                            Select Required Service(s) * <span className="text-slate-400 font-normal normal-case">(Select all that apply — one ticket per garment)</span>
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            {['Alteration', 'Re-Alteration', 'Dry Clean', 'Fall & Pico', 'Charak', 'Embroidery', 'Repair', 'Ironing', 'Finishing', 'Packing'].map(srv => {
+                              const isChecked = selectedServices.includes(srv);
+                              return (
+                                <label
+                                  key={srv}
+                                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold select-none ${
+                                    isChecked
+                                      ? 'bg-rose-50 border-rose-500 text-rose-800 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      const newServices = isChecked
+                                        ? selectedServices.filter(s => s !== srv)
+                                        : [...selectedServices, srv];
+                                      setPssConfigItems(prev => prev.map(itm =>
+                                        itm.itemKey === item.itemKey
+                                          ? { ...itm, services: newServices.length ? newServices : ['Alteration'], serviceType: newServices[0] || 'Alteration' }
+                                          : itm
+                                      ));
+                                    }}
+                                    className="w-3 h-3 accent-rose-600 shrink-0 cursor-pointer"
+                                  />
+                                  <span className="truncate">{srv}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {selectedServices.length === 0 && (
+                            <p className="text-[11px] text-rose-600 font-bold mt-1">⚠ Select at least one service</p>
+                          )}
+                        </div>
+
+                        {/* Tailor Assignment */}
+                        {pssAssignmentOption === "DIRECT" && (
                           <div>
                             <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Select Required Service *
+                              Tailor / Vendor Assignment
                             </label>
                             <select
-                              value={item.serviceType || pssGeneralService}
+                              value={item.tailorName || pssGeneralTailor}
                               onChange={(e) => {
                                 const val = e.target.value;
-                                setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, serviceType: val } : itm));
+                                setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, tailorName: val } : itm));
                               }}
-                              className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold px-3 py-2 text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none"
+                              className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
                             >
-                              {['Alteration', 'Re-Alteration', 'Dry Clean', 'Fall & Pico', 'Charak', 'Embroidery', 'Repair', 'Ironing', 'Finishing', 'Packing'].map(srv => (
-                                <option key={srv} value={srv}>{srv}</option>
+                              {tailorEmployeesList.map(t => (
+                                <option key={t.id || t._id || t.name} value={t.name}>
+                                  {t.name} {t.designation ? `(${t.designation})` : ''}
+                                </option>
                               ))}
                             </select>
                           </div>
-
-                          {pssAssignmentOption === "DIRECT" && (
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                Tailor / Vendor Assignment
-                              </label>
-                              <select
-                                value={item.tailorName || pssGeneralTailor}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, tailorName: val } : itm));
-                                }}
-                                className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
-                              >
-                                {tailorEmployeesList.map(t => (
-                                  <option key={t.id || t._id || t.name} value={t.name}>
-                                    {t.name} {t.designation ? `(${t.designation})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               </div>
+
 
               {/* 3. Work Assignment Flow Options */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
@@ -10815,35 +10980,77 @@ export const BillingPOSView = ({
                     <span className="font-bold text-amber-700">{new Date(pssSlipData.deliveryDate).toLocaleDateString('en-IN')}</span>
                   </div>
                 )}
+                {/* Overall PSS Status */}
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
+                  <span className={`font-black uppercase px-2.5 py-1 rounded-lg text-xs border ${
+                    pssSlipData.status === 'READY_FOR_DELIVERY' || pssSlipData.status === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                    pssSlipData.status === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                    pssSlipData.status === 'CLOSED' ? 'bg-slate-200 text-slate-700 border-slate-300' :
+                    pssSlipData.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                    'bg-purple-100 text-purple-800 border-purple-300'
+                  }`}>{(pssSlipData.status || 'PENDING').replace(/_/g, ' ')}</span>
+                </div>
               </div>
 
               {/* Customer Info */}
               <div className="text-xs space-y-1 border border-slate-100 rounded-xl p-3 bg-white">
                 <p className="font-black text-slate-800">{pssSlipData.customerName} {pssSlipData.customerPhone ? `(${pssSlipData.customerPhone})` : ''}</p>
                 <p className="text-slate-500">Cashier: {pssSlipData.cashierName} | Waiting: {pssSlipData.customerWaitingOption}</p>
-                {pssSlipData.inseamBookCode && <p className="text-indigo-600 font-mono font-bold">Inseam Book: {pssSlipData.inseamBookCode}</p>}
               </div>
 
               {/* Items */}
               <div className="space-y-2">
                 <p className="text-[11px] font-black uppercase text-slate-600 tracking-wider">{pssSlipData.items?.length} Garment(s) for Service</p>
-                {(pssSlipData.items || []).map((itm, idx) => (
-                  <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
-                    <div className="flex justify-between items-start">
-                      <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
-                      <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase">{itm.serviceType}</span>
-                    </div>
-                    <p className="text-slate-500 font-mono">Size: {itm.size} | Color: {itm.color} | Code: {itm.barcode || 'N/A'}</p>
-                    <p className="text-slate-600 font-semibold">Assigned to: <span className="text-slate-900 font-black">{itm.assignedTo}</span></p>
-                    {itm.alterationDetails?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {itm.alterationDetails.map((d, di) => (
-                          <span key={di} className="bg-rose-50 text-rose-700 font-bold text-[9px] px-1.5 py-0.5 rounded border border-rose-200">{d}</span>
-                        ))}
+                {(pssSlipData.items || []).map((itm, idx) => {
+                  const isReady = itm.status === 'READY';
+                  const isCollected = itm.status === 'COLLECTED';
+                  return (
+                    <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${
+                      isCollected ? 'bg-slate-50 border-slate-200 opacity-60' :
+                      isReady ? 'bg-emerald-50/70 border-emerald-300' :
+                      'bg-white border-slate-200'
+                    }`}>
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
+                          <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase mt-0.5 inline-block">{itm.serviceType}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                            isCollected ? 'bg-slate-200 text-slate-700 border-slate-300' :
+                            isReady ? 'bg-emerald-600 text-white border-emerald-700' :
+                            itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                            'bg-amber-100 text-amber-800 border-amber-200'
+                          }`}>
+                            {(itm.status || 'PENDING').replace(/_/g, ' ')}
+                          </span>
+
+                          {/* Quick Collect button if item is READY */}
+                          {!isCollected && isReady && itm._id && (
+                            <button
+                              type="button"
+                              onClick={() => handleCollectPSSItemFromSlip(itm._id)}
+                              className="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold cursor-pointer transition-colors shadow-2xs"
+                              title="Mark as Collected by Customer"
+                            >
+                              Collect
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <p className="text-slate-500 font-mono text-[11px]">Size: {itm.size} | Color: {itm.color} | Code: {itm.barcode || 'N/A'}</p>
+                      <p className="text-slate-600 font-semibold text-[11px]">Assigned to: <span className="text-slate-900 font-black">{itm.assignedTo}</span></p>
+                      {itm.alterationDetails?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {itm.alterationDetails.map((d, di) => (
+                            <span key={di} className="bg-rose-50 text-rose-700 font-bold text-[9px] px-1.5 py-0.5 rounded border border-rose-200">{d}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -10858,7 +11065,7 @@ export const BillingPOSView = ({
               <button
                 onClick={() => {
                   const d = pssSlipData;
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.inseamBookCode ? '<b>Inseam Book:</b> ' + d.inseamBookCode : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

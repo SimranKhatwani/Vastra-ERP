@@ -174,46 +174,12 @@ class PSSMService {
       createdItems.push(pssmItemDoc);
     }
 
-    // Backwards compatibility with legacy Alteration model
-    try {
-      const altNo = pssmNo.replace('PSSM-', 'ALT-');
-      const altDoc = await Alteration.create({
-        tenantId,
-        alterationNo: altNo,
-        saleBillId: resolvedSaleBillId,
-        customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
-        customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
-        customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
-        expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
-        tailorName: data.tailorName || 'Default Tailor',
-        priority: derivedPriority,
-        totalCharges,
-        status: 'RECEIVED',
-        remarks: data.remarks || '',
-        createdBy: userId
-      });
+    // NOTE: Legacy Alteration backwards-compatibility creation has been removed.
+    // PSSM records are now the single source of truth for all post-sales service items.
+    // The ArticulationView fetches /pssm/pending-assignments and /alterations separately
+    // and deduplicates by barcode. Creating duplicate Alteration records caused extra
+    // entries in the tailoring & garment tracking view.
 
-      for (const item of rawItems) {
-        await AlterationItem.create({
-          tenantId,
-          alterationId: altDoc._id,
-          pieceName: item.pieceName || item.productName || 'Garment Item',
-          productName: item.productName || item.pieceName || 'Garment Item',
-          size: item.size || 'FS',
-          color: item.color || 'Standard',
-          barcode: item.barcode || '',
-          uniqueCode: item.uniqueCode || '',
-          instructions: item.instructions || 'Standard Service',
-          charge: item.charge || 0,
-          status: 'PENDING',
-          alterationDetails: item.alterationDetails || [],
-          measurements: item.measurements || {},
-          createdBy: userId
-        });
-      }
-    } catch (e) {
-      console.warn('[PSSMService] Backwards compatibility creation note:', e.message);
-    }
 
     return {
       pssmRecord,

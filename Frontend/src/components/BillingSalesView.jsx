@@ -26,8 +26,10 @@ import {
   ArrowRight,
   TrendingUp,
   Users,
-  Loader2
+  Loader2,
+  Tag
 } from "lucide-react";
+import { generateReceiptHTMLContent } from '../helpers/printTemplate.helper';
 
 const extractBillsArray = (resData) => {
   if (!resData) return [];
@@ -70,8 +72,13 @@ const normalizeInvoice = (b) => {
       alterationStatus: i.alterationStatus || (i.hasAlteration ? 'PENDING' : 'NONE'),
       alterationRecord: i.alterationRecord
     })),
-    hasAlteration: Boolean(b.hasAlteration || b.alterationBill || rawItems.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))),
+    hasAlteration: Boolean(b.hasAlteration || b.alterationBill || b.hasPSSM || b.pssmRecord || rawItems.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE'))),
     alterationBill: b.alterationBill || null,
+    hasPSSM: Boolean(b.hasPSSM || b.pssmRecord || b.pssmNo),
+    pssmNo: b.pssmNo || b.pssmRecord?.pssmNo || null,
+    pssmStatus: b.pssmStatus || b.pssmRecord?.status || null,
+    pssmRecord: b.pssmRecord || null,
+    billBarcode: b.billBarcode || b.billNo || b.invoiceNo || `BILL-${billId}`,
     subTotal: b.subTotal || b.grandTotal || 0,
     discount: b.discountAmount || b.discount || 0,
     grandTotal: b.grandTotal || b.totalAmount || 0,
@@ -150,8 +157,65 @@ export const BillingSalesView = ({
 
   // Invoice History States & Fetcher
   const [invoicesList, setInvoicesList] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [pssSlipModalData, setPssSlipModalData] = useState(null);
+
+  const handleOpenInvoiceReceipt = (inv) => {
+    try {
+      const html = generateReceiptHTMLContent(inv);
+      const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
+      window.open(url, '_blank');
+    } catch (e) {
+      if (onAddNotification) onAddNotification("Error", "Failed to generate invoice receipt", "danger");
+    }
+  };
+
+  const handleOpenPSSSlip = async (inv) => {
+    if (!inv) return;
+    try {
+      const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+      const res = await api.get(`/pssm/barcode/${encodeURIComponent(barcodeToSearch)}`);
+      if (res.data?.success && res.data.data?.pssm) {
+        const pssm = res.data.data.pssm;
+        const items = res.data.data.items || [];
+        setPssSlipModalData({
+          pssmNo: pssm.pssmNo,
+          originalInvoiceNo: pssm.billNo || inv.invoiceNo,
+          billBarcode: pssm.billBarcode || barcodeToSearch,
+          customerName: pssm.customerName || inv.customerName,
+          customerPhone: pssm.customerPhone || inv.customerPhone,
+          salesmanName: pssm.salesmanName || inv.salesmanName || 'Sales Staff',
+          customerWaitingOption: pssm.customerWaitingOption || 'Will Come Later',
+          priority: pssm.priority || 'NORMAL',
+          status: pssm.status || 'PENDING_ASSIGNMENT',
+          deliveryDate: pssm.expectedDeliveryDate,
+          items: items.map(it => ({
+            name: it.productName || it.pieceName,
+            size: it.size,
+            color: it.color,
+            barcode: it.barcode || it.uniqueCode,
+            serviceType: it.serviceType || 'Alteration',
+            status: it.status || 'PENDING_ASSIGNMENT',
+            assignedTo: it.assignedTo || 'Pending Assignment',
+            alterationDetails: it.alterationDetails || [],
+            instructions: it.instructions || ''
+          })),
+          createdAt: pssm.createdAt
+        });
+      } else if (inv.pssmRecord) {
+        setPssSlipModalData(inv.pssmRecord);
+      } else {
+        if (onAddNotification) onAddNotification("PSS Info", "No active PSS record found for this invoice.", "info");
+      }
+    } catch (e) {
+      if (inv.pssmRecord) {
+        setPssSlipModalData(inv.pssmRecord);
+      } else {
+        if (onAddNotification) onAddNotification("Error", "Could not load PSS details.", "danger");
+      }
+    }
+  };
 
   // Credit Limit Override Authorization Modal states
   const [showCreditOverrideModal, setShowCreditOverrideModal] = useState(false);
@@ -638,22 +702,50 @@ export const BillingSalesView = ({
                 {filteredInvoices.map((inv, idx) => (
                   <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
                     <td className="p-3 font-bold text-slate-800">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{inv.invoiceNo}</span>
-                        {Boolean(inv.hasAlteration || inv.alterationBill || (inv.items && inv.items.some(i => i.hasAlteration || i.alterationRecord || i.alterationId || (i.alterationStatus && i.alterationStatus !== 'NONE')))) && (
-                          <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                            ✂ ALTERATION
-                          </span>
-                        )}
-                        {Boolean(inv.hasReturn || (inv.items && inv.items.some(i => i.isReturned))) && (
-                          <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                            ↩ RETURN
-                          </span>
-                        )}
-                        {Boolean(inv.hasExchange || (inv.items && inv.items.some(i => i.isExchanged))) && (
-                          <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
-                            🔁 EXCHANGE
-                          </span>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-extrabold text-slate-900">{inv.invoiceNo}</span>
+                          {Boolean(inv.hasAlteration && !inv.hasPSSM) && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              ✂ ALTERATION
+                            </span>
+                          )}
+                          {Boolean(inv.hasReturn || (inv.items && inv.items.some(i => i.isReturned))) && (
+                            <span className="bg-rose-100 text-rose-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              ↩ RETURN
+                            </span>
+                          )}
+                          {Boolean(inv.hasExchange || (inv.items && inv.items.some(i => i.isExchanged))) && (
+                            <span className="bg-indigo-100 text-indigo-700 font-extrabold text-[9px] px-1.5 py-0.5 rounded shadow-2xs">
+                              🔁 EXCHANGE
+                            </span>
+                          )}
+                        </div>
+
+                        {/* LINKED PSS SLIP / TICKET */}
+                        {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
+                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-1.5 text-left text-xs space-y-0.5">
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS:</span>
+                              <span className="font-mono font-black text-purple-700">{inv.pssmNo || inv.pssmRecord?.pssmNo}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
+                              <span className={`font-black uppercase px-1.5 py-0.2 rounded text-[9px] border ${
+                                (inv.pssmStatus || inv.pssmRecord?.status) === 'READY_FOR_DELIVERY' || (inv.pssmStatus || inv.pssmRecord?.status) === 'READY'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'PARTIALLY_READY'
+                                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'CLOSED'
+                                  ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                  : (inv.pssmStatus || inv.pssmRecord?.status) === 'IN_PROGRESS'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-purple-100 text-purple-800 border-purple-300'
+                              }`}>
+                                {(inv.pssmStatus || inv.pssmRecord?.status || 'PENDING').replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -675,28 +767,54 @@ export const BillingSalesView = ({
                       </span>
                     </td>
                     <td className="p-3">
-                      <button
-                        onClick={async () => {
-                          if (window.confirm("Are you sure you want to permanently delete this invoice? This will revert inventory back to available stock.")) {
-                            try {
-                              const res = await fetch(`${API}/billing/${inv._id || inv.id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" } });
-                              const data = await res.json();
-                              if (data.success) {
-                                if (onAddNotification) onAddNotification("Success", "Invoice deleted successfully", "success");
-                                fetchInvoices(); // Refresh the list
-                              } else {
-                                if (onAddNotification) onAddNotification("Error", data.message || "Failed to delete invoice", "danger");
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* VIEW INVOICE */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenInvoiceReceipt(inv)}
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-black flex items-center gap-1 border border-indigo-200 cursor-pointer shadow-2xs"
+                          title="View / Print Original Invoice"
+                        >
+                          <FileText className="w-3 h-3 text-indigo-600" />
+                          <span>VIEW INVOICE</span>
+                        </button>
+
+                        {/* VIEW PSS */}
+                        {(inv.hasPSSM || inv.pssmNo || inv.pssmRecord) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPSSSlip(inv)}
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-black flex items-center gap-1 border border-purple-200 cursor-pointer shadow-2xs"
+                            title="View / Print Separate PSS Slip"
+                          >
+                            <Tag className="w-3 h-3 text-purple-600" />
+                            <span>VIEW PSS</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={async () => {
+                            if (window.confirm("Are you sure you want to permanently delete this invoice? This will revert inventory back to available stock.")) {
+                              try {
+                                const res = await fetch(`${API}/billing/${inv._id || inv.id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" } });
+                                const data = await res.json();
+                                if (data.success) {
+                                  if (onAddNotification) onAddNotification("Success", "Invoice deleted successfully", "success");
+                                  fetchInvoices(); // Refresh the list
+                                } else {
+                                  if (onAddNotification) onAddNotification("Error", data.message || "Failed to delete invoice", "danger");
+                                }
+                              } catch (error) {
+                                if (onAddNotification) onAddNotification("Error", "Failed to delete invoice", "danger");
                               }
-                            } catch (error) {
-                              if (onAddNotification) onAddNotification("Error", "Failed to delete invoice", "danger");
                             }
-                          }
-                        }}
-                        className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors inline-flex items-center"
-                        title="Delete Invoice"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                          }}
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors inline-flex items-center"
+                          title="Delete Invoice"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1621,6 +1739,84 @@ export const BillingSalesView = ({
                 <div>Grand Subtotal: <span className="font-mono">₹{selectedCustomerDetail.grandTotal.toLocaleString()}</span></div>
                 <div>Payment Terms: <span className="font-bold text-indigo-600">{selectedCustomerDetail.paymentTerms || 'Net 30'}</span></div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SEPARATE PSS SLIP MODAL */}
+      {pssSlipModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="px-5 py-4 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-rose-400">Post Sales Service Slip</h3>
+                <p className="text-[11px] text-slate-400 font-mono">Separate Service Document (Original Bill Untouched)</p>
+              </div>
+              <button onClick={() => setPssSlipModalData(null)} className="text-slate-400 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-800">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Original Invoice:</span>
+                  <span className="font-bold text-indigo-700">{pssSlipModalData.originalInvoiceNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">PSS Ticket:</span>
+                  <span className="font-bold text-rose-700">{pssSlipModalData.pssmNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Bill Barcode:</span>
+                  <span className="font-bold text-slate-800">{pssSlipModalData.billBarcode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Overall Status:</span>
+                  <span className="font-bold uppercase text-purple-700">{pssSlipModalData.status}</span>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-3 bg-white space-y-1">
+                <p className="font-bold text-slate-800">{pssSlipModalData.customerName} {pssSlipModalData.customerPhone ? `(${pssSlipModalData.customerPhone})` : ''}</p>
+                <p className="text-slate-500">Salesman: {pssSlipModalData.salesmanName} | Priority: {pssSlipModalData.priority}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold uppercase text-[10px] text-slate-500 tracking-wider">Garments ({pssSlipModalData.items?.length || 0}):</p>
+                {(pssSlipModalData.items || []).map((it, i) => (
+                  <div key={i} className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="font-bold text-slate-900">{i + 1}. {it.name}</span>
+                      <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded text-[10px] uppercase">{it.serviceType}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-500 text-[11px]">
+                      <span>Size: {it.size} | Color: {it.color}</span>
+                      <span className="font-bold text-purple-700 uppercase">{it.status || 'PENDING'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
+              <button
+                onClick={() => setPssSlipModalData(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  const d = pssSlipModalData;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Priority:</b> ${d.priority}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Service:</b> ${it.serviceType}<br/><b>Status:</b> ${it.status || 'PENDING'}</div>`).join('')}<script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
+                  window.open(url, '_blank');
+                }}
+                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print PSS Slip</span>
+              </button>
             </div>
           </div>
         </div>
