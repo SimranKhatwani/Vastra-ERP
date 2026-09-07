@@ -9,6 +9,8 @@ const customerSchema = new mongoose.Schema({
   anniversary: Date,
   gstin: { type: String, uppercase: true, trim: true, default: '' },
   address: { type: String, trim: true, default: '' },
+  inseamBookCode: { type: String, trim: true, default: '' },
+  allowWhatsApp: { type: Boolean, default: true },
   loyaltyPoints: { type: Number, default: 0 },
   dueBalance: { type: Number, default: 0 },
   advanceBalance: { type: Number, default: 0 },

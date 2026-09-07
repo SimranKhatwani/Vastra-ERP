@@ -314,6 +314,13 @@ export const ArticulationView = ({
   const [altMeasurements, setAltMeasurements] = useState({});
   const [altCharges, setAltCharges] = useState(0);
 
+  // --- PSSM COLLECTION & SCANNER STATE ---
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [collectionBarcodeQuery, setCollectionBarcodeQuery] = useState("");
+  const [collectionData, setCollectionData] = useState(null);
+  const [loadingCollection, setLoadingCollection] = useState(false);
+  const [selectedCollectionItemIds, setSelectedCollectionItemIds] = useState([]);
+
   const tailorOptions = useMemo(() => {
     if (employees && employees.length > 0) {
       const dbTailors = employees.filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
@@ -456,7 +463,10 @@ export const ArticulationView = ({
       barcode: pendingItem.barcode,
       sku: pendingItem.sku,
       size: pendingItem.size || "M",
-      color: pendingItem.color || "Standard"
+      color: pendingItem.color || "Standard",
+      serviceType: pendingItem.serviceType || "Alteration",
+      isPssm: pendingItem.isPssm,
+      pssmItemId: pendingItem.pssmItemId
     });
 
     setAltTailorName(tailorOptions[0] || "Master Ramesh Kumar");
@@ -561,6 +571,21 @@ export const ArticulationView = ({
     };
 
     try {
+      if (selectedAltItem.isPssm && selectedAltItem.pssmItemId) {
+        try {
+          await api.patch(`/pssm/items/${selectedAltItem.pssmItemId}/assign`, {
+            tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar')
+          });
+          await api.patch(`/pssm/items/${selectedAltItem.pssmItemId}/status`, {
+            status: 'IN_PROGRESS',
+            measurements: altMeasurements,
+            alterationDetails: altDetails
+          });
+        } catch (pssmErr) {
+          console.warn("PSSM assignment update note:", pssmErr.message);
+        }
+      }
+
       const res = await api.post(`/alterations`, payload);
       const data = res.data;
       if (data.success) {
@@ -577,6 +602,7 @@ export const ArticulationView = ({
           sku: selectedAltItem.sku || selectedAltItem.barcode || '',
           size: selectedAltItem.size || 'M',
           color: selectedAltItem.color || 'Standard',
+          serviceType: selectedAltItem.serviceType || 'Alteration',
           tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
           priority: altPriority || 'Normal',
           status: "Pending",
@@ -590,7 +616,7 @@ export const ArticulationView = ({
         };
 
         if (onAddNotification) {
-          onAddNotification("Alteration Saved", `Alteration ticket ${ticketSlipObj.alterationId} generated successfully.`, "success");
+          onAddNotification("Alteration Saved", `Alteration ticket ${ticketSlipObj.alterationId} assigned & generated successfully.`, "success");
         }
 
         setShowCreateAltModal(false);
@@ -905,17 +931,140 @@ export const ArticulationView = ({
   const fetchPendingAlterations = async (isInitialLoad = false) => {
     if (isInitialLoad) setLoadingPending(true);
     try {
-      const res = await api.get(`/alterations/pending-items`);
-      const data = res.data;
-      if (data.success && data.data) {
-        setPendingAlterations(data.data);
-      } else {
-        setPendingAlterations([]);
+      const [resAlt, resPssm] = await Promise.allSettled([
+        api.get(`/alterations/pending-items`),
+        api.get(`/pssm/pending-assignments`)
+      ]);
+
+      let items = [];
+      const pssmBarcodes = new Set();
+      const pssmInvoiceNos = new Set();
+
+      if (resPssm.status === 'fulfilled' && resPssm.value.data?.success && Array.isArray(resPssm.value.data.data)) {
+        const pssmPending = resPssm.value.data.data.map(p => {
+          if (p.barcode) pssmBarcodes.add(p.barcode.toString());
+          if (p.uniqueCode) pssmBarcodes.add(p.uniqueCode.toString());
+          if (p.billBarcode) pssmInvoiceNos.add(p.billBarcode.toString());
+          if (p.billNo) pssmInvoiceNos.add(p.billNo.toString());
+
+          return {
+            _id: p._id,
+            pssmItemId: p._id,
+            isPssm: true,
+            saleItemId: p._id,
+            invoiceNo: p.billBarcode || p.billNo,
+            billBarcode: p.billBarcode || p.billNo,
+            productName: p.productName || 'Garment Item',
+            barcode: p.barcode || p.uniqueCode || 'N/A',
+            uniqueCode: p.uniqueCode || p.barcode || '',
+            sku: p.barcode || p.uniqueCode || '',
+            customerName: p.customerName || 'Walk-in Customer',
+            customerPhone: p.customerPhone || '',
+            size: p.size || 'M',
+            color: p.color || 'Standard',
+            serviceType: p.serviceType || 'Alteration',
+            status: p.status || 'PENDING_ASSIGNMENT',
+            expectedDeliveryDate: p.expectedDeliveryDate,
+            priority: p.priority || 'Normal'
+          };
+        });
+        items.push(...pssmPending);
       }
+
+      if (resAlt.status === 'fulfilled' && resAlt.value.data?.success && Array.isArray(resAlt.value.data.data)) {
+        const legacyItems = resAlt.value.data.data.filter(altItem => {
+          const b = altItem.barcode || altItem.uniqueCode;
+          const inv = altItem.invoiceNo || altItem.billBarcode;
+          if (b && pssmBarcodes.has(b.toString())) return false;
+          if (inv && pssmInvoiceNos.has(inv.toString()) && items.length > 0) return false;
+          return true;
+        });
+        items.push(...legacyItems);
+      }
+
+      setPendingAlterations(items);
     } catch (err) {
       console.error("Failed to fetch pending alterations:", err);
     } finally {
       if (isInitialLoad) setLoadingPending(false);
+    }
+  };
+
+  const handleAssignPSSItem = async (itemId, tailorName) => {
+    try {
+      const res = await api.patch(`/pssm/items/${itemId}/assign`, { tailorName });
+      if (res.data.success) {
+        if (onAddNotification) onAddNotification("Assignment Saved", `Assigned to ${tailorName}`, "success");
+        fetchPendingAlterations();
+        fetchAlterations();
+      }
+    } catch (err) {
+      console.error("Failed to assign tailor:", err);
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to assign", "danger");
+    }
+  };
+
+  const handleUpdatePSSItemStatus = async (itemId, newStatus, measurements, alterationDetails) => {
+    try {
+      const res = await api.patch(`/pssm/items/${itemId}/status`, { status: newStatus, measurements, alterationDetails });
+      if (res.data.success) {
+        if (onAddNotification) onAddNotification("Status Updated", `Item status changed to ${newStatus}`, "success");
+        fetchAlterations();
+        fetchPendingAlterations();
+      }
+    } catch (err) {
+      console.error("Failed to update PSS item status:", err);
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to update item status", "danger");
+    }
+  };
+
+  const handleSearchBillCollection = async (barcode) => {
+    const q = barcode || collectionBarcodeQuery;
+    if (!q || !q.trim()) return;
+    setLoadingCollection(true);
+    try {
+      const res = await api.get(`/pssm/barcode/${encodeURIComponent(q.trim())}`);
+      if (res.data.success && res.data.data) {
+        setCollectionData(res.data.data);
+        const readyIds = (res.data.data.items || []).filter(i => i.status === 'READY').map(i => i._id);
+        setSelectedCollectionItemIds(readyIds);
+      } else {
+        setCollectionData(null);
+        if (onAddNotification) onAddNotification("No PSS Record", `No active PSS order found for barcode ${q}`, "warning");
+      }
+    } catch (err) {
+      console.error("Collection barcode search error:", err);
+      setCollectionData(null);
+      if (onAddNotification) onAddNotification("Search Error", err.response?.data?.message || "Barcode not found", "danger");
+    } finally {
+      setLoadingCollection(false);
+    }
+  };
+
+  const handleConfirmCollection = async () => {
+    if (!collectionData || !collectionData.pssm) return;
+    try {
+      const res = await api.post('/pssm/collection', {
+        billBarcode: collectionData.pssm.billBarcode,
+        itemIds: selectedCollectionItemIds
+      });
+      if (res.data.success) {
+        const updated = res.data.data;
+        setCollectionData(updated);
+        const nextMasterStatus = updated.pssm?.status || 'UPDATED';
+        if (onAddNotification) {
+          onAddNotification(
+            "Collection Recorded",
+            `Items marked as COLLECTED. Bill PSS Lifecycle: ${nextMasterStatus}`,
+            "success"
+          );
+        }
+        fetchAlterations();
+        fetchPendingAlterations();
+      }
+    } catch (err) {
+      console.error("Failed to record collection:", err);
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to record collection", "danger");
     }
   };
 
@@ -931,7 +1080,6 @@ export const ArticulationView = ({
       }
     } catch (err) {
       console.error("Failed to fetch alterations:", err);
-      // Removed fallback to defaultAlterationsList to prevent UI fluctuation on transient errors
     }
   };
 
@@ -1642,14 +1790,24 @@ export const ArticulationView = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={fetchPendingAlterations}
-                  disabled={loadingPending}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPending ? 'animate-spin' : ''}`} />
-                  <span>Refresh Queue</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCollectionModal(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Shirt className="w-3.5 h-3.5" />
+                    <span>SCAN BILL BARCODE / COLLECTION</span>
+                  </button>
+
+                  <button
+                    onClick={fetchPendingAlterations}
+                    disabled={loadingPending}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingPending ? 'animate-spin' : ''}`} />
+                    <span>Refresh Queue</span>
+                  </button>
+                </div>
               </div>
 
               {pendingAlterations.length === 0 ? (
@@ -1660,7 +1818,7 @@ export const ArticulationView = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
                   {pendingAlterations.map((item, idx) => (
                     <div
-                      key={item.saleItemId || idx}
+                      key={item.pssmItemId || item.saleItemId || idx}
                       onClick={() => handleConfigurePendingGarment(item)}
                       className="group bg-white rounded-2xl border-2 border-amber-200 hover:border-rose-500 p-4 transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between space-y-3"
                     >
@@ -1679,13 +1837,18 @@ export const ArticulationView = ({
                             <span>Invoice: {item.invoiceNo}</span>
                           </button>
                           <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                            Pending Setup
+                            Pending Assignment
                           </span>
                         </div>
 
-                        <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors mt-2">
-                          {item.productName}
-                        </h4>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors">
+                            {item.productName}
+                          </h4>
+                          <span className="text-[10px] font-black uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs shrink-0">
+                            {item.serviceType || 'Alteration'}
+                          </span>
+                        </div>
 
                         <div className="text-xs font-mono font-bold text-slate-700 mt-1 flex items-center gap-1">
                           <span className="text-slate-400">Barcode:</span>
@@ -1707,7 +1870,7 @@ export const ArticulationView = ({
                         className="w-full py-2 bg-slate-900 group-hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Scissors className="w-3.5 h-3.5" />
-                        <span>Configure Alteration Details ➔</span>
+                        <span>Configure & Assign Tailor ➔</span>
                       </button>
                     </div>
                   ))}
@@ -2880,7 +3043,14 @@ export const ArticulationView = ({
                 {/* Selected Info Summary Header */}
                 <div className="flex justify-between items-start bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                   <div>
-                    <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
+                      {selectedAltItem.serviceType && (
+                        <span className="text-[10px] font-black uppercase font-mono px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {selectedAltItem.serviceType}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs font-mono font-bold text-indigo-700 mt-0.5">
                       Barcode: <span className="text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200">{selectedAltItem.barcode || selectedAltItem.sku || 'N/A'}</span>
                     </p>
@@ -3118,6 +3288,216 @@ export const ArticulationView = ({
               >
                 <span>Close (Esc)</span>
               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PSS BILL BARCODE COLLECTION & DELIVERY SCANNER */}
+      {showCollectionModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-scale-up text-slate-800">
+            
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                  <Shirt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-wide uppercase font-mono">
+                    CUSTOMER PSS COLLECTION / DELIVERY SCANNER
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Scan Bill Barcode to view item-level status and deliver ready garments
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowCollectionModal(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Search Input Bar */}
+            <div className="p-6 bg-slate-50 border-b border-slate-200 shrink-0">
+              <label className="text-xs font-black uppercase text-slate-700 tracking-wider block mb-2">
+                Scan or Enter Bill Barcode / Bill Number
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Scan Bill Barcode (e.g. BILL-1058 or INV-xxxx)..."
+                    value={collectionBarcodeQuery}
+                    onChange={(e) => setCollectionBarcodeQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSearchBillCollection();
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold pl-10 pr-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSearchBillCollection()}
+                  disabled={loadingCollection}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {loadingCollection ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                  <span>Find PSS Order</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Results & Items Checklist */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 erp-hide-scrollbar">
+              {!collectionData ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <Shirt className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-bold text-slate-500">
+                    Scan or type a Bill Barcode above to check PSS ready items.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Bill Master Summary Header */}
+                  <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold bg-white/20 text-white px-2.5 py-1 rounded-lg border border-white/20">
+                          Bill: {collectionData.pssm?.billBarcode || collectionData.pssm?.billNo}
+                        </span>
+                        <span className={`text-[10px] font-extrabold uppercase font-mono px-2.5 py-1 rounded-lg border ${
+                          collectionData.pssm?.status === 'CLOSED' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                          collectionData.pssm?.status === 'READY_FOR_DELIVERY' ? 'bg-emerald-500 text-white border-emerald-600' :
+                          collectionData.pssm?.status === 'PARTIALLY_READY' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+                          'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                        }`}>
+                          {collectionData.pssm?.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1">
+                        Customer: <strong className="text-white">{collectionData.pssm?.customerName}</strong> ({collectionData.pssm?.customerPhone || 'N/A'})
+                        {collectionData.pssm?.inseamBookCode && (
+                          <span className="ml-2 font-mono text-[11px] text-amber-300">
+                            | Inseam Code: {collectionData.pssm.inseamBookCode}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        Items: {collectionData.items?.length || 0} Total
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Items List */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                      Item-by-Item Status & Collection Selection
+                    </h4>
+
+                    {collectionData.items?.map((item) => {
+                      const isReady = item.status === 'READY';
+                      const isCollected = item.status === 'COLLECTED';
+                      const isChecked = selectedCollectionItemIds.includes(item._id);
+
+                      return (
+                        <div
+                          key={item._id}
+                          className={`p-4 rounded-2xl border-2 transition-all flex flex-wrap items-center justify-between gap-3 ${
+                            isCollected
+                              ? 'bg-slate-100 border-slate-200 opacity-60'
+                              : isReady
+                              ? 'bg-emerald-50 border-emerald-400'
+                              : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {!isCollected && isReady && (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedCollectionItemIds(prev => [...prev, item._id]);
+                                  } else {
+                                    setSelectedCollectionItemIds(prev => prev.filter(id => id !== item._id));
+                                  }
+                                }}
+                                className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
+                              />
+                            )}
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h5 className="text-sm font-black text-slate-900">
+                                  {item.productName || item.pieceName}
+                                </h5>
+                                <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
+                                  Unique Code: {item.uniqueCode || item.barcode || 'N/A'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                                Service: <strong className="text-slate-800">{item.serviceType}</strong> | Assigned: <strong className="text-slate-800">{item.assignedTo || 'Unassigned'}</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className={`text-[10px] font-extrabold uppercase font-mono px-3 py-1.5 rounded-xl border ${
+                              isCollected ? 'bg-slate-200 text-slate-600 border-slate-300' :
+                              isReady ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' :
+                              item.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                              'bg-amber-100 text-amber-800 border-amber-200'
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowCollectionModal(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer"
+              >
+                Close
+              </button>
+
+              {collectionData && (
+                <button
+                  type="button"
+                  onClick={handleConfirmCollection}
+                  disabled={selectedCollectionItemIds.length === 0}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>MARK {selectedCollectionItemIds.length} ITEM(S) AS COLLECTED</span>
+                </button>
+              )}
             </div>
 
           </div>

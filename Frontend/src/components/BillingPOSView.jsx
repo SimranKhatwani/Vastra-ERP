@@ -838,6 +838,50 @@ export const BillingPOSView = ({
   const [completedAlterationDocket, setCompletedAlterationDocket] = useState(null);
   const [returnWarning, setReturnWarning] = useState({ show: false, title: "", message: "" });
 
+  // PSS Post-Bill Flow States
+  const [showPSSQuestionPromptModal, setShowPSSQuestionPromptModal] = useState(false);
+  const [showPSSCustomerDetailsModal, setShowPSSCustomerDetailsModal] = useState(false);
+  const [showPSSItemSelectModal, setShowPSSItemSelectModal] = useState(false);
+  const [showPSSWaitingModal, setShowPSSWaitingModal] = useState(false); // NEW: Customer Waiting + Salesman step
+  const [showPSSServiceSelectModal, setShowPSSServiceSelectModal] = useState(false);
+  const [pssCustomerWaitingOption, setPssCustomerWaitingOption] = useState('Will Come Later'); // 'Waiting in Store' | 'Will Come Later' | 'Home Delivery Required'
+  const [pssSalesmanName, setPssSalesmanName] = useState(''); // inherited from bill or selected
+  const [pssAllowWhatsApp, setPssAllowWhatsApp] = useState(true);
+  const [pssInseamBookCode, setPssInseamBookCode] = useState("");
+  const [pssAssignmentOption, setPssAssignmentOption] = useState("DIRECT"); // "DIRECT" | "PENDING_QUEUE"
+  const [pssInvoice, setPssInvoice] = useState(null);
+  const [pssConfigItems, setPssConfigItems] = useState([]);
+  const [pssFocusedIndex, setPssFocusedIndex] = useState(0);
+  const [pssCustName, setPssCustName] = useState("");
+  const [pssCustPhone, setPssCustPhone] = useState("");
+  const [showPssCustNameSuggestions, setShowPssCustNameSuggestions] = useState(false);
+  const [showPssCustPhoneSuggestions, setShowPssCustPhoneSuggestions] = useState(false);
+
+  const filteredPssCustomersByName = (customers || []).filter(c => (c.name || '').toLowerCase().includes((pssCustName || '').toLowerCase()) && pssCustName.trim() !== '');
+  const filteredPssCustomersByPhone = (customers || []).filter(c => (c.phone || '').includes(pssCustPhone) && pssCustPhone.trim() !== '');
+
+  const handleSelectPssCustomer = (cust) => {
+    setPssCustName(cust.name || '');
+    setPssCustPhone(cust.phone || '');
+    setShowPssCustNameSuggestions(false);
+    setShowPssCustPhoneSuggestions(false);
+    if (cust._id || cust.id) {
+      setPssInvoice(prev => ({
+        ...prev,
+        customerId: cust._id || cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone
+      }));
+    }
+  };
+  const [pssGeneralTailor, setPssGeneralTailor] = useState("");
+  const [pssGeneralService, setPssGeneralService] = useState("Alteration");
+  const [pssGeneralDeliveryDate, setPssGeneralDeliveryDate] = useState("");
+  const [pssGeneralPriority, setPssGeneralPriority] = useState("NORMAL");
+  const [pssGeneralRemarks, setPssGeneralRemarks] = useState("");
+  const [isSubmittingPSS, setIsSubmittingPSS] = useState(false);
+  const [pssSlipData, setPssSlipData] = useState(null); // for PSS slip modal after save
+
   // Cash Denomination UI
   const [showCashDenominationModal, setShowCashDenominationModal] = useState(false);
   const [paymentType, setPaymentType] = useState('Full Payment'); // 'Full Payment' | 'Part Payment'
@@ -1346,6 +1390,272 @@ export const BillingPOSView = ({
     }
   };
 
+  // ── Post Sales Service (PSS) Keyboard Navigation & SPACEBAR Toggle ──
+  useEffect(() => {
+    if (!showPSSItemSelectModal) return;
+
+    const handleKeyDown = (e) => {
+      const tagName = document.activeElement?.tagName?.toLowerCase();
+      const isInputField = tagName === "input" || tagName === "textarea" || tagName === "select";
+      if (isInputField) return;
+
+      const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar" || e.keyCode === 32;
+      const isDown = e.key === "ArrowDown" || e.code === "ArrowDown" || e.keyCode === 40;
+      const isUp = e.key === "ArrowUp" || e.code === "ArrowUp" || e.keyCode === 38;
+
+      if (isSpace) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPssConfigItems(prev => prev.map((itm, idx) => {
+          if (idx === pssFocusedIndex) {
+            return { ...itm, selectedForPSS: !itm.selectedForPSS };
+          }
+          return itm;
+        }));
+      } else if (isDown) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPssFocusedIndex(prev => (prev + 1) % (pssConfigItems.length || 1));
+      } else if (isUp) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPssFocusedIndex(prev => (prev - 1 + (pssConfigItems.length || 1)) % (pssConfigItems.length || 1));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [showPSSItemSelectModal, pssFocusedIndex, pssConfigItems.length]);
+
+  const handleYesOnPSSPrompt = () => {
+    setShowPSSQuestionPromptModal(false);
+
+    // Verify if customer details exist on current generated bill
+    const cName = (pssInvoice?.customerName || "").trim();
+    const cPhone = (pssInvoice?.customerPhone || "").trim();
+    const isWalkInWithoutPhone = !cName || cName === "Walk-in Customer" || cPhone.length < 10;
+
+    if (isWalkInWithoutPhone) {
+      // Customer contact details missing -> prompt user to enter customer info first!
+      setPssCustName(cName === "Walk-in Customer" ? "" : cName);
+      setPssCustPhone(cPhone);
+      setShowPSSCustomerDetailsModal(true);
+    } else {
+      handleOpenPssItemSelection(pssInvoice);
+    }
+  };
+
+  const handleSavePSSCustomerDetails = () => {
+    if (!pssCustName.trim()) {
+      if (onAddNotification) onAddNotification("Customer Info Required", "Please enter customer name for Post Sales Service.", "warning");
+      return;
+    }
+    if (!pssCustPhone.trim() || pssCustPhone.trim().length < 10) {
+      if (onAddNotification) onAddNotification("Customer Info Required", "Please enter a valid 10-digit mobile number.", "warning");
+      return;
+    }
+
+    const updatedInv = {
+      ...pssInvoice,
+      customerName: pssCustName.trim(),
+      customerPhone: pssCustPhone.trim()
+    };
+    setPssInvoice(updatedInv);
+    setShowPSSCustomerDetailsModal(false);
+    handleOpenPssItemSelection(updatedInv);
+  };
+
+  const handleOpenPssItemSelection = (invoice) => {
+    const inv = invoice || pssInvoice;
+    if (!inv || !inv.items || inv.items.length === 0) return;
+
+    const defaultTailorName = tailorEmployeesList[0]?.name || "Master Tailor";
+    const defaultDeliveryDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const itemsConfig = inv.items.map((item, idx) => ({
+      itemKey: idx,
+      _id: item._id || item.inventoryPieceId || item.id,
+      inventoryPieceId: item.inventoryPieceId || item._id,
+      name: item.name || item.pieceName || item.productName || 'Garment Item',
+      productName: item.name || item.pieceName || item.productName || 'Garment Item',
+      barcode: item.barcode || item.uniqueCode || item.sku || '',
+      uniqueCode: item.uniqueCode || item.barcode || '',
+      sku: item.sku || item.barcode || '',
+      size: item.size || 'FS',
+      color: item.color || item.primaryColor || 'Standard',
+      price: item.unitPrice || item.rate || item.price || 0,
+      quantity: item.quantity || item.qty || 1,
+      selectedForPSS: false, // Default UNSELECTED, click or SPACEBAR toggles
+      serviceType: "Alteration",
+      tailorName: defaultTailorName,
+      deliveryDate: defaultDeliveryDate,
+      priority: 'Normal',
+      selectedOptions: [],
+      measurements: {},
+      instructions: '',
+      charge: 0
+    }));
+
+    setPssConfigItems(itemsConfig);
+    setPssFocusedIndex(0);
+    setPssGeneralService("Alteration");
+    setPssGeneralTailor(defaultTailorName);
+    setPssGeneralDeliveryDate(defaultDeliveryDate);
+    setPssGeneralPriority('Normal');
+    setPssGeneralRemarks('');
+    setShowPSSItemSelectModal(true);
+  };
+
+  const handleTogglePssItemOption = (itemIdx, optionText) => {
+    setPssConfigItems(prev => prev.map((itm, idx) => {
+      if (idx !== itemIdx) return itm;
+      const exists = (itm.selectedOptions || []).includes(optionText);
+      const nextOpts = exists
+        ? (itm.selectedOptions || []).filter(o => o !== optionText)
+        : [...(itm.selectedOptions || []), optionText];
+      return { ...itm, selectedOptions: nextOpts };
+    }));
+  };
+
+  const handlePssMeasurementChange = (itemIdx, fieldName, val) => {
+    setPssConfigItems(prev => prev.map((itm, idx) => {
+      if (idx !== itemIdx) return itm;
+      return {
+        ...itm,
+        measurements: {
+          ...(itm.measurements || {}),
+          [fieldName]: val
+        }
+      };
+    }));
+  };
+
+  const handleContinueToServiceSelection = () => {
+    const selectedItems = pssConfigItems.filter(i => i.selectedForPSS);
+    if (selectedItems.length === 0) {
+      if (onAddNotification) {
+        onAddNotification("PSS Warning", "Please select at least one garment for Post Sales Service.", "warning");
+      }
+      return;
+    }
+    // Auto-inherit salesman from bill if available
+    if (!pssSalesmanName && pssInvoice?.salesmanName) {
+      setPssSalesmanName(pssInvoice.salesmanName);
+    }
+    setShowPSSItemSelectModal(false);
+    setShowPSSWaitingModal(true); // NEW: go to Customer Waiting Option step
+  };
+
+  const handleSubmitPSS = async () => {
+    const selectedItems = pssConfigItems.filter(i => i.selectedForPSS);
+    if (selectedItems.length === 0) {
+      if (onAddNotification) {
+        onAddNotification("PSS Warning", "Please select at least one garment for Post Sales Service.", "warning");
+      }
+      return;
+    }
+
+    try {
+      setIsSubmittingPSS(true);
+
+      const isDirect = pssAssignmentOption === "DIRECT";
+
+      // Derive priority from customerWaitingOption
+      let derivedPriority = 'NORMAL';
+      if (pssCustomerWaitingOption === 'Waiting in Store') derivedPriority = 'HIGH';
+      else if (pssCustomerWaitingOption === 'Home Delivery Required') derivedPriority = 'DELIVERY';
+
+      const payload = {
+        saleBillId: pssInvoice._id,
+        invoiceNumber: pssInvoice.invoiceNo,
+        billBarcode: pssInvoice.billBarcode || pssInvoice.invoiceNo,
+        customerId: pssInvoice.customerId || activeCustomer?._id,
+        customerName: pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer',
+        customerPhone: pssInvoice.customerPhone || activeCustomer?.phone || '',
+        inseamBookCode: pssInseamBookCode.trim(),
+        salesmanName: pssSalesmanName || pssInvoice?.salesmanName || '',
+        customerWaitingOption: pssCustomerWaitingOption,
+        priority: derivedPriority,
+        allowWhatsApp: pssAllowWhatsApp,
+        tailorName: isDirect ? (pssGeneralTailor || selectedItems[0]?.tailorName || 'Master Tailor') : '',
+        expectedDeliveryDate: pssGeneralDeliveryDate || selectedItems[0]?.deliveryDate,
+        remarks: pssGeneralRemarks,
+        items: selectedItems.map(item => ({
+          inventoryPieceId: item.inventoryPieceId || item._id,
+          pieceName: item.name,
+          productName: item.name,
+          barcode: item.barcode,
+          uniqueCode: item.uniqueCode,
+          sku: item.sku || item.barcode,
+          size: item.size,
+          color: item.color,
+          serviceType: item.serviceType || pssGeneralService,
+          assignedTo: isDirect ? (item.tailorName || pssGeneralTailor || 'Master Tailor') : '',
+          alterationDetails: item.selectedOptions || [],
+          measurements: item.measurements || {},
+          instructions: item.instructions || (item.selectedOptions?.length > 0 ? item.selectedOptions.join(', ') : 'Standard Service'),
+          charge: Number(item.charge || 0)
+        }))
+      };
+
+      const res = await api.post('/pssm', payload);
+      const createdData = res.data?.data?.pssmRecord || res.data?.data || {};
+
+      const issuedPssmNo = createdData.pssmNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
+      const originalInvoiceNo = pssInvoice.invoiceNo;
+      const billBarcode = pssInvoice.billBarcode || originalInvoiceNo;
+
+      // Build PSS Slip data
+      const slipData = {
+        pssmNo: issuedPssmNo,
+        originalInvoiceNo,
+        billBarcode,
+        customerName: pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer',
+        customerPhone: pssInvoice.customerPhone || activeCustomer?.phone || '',
+        salesmanName: pssSalesmanName || pssInvoice?.salesmanName || 'Counter Staff',
+        customerWaitingOption: pssCustomerWaitingOption,
+        priority: derivedPriority,
+        allowWhatsApp: pssAllowWhatsApp,
+        inseamBookCode: pssInseamBookCode.trim(),
+        cashierName: currentUser ? currentUser.name : 'Cashier',
+        deliveryDate: pssGeneralDeliveryDate,
+        items: selectedItems.map(itm => ({
+          name: itm.name,
+          size: itm.size,
+          color: itm.color,
+          barcode: itm.barcode || itm.uniqueCode,
+          serviceType: itm.serviceType || pssGeneralService,
+          assignedTo: isDirect ? (itm.tailorName || pssGeneralTailor || 'Master Tailor') : 'Pending Assignment',
+          alterationDetails: itm.selectedOptions || [],
+          instructions: itm.instructions || ''
+        })),
+        createdAt: new Date().toISOString()
+      };
+
+      setPssSlipData(slipData);
+      setShowPSSServiceSelectModal(false);
+
+      if (onAddNotification) {
+        onAddNotification(
+          "PSS Docket Issued",
+          `Post Sales Service docket ${issuedPssmNo} issued successfully!`,
+          "success"
+        );
+      }
+    } catch (err) {
+      console.error("Failed to submit PSS:", err);
+      if (onAddNotification) {
+        onAddNotification(
+          "PSS Error",
+          err.response?.data?.message || err.message || "Failed to create PSS record.",
+          "error"
+        );
+      }
+    } finally {
+      setIsSubmittingPSS(false);
+    }
+  };
+
   const handleOpenAlterationForSelectedProduct = (specificItem = null, specificIdx = null) => {
     let targetIdx = specificIdx;
     if (targetIdx === null || targetIdx === undefined) {
@@ -1593,6 +1903,11 @@ export const BillingPOSView = ({
         showExchangeSlipModal ||
         showAlterationModal ||
         isPurchaseAuthModalOpen ||
+        showPSSQuestionPromptModal ||
+        showPSSCustomerDetailsModal ||
+        showPSSItemSelectModal ||
+        showPSSWaitingModal ||
+        showPSSServiceSelectModal ||
         alterationPromptItem;
 
       if (
@@ -1876,7 +2191,7 @@ export const BillingPOSView = ({
         document.activeElement.isContentEditable
       );
 
-      if (!isTyping && !isAlterationModeActive && !showPaymentModal && !isItemSearchModalOpen) {
+      if (!isTyping && !isAlterationModeActive && !showPaymentModal && !isItemSearchModalOpen && !isAnyModalOpen) {
         const k = (e.key || "").toLowerCase();
 
         // Space Key -> Search Product Modal
@@ -3264,6 +3579,11 @@ export const BillingPOSView = ({
       } else {
         setWhatsappDispatchState('idle');
       }
+
+      // ── Post Sales Service (PSS) Prompt Flow ──
+      // Trigger PSS Question Modal AFTER normal bill is successfully generated & saved!
+      setPssInvoice(mergedInvoice);
+      setShowPSSQuestionPromptModal(true);
 
       return mergedInvoice;
     } finally {
@@ -9331,6 +9651,949 @@ export const BillingPOSView = ({
         </div>
       )}
 
+      {/* MODAL: POST SALES SERVICE (PSS) INITIAL QUESTION PROMPT */}
+      {showPSSQuestionPromptModal && pssInvoice && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-scale-up text-slate-800 space-y-6">
+            
+            {/* Header / Badge */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl border border-rose-200">
+                  <Scissors className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+                    Post Sales Service (PSS)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Tailoring, alteration & custom fitting request
+                  </p>
+                </div>
+              </div>
+              <span className="bg-slate-900 text-white font-mono text-xs font-bold px-3 py-1 rounded-xl shadow-xs">
+                {pssInvoice.invoiceNo}
+              </span>
+            </div>
+
+            {/* Bill Info Card */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
+              <div className="flex justify-between items-center text-xs text-slate-600">
+                <span>Customer Name:</span>
+                <strong className="text-slate-900 font-semibold">{pssInvoice.customerName || "Walk-in Customer"}</strong>
+              </div>
+              {pssInvoice.customerPhone && (
+                <div className="flex justify-between items-center text-xs text-slate-600">
+                  <span>Phone:</span>
+                  <span className="font-mono text-slate-800">{pssInvoice.customerPhone}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-xs text-slate-600">
+                <span>Items in Bill:</span>
+                <span className="font-bold text-rose-600">{pssInvoice.items?.length || 0} Products</span>
+              </div>
+            </div>
+
+            {/* The Core Question */}
+            <div className="text-center py-2 space-y-2">
+              <h4 className="text-base font-bold text-slate-900">
+                Do you want Post Sales Service for this generated bill?
+              </h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Choosing YES allows you to pick garments from this bill, set service requirements, assign staff/vendor, and issue a PSS docket.
+              </p>
+            </div>
+
+            {/* Action Buttons: YES / NO */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPSSQuestionPromptModal(false);
+                  // NO PSS record created, NO service item created, NO tailor assigned, NO status created
+                }}
+                className="w-full py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-sm rounded-2xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer border border-slate-200"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+                NO (Skip PSS)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleYesOnPSSPrompt}
+                className="w-full py-3.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm rounded-2xl transition-all shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Scissors className="w-4 h-4" />
+                YES (Configure PSS)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PSS CUSTOMER DETAILS PROMPT (WITH EXISTING CUSTOMER SUGGESTIONS) */}
+      {showPSSCustomerDetailsModal && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scale-up text-slate-800 space-y-5 relative">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl">
+                <User className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 uppercase">
+                  Customer Info Required
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Please select or enter customer details for Post Sales Service tracking
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Customer Full Name Input with Suggestions */}
+              <div className="relative">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Customer Full Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Type name to search existing customer..."
+                  value={pssCustName}
+                  onChange={(e) => {
+                    setPssCustName(e.target.value);
+                    setShowPssCustNameSuggestions(true);
+                    setShowPssCustPhoneSuggestions(false);
+                  }}
+                  onFocus={() => setShowPssCustNameSuggestions(true)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-rose-500"
+                />
+
+                {/* Suggestions Dropdown for Name */}
+                {showPssCustNameSuggestions && filteredPssCustomersByName.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[230] max-h-48 overflow-y-auto erp-hide-scrollbar py-1">
+                    <div className="px-3 py-1 bg-slate-50 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <span>Existing Customers ({filteredPssCustomersByName.length})</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowPssCustNameSuggestions(false)}
+                        className="text-[10px] text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {filteredPssCustomersByName.map((cust) => (
+                      <button
+                        key={cust._id || cust.id || cust.phone}
+                        type="button"
+                        onClick={() => handleSelectPssCustomer(cust)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-rose-50 text-xs flex justify-between items-center transition-colors cursor-pointer border-b border-slate-100 last:border-0"
+                      >
+                        <div>
+                          <strong className="text-slate-900 font-bold block">{cust.name}</strong>
+                          <span className="text-[10px] text-slate-500 font-mono">{cust.phone || 'No Phone'}</span>
+                        </div>
+                        <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-lg border border-rose-200">
+                          Select
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Mobile Phone Input with Suggestions */}
+              <div className="relative">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Mobile / Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Type 10-digit mobile number..."
+                  value={pssCustPhone}
+                  onChange={(e) => {
+                    setPssCustPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                    setShowPssCustPhoneSuggestions(true);
+                    setShowPssCustNameSuggestions(false);
+                  }}
+                  onFocus={() => setShowPssCustPhoneSuggestions(true)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-mono font-bold outline-none focus:ring-2 focus:ring-rose-500"
+                />
+
+                {/* Suggestions Dropdown for Phone */}
+                {showPssCustPhoneSuggestions && filteredPssCustomersByPhone.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[230] max-h-48 overflow-y-auto erp-hide-scrollbar py-1">
+                    <div className="px-3 py-1 bg-slate-50 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <span>Existing Customers ({filteredPssCustomersByPhone.length})</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowPssCustPhoneSuggestions(false)}
+                        className="text-[10px] text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {filteredPssCustomersByPhone.map((cust) => (
+                      <button
+                        key={cust._id || cust.id || cust.phone}
+                        type="button"
+                        onClick={() => handleSelectPssCustomer(cust)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-rose-50 text-xs flex justify-between items-center transition-colors cursor-pointer border-b border-slate-100 last:border-0"
+                      >
+                        <div>
+                          <strong className="text-slate-900 font-bold block">{cust.name}</strong>
+                          <span className="text-[10px] text-slate-500 font-mono">{cust.phone}</span>
+                        </div>
+                        <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-lg border border-rose-200">
+                          Select
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPSSCustomerDetailsModal(false);
+                  setShowPssCustNameSuggestions(false);
+                  setShowPssCustPhoneSuggestions(false);
+                }}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Cancel PSS
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePSSCustomerDetails}
+                className="py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer"
+              >
+                Save & Continue to PSS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: POST SALES SERVICE (PSS) ITEM SELECTION & TAILORING MODAL */}
+      {showPSSItemSelectModal && pssInvoice && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-6 animate-fade-in overflow-y-auto font-sans">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl border border-rose-500/30">
+                  <Scissors className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-wide uppercase font-mono">
+                      POST SALES SERVICE (PSS) SELECTION
+                    </h3>
+                    <span className="bg-rose-500/20 text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30 uppercase font-mono">
+                      Bill #{pssInvoice.invoiceNo}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Customer: <span className="text-white font-semibold">{pssInvoice.customerName || "Walk-in Customer"}</span> {pssInvoice.customerPhone ? `(${pssInvoice.customerPhone})` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPSSItemSelectModal(false);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 erp-hide-scrollbar">
+
+              {/* Keyboard Instruction Banner */}
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between text-xs text-amber-900">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>Keyboard Shortcut</strong>: Use <kbd className="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-mono font-bold text-amber-950">↑</kbd> <kbd className="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-mono font-bold text-amber-950">↓</kbd> Arrow keys to navigate items and <kbd className="bg-emerald-600 text-white px-2 py-0.5 rounded font-mono font-bold">SPACEBAR</kbd> to toggle selection.
+                  </span>
+                </div>
+                <span className="font-mono font-bold text-[11px] bg-white px-2.5 py-1 rounded-lg border border-amber-300 text-amber-900 shrink-0">
+                  {pssConfigItems.filter(i => i.selectedForPSS).length} of {pssConfigItems.length} items in PSS
+                </span>
+              </div>
+
+              {/* Garment Selection Checklist (SPACEBAR Toggle) */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center justify-between">
+                  <span>Select Products from Bill (Press SPACEBAR on focused item to toggle)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = pssConfigItems.every(i => i.selectedForPSS);
+                      setPssConfigItems(prev => prev.map(i => ({ ...i, selectedForPSS: !allSelected })));
+                    }}
+                    className="text-[11px] text-rose-600 font-bold hover:underline cursor-pointer lowercase font-mono"
+                  >
+                    {pssConfigItems.every(i => i.selectedForPSS) ? "unselect all" : "select all"}
+                  </button>
+                </h4>
+
+                <div className="space-y-3">
+                  {pssConfigItems.map((item, idx) => {
+                    const isSelected = item.selectedForPSS;
+                    const isFocused = idx === pssFocusedIndex;
+
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setPssFocusedIndex(idx);
+                          setPssConfigItems(prev => prev.map((itm, i) => i === idx ? { ...itm, selectedForPSS: !itm.selectedForPSS } : itm));
+                        }}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-500 shadow-md ring-1 ring-emerald-500/40'
+                            : 'bg-slate-50 border-slate-200 opacity-90 hover:opacity-100'
+                        } ${
+                          isFocused ? 'ring-4 ring-rose-500/70 border-rose-500 scale-[1.01] shadow-xl' : ''
+                        }`}
+                      >
+                        {/* Header Item Strip */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center font-bold text-xs transition-colors ${
+                              isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
+                            }`}>
+                              ✓
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h5 className={`text-sm font-black ${isSelected ? 'text-emerald-950' : 'text-slate-800'}`}>
+                                  {item.name}
+                                </h5>
+                                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-white/80 border border-slate-200 text-slate-700">
+                                  Size: {item.size} | Color: {item.color}
+                                </span>
+                              </div>
+                              <p className="text-xs font-mono text-slate-500 mt-0.5">
+                                Barcode / Unique Code: {item.barcode || item.uniqueCode || 'N/A'} | Price: ₹{item.price?.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isSelected ? (
+                              <span className="bg-emerald-600 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl shadow-xs uppercase tracking-wider font-mono">
+                                SELECTED FOR PSS
+                              </span>
+                            ) : (
+                              <span className="bg-slate-200 text-slate-600 font-semibold text-xs px-3 py-1.5 rounded-xl uppercase tracking-wider font-mono">
+                                NOT IN PSS / TAKE HOME
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer / Actions */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-slate-600">
+                Total Selected PSS Items: <strong className="text-emerald-700 font-bold">{pssConfigItems.filter(i => i.selectedForPSS).length}</strong>
+                {pssConfigItems.reduce((acc, i) => acc + Number(i.selectedForPSS ? (i.charge || 0) : 0), 0) > 0 && (
+                  <span className="ml-3">
+                    Extra Charges: <strong className="text-slate-900 font-mono">₹{pssConfigItems.reduce((acc, i) => acc + Number(i.selectedForPSS ? (i.charge || 0) : 0), 0)}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPSSItemSelectModal(false)}
+                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel / Skip PSS
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleContinueToServiceSelection}
+                  disabled={pssConfigItems.filter(i => i.selectedForPSS).length === 0}
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <Scissors className="w-4 h-4" />
+                  SAVE & CONTINUE TO SERVICE SELECTION →
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PSS STEP 2 — CUSTOMER WAITING OPTION + SALESMAN OWNERSHIP + PRIORITY */}
+      {showPSSWaitingModal && pssInvoice && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in overflow-y-auto font-sans">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
+
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-wide uppercase font-mono">
+                      STEP 2: CUSTOMER WAITING & SALESMAN
+                    </h3>
+                    <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30 uppercase font-mono">
+                      Bill #{pssInvoice.invoiceNo}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {pssConfigItems.filter(i => i.selectedForPSS).length} garment(s) selected for PSS
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowPSSWaitingModal(false)} className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 erp-hide-scrollbar">
+
+              {/* Customer Waiting Option */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-black">1</span>
+                  Is the Customer Waiting in Store?
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { value: 'Waiting in Store', label: 'Waiting in Store', badge: 'HIGH PRIORITY', color: 'rose', desc: 'Customer is present. Work urgently.' },
+                    { value: 'Will Come Later', label: 'Will Come Later', badge: 'NORMAL', color: 'slate', desc: 'Customer will return at delivery date.' },
+                    { value: 'Home Delivery Required', label: 'Home Delivery', badge: 'DELIVERY', color: 'blue', desc: 'Item needs to be delivered to customer.' }
+                  ].map(opt => (
+                    <div
+                      key={opt.value}
+                      onClick={() => setPssCustomerWaitingOption(opt.value)}
+                      className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
+                        pssCustomerWaitingOption === opt.value
+                          ? opt.color === 'rose' ? 'bg-rose-50 border-rose-500 ring-1 ring-rose-500/30 shadow-md'
+                            : opt.color === 'blue' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30 shadow-md'
+                            : 'bg-slate-100 border-slate-500 ring-1 ring-slate-500/30 shadow-md'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          pssCustomerWaitingOption === opt.value
+                            ? opt.color === 'rose' ? 'border-rose-600 bg-rose-600' : opt.color === 'blue' ? 'border-blue-600 bg-blue-600' : 'border-slate-600 bg-slate-600'
+                            : 'border-slate-300 bg-white'
+                        }`}>
+                          {pssCustomerWaitingOption === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <p className="text-xs font-black text-slate-900">{opt.label}</p>
+                      </div>
+                      <span className={`text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded ${
+                        opt.color === 'rose' ? 'bg-rose-100 text-rose-700'
+                        : opt.color === 'blue' ? 'bg-blue-100 text-blue-700'
+                        : 'bg-slate-200 text-slate-700'
+                      }`}>{opt.badge}</span>
+                      <p className="text-[10px] text-slate-500 mt-1.5">{opt.desc}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Priority Preview */}
+                <div className={`rounded-xl p-3 flex items-center gap-2 text-xs font-bold border ${
+                  pssCustomerWaitingOption === 'Waiting in Store' ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : pssCustomerWaitingOption === 'Home Delivery Required' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+                }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  Auto Priority:&nbsp;
+                  <strong>
+                    {pssCustomerWaitingOption === 'Waiting in Store' ? 'HIGH / URGENT'
+                     : pssCustomerWaitingOption === 'Home Delivery Required' ? 'DELIVERY'
+                     : 'NORMAL'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Salesman Ownership */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-black">2</span>
+                  Salesman Ownership
+                </h4>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  {/* Inherited salesman pill (still shown even when overriding) */}
+                  {pssInvoice?.salesmanName && !pssSalesmanName && (
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-sm">
+                        {(pssInvoice.salesmanName || 'S')[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-black text-slate-900">{pssInvoice.salesmanName}</p>
+                        <p className="text-[11px] text-indigo-600 font-semibold">Auto-inherited from Bill #{pssInvoice.invoiceNo}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPssSalesmanName(' ')}
+                        className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-lg border border-amber-200 uppercase hover:bg-amber-200 cursor-pointer transition-colors"
+                      >
+                        Override
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Autocomplete input — shown when no inherited salesman, or when user clicked Override */}
+                  {(!pssInvoice?.salesmanName || pssSalesmanName) && (() => {
+                    const query = pssSalesmanName.trim().toLowerCase();
+                    const suggestions = (salespersonList || []).filter(e =>
+                      query === '' || (e.name || '').toLowerCase().includes(query)
+                    );
+                    return (
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                          {pssInvoice?.salesmanName ? 'Override Salesman' : 'Select Salesman for PSS Ownership'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={pssSalesmanName.trim() === '' && !pssInvoice?.salesmanName ? '' : pssSalesmanName}
+                            onChange={(e) => setPssSalesmanName(e.target.value)}
+                            onFocus={() => {
+                              // Initialise to empty string so dropdown opens
+                              if (pssSalesmanName === ' ') setPssSalesmanName('');
+                            }}
+                            placeholder="Search salesman by name..."
+                            autoComplete="off"
+                            className="w-full bg-white border border-indigo-300 rounded-xl text-xs font-bold px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none pr-8"
+                          />
+                          {pssSalesmanName && (
+                            <button
+                              type="button"
+                              onClick={() => setPssSalesmanName('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          )}
+
+                          {/* Suggestions Dropdown */}
+                          {suggestions.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-indigo-200 rounded-xl shadow-xl z-[10] overflow-hidden max-h-48 overflow-y-auto erp-hide-scrollbar">
+                              {suggestions.map((emp) => (
+                                <button
+                                  key={emp._id || emp.id || emp.name}
+                                  type="button"
+                                  onClick={() => setPssSalesmanName(emp.name)}
+                                  className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-2.5 hover:bg-indigo-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${
+                                    pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase()
+                                      ? 'bg-indigo-50 font-black text-indigo-900'
+                                      : 'font-semibold text-slate-800'
+                                  }`}
+                                >
+                                  <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-[10px] shrink-0">
+                                    {(emp.name || 'S')[0].toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="truncate">{emp.name}</p>
+                                    {emp.designation && <p className="text-[10px] text-slate-400 truncate">{emp.designation}</p>}
+                                  </div>
+                                  {pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase() && (
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-indigo-600 ml-auto shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Selected confirmation pill */}
+                        {pssSalesmanName.trim() && suggestions.some(e => e.name.toLowerCase() === pssSalesmanName.trim().toLowerCase()) && (
+                          <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            Selected: <span className="text-slate-900">{pssSalesmanName.trim()}</span>
+                          </p>
+                        )}
+
+                        {/* Back to inherited link */}
+                        {pssInvoice?.salesmanName && (
+                          <button
+                            type="button"
+                            onClick={() => setPssSalesmanName('')}
+                            className="text-[11px] text-indigo-600 hover:underline font-semibold cursor-pointer"
+                          >
+                            ← Revert to inherited ({pssInvoice.salesmanName})
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+
+              {/* WhatsApp Permission */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                <div className="mt-0.5">
+                  <input
+                    type="checkbox"
+                    id="pssWhatsAppConsent"
+                    checked={pssAllowWhatsApp}
+                    onChange={(e) => setPssAllowWhatsApp(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pssWhatsAppConsent" className="text-xs font-black text-slate-900 cursor-pointer flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    Customer has given WhatsApp consent
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {pssAllowWhatsApp
+                      ? 'PSS Slip will be sent to customer via WhatsApp after saving.'
+                      : 'WhatsApp message will NOT be sent — slip will only be printed.'}
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => { setShowPSSWaitingModal(false); setShowPSSItemSelectModal(true); }}
+                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                ← Back to Item Selection
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPSSWaitingModal(false); setShowPSSServiceSelectModal(true); }}
+                className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                CONTINUE TO SERVICE SELECTION →
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: POST SALES SERVICE (PSS) - SERVICE SELECTION & WORK ASSIGNMENT MODAL */}
+      {showPSSServiceSelectModal && pssInvoice && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in overflow-y-auto font-sans">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl border border-rose-500/30">
+                  <Scissors className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-wide uppercase font-mono">
+                      STEP 2: PSS SERVICE SELECTION & WORK ASSIGNMENT
+                    </h3>
+                    <span className="bg-rose-500/20 text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30 uppercase font-mono">
+                      Bill Barcode: {pssInvoice.invoiceNo}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Customer: <span className="text-white font-semibold">{pssInvoice.customerName || "Walk-in Customer"}</span> {pssInvoice.customerPhone ? `(${pssInvoice.customerPhone})` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPSSServiceSelectModal(false);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 erp-hide-scrollbar">
+
+              {/* 1. Customer Inseam Code Section */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                    <Ruler className="w-4 h-4 text-indigo-600" />
+                    Customer Inseam Book Linkage (Optional)
+                  </label>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Links to Customer Record</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Scan or enter Customer Inseam Book Code (e.g. INSEAM-1058)..."
+                      value={pssInseamBookCode}
+                      onChange={(e) => setPssInseamBookCode(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Per-Item Service Selection */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center justify-between">
+                  <span>Garments Pending Service Setup ({pssConfigItems.filter(i => i.selectedForPSS).length} Items)</span>
+                  <span className="text-[11px] text-slate-500 font-medium">Select required service per garment</span>
+                </h4>
+
+                <div className="space-y-3">
+                  {pssConfigItems.filter(i => i.selectedForPSS).map((item, idx) => {
+                    return (
+                      <div
+                        key={item.itemKey || idx}
+                        className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h5 className="text-sm font-black text-slate-900">
+                                {item.name}
+                              </h5>
+                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
+                                Size: {item.size} | Color: {item.color}
+                              </span>
+                            </div>
+                            <p className="text-xs font-mono text-slate-500 mt-0.5">
+                              Barcode / Unique Code: <strong className="text-slate-800">{item.barcode || item.uniqueCode || 'N/A'}</strong>
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-extrabold uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              PENDING {item.serviceType || 'SERVICE'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Item Service Selection & Tailor Assignment */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                              Select Required Service *
+                            </label>
+                            <select
+                              value={item.serviceType || pssGeneralService}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, serviceType: val } : itm));
+                              }}
+                              className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold px-3 py-2 text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none"
+                            >
+                              {['Alteration', 'Re-Alteration', 'Dry Clean', 'Fall & Pico', 'Charak', 'Embroidery', 'Repair', 'Ironing', 'Finishing', 'Packing'].map(srv => (
+                                <option key={srv} value={srv}>{srv}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {pssAssignmentOption === "DIRECT" && (
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                Tailor / Vendor Assignment
+                              </label>
+                              <select
+                                value={item.tailorName || pssGeneralTailor}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, tailorName: val } : itm));
+                                }}
+                                className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                              >
+                                {tailorEmployeesList.map(t => (
+                                  <option key={t.id || t._id || t.name} value={t.name}>
+                                    {t.name} {t.designation ? `(${t.designation})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Work Assignment Flow Options */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center justify-between">
+                  <span>Work Assignment Workflow Option</span>
+                  <span className="text-[11px] font-mono text-slate-500">Service-based routing</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setPssAssignmentOption("DIRECT")}
+                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                      pssAssignmentOption === "DIRECT"
+                        ? 'bg-rose-50 border-rose-500 shadow-xs ring-1 ring-rose-500/30'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="pssAssignOpt"
+                      checked={pssAssignmentOption === "DIRECT"}
+                      onChange={() => setPssAssignmentOption("DIRECT")}
+                      className="mt-1 accent-rose-600"
+                    />
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900">
+                        OPTION A — Direct Assignment (Counter has time)
+                      </h5>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Immediately assign items to tailors/vendors now. Status set to <strong className="text-emerald-700">ASSIGNED</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setPssAssignmentOption("PENDING_QUEUE")}
+                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                      pssAssignmentOption === "PENDING_QUEUE"
+                        ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500/30'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="pssAssignOpt"
+                      checked={pssAssignmentOption === "PENDING_QUEUE"}
+                      onChange={() => setPssAssignmentOption("PENDING_QUEUE")}
+                      className="mt-1 accent-amber-600"
+                    />
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900">
+                        OPTION B — Pending Assignment Queue (Fast Counter)
+                      </h5>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Send to queue without assigning. Status set to <strong className="text-amber-700">PENDING ASSIGNMENT</strong> for manager later.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Delivery Date & Priority */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Promised Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    value={pssGeneralDeliveryDate}
+                    onChange={(e) => setPssGeneralDeliveryDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Priority
+                  </label>
+                  <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1">
+                    {['Normal', 'Urgent'].map(prio => (
+                      <button
+                        key={prio}
+                        type="button"
+                        onClick={() => setPssGeneralPriority(prio)}
+                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
+                          pssGeneralPriority === prio
+                            ? prio === 'Urgent' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {prio}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer / Actions */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPSSServiceSelectModal(false);
+                  setShowPSSWaitingModal(true);
+                }}
+                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                ← Back to Priority / Salesman
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPSSServiceSelectModal(false)}
+                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel PSS
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSubmitPSS}
+                  disabled={isSubmittingPSS}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingPSS ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving PSS Record...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      SAVE PSS RECORD & ISSUE DOCKET
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* MODAL: COMPLETED ALTERATION SLIP DOCKET */}
       {showAlterationDocketModal && completedAlterationDocket && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[120] font-sans animate-fade-in">
@@ -9488,6 +10751,145 @@ export const BillingPOSView = ({
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Alteration Slip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* MODAL: PSS SLIP (after save) — Invoice No + PSS Ticket No + Bill Barcode + WhatsApp */}
+      {pssSlipData && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-[220] font-sans animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 animate-scale-up overflow-hidden">
+
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/30">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase tracking-wide font-mono">PSS SLIP ISSUED</p>
+                  <p className="text-[11px] text-slate-400">Post Sales Service Booking Confirmed</p>
+                </div>
+              </div>
+              <button onClick={() => setPssSlipData(null)} className="text-slate-400 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Slip Body */}
+            <div className="p-5 space-y-4 max-h-[72vh] overflow-y-auto erp-hide-scrollbar">
+
+              {/* Key Reference Numbers */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 font-mono text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Original Invoice No</span>
+                  <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg">{pssSlipData.originalInvoiceNo}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">PSS Ticket No</span>
+                  <span className="font-black text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">{pssSlipData.pssmNo}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Bill Barcode</span>
+                  <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-lg font-mono">{pssSlipData.billBarcode}</span>
+                </div>
+                <div className="border-t border-dashed border-slate-200 my-1" />
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Priority</span>
+                  <span className={`font-black px-2.5 py-1 rounded-lg ${
+                    pssSlipData.priority === 'HIGH' ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                    : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                  }`}>{pssSlipData.priority}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Salesman</span>
+                  <span className="font-bold text-slate-800">{pssSlipData.salesmanName}</span>
+                </div>
+                {pssSlipData.deliveryDate && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-semibold uppercase tracking-wider">Delivery Date</span>
+                    <span className="font-bold text-amber-700">{new Date(pssSlipData.deliveryDate).toLocaleDateString('en-IN')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Customer Info */}
+              <div className="text-xs space-y-1 border border-slate-100 rounded-xl p-3 bg-white">
+                <p className="font-black text-slate-800">{pssSlipData.customerName} {pssSlipData.customerPhone ? `(${pssSlipData.customerPhone})` : ''}</p>
+                <p className="text-slate-500">Cashier: {pssSlipData.cashierName} | Waiting: {pssSlipData.customerWaitingOption}</p>
+                {pssSlipData.inseamBookCode && <p className="text-indigo-600 font-mono font-bold">Inseam Book: {pssSlipData.inseamBookCode}</p>}
+              </div>
+
+              {/* Items */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-black uppercase text-slate-600 tracking-wider">{pssSlipData.items?.length} Garment(s) for Service</p>
+                {(pssSlipData.items || []).map((itm, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+                    <div className="flex justify-between items-start">
+                      <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
+                      <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase">{itm.serviceType}</span>
+                    </div>
+                    <p className="text-slate-500 font-mono">Size: {itm.size} | Color: {itm.color} | Code: {itm.barcode || 'N/A'}</p>
+                    <p className="text-slate-600 font-semibold">Assigned to: <span className="text-slate-900 font-black">{itm.assignedTo}</span></p>
+                    {itm.alterationDetails?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {itm.alterationDetails.map((d, di) => (
+                          <span key={di} className="bg-rose-50 text-rose-700 font-bold text-[9px] px-1.5 py-0.5 rounded border border-rose-200">{d}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="px-5 py-4 border-t border-slate-100 grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setPssSlipData(null)}
+                className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  const d = pssSlipData;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.inseamBookCode ? '<b>Inseam Book:</b> ' + d.inseamBookCode : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
+                  window.open(url, '_blank');
+                }}
+                className="py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print Slip
+              </button>
+              <button
+                onClick={() => {
+                  if (!pssSlipData.allowWhatsApp) {
+                    alert('WhatsApp consent not given for this customer. Slip printed only.');
+                    return;
+                  }
+                  const d = pssSlipData;
+                  const itemLines = (d.items || []).map((it, i) => `${i + 1}. ${it.name} (${it.size}) — *${it.serviceType}*`).join('\n');
+                  const msg = `🧵 *PSS Service Booking Confirmed!*\n\n📋 *Invoice No:* ${d.originalInvoiceNo}\n🎫 *PSS Ticket:* ${d.pssmNo}\n🔖 *Barcode:* ${d.billBarcode}\n⚡ *Priority:* ${d.priority}\n\n👔 *Garments:*\n${itemLines}\n\n${d.deliveryDate ? '📅 *Expected Delivery:* ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '\n' : ''}Thank you for choosing our store! 🙏`;
+                  const phone = d.customerPhone ? d.customerPhone.replace(/\D/g, '') : '';
+                  const waUrl = phone
+                    ? `https://wa.me/91${phone.replace(/^91/, '')}?text=${encodeURIComponent(msg)}`
+                    : `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+                  window.open(waUrl, '_blank');
+                }}
+                className={`py-2.5 font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1 ${
+                  pssSlipData.allowWhatsApp
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                WhatsApp
               </button>
             </div>
           </div>

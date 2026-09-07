@@ -1,6 +1,8 @@
 const ApiError = require('../helpers/ApiError');
 const Alteration = require('../models/alteration/Alteration');
 const AlterationItem = require('../models/alteration/AlterationItem');
+const PSSM = require('../models/PSSM/PSSM');
+const PSSMItem = require('../models/PSSM/PSSMItem');
 const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT, ALTERATION_STATUS } = require('../constants/status');
@@ -59,9 +61,11 @@ class AlterationService {
     const commRate = settings.workerPercentage !== undefined ? settings.workerPercentage : 10;
     const commAmount = totalCharges * (commRate / 100);
 
+    const generatedNo = data.alterationNo || data.pssmNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
+
     const alteration = await Alteration.create({
       tenantId,
-      alterationNo: data.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+      alterationNo: generatedNo,
       saleBillId: resolvedSaleBillId,
       customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
       customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
@@ -73,6 +77,28 @@ class AlterationService {
       totalCharges,
       commissionPercentage: commRate,
       commissionAmount: commAmount,
+      status: ALTERATION_STATUS.RECEIVED,
+      remarks: data.remarks || data.customAlterationText || data.specialInstructions,
+      createdBy: userId
+    });
+
+    // Also record dedicated PSSM master document in Backend/src/models/PSSM/
+    const pssmRecord = await PSSM.create({
+      tenantId,
+      pssmNo: generatedNo,
+      saleBillId: resolvedSaleBillId,
+      billNo: data.invoiceNumber || (foundBill ? foundBill.billNo : ''),
+      billBarcode: data.billBarcode || data.invoiceNumber || (foundBill ? foundBill.billNo : ''),
+      customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
+      customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
+      customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
+      serviceType: data.serviceType || 'Alteration',
+      expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
+      tailorName: data.tailorName || 'Default Tailor',
+      vendorName: data.vendorName || data.tailorName || '',
+      priority: data.priority || 'Normal',
+      trialDate: data.trialDate,
+      totalCharges,
       status: ALTERATION_STATUS.RECEIVED,
       remarks: data.remarks || data.customAlterationText || data.specialInstructions,
       createdBy: userId
@@ -110,6 +136,27 @@ class AlterationService {
         barcode: item.barcode || piece?.barcode || '',
         uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
         sku: item.sku || piece?.barcode || '',
+        instructions: Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : (item.instructions || data.customAlterationText || 'Standard Fit'),
+        alterationDetails: item.alterationDetails || [],
+        measurements: item.measurements || {},
+        charge: item.charge || 0,
+        createdBy: userId
+      });
+
+      await PSSMItem.create({
+        tenantId,
+        pssmId: pssmRecord._id,
+        saleBillId: resolvedSaleBillId,
+        inventoryPieceId: piece ? piece._id : undefined,
+        pieceName: item.pieceName || item.productName || piece?.productId?.name || 'Altered Garment',
+        productName: item.productName || item.pieceName || piece?.productId?.name || 'Altered Garment',
+        size: item.size || piece?.size || 'FS',
+        color: item.color || piece?.primaryColor || 'Standard',
+        barcode: item.barcode || piece?.barcode || '',
+        uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
+        sku: item.sku || piece?.barcode || '',
+        serviceType: item.serviceType || data.serviceType || 'Alteration',
+        assignedTo: item.assignedTo || item.tailorName || data.tailorName || 'Master Tailor',
         instructions: Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : (item.instructions || data.customAlterationText || 'Standard Fit'),
         alterationDetails: item.alterationDetails || [],
         measurements: item.measurements || {},
