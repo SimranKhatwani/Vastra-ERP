@@ -407,10 +407,34 @@ class PSSMService {
   }
 
   static async getBillPSSMByBarcode(billBarcode, tenantId) {
-    const pssm = await PSSM.findOne({
+    const trimmed = String(billBarcode || '').trim();
+    if (!trimmed) return null;
+
+    const mongoose = require('mongoose');
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+
+    let pssm = await PSSM.findOne({
       tenantId,
-      $or: [{ billBarcode: billBarcode }, { billNo: billBarcode }, { pssmNo: billBarcode }]
+      $or: [
+        { billBarcode: regex },
+        { billNo: regex },
+        { pssmNo: regex },
+        ...(mongoose.Types.ObjectId.isValid(trimmed) && trimmed.length === 24 ? [{ _id: trimmed }, { saleBillId: trimmed }] : [])
+      ]
     }).lean();
+
+    // Fallback: If not found on PSSM header, check if scanned value is a garment item barcode/uniqueCode
+    if (!pssm) {
+      const pssmItem = await PSSMItem.findOne({
+        tenantId,
+        $or: [{ barcode: regex }, { uniqueCode: regex }]
+      }).lean();
+
+      if (pssmItem && pssmItem.pssmId) {
+        pssm = await PSSM.findOne({ tenantId, _id: pssmItem.pssmId }).lean();
+      }
+    }
 
     if (!pssm) return null;
 

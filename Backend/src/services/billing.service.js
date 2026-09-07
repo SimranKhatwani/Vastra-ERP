@@ -870,9 +870,42 @@ class BillingService {
       $or: [{ saleBillId: bill._id }, { invoiceNumber: bill.billNo }]
     });
 
+    const PSSM = require('../models/PSSM/PSSM');
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+    const pssm = await PSSM.findOne({
+      tenantId,
+      $or: [
+        { saleBillId: bill._id },
+        { billNo: bill.billNo },
+        { billBarcode: bill.billBarcode || bill.billNo },
+        { pssmNo: bill.billNo }
+      ]
+    }).lean();
+
+    let pssmItems = [];
+    if (pssm) {
+      pssmItems = await PSSMItem.find({ tenantId, pssmId: pssm._id }).lean();
+    }
+
     const remainingAmount = Math.max(0, bill.grandTotal - advanceApplied - previouslyPaidAmount);
 
-    return { bill: { ...bill.toObject(), hasAlteration: Boolean(alteration || bill.hasAlteration) }, items, alteration, payment: payments[0] || null, payments, transactions, previouslyPaidAmount, advanceApplied, remainingAmount };
+    return {
+      bill: {
+        ...bill.toObject(),
+        hasAlteration: Boolean(alteration || bill.hasAlteration || pssm),
+        hasPSSM: Boolean(pssm),
+        pssmRecord: pssm || null
+      },
+      items,
+      alteration,
+      pssmData: pssm ? { pssm, items: pssmItems } : null,
+      payment: payments[0] || null,
+      payments,
+      transactions,
+      previouslyPaidAmount,
+      advanceApplied,
+      remainingAmount
+    };
   }
 
   static async getBillPayments(billId, tenantId) {
