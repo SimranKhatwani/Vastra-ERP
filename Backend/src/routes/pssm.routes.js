@@ -15,8 +15,10 @@ router.get('/', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getAllPSS
 router.get('/pending-assignment', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getPendingAssignments);
 router.get('/pending-assignments', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getPendingAssignments);
 router.get('/salesman/pending', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getSalesmanPending);
-router.post('/scan-complete', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('SCAN_COMPLETE_PSSM', 'pssm'), PSSMController.scanCompleteItem);
-router.post('/absent-reassign', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('ABSENT_REASSIGN_PSSM', 'pssm'), PSSMController.checkAbsentSalesmen);
+router.get('/salesman/dashboard', PSSMController.getSalesmanDashboard);
+router.get('/salesman-dashboard', PSSMController.getSalesmanDashboard);
+router.post('/scan-complete', PSSMController.scanCompleteItem);
+router.post('/absent-reassign', PSSMController.checkAbsentSalesmen);
 router.get('/bill/:billBarcode', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getBillPSSMByBarcode);
 router.get('/barcode/:billBarcode', authorize(PERMISSIONS.ALTERATION_READ), PSSMController.getBillPSSMByBarcode);
 router.patch('/items/:itemId/assign', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('ASSIGN_PSSM_ITEM', 'pssm'), PSSMController.assignTailorVendor);

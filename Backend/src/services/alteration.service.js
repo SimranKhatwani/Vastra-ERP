@@ -7,6 +7,7 @@ const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT, ALTERATION_STATUS } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
+const AuditService = require('./audit.service');
 
 class AlterationService {
   static async createAlteration(data, userId, tenantId) {
@@ -270,12 +271,154 @@ class AlterationService {
     return result;
   }
 
-  static async updateStatus(alterationId, status, userId, tenantId, measurements, alterationDetails) {
+  static async updateStatus(alterationId, status, userId, tenantId, measurements, alterationDetails, extraData = {}) {
     let alteration = await Alteration.findOne({ _id: alterationId, tenantId });
     if (alteration) {
-      if (status) alteration.status = status;
+      const oldStatus = alteration.status;
+      const oldTailor = alteration.tailorName;
+      const oldVendor = alteration.vendorName;
+      const oldCustomerPhone = alteration.customerPhone;
+      const oldDelDate = alteration.expectedDeliveryDate ? new Date(alteration.expectedDeliveryDate).toLocaleDateString('en-IN') : null;
+
+      // 1. DELIVERY DATE CHANGE
+      const incomingDelDate = extraData.deliveryDate || extraData.expectedDeliveryDate;
+      if (incomingDelDate) {
+        const newDelDateObj = new Date(incomingDelDate);
+        const newDelDateStr = newDelDateObj.toLocaleDateString('en-IN');
+        if (oldDelDate !== newDelDateStr) {
+          alteration.expectedDeliveryDate = newDelDateObj;
+          await AuditService.trackAuditLog({
+            tenantId,
+            userId,
+            userName: extraData.userName || 'Authorized Staff',
+            action: 'DELIVERY_DATE_CHANGE',
+            module: 'alterations',
+            entityId: alteration._id.toString(),
+            entityType: 'ALTERATION',
+            displayName: `Alteration #${alteration.alterationNo}`,
+            item: `Alteration #${alteration.alterationNo} - Delivery Date Changed`,
+            fieldChanged: 'Delivery Date',
+            oldValue: oldDelDate || 'Not set',
+            newValue: newDelDateStr,
+            reason: extraData.reason || 'Delivery date rescheduled',
+            details: { alterationNo: alteration.alterationNo, oldDeliveryDate: oldDelDate, newDeliveryDate: newDelDateStr }
+          }, extraData.io);
+        }
+      }
+
+      // 2. TAILOR CHANGE
+      if (extraData.tailorName && extraData.tailorName !== oldTailor) {
+        alteration.tailorName = extraData.tailorName;
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extraData.userName || 'Authorized Staff',
+          action: 'TAILOR_CHANGE',
+          module: 'alterations',
+          entityId: alteration._id.toString(),
+          entityType: 'ALTERATION',
+          displayName: `Alteration #${alteration.alterationNo}`,
+          item: `Alteration #${alteration.alterationNo} - Tailor Changed`,
+          fieldChanged: 'Tailor',
+          oldValue: oldTailor || 'Unassigned',
+          newValue: extraData.tailorName,
+          reason: extraData.reason || `Tailor reassigned to ${extraData.tailorName}`,
+          details: { alterationNo: alteration.alterationNo, oldTailor, newTailor: extraData.tailorName }
+        }, extraData.io);
+      }
+
+      // 3. VENDOR CHANGE
+      if (extraData.vendorName && extraData.vendorName !== oldVendor) {
+        alteration.vendorName = extraData.vendorName;
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extraData.userName || 'Authorized Staff',
+          action: 'VENDOR_CHANGE',
+          module: 'alterations',
+          entityId: alteration._id.toString(),
+          entityType: 'ALTERATION',
+          displayName: `Alteration #${alteration.alterationNo}`,
+          item: `Alteration #${alteration.alterationNo} - Vendor Changed`,
+          fieldChanged: 'Vendor',
+          oldValue: oldVendor || 'In-House',
+          newValue: extraData.vendorName,
+          reason: extraData.reason || `Routed to vendor ${extraData.vendorName}`,
+          details: { alterationNo: alteration.alterationNo, oldVendor, newVendor: extraData.vendorName }
+        }, extraData.io);
+      }
+
+      // 4. CUSTOMER MOBILE CHANGE
+      const incomingPhone = extraData.customerPhone || extraData.customerMobile;
+      if (incomingPhone && incomingPhone !== oldCustomerPhone) {
+        alteration.customerPhone = incomingPhone;
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extraData.userName || 'Authorized Staff',
+          action: 'CUSTOMER_MOBILE_CHANGE',
+          module: 'alterations',
+          entityId: alteration._id.toString(),
+          entityType: 'ALTERATION',
+          displayName: alteration.customerName || 'Customer',
+          item: `Alteration #${alteration.alterationNo} - Customer Phone Updated`,
+          fieldChanged: 'Customer Mobile',
+          oldValue: oldCustomerPhone || 'None',
+          newValue: incomingPhone,
+          reason: extraData.reason || 'Customer contact number updated',
+          details: { alterationNo: alteration.alterationNo, oldPhone: oldCustomerPhone, newPhone: incomingPhone }
+        }, extraData.io);
+      }
+
+      // 5. SERVICE CHANGE
+      if (alterationDetails && Array.isArray(alterationDetails)) {
+        const oldDetailsStr = (alteration.alterationDetails || []).join(', ');
+        const newDetailsStr = alterationDetails.join(', ');
+        if (oldDetailsStr !== newDetailsStr) {
+          alteration.alterationDetails = alterationDetails;
+          await AuditService.trackAuditLog({
+            tenantId,
+            userId,
+            userName: extraData.userName || 'Authorized Staff',
+            action: 'SERVICE_CHANGE',
+            module: 'alterations',
+            entityId: alteration._id.toString(),
+            entityType: 'ALTERATION',
+            displayName: `Alteration #${alteration.alterationNo}`,
+            item: `Alteration #${alteration.alterationNo} - Service Details Modified`,
+            fieldChanged: 'Alteration Details',
+            oldValue: oldDetailsStr || 'Standard Fit',
+            newValue: newDetailsStr,
+            reason: extraData.reason || 'Alteration service specifications updated',
+            details: { alterationNo: alteration.alterationNo }
+          }, extraData.io);
+        }
+      }
+
+      // 6. STATUS UPDATE & MANUAL DELIVERY
+      if (status && status !== oldStatus) {
+        alteration.status = status;
+        const isManualDelivery = (status === ALTERATION_STATUS.DELIVERED || status === 'Delivered');
+
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extraData.userName || 'Authorized Staff',
+          action: isManualDelivery ? 'MANUAL_DELIVERY' : 'MANUAL_STATUS_UPDATE',
+          module: 'alterations',
+          entityId: alteration._id.toString(),
+          entityType: 'ALTERATION',
+          displayName: `Alteration #${alteration.alterationNo}`,
+          item: `Alteration #${alteration.alterationNo} - ${isManualDelivery ? 'Delivered to Customer' : 'Status Updated'}`,
+          fieldChanged: isManualDelivery ? 'Delivery Status' : 'Status',
+          oldValue: oldStatus,
+          newValue: status,
+          reason: extraData.reason || (isManualDelivery ? 'Garment handed over to customer / Collected' : `Status changed to ${status}`),
+          details: { alterationNo: alteration.alterationNo, oldStatus, newStatus: status }
+        }, extraData.io);
+      }
+
       if (measurements) alteration.measurements = measurements;
-      if (alterationDetails) alteration.alterationDetails = alterationDetails;
       alteration.updatedBy = userId;
       await alteration.save();
 
@@ -331,7 +474,8 @@ class AlterationService {
         activeMeasurements,
         alterationDetails || pssmItem.alterationDetails,
         userId,
-        tenantId
+        tenantId,
+        extraData
       );
       return { _id: pssmItem._id, status: status || nextPssmStatus, measurements: activeMeasurements };
     }

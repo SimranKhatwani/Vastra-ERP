@@ -18,10 +18,20 @@ class PSSMController {
     return res.status(200).json(new ApiResponse(200, items, 'Salesman pending PSS items retrieved.'));
   });
 
+  static getSalesmanDashboard = asyncHandler(async (req, res) => {
+    const data = await PSSMService.getSalesmanCompleteDashboard(req.query, req.user.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, data, 'Salesman complete ownership dashboard loaded.'));
+  });
+
   static scanCompleteItem = asyncHandler(async (req, res) => {
-    const { barcode } = req.body;
-    const completedItem = await PSSMService.markItemCompleteByScan(barcode, req.user.id, req.tenantId);
-    return res.status(200).json(new ApiResponse(200, completedItem, `Item ${barcode} marked READY & highlighted green.`));
+    const { barcode, reason } = req.body;
+    const extra = {
+      reason: reason || req.headers['x-audit-reason'] || 'Marked READY via Barcode Scan',
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const completedItem = await PSSMService.markItemCompleteByScan(barcode, req.user.id, req.tenantId, extra);
+    return res.status(200).json(new ApiResponse(200, completedItem, `Item marked READY & highlighted green.`));
   });
 
   static checkAbsentSalesmen = asyncHandler(async (req, res) => {
@@ -31,15 +41,35 @@ class PSSMController {
 
   static assignTailorVendor = asyncHandler(async (req, res) => {
     const { itemId } = req.params;
-    const { tailorName } = req.body;
-    const item = await PSSMService.assignTailorVendor(itemId, tailorName, req.user.id, req.tenantId);
-    return res.status(200).json(new ApiResponse(200, item, `Assigned to ${tailorName}.`));
+    const { tailorName, vendorName, isVendor, reason } = req.body;
+    const extra = {
+      tailorName,
+      vendorName,
+      isVendor: isVendor || Boolean(vendorName),
+      reason: reason || req.headers['x-audit-reason'],
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const item = await PSSMService.assignTailorVendor(itemId, tailorName || vendorName, req.user.id, req.tenantId, extra);
+    return res.status(200).json(new ApiResponse(200, item, `Assigned to ${tailorName || vendorName}.`));
   });
 
   static updateItemStatus = asyncHandler(async (req, res) => {
     const { itemId } = req.params;
-    const { status, measurements, alterationDetails } = req.body;
-    const item = await PSSMService.updateItemStatus(itemId, status, measurements, alterationDetails, req.user.id, req.tenantId);
+    const { status, measurements, alterationDetails, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, reason } = req.body;
+    const extra = {
+      deliveryDate: deliveryDate || expectedDeliveryDate,
+      expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
+      tailorName,
+      vendorName,
+      customerPhone: customerPhone || customerMobile,
+      customerMobile: customerMobile || customerPhone,
+      serviceType,
+      reason: reason || req.headers['x-audit-reason'],
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const item = await PSSMService.updateItemStatus(itemId, status, measurements, alterationDetails, req.user.id, req.tenantId, extra);
     return res.status(200).json(new ApiResponse(200, item, `Item status updated to ${status}.`));
   });
 
@@ -50,8 +80,13 @@ class PSSMController {
   });
 
   static processCollection = asyncHandler(async (req, res) => {
-    const { billBarcode, itemIds } = req.body;
-    const updated = await PSSMService.processCollection(billBarcode, itemIds, req.user.id, req.tenantId);
+    const { billBarcode, itemIds, reason } = req.body;
+    const extra = {
+      reason: reason || req.headers['x-audit-reason'] || 'Customer counter collection completed',
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const updated = await PSSMService.processCollection(billBarcode, itemIds, req.user.id, req.tenantId, extra);
     return res.status(200).json(new ApiResponse(200, updated, 'Collection process completed.'));
   });
 

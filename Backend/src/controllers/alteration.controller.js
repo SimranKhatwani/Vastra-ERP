@@ -10,15 +10,37 @@ class AlterationController {
 
   static updateStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { status, measurements, alterationDetails } = req.body;
-    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails);
-    return res.status(200).json(new ApiResponse(200, alteration, `Alteration status updated to ${status}.`));
+    const { status, measurements, alterationDetails, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, reason } = req.body;
+    const extraData = {
+      deliveryDate: deliveryDate || expectedDeliveryDate,
+      expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
+      tailorName,
+      vendorName,
+      customerPhone: customerPhone || customerMobile,
+      serviceType,
+      reason: reason || req.headers['x-audit-reason'],
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails, extraData);
+    return res.status(200).json(new ApiResponse(200, alteration, `Alteration status updated to ${status || 'updated'}.`));
   });
 
   static updateMeasurements = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { measurements, alterationDetails, status } = req.body;
-    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails);
+    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, reason } = req.body;
+    const extraData = {
+      deliveryDate: deliveryDate || expectedDeliveryDate,
+      expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
+      tailorName,
+      vendorName,
+      customerPhone: customerPhone || customerMobile,
+      serviceType,
+      reason: reason || req.headers['x-audit-reason'],
+      userName: req.user?.name || 'Staff Member',
+      io: req.app.get('io')
+    };
+    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails, extraData);
     return res.status(200).json(new ApiResponse(200, alteration, 'Alteration measurements updated successfully.'));
   });
 

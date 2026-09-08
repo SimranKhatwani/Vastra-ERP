@@ -47,7 +47,9 @@ import {
   Copy,
   PackageCheck,
   Truck,
-  Zap
+  Zap,
+  ShieldCheck,
+  History
 } from "lucide-react";
 
 export const ArticulationView = ({
@@ -300,6 +302,8 @@ export const ArticulationView = ({
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
   const [previewBillInvoice, setPreviewBillInvoice] = useState(null);
   const [loadingBillPreview, setLoadingBillPreview] = useState(false);
+  const [auditModalData, setAuditModalData] = useState(null);
+  const [loadingAuditModal, setLoadingAuditModal] = useState(false);
 
   // Delivery & Tailor Dashboard state
   const [deliveryDashboard, setDeliveryDashboard] = useState(null);
@@ -1230,6 +1234,24 @@ export const ArticulationView = ({
     } catch (err) {
       console.error("Failed to record collection:", err);
       if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to record collection", "danger");
+    }
+  };
+
+  const handleOpenAuditModal = async (ticket) => {
+    if (!ticket) return;
+    const targetNo = ticket.alterationId || ticket.alterationNo || ticket.pssmNo || ticket.invoiceNumber || ticket.barcode || ticket._id || 'Ticket';
+    setLoadingAuditModal(true);
+    setAuditModalData({ ticket, title: String(targetNo), logs: [] });
+    try {
+      const searchTerm = ticket.alterationNo || ticket.alterationId || ticket.invoiceNumber || ticket.billNo || ticket.barcode || '';
+      const res = await api.get(`/staff-activity/activity-logs?search=${encodeURIComponent(searchTerm)}&limit=50`);
+      if (res.data?.success && res.data?.data) {
+        setAuditModalData({ ticket, title: String(targetNo), logs: res.data.data });
+      }
+    } catch (err) {
+      console.error("Failed to load audit logs:", err);
+    } finally {
+      setLoadingAuditModal(false);
     }
   };
 
@@ -2404,13 +2426,24 @@ export const ArticulationView = ({
                               )}
                             </td>
                             <td className="p-3.5">
-                              <button
-                                onClick={() => setSelectedJobTicket(alt)}
-                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
-                              >
-                                <Printer className="w-3 h-3" />
-                                <span>Receipt</span>
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => setSelectedJobTicket(alt)}
+                                  className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                                  title="Print / View Receipt"
+                                >
+                                  <Printer className="w-3 h-3" />
+                                  <span>Receipt</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenAuditModal(alt)}
+                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                                  title="Audit Trail: Software में हुए हर बदलाव का Record"
+                                >
+                                  <History className="w-3 h-3 text-amber-600" />
+                                  <span>Audit</span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -3028,7 +3061,7 @@ export const ArticulationView = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setSelectedJobTicket(null)}
@@ -3054,14 +3087,126 @@ export const ArticulationView = ({
               </button>
               <button
                 type="button"
+                onClick={() => handleOpenAuditModal(selectedJobTicket)}
+                className="py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                title="View Complete Audit Trail & Reasons for Changes"
+              >
+                <History className="w-3.5 h-3.5 text-amber-700" />
+                <span>Audit Trail</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setWhatsappModalTarget(selectedJobTicket)}
-                className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer col-span-2 sm:col-span-1"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>WhatsApp</span>
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ─── AUDIT TRAIL & LOGS MODAL ─── */}
+      {auditModalData && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-scale-up my-auto text-slate-800 flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-amber-100 text-amber-800 rounded-2xl">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <span>Audit Trail &amp; Change Logs</span>
+                    <span className="text-xs font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
+                      {auditModalData.title}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-sans">
+                    Software में हुए हर बदलाव का संपूर्ण Record (User Name, Date, Time &amp; Reason)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAuditModalData(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content List */}
+            <div className="overflow-y-auto space-y-3 flex-1 pr-1" style={{ maxHeight: '55vh' }}>
+              {loadingAuditModal ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
+                  <span className="text-xs font-mono">Fetching complete audit history...</span>
+                </div>
+              ) : auditModalData.logs.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-xl">
+                    📜
+                  </div>
+                  <p className="text-xs font-bold text-slate-600">No specific change logs recorded yet for this item.</p>
+                  <p className="text-[10px] text-slate-400">Changes to Delivery Date, Tailor, Vendor, Service, Customer Mobile, Status, and Manual Delivery will appear here automatically.</p>
+                </div>
+              ) : (
+                auditModalData.logs.map((l, i) => (
+                  <div key={l._id || i} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2 hover:bg-amber-50/30 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md font-mono">
+                          {(l.action || '').replace(/_/g, ' ')}
+                        </span>
+                        {l.fieldChanged && (
+                          <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            {l.fieldChanged}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                        {l.date ? `${l.date} ${l.time || ''}` : new Date(l.createdAt).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    {/* Diff */}
+                    {l.oldValue !== null && l.oldValue !== undefined && l.newValue !== null && l.newValue !== undefined && (
+                      <div className="flex items-center gap-2 font-mono text-xs bg-white p-2 rounded-xl border border-slate-200">
+                        <span className="text-rose-600 line-through truncate max-w-[180px]">{String(l.oldValue)}</span>
+                        <span className="text-indigo-600 font-bold">➔</span>
+                        <span className="text-emerald-700 font-bold truncate max-w-[200px]">{String(l.newValue)}</span>
+                      </div>
+                    )}
+
+                    {/* Reason */}
+                    {l.reason && (
+                      <div className="flex items-start gap-1.5 bg-amber-50/90 border border-amber-200/80 p-2 rounded-xl text-xs text-amber-900">
+                        <span className="font-bold uppercase text-[9px] text-amber-700 tracking-wider bg-amber-100 px-1 py-0.2 rounded shrink-0">Reason</span>
+                        <span className="italic font-medium">{l.reason}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono pt-0.5">
+                      <span>Changed by: <strong className="text-slate-800 font-sans">{l.employeeName || l.userName || 'System'}</strong></span>
+                      {l.employeeEmail && <span>({l.employeeEmail})</span>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setAuditModalData(null)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Close Audit View
+              </button>
+            </div>
           </div>
         </div>
       )}

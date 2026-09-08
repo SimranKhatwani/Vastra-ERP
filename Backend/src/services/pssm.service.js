@@ -9,6 +9,7 @@ const Customer = require('../models/crm/Customer');
 const Salesman = require('../models/masters/Salesman');
 const Attendance = require('../models/Attendance');
 const NotificationService = require('./notification.service');
+const AuditService = require('./audit.service');
 
 class PSSMService {
   static async createPSSM(data, userId, tenantId) {
@@ -265,24 +266,106 @@ class PSSMService {
     }));
   }
 
-  static async markItemCompleteByScan(barcode, userId, tenantId) {
+  static async markItemCompleteByScan(barcode, userId, tenantId, extra = {}) {
     const cleanCode = barcode ? barcode.trim() : '';
-    const item = await PSSMItem.findOne({
+    if (!cleanCode) throw new ApiError(400, 'Barcode or unique code is required.');
+
+    // Try finding in PSSMItem
+    let item = await PSSMItem.findOne({
       tenantId,
-      $or: [{ barcode: cleanCode }, { uniqueCode: cleanCode }, { sku: cleanCode }],
+      $or: [
+        { barcode: cleanCode },
+        { uniqueCode: cleanCode },
+        { sku: cleanCode }
+      ],
       status: { $nin: ['COLLECTED', 'CLOSED'] }
     });
 
+    // Also check if barcode matches pssm ticket no or bill barcode
     if (!item) {
-      throw new ApiError(404, `No active PSS item found matching barcode '${cleanCode}'.`);
+      const pssm = await PSSM.findOne({
+        tenantId,
+        $or: [{ pssmNo: cleanCode }, { billBarcode: cleanCode }, { billNo: cleanCode }]
+      });
+      if (pssm) {
+        item = await PSSMItem.findOne({
+          tenantId,
+          pssmId: pssm._id,
+          status: { $nin: ['READY', 'COLLECTED', 'CLOSED'] }
+        }) || await PSSMItem.findOne({
+          tenantId,
+          pssmId: pssm._id
+        });
+      }
     }
 
+    // Also support checking legacy AlterationItem/Alteration
+    if (!item) {
+      const Alteration = require('../models/alteration/Alteration');
+      const AlterationItem = require('../models/alteration/AlterationItem');
+      const alt = await Alteration.findOne({
+        tenantId,
+        $or: [{ alterationNo: cleanCode }, { barcode: cleanCode }]
+      });
+      if (alt) {
+        alt.status = 'Ready for Delivery';
+        await alt.save();
+
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extra.userName || 'Authorized Staff',
+          action: 'MANUAL_STATUS_UPDATE',
+          module: 'alterations',
+          entityId: alt._id.toString(),
+          entityType: 'ALTERATION',
+          displayName: `Alteration #${alt.alterationNo}`,
+          item: `Barcode: ${cleanCode} - Marked Ready for Delivery`,
+          fieldChanged: 'Status',
+          oldValue: 'Pending',
+          newValue: 'Ready for Delivery',
+          reason: extra.reason || 'Barcode scan verified - Garment marked ready',
+          details: { barcode: cleanCode }
+        }, extra.io);
+
+        return {
+          _id: alt._id,
+          isGreenCompleted: true,
+          billNo: alt.invoiceNumber || alt.alterationNo,
+          customerName: alt.customerName,
+          status: alt.status
+        };
+      }
+    }
+
+    if (!item) {
+      throw new ApiError(404, `No active PSS or alteration item found matching '${cleanCode}'.`);
+    }
+
+    const oldStatus = item.status;
     item.status = 'READY';
     item.completedAt = new Date();
     item.completedBy = userId;
     await item.save();
 
     await NotificationService.resolveAlertsForPSSItem(item._id, tenantId, 'READY');
+
+    await AuditService.trackAuditLog({
+      tenantId,
+      userId,
+      userName: extra.userName || 'Authorized Staff',
+      action: 'MANUAL_STATUS_UPDATE',
+      module: 'pssm',
+      entityId: item._id.toString(),
+      entityType: 'PSSM',
+      displayName: `${item.pieceName || 'Garment'} (${item.barcode || cleanCode})`,
+      item: `Scanned Barcode: ${cleanCode} - Marked READY`,
+      fieldChanged: 'Status',
+      oldValue: oldStatus,
+      newValue: 'READY',
+      reason: extra.reason || 'Barcode scan verified - Garment marked READY',
+      details: { barcode: cleanCode }
+    }, extra.io);
 
     await this.recalculateMasterStatus(item.pssmId, tenantId);
 
@@ -294,6 +377,44 @@ class PSSMService {
       billBarcode: populated.pssmId?.billBarcode,
       customerName: populated.pssmId?.customerName
     };
+  }
+
+  static async restoreReassignedItemsForPresentSalesmen(tenantId) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Find attendance records for today marked PRESENT
+    const presentRecords = await Attendance.find({
+      tenantId,
+      date: { $gte: todayStart, $lte: todayEnd },
+      status: 'PRESENT'
+    }).lean();
+
+    const presentSalesmanIds = presentRecords.map(a => a.salesmanId).filter(Boolean);
+    if (!presentSalesmanIds.length) return { restoredCount: 0 };
+
+    let count = 0;
+    for (const sId of presentSalesmanIds) {
+      const itemsToRestore = await PSSMItem.find({
+        tenantId,
+        reassignedFromSalesmanId: sId,
+        status: { $nin: ['COLLECTED', 'CLOSED'] }
+      });
+
+      for (const item of itemsToRestore) {
+        item.salesmanId = item.reassignedFromSalesmanId;
+        item.salesmanName = item.reassignedFromSalesmanName;
+        item.reassignedFromSalesmanId = undefined;
+        item.reassignedFromSalesmanName = undefined;
+        item.reassignedReason = undefined;
+        item.reassignedAt = undefined;
+        await item.save();
+        count++;
+      }
+    }
+    return { restoredCount: count };
   }
 
   static async checkAndReassignAbsentSalesmen(tenantId) {
@@ -354,33 +475,440 @@ class PSSMService {
     };
   }
 
-  static async assignTailorVendor(pssmItemId, tailorName, userId, tenantId) {
+  static async getSalesmanCompleteDashboard(query = {}, userId, tenantId) {
+    // Automatically trigger absent checks and restoration so ownership is current
+    await this.restoreReassignedItemsForPresentSalesmen(tenantId).catch(() => {});
+    await this.checkAndReassignAbsentSalesmen(tenantId).catch(() => {});
+
+    const User = require('../models/User');
+    const userDoc = await User.findById(userId).lean();
+
+    let targetSalesmanDoc = null;
+    if (query.salesmanId) {
+      targetSalesmanDoc = await Salesman.findById(query.salesmanId).lean().catch(() => null);
+    } else if (query.salesmanName) {
+      targetSalesmanDoc = await Salesman.findOne({
+        tenantId,
+        name: new RegExp(query.salesmanName, 'i')
+      }).lean().catch(() => null);
+    } else if (userDoc) {
+      targetSalesmanDoc = await Salesman.findOne({
+        tenantId,
+        $or: [
+          ...(userDoc.phone ? [{ phone: userDoc.phone }] : []),
+          ...(userDoc.email ? [{ email: userDoc.email }] : []),
+          ...(userDoc.name ? [{ name: new RegExp(`^${userDoc.name}$`, 'i') }] : [])
+        ]
+      }).lean().catch(() => null);
+    }
+
+    const effectiveSalesmanName = query.salesmanName || targetSalesmanDoc?.name || userDoc?.name || '';
+    const effectiveSalesmanId = targetSalesmanDoc?._id || query.salesmanId;
+
+    const pssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true } })
+      .populate('pssmId')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const Alteration = require('../models/alteration/Alteration');
+    const alterations = await Alteration.find({ tenantId, isDeleted: false })
+      .populate('customerId saleBillId')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const existingPssmNos = new Set(pssmItems.map(pi => pi.pssmId?.pssmNo).filter(Boolean));
+
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const allUnifiedItems = [];
+
+    // Map PSSM items
+    for (const item of pssmItems) {
+      const pssm = item.pssmId || {};
+      const expDate = item.expectedDeliveryDate || pssm.expectedDeliveryDate ? new Date(item.expectedDeliveryDate || pssm.expectedDeliveryDate) : null;
+      const sId = item.salesmanId || pssm.salesmanId;
+      const sName = item.salesmanName || pssm.salesmanName || '';
+      const createdBy = (item.createdBy || pssm.createdBy)?.toString();
+
+      allUnifiedItems.push({
+        _id: item._id,
+        source: 'PSSM',
+        ticketNo: pssm.pssmNo || 'N/A',
+        billNo: pssm.billNo || pssm.billBarcode || 'N/A',
+        customerName: pssm.customerName || 'Walk-in Customer',
+        customerPhone: pssm.customerPhone || '',
+        salesmanId: sId,
+        salesmanName: sName,
+        createdBy,
+        productName: item.pieceName || item.productName || 'Garment Item',
+        serviceType: item.serviceType || pssm.serviceType || 'Alteration',
+        alterationDetails: item.alterationDetails || [],
+        assignedTailor: item.assignedTo || pssm.tailorName || 'Pending Assignment',
+        deliveryDate: expDate ? expDate.toISOString().split('T')[0] : '',
+        deliveryDateObj: expDate,
+        status: item.status || 'PENDING_ASSIGNMENT',
+        priority: item.priority || pssm.priority || 'NORMAL',
+        barcode: item.barcode || item.uniqueCode || item.sku || '',
+        createdAt: item.createdAt,
+        reassignedFromSalesmanName: item.reassignedFromSalesmanName,
+        reassignedReason: item.reassignedReason
+      });
+    }
+
+    // Map Alterations
+    for (const alt of alterations) {
+      if (existingPssmNos.has(alt.alterationNo)) continue;
+      const expDate = alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate) : null;
+      const saleBill = alt.saleBillId || {};
+      const sId = saleBill.salesmanId;
+      const sName = saleBill.salesmanName || '';
+      const createdBy = alt.createdBy?.toString();
+
+      allUnifiedItems.push({
+        _id: alt._id,
+        source: 'ALTERATION',
+        ticketNo: alt.alterationNo || 'N/A',
+        billNo: saleBill.billNo || alt.invoiceNumber || 'N/A',
+        customerName: alt.customerName || alt.customerId?.name || 'Walk-in Customer',
+        customerPhone: alt.customerPhone || alt.customerId?.phone || '',
+        salesmanId: sId,
+        salesmanName: sName,
+        createdBy,
+        productName: 'Altered Garment',
+        serviceType: 'Alteration',
+        alterationDetails: alt.alterationDetails || [],
+        assignedTailor: alt.tailorName || 'Pending Assignment',
+        deliveryDate: expDate ? expDate.toISOString().split('T')[0] : '',
+        deliveryDateObj: expDate,
+        status: alt.status || 'Pending',
+        priority: alt.priority || 'NORMAL',
+        barcode: alt.alterationNo || '',
+        createdAt: alt.createdAt
+      });
+    }
+
+    const cleanEffectiveName = effectiveSalesmanName.trim().toLowerCase();
+    const isSpecialOverview = cleanEffectiveName === 'all' || cleanEffectiveName === 'overview';
+
+    const myItems = isSpecialOverview ? allUnifiedItems : allUnifiedItems.filter(item => {
+      if (effectiveSalesmanId && item.salesmanId && String(item.salesmanId) === String(effectiveSalesmanId)) return true;
+      if (cleanEffectiveName) {
+        const iName = (item.salesmanName || '').trim().toLowerCase();
+        if (iName === cleanEffectiveName || iName.includes(cleanEffectiveName) || cleanEffectiveName.includes(iName)) return true;
+      }
+      if (userId && item.createdBy && String(item.createdBy) === String(userId)) return true;
+      return false;
+    });
+
+    const activeDataset = (myItems.length > 0) ? myItems : allUnifiedItems;
+
+    const isDelivered = (s) => ['COLLECTED', 'CLOSED', 'DELIVERED', 'Delivered'].includes(s);
+    const isReady = (s) => ['READY', 'READY_FOR_DELIVERY', 'Ready for Delivery', 'Ready for Trial'].includes(s);
+    const isPending = (s) => !isDelivered(s) && !isReady(s);
+
+    const totalAssignedServices = activeDataset.length;
+    const pendingCount = activeDataset.filter(i => isPending(i.status)).length;
+    const readyCount = activeDataset.filter(i => isReady(i.status)).length;
+    const deliveredCount = activeDataset.filter(i => isDelivered(i.status)).length;
+
+    const overdueCount = activeDataset.filter(i => {
+      if (!i.deliveryDateObj) return false;
+      return !isDelivered(i.status) && i.deliveryDateObj < todayStart;
+    }).length;
+
+    const reAlterCount = activeDataset.filter(i => {
+      const details = Array.isArray(i.alterationDetails) ? i.alterationDetails.join(' ').toLowerCase() : '';
+      return /re-alter|realter|trial|repair|urgent|high/i.test((i.priority || '') + ' ' + (i.serviceType || '') + ' ' + details);
+    }).length;
+
+    // Pending List: जब तक Item Complete Scan नहीं होगा, ये List हटेगी नहीं।
+    const pendingList = activeDataset.filter(i => !isDelivered(i.status)).map(i => ({
+      ...i,
+      isOverdue: Boolean(i.deliveryDateObj && i.deliveryDateObj < todayStart),
+      isDueToday: Boolean(i.deliveryDateObj && i.deliveryDateObj >= todayStart && i.deliveryDateObj <= todayEnd),
+      isReady: isReady(i.status)
+    }));
+
+    // Daily Follow-up List:
+    // 1. आज किस Customer को Call करना है (Scheduled for delivery today or became ready today)
+    const callTodayList = activeDataset.filter(i => {
+      if (isDelivered(i.status)) return false;
+      if (i.deliveryDateObj && i.deliveryDateObj >= todayStart && i.deliveryDateObj <= todayEnd) return true;
+      return false;
+    });
+
+    // 2. कौन Ready है (Ready for pickup)
+    const readyPickupList = activeDataset.filter(i => isReady(i.status));
+
+    // 3. कौन Overdue है (Overdue delivery date)
+    const overdueFollowupList = activeDataset.filter(i => {
+      if (!i.deliveryDateObj) return false;
+      return !isDelivered(i.status) && !isReady(i.status) && i.deliveryDateObj < todayStart;
+    });
+
+    // 4. कौन Delivery लेने नहीं आया (Ready past delivery date)
+    const didNotPickUpList = activeDataset.filter(i => {
+      if (!isReady(i.status)) return false;
+      if (!i.deliveryDateObj) return false;
+      return i.deliveryDateObj < todayStart;
+    });
+
+    return {
+      summary: {
+        totalAssignedServices,
+        pending: pendingCount,
+        ready: readyCount,
+        delivered: deliveredCount,
+        overdue: overdueCount,
+        reAlterCases: reAlterCount
+      },
+      salesmanInfo: {
+        id: effectiveSalesmanId || userId,
+        name: effectiveSalesmanName || 'Sales Staff',
+        isOwnItems: myItems.length > 0
+      },
+      pendingList,
+      followUp: {
+        callToday: callTodayList,
+        readyForPickup: readyPickupList,
+        overdue: overdueFollowupList,
+        didNotPickUp: didNotPickUpList
+      }
+    };
+  }
+
+  static async assignTailorVendor(pssmItemId, tailorName, userId, tenantId, extra = {}) {
     const item = await PSSMItem.findOne({ _id: pssmItemId, tenantId });
     if (!item) throw new ApiError(404, 'PSSM Item not found.');
 
-    item.assignedTo = tailorName;
+    const pssm = await PSSM.findOne({ _id: item.pssmId, tenantId }).lean();
+    const oldAssigned = item.assignedTo || 'Unassigned';
+    const isVendor = extra.isVendor || (tailorName && tailorName.toLowerCase().includes('vendor')) || Boolean(extra.vendorName);
+    const effectiveAssignee = tailorName || extra.vendorName || extra.tailorName;
+
+    item.assignedTo = effectiveAssignee;
     item.status = 'ASSIGNED';
     await item.save();
+
+    // Audit log if changed
+    if (oldAssigned !== effectiveAssignee) {
+      const actionType = isVendor ? 'VENDOR_CHANGE' : 'TAILOR_CHANGE';
+      const fieldName = isVendor ? 'Vendor' : 'Tailor';
+      const defaultReason = isVendor
+        ? `Garment routed to vendor: ${effectiveAssignee}`
+        : (oldAssigned === 'Unassigned' ? `Assigned to tailor: ${effectiveAssignee}` : `Tailor reassigned from ${oldAssigned} to ${effectiveAssignee}`);
+
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: actionType,
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || item.sku || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - ${item.pieceName || item.barcode || 'Item'}`,
+        fieldChanged: fieldName,
+        oldValue: oldAssigned,
+        newValue: effectiveAssignee,
+        reason: extra.reason || defaultReason,
+        details: {
+          pssmNo: pssm?.pssmNo,
+          billNo: pssm?.billNo,
+          customerName: pssm?.customerName,
+          customerPhone: pssm?.customerPhone,
+          oldAssigned,
+          newAssigned: effectiveAssignee
+        }
+      }, extra.io);
+    }
 
     await this.recalculateMasterStatus(item.pssmId, tenantId);
 
     return item;
   }
 
-  static async updateItemStatus(pssmItemId, status, measurements, alterationDetails, userId, tenantId) {
+  static async updateItemStatus(pssmItemId, status, measurements, alterationDetails, userId, tenantId, extra = {}) {
     const item = await PSSMItem.findOne({ _id: pssmItemId, tenantId });
     if (!item) throw new ApiError(404, 'PSSM Item not found.');
 
-    item.status = status;
+    const pssm = await PSSM.findOne({ _id: item.pssmId, tenantId });
+    const oldStatus = item.status;
+    const oldTailor = item.assignedTo;
+    const oldServiceType = item.serviceType;
+    const oldAltDetails = (item.alterationDetails || []).join(', ');
+    const oldDelDate = item.expectedDeliveryDate ? new Date(item.expectedDeliveryDate).toLocaleDateString('en-IN') : null;
+
+    // 1. DELIVERY DATE CHANGE
+    const incomingDelDate = extra.deliveryDate || extra.expectedDeliveryDate;
+    if (incomingDelDate) {
+      const newDelDateObj = new Date(incomingDelDate);
+      const newDelDateStr = newDelDateObj.toLocaleDateString('en-IN');
+      if (oldDelDate !== newDelDateStr) {
+        item.expectedDeliveryDate = newDelDateObj;
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extra.userName || 'Authorized Staff',
+          action: 'DELIVERY_DATE_CHANGE',
+          module: 'pssm',
+          entityId: item._id.toString(),
+          entityType: 'PSSM',
+          displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+          item: `Bill #${pssm?.billNo || 'PSSM'} - Delivery Date Rescheduled`,
+          fieldChanged: 'Delivery Date',
+          oldValue: oldDelDate || 'Not set',
+          newValue: newDelDateStr,
+          reason: extra.reason || 'Delivery deadline rescheduled',
+          details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo, oldDeliveryDate: oldDelDate, newDeliveryDate: newDelDateStr }
+        }, extra.io);
+      }
+    }
+
+    // 2. TAILOR / VENDOR CHANGE
+    if (extra.tailorName && extra.tailorName !== oldTailor) {
+      const isVendor = extra.isVendor || (extra.tailorName && extra.tailorName.toLowerCase().includes('vendor')) || Boolean(extra.vendorName);
+      item.assignedTo = extra.tailorName;
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: isVendor ? 'VENDOR_CHANGE' : 'TAILOR_CHANGE',
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - ${isVendor ? 'Vendor' : 'Tailor'} Reassigned`,
+        fieldChanged: isVendor ? 'Vendor' : 'Tailor',
+        oldValue: oldTailor || 'Unassigned',
+        newValue: extra.tailorName,
+        reason: extra.reason || (isVendor ? `Vendor assigned: ${extra.tailorName}` : `Tailor changed to: ${extra.tailorName}`),
+        details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo, oldAssigned: oldTailor, newAssigned: extra.tailorName }
+      }, extra.io);
+    } else if (extra.vendorName && extra.vendorName !== oldTailor) {
+      item.assignedTo = extra.vendorName;
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: 'VENDOR_CHANGE',
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - Vendor Reassigned`,
+        fieldChanged: 'Vendor',
+        oldValue: oldTailor || 'In-House',
+        newValue: extra.vendorName,
+        reason: extra.reason || `Vendor reassigned: ${extra.vendorName}`,
+        details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo, oldVendor: oldTailor, newVendor: extra.vendorName }
+      }, extra.io);
+    }
+
+    // 3. SERVICE CHANGE
+    const newServiceType = extra.serviceType;
+    const newAltDetails = alterationDetails && Array.isArray(alterationDetails) ? alterationDetails.join(', ') : null;
+    if (newServiceType && newServiceType !== oldServiceType) {
+      item.serviceType = newServiceType;
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: 'SERVICE_CHANGE',
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - Service Type Modified`,
+        fieldChanged: 'Service Type',
+        oldValue: oldServiceType || 'Alteration',
+        newValue: newServiceType,
+        reason: extra.reason || 'Service type updated',
+        details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo }
+      }, extra.io);
+    }
+    if (newAltDetails !== null && newAltDetails !== oldAltDetails) {
+      item.alterationDetails = alterationDetails;
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: 'SERVICE_CHANGE',
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - Alteration Specifications Modified`,
+        fieldChanged: 'Alteration Details',
+        oldValue: oldAltDetails || 'Standard',
+        newValue: newAltDetails || 'None',
+        reason: extra.reason || 'Alteration specifications modified',
+        details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo }
+      }, extra.io);
+    }
+
+    // 4. CUSTOMER MOBILE CHANGE
+    const incomingPhone = extra.customerPhone || extra.customerMobile;
+    if (incomingPhone && pssm && pssm.customerPhone !== incomingPhone) {
+      const oldPhone = pssm.customerPhone;
+      pssm.customerPhone = incomingPhone;
+      await pssm.save();
+
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: 'CUSTOMER_MOBILE_CHANGE',
+        module: 'pssm',
+        entityId: pssm._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${pssm.customerName || 'Customer'}`,
+        item: `Bill #${pssm.billNo || ''} - Customer Mobile Updated`,
+        fieldChanged: 'Customer Mobile',
+        oldValue: oldPhone || 'None',
+        newValue: incomingPhone,
+        reason: extra.reason || 'Customer contact mobile updated',
+        details: { pssmNo: pssm.pssmNo, billNo: pssm.billNo, oldPhone, newPhone: incomingPhone }
+      }, extra.io);
+    }
+
+    // 5. STATUS UPDATE & MANUAL DELIVERY
+    if (status && status !== oldStatus) {
+      item.status = status;
+      if (status === 'READY') {
+        item.completedAt = new Date();
+        item.completedBy = userId;
+      } else if (status === 'COLLECTED' || status === 'DELIVERED') {
+        item.collectedAt = new Date();
+      }
+
+      const isManualDelivery = (status === 'COLLECTED' || status === 'DELIVERED');
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: extra.userName || 'Authorized Staff',
+        action: isManualDelivery ? 'MANUAL_DELIVERY' : 'MANUAL_STATUS_UPDATE',
+        module: 'pssm',
+        entityId: item._id.toString(),
+        entityType: 'PSSM',
+        displayName: `${item.pieceName || 'Garment'} (${item.barcode || item.uniqueCode || 'N/A'})`,
+        item: `Bill #${pssm?.billNo || 'PSSM'} - ${isManualDelivery ? 'Garment Handed Over' : 'Status Changed'}`,
+        fieldChanged: isManualDelivery ? 'Delivery Status' : 'Status',
+        oldValue: oldStatus,
+        newValue: status,
+        reason: extra.reason || (isManualDelivery ? 'Garment handed over to customer / Collected' : `Status updated from ${oldStatus} to ${status}`),
+        details: { pssmNo: pssm?.pssmNo, billNo: pssm?.billNo, oldStatus, newStatus: status }
+      }, extra.io);
+    }
+
     if (measurements) item.measurements = measurements;
-    if (alterationDetails) item.alterationDetails = alterationDetails;
+    if (alterationDetails && !newAltDetails) item.alterationDetails = alterationDetails;
 
-    if (status === 'READY') {
-      item.completedAt = new Date();
-      item.completedBy = userId;
-    } else if (status === 'COLLECTED') {
-      item.collectedAt = new Date();
-
+    if (status === 'COLLECTED') {
       try {
         let pId = item.inventoryPieceId;
         if (!pId && (item.barcode || item.uniqueCode)) {
@@ -455,7 +983,7 @@ class PSSMService {
     };
   }
 
-  static async processCollection(billBarcode, itemIdsToCollect, userId, tenantId) {
+  static async processCollection(billBarcode, itemIdsToCollect, userId, tenantId, extra = {}) {
     const pssmData = await this.getBillPSSMByBarcode(billBarcode, tenantId);
     if (!pssmData) throw new ApiError(404, 'No PSSM record found for this Bill Barcode.');
 
@@ -513,6 +1041,24 @@ class PSSMService {
             notes: `Garment collected by customer: ${itm.pieceName || itm.productName}`
           }).catch(() => {});
         }
+
+        // Audit Trail: MANUAL DELIVERY
+        await AuditService.trackAuditLog({
+          tenantId,
+          userId,
+          userName: extra.userName || 'Authorized Staff',
+          action: 'MANUAL_DELIVERY',
+          module: 'pssm',
+          entityId: itm._id.toString(),
+          entityType: 'PSSM',
+          displayName: `${itm.pieceName || 'Garment'} (${itm.barcode || itm.uniqueCode || 'N/A'})`,
+          item: `Bill #${pssmData.pssm?.billNo || 'PSSM'} - Item Collected / Delivered`,
+          fieldChanged: 'Delivery Status',
+          oldValue: itm.status || 'READY',
+          newValue: 'COLLECTED / DELIVERED',
+          reason: extra.reason || 'Garment handed over to customer / Collected',
+          details: { billBarcode, billNo: pssmData.pssm?.billNo, pssmNo: pssmData.pssm?.pssmNo }
+        }, extra.io);
       }
 
       // Sync matching Alteration / AlterationItem records if present

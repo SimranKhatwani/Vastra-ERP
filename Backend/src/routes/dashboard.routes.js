@@ -17,5 +17,5 @@ router.get('/stock-by-category', authorize(PERMISSIONS.OWNER_DASHBOARD), Dashboa
 router.get('/stock-by-firm', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardController.getStockByFirm);
 router.get('/low-stock', authorize(PERMISSIONS.OWNER_DASHBOARD), DashboardController.getLowStock);
 router.get('/staff-summary', DashboardController.getStaffSummary);
-router.get('/morning-actions', (req, res) => res.status(200).json({ success: true, data: [] })); // Mock morning actions
+router.get('/morning-actions', DashboardController.getMorningActions);
 module.exports = router;

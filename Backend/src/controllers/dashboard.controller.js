@@ -37,6 +37,11 @@ class DashboardController {
     return res.status(200).json(new ApiResponse(200, summary, 'Low stock summary loaded.'));
   });
 
+  static getMorningActions = asyncHandler(async (req, res) => {
+    const actions = await DashboardService.getMorningActions(req.tenantId);
+    return res.status(200).json(new ApiResponse(200, actions, 'Morning actions loaded.'));
+  });
+
   static getStaffSummary = asyncHandler(async (req, res) => {
     const tenantId = req.tenantId;
     const Salesman = require('../models/masters/Salesman');

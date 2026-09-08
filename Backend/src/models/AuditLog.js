@@ -24,7 +24,6 @@ const auditLogSchema = new mongoose.Schema({
   item: String, // Legacy or fallback display text
   entityType: {
     type: String,
-    enum: ['PT_FILE', 'PURCHASE', 'PURCHASE_ITEM', 'POS_ITEM', null],
     default: null
   },
   entityId: {
@@ -32,6 +31,22 @@ const auditLogSchema = new mongoose.Schema({
     default: null
   },
   displayName: String,
+  fieldChanged: {
+    type: String,
+    default: null
+  },
+  oldValue: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  newValue: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  reason: {
+    type: String,
+    default: null
+  },
   date: String,
   time: String,
   deviceInfo: String,
@@ -48,5 +63,8 @@ const auditLogSchema = new mongoose.Schema({
 
 auditLogSchema.index({ tenantId: 1, action: 1 });
 auditLogSchema.index({ tenantId: 1, userId: 1 });
+auditLogSchema.index({ tenantId: 1, module: 1 });
+auditLogSchema.index({ tenantId: 1, entityId: 1 });
+auditLogSchema.index({ tenantId: 1, timestamp: -1 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

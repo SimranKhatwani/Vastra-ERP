@@ -138,8 +138,22 @@ class CustomerService {
     return { bills, alterations };
   }
 
-  static async updateCustomer(customerId, updateData, tenantId) {
+  static async updateCustomer(customerId, updateData, tenantId, userId = null, userName = 'Staff Member', reason = null, io = null) {
     const mongoose = require('mongoose');
+    const AuditService = require('./audit.service');
+    let existingCustomer = null;
+
+    if (mongoose.Types.ObjectId.isValid(customerId)) {
+      existingCustomer = await Customer.findOne({ _id: customerId, tenantId });
+    }
+    if (!existingCustomer && (updateData.phone || customerId)) {
+      const searchPhone = updateData.phone || customerId;
+      existingCustomer = await Customer.findOne({ phone: searchPhone, tenantId });
+    }
+
+    const oldPhone = existingCustomer?.phone;
+    const newPhone = updateData.phone;
+
     let customer = null;
 
     const finalPayload = {
@@ -171,6 +185,31 @@ class CustomerService {
     }
 
     if (!customer) throw new ApiError(404, 'Customer not found.');
+
+    // Audit log for CUSTOMER_MOBILE_CHANGE
+    if (newPhone && oldPhone && oldPhone !== newPhone) {
+      await AuditService.trackAuditLog({
+        tenantId,
+        userId,
+        userName: userName || 'Staff Member',
+        action: 'CUSTOMER_MOBILE_CHANGE',
+        module: 'crm',
+        entityId: customer._id.toString(),
+        entityType: 'CUSTOMER',
+        displayName: customer.name || 'Customer',
+        item: `Customer: ${customer.name || ''} - Mobile Updated`,
+        fieldChanged: 'Customer Mobile',
+        oldValue: oldPhone,
+        newValue: newPhone,
+        reason: reason || 'Customer mobile number updated in records',
+        details: {
+          customerName: customer.name,
+          oldPhone,
+          newPhone
+        }
+      }, io);
+    }
+
     return customer;
   }
 

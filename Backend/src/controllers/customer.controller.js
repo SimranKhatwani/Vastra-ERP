@@ -24,7 +24,16 @@ class CustomerController {
   });
 
   static updateCustomer = asyncHandler(async (req, res) => {
-    const customer = await CustomerService.updateCustomer(req.params.id, req.body, req.tenantId);
+    const reason = req.body?.reason || req.headers['x-audit-reason'];
+    const customer = await CustomerService.updateCustomer(
+      req.params.id,
+      req.body,
+      req.tenantId,
+      req.user?.id,
+      req.user?.name || 'Staff Member',
+      reason,
+      req.app.get('io')
+    );
     return res.status(200).json(new ApiResponse(200, customer, 'Customer updated successfully.'));
   });
 

@@ -4,7 +4,7 @@ const AuditService = require('../services/audit.service');
 
 class AuditController {
   static trackAuditLog = asyncHandler(async (req, res) => {
-    const { action, item, moduleName, details, entityType, entityId, displayName } = req.body;
+    const { action, item, moduleName, details, entityType, entityId, displayName, reason, oldValue, newValue, fieldChanged } = req.body;
     
     if (!action || !item) {
       return res.status(400).json(new ApiResponse(400, null, 'Action and item are required'));
@@ -13,27 +13,27 @@ class AuditController {
     const logData = {
       tenantId: req.tenantId || req.user?.tenantId,
       userId: req.user?.id,
-      userName: req.user?.name || 'Unknown User',
+      userName: req.user?.name || 'Authorized Staff',
       userEmail: req.user?.email,
       action,
       item,
       entityType: entityType || null,
       entityId: entityId || null,
       displayName: displayName || null,
-      module: moduleName || 'Purchase',
+      fieldChanged: fieldChanged || null,
+      oldValue: oldValue !== undefined ? oldValue : null,
+      newValue: newValue !== undefined ? newValue : null,
+      reason: reason || req.headers['x-audit-reason'] || null,
+      module: moduleName || 'General',
       details: details || {},
       deviceInfo: req.headers['user-agent'] || 'Unknown',
       ipAddress: req.ip || req.connection?.remoteAddress,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
     };
 
-    const result = await AuditService.trackAuditLog(logData);
-
     const io = req.app.get('io');
-    if (io) {
-      io.emit('activity.feed', result);
-    }
+    const result = await AuditService.trackAuditLog(logData, io);
 
     return res.status(201).json(new ApiResponse(201, result, 'Audit log tracked successfully.'));
   });

@@ -148,6 +148,20 @@ class NotificationService {
       isDeleted: false
     }).lean();
 
+    const tailorUsers = allStaffUsers.filter(u => {
+      const role = (u.role || '').toLowerCase();
+      const desig = (u.designation || '').toLowerCase();
+      return /tailor|karigar|stitcher|worker|fitter|production/i.test(role) ||
+             /tailor|karigar|stitcher|worker|fitter|production/i.test(desig);
+    });
+
+    const salespersonUsers = allStaffUsers.filter(u => {
+      const role = (u.role || '').toLowerCase();
+      const desig = (u.designation || '').toLowerCase();
+      return /sales|salesperson|salesman|floorstaff|counter/i.test(role) ||
+             /sales|salesperson|salesman|floorstaff|counter/i.test(desig);
+    });
+
     let alertsCreated = 0;
 
     for (const item of activeItems) {
@@ -207,29 +221,70 @@ Please complete this item on priority.`;
       adminUsers.forEach(admin => recipientUserIds.add(admin._id.toString()));
 
       // (B) Assigned Tailor / Service Person
-      if (tailorName && tailorName !== 'Not Assigned' && tailorName !== 'Default Tailor') {
-        const cleanTailor = tailorName.trim().toLowerCase();
-        const matchedTailorUser = allStaffUsers.find(u => {
+      const cleanTailor = (tailorName || '').trim().toLowerCase();
+      const isGenericTailor = !cleanTailor || cleanTailor === 'not assigned' || cleanTailor === 'unassigned' || cleanTailor === 'default tailor';
+
+      if (!isGenericTailor) {
+        const matchedTailors = allStaffUsers.filter(u => {
           if (u._id.toString() === tailorName) return true;
-          return u.name && u.name.trim().toLowerCase() === cleanTailor;
+          const uName = (u.name || '').trim().toLowerCase();
+          return uName === cleanTailor || uName.includes(cleanTailor) || cleanTailor.includes(uName);
         });
-        if (matchedTailorUser) {
-          recipientUserIds.add(matchedTailorUser._id.toString());
+
+        if (matchedTailors.length > 0) {
+          matchedTailors.forEach(t => recipientUserIds.add(t._id.toString()));
+        } else {
+          // If named tailor doesn't have an exact User match, notify all shop tailors
+          tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
+        }
+      } else {
+        // If "Default Tailor" or "Not Assigned", notify ALL tailors so work gets assigned and started!
+        tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
+      }
+
+      // (C) Assigned Salesperson (Only the salesperson associated with this bill/item, or floor team)
+      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
+      const cleanSalesman = (salespersonName || '').trim().toLowerCase();
+      const isGenericSalesman = !cleanSalesman || cleanSalesman === 'not assigned' || cleanSalesman === 'unassigned';
+
+      let matchedSalespeople = [];
+
+      if (targetSalesmanId) {
+        try {
+          const Salesman = require('../models/masters/Salesman');
+          const salesmanDoc = await Salesman.findById(targetSalesmanId).lean().catch(() => null);
+          if (salesmanDoc) {
+            matchedSalespeople = allStaffUsers.filter(u => {
+              if (salesmanDoc.phone && u.phone && String(u.phone).trim() === String(salesmanDoc.phone).trim()) return true;
+              if (salesmanDoc.email && u.email && u.email.toLowerCase() === salesmanDoc.email.toLowerCase()) return true;
+              const uName = (u.name || '').trim().toLowerCase();
+              const sName = (salesmanDoc.name || '').trim().toLowerCase();
+              return uName === sName || (sName && (uName.includes(sName) || sName.includes(uName)));
+            });
+          }
+        } catch (e) {
+          // quiet fallback
         }
       }
 
-      // (C) Assigned Salesperson (Only the salesperson associated with this bill/item)
-      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
-      const cleanSalesman = (salespersonName || '').trim().toLowerCase();
-
-      if (targetSalesmanId || (cleanSalesman && cleanSalesman !== 'not assigned')) {
-        const matchedSalespersonUser = allStaffUsers.find(u => {
-          if (targetSalesmanId && u._id.toString() === targetSalesmanId.toString()) return true;
-          return u.name && u.name.trim().toLowerCase() === cleanSalesman;
+      if (matchedSalespeople.length === 0 && !isGenericSalesman) {
+        matchedSalespeople = allStaffUsers.filter(u => {
+          const uName = (u.name || '').trim().toLowerCase();
+          return uName === cleanSalesman || uName.includes(cleanSalesman) || cleanSalesman.includes(uName);
         });
-        if (matchedSalespersonUser) {
-          recipientUserIds.add(matchedSalespersonUser._id.toString());
-        }
+      }
+
+      // Also notify the user who booked this ticket / bill
+      const creatorUserId = (item.createdBy || pssm.createdBy)?.toString();
+      if (creatorUserId) {
+        recipientUserIds.add(creatorUserId);
+      }
+
+      if (matchedSalespeople.length > 0) {
+        matchedSalespeople.forEach(s => recipientUserIds.add(s._id.toString()));
+      } else {
+        // If unassigned or no specific salesperson matched, alert all salesperson users!
+        salespersonUsers.forEach(s => recipientUserIds.add(s._id.toString()));
       }
 
       // 4. Duplicate Prevention & Creation
@@ -276,6 +331,155 @@ Please complete this item on priority.`;
         this.emitSocketNotification(recipientId, newNotif, tenantId);
         alertsCreated++;
       }
+    }
+
+    // Also check active Alteration items
+    try {
+      const Alteration = require('../models/alteration/Alteration');
+      const activeAlterations = await Alteration.find({
+        tenantId,
+        isDeleted: false,
+        status: { $nin: ['Ready for Delivery', 'Delivered', 'Cancelled'] }
+      }).populate('customerId saleBillId').lean();
+
+      for (const alt of activeAlterations) {
+        if (activeItems.some(pi => pi.pssmId?.pssmNo === alt.alterationNo)) continue;
+        const deliveryDate = alt.expectedDeliveryDate;
+        if (!deliveryDate) continue;
+
+        const itemDeliveryDateStr = this.getLocalDateString(deliveryDate);
+        if (itemDeliveryDateStr !== tomorrowDateStr) continue;
+        if (this.isCompletedOrReadyStatus(alt.status)) continue;
+
+        const billNo = alt.saleBillId?.billNo || alt.saleBillId?.invoiceNo || alt.invoiceNumber || 'N/A';
+        const pssTicket = alt.alterationNo || 'N/A';
+        const customerName = alt.customerName || alt.customerId?.name || 'Customer';
+        const itemName = 'Altered Garment';
+        const service = 'Alteration';
+        const tailorName = alt.tailorName || 'Not Assigned';
+        const salespersonName = alt.saleBillId?.salesmanName || 'Not Assigned';
+        const formattedDeliveryDate = this.formatDisplayDate(deliveryDate);
+        const currentStatus = (alt.status || 'PENDING').replace(/_/g, ' ').toUpperCase();
+
+        const alertTitle = '⚠ PSS DELIVERY ALERT — CRITICAL';
+        const alertMessage = 
+`Bill No: ${billNo}
+PSS Ticket: ${pssTicket}
+
+Customer: ${customerName}
+
+Item: ${itemName}
+Service: ${service}
+
+Assigned Tailor: ${tailorName}
+Salesperson: ${salespersonName}
+
+Delivery Date: ${formattedDeliveryDate}
+Current Status: ${currentStatus}
+
+Delivery is tomorrow.
+Please complete this item on priority.`;
+
+        const recipientUserIds = new Set();
+        adminUsers.forEach(admin => recipientUserIds.add(admin._id.toString()));
+
+        const cleanTailor = (tailorName || '').trim().toLowerCase();
+        const isGenericTailor = !cleanTailor || cleanTailor === 'not assigned' || cleanTailor === 'unassigned' || cleanTailor === 'default tailor';
+
+        if (!isGenericTailor) {
+          const matchedTailors = allStaffUsers.filter(u => {
+            if (u._id.toString() === tailorName) return true;
+            const uName = (u.name || '').trim().toLowerCase();
+            return uName === cleanTailor || uName.includes(cleanTailor) || cleanTailor.includes(uName);
+          });
+          if (matchedTailors.length > 0) {
+            matchedTailors.forEach(t => recipientUserIds.add(t._id.toString()));
+          } else {
+            tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
+          }
+        } else {
+          tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
+        }
+
+        const altSalesmanId = alt.saleBillId?.salesmanId;
+        const cleanSalesman = (salespersonName || '').trim().toLowerCase();
+        const isGenericSalesman = !cleanSalesman || cleanSalesman === 'not assigned' || cleanSalesman === 'unassigned';
+
+        let matchedSalespeople = [];
+        if (altSalesmanId) {
+          try {
+            const Salesman = require('../models/masters/Salesman');
+            const salesmanDoc = await Salesman.findById(altSalesmanId).lean().catch(() => null);
+            if (salesmanDoc) {
+              matchedSalespeople = allStaffUsers.filter(u => {
+                if (salesmanDoc.phone && u.phone && String(u.phone).trim() === String(salesmanDoc.phone).trim()) return true;
+                if (salesmanDoc.email && u.email && u.email.toLowerCase() === salesmanDoc.email.toLowerCase()) return true;
+                const uName = (u.name || '').trim().toLowerCase();
+                const sName = (salesmanDoc.name || '').trim().toLowerCase();
+                return uName === sName || (sName && (uName.includes(sName) || sName.includes(uName)));
+              });
+            }
+          } catch (e) {}
+        }
+
+        if (matchedSalespeople.length === 0 && !isGenericSalesman) {
+          matchedSalespeople = allStaffUsers.filter(u => {
+            const uName = (u.name || '').trim().toLowerCase();
+            return uName === cleanSalesman || uName.includes(cleanSalesman) || cleanSalesman.includes(uName);
+          });
+        }
+
+        const creatorUserId = alt.createdBy?.toString();
+        if (creatorUserId) recipientUserIds.add(creatorUserId);
+
+        if (matchedSalespeople.length > 0) {
+          matchedSalespeople.forEach(s => recipientUserIds.add(s._id.toString()));
+        } else {
+          salespersonUsers.forEach(s => recipientUserIds.add(s._id.toString()));
+        }
+
+        for (const recipientId of recipientUserIds) {
+          const existingAlert = await Notification.findOne({
+            tenantId,
+            userId: recipientId,
+            entityId: alt._id,
+            category: 'PSS_DEADLINE_TOMORROW',
+            'metadata.deliveryDateStr': tomorrowDateStr
+          });
+
+          if (existingAlert) continue;
+
+          const newNotif = await Notification.create({
+            tenantId,
+            userId: recipientId,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'CRITICAL',
+            priority: 'Critical',
+            category: 'PSS_DEADLINE_TOMORROW',
+            entityId: alt._id,
+            metadata: {
+              alterationId: alt._id,
+              deliveryDateStr: tomorrowDateStr,
+              billNo,
+              alterationNo: pssTicket,
+              customerName,
+              itemName,
+              service,
+              tailorName,
+              salespersonName,
+              status: alt.status
+            },
+            isRead: false,
+            resolved: false
+          });
+
+          this.emitSocketNotification(recipientId, newNotif, tenantId);
+          alertsCreated++;
+        }
+      }
+    } catch (err) {
+      console.error('[NotificationService] Error checking Alteration records for deadline:', err.message);
     }
 
     return { checked: activeItems.length, alertsCreated };

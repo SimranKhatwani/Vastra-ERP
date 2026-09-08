@@ -487,8 +487,23 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                               {log.action}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-600 font-medium truncate max-w-[200px]" title={log.record || log.displayName || ''}>
-                            {log.record || log.displayName || log.item || '-'}
+                          <td className="p-4 text-slate-600 font-medium max-w-[240px]">
+                            <span className="font-semibold text-slate-800 truncate block" title={log.record || log.displayName || ''}>
+                              {log.record || log.displayName || log.item || '-'}
+                            </span>
+                            {log.oldValue !== null && log.oldValue !== undefined && log.newValue !== null && log.newValue !== undefined && (
+                              <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500 mt-1">
+                                <span className="line-through text-slate-400 truncate max-w-[90px]">{String(log.oldValue)}</span>
+                                <span className="text-indigo-600 font-bold">➔</span>
+                                <span className="font-bold text-slate-800 truncate max-w-[110px]">{String(log.newValue)}</span>
+                              </div>
+                            )}
+                            {log.reason && (
+                              <div className="flex items-center gap-1 text-[10px] text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded mt-1 max-w-[220px] truncate" title={log.reason}>
+                                <span className="font-bold text-[8px] uppercase tracking-wider text-amber-700 bg-amber-100/70 px-1 py-0.2 rounded shrink-0">Reason</span>
+                                <span className="italic truncate font-sans text-[10px]">{log.reason}</span>
+                              </div>
+                            )}
                           </td>
                           <td className="p-4">
                             {log.status === "Success" ? (
@@ -779,6 +794,42 @@ export function StaffActivityView({ currentUser = {}, addToastNotification = () 
                   <span className="font-bold text-emerald-600">{selectedActivity.status || 'Success'}</span>
                 </div>
               </div>
+
+              {/* Audit Reason & Value Changes */}
+              {(selectedActivity.reason || selectedActivity.oldValue !== null || selectedActivity.fieldChanged) && (
+                <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider block">
+                      Audit Trail &amp; Reason Log
+                    </span>
+                    {selectedActivity.fieldChanged && (
+                      <span className="bg-amber-200/80 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">
+                        {selectedActivity.fieldChanged}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedActivity.reason && (
+                    <div className="bg-white border border-amber-200/80 p-3 rounded-xl space-y-1">
+                      <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wider block">Recorded Reason:</span>
+                      <p className="text-xs font-bold text-slate-800 italic">"{selectedActivity.reason}"</p>
+                    </div>
+                  )}
+
+                  {(selectedActivity.oldValue !== null && selectedActivity.oldValue !== undefined && selectedActivity.newValue !== null && selectedActivity.newValue !== undefined) && (
+                    <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                      <div className="bg-rose-50 border border-rose-100 p-2.5 rounded-xl">
+                        <span className="text-[9px] font-bold text-rose-500 uppercase block font-sans">Previous Value (Old)</span>
+                        <span className="text-rose-800 font-semibold break-all">{String(selectedActivity.oldValue)}</span>
+                      </div>
+                      <div className="bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl">
+                        <span className="text-[9px] font-bold text-emerald-500 uppercase block font-sans">Updated Value (New)</span>
+                        <span className="text-emerald-800 font-semibold break-all">{String(selectedActivity.newValue)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {selectedActivity.details && Object.keys(selectedActivity.details).length > 0 && (
                 <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl space-y-2 overflow-x-auto">

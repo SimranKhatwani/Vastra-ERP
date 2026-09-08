@@ -41,6 +41,12 @@ import {
   Award,
   PackageCheck,
   Truck,
+  Phone,
+  PhoneCall,
+  Check,
+  Sun,
+  Mail,
+  RotateCcw,
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -101,6 +107,32 @@ export const DashboardView = ({
     return () => socket.off('activity.feed', handleActivityFeed);
   }, [socket]);
   const [morningActions, setMorningActions] = React.useState(null);
+  const [loadingMorningActions, setLoadingMorningActions] = React.useState(false);
+
+  const fetchMorningActions = React.useCallback(async (showLoading = false) => {
+    try {
+      if (showLoading) setLoadingMorningActions(true);
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await api.get(`/dashboard/morning-actions`);
+      if (res.data?.success && res.data?.data) {
+        setMorningActions(res.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch morning actions", error);
+    } finally {
+      if (showLoading) setLoadingMorningActions(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchMorningActions();
+    const interval = setInterval(() => {
+      fetchMorningActions();
+    }, 15000); // 15s auto-poll
+    return () => clearInterval(interval);
+  }, [fetchMorningActions]);
+
   const [commStats, setCommStats] = React.useState(null);
   const [attendanceStats, setAttendanceStats] = React.useState(null);
   const [alterationStats, setAlterationStats] = React.useState(null);
@@ -119,6 +151,77 @@ export const DashboardView = ({
   const [tailorJobs, setTailorJobs] = React.useState([]);
   const [loadingTailorJobs, setLoadingTailorJobs] = React.useState(false);
   const [updatingJobId, setUpdatingJobId] = React.useState(null);
+
+  // Salesperson Ownership Dashboard states
+  const [salesmanDashboardData, setSalesmanDashboardData] = React.useState(null);
+  const [loadingSalesmanDashboard, setLoadingSalesmanDashboard] = React.useState(false);
+  const [salesmanScanBarcode, setSalesmanScanBarcode] = React.useState("");
+  const [scanningBarcode, setScanningBarcode] = React.useState(false);
+  const [scanMessage, setScanMessage] = React.useState(null);
+  const [activeFollowupTab, setActiveFollowupTab] = React.useState("callToday");
+  const [salesmanPendingSearch, setSalesmanPendingSearch] = React.useState("");
+  const [isAbsentSyncing, setIsAbsentSyncing] = React.useState(false);
+
+  const fetchSalesmanDashboard = React.useCallback(async (showLoading = false) => {
+    try {
+      if (showLoading) setLoadingSalesmanDashboard(true);
+      const res = await api.get('/pssm/salesman-dashboard');
+      if (res.data?.success && res.data?.data) {
+        setSalesmanDashboardData(res.data.data);
+      }
+    } catch (e) {
+      // quiet fallback
+    } finally {
+      if (showLoading) setLoadingSalesmanDashboard(false);
+    }
+  }, []);
+
+  const handleScanCompleteBarcode = async (barcodeToScan) => {
+    const code = (barcodeToScan || salesmanScanBarcode || "").trim();
+    if (!code) return;
+    try {
+      setScanningBarcode(true);
+      setScanMessage(null);
+      const res = await api.post('/pssm/scan-complete', { barcode: code });
+      if (res.data?.success) {
+        setScanMessage({
+          type: 'success',
+          text: res.data.message || `Item scanned and marked complete! (Ticket: ${res.data.ticketNo || code})`
+        });
+        setSalesmanScanBarcode("");
+        await fetchSalesmanDashboard();
+      } else {
+        setScanMessage({
+          type: 'error',
+          text: res.data?.message || "Item not found for this barcode."
+        });
+      }
+    } catch (err) {
+      setScanMessage({
+        type: 'error',
+        text: err.response?.data?.message || "Scan failed. Please check the barcode or item code."
+      });
+    } finally {
+      setScanningBarcode(false);
+      setTimeout(() => {
+        setScanMessage(null);
+      }, 4500);
+    }
+  };
+
+  const handleCheckAbsentReassign = async () => {
+    try {
+      setIsAbsentSyncing(true);
+      const res = await api.post('/pssm/absent-reassign');
+      if (res.data?.success) {
+        await fetchSalesmanDashboard();
+      }
+    } catch (e) {
+      console.error("Failed to check absent reassign", e);
+    } finally {
+      setIsAbsentSyncing(false);
+    }
+  };
 
   const fetchTailorJobs = React.useCallback(async () => {
     try {
@@ -308,6 +411,18 @@ export const DashboardView = ({
     }, 10000);
     return () => clearInterval(interval);
   }, [altSummaryDate]);
+
+  // Continuous sync for Salesperson Ownership Dashboard (real-time 10s auto-refresh)
+  React.useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    fetchSalesmanDashboard(true);
+    const interval = setInterval(() => {
+      fetchSalesmanDashboard(false);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchSalesmanDashboard]);
 
   React.useEffect(() => {
     const userObj = currentUser?.user || currentUser || {};
@@ -679,6 +794,42 @@ export const DashboardView = ({
               </button>
             </div>
           </div>
+
+          {/* 🚨 CRITICAL TOMORROW DELIVERY ALERT BANNER FOR TAILORS */}
+          {((deliveryDashboard?.tomorrowDelivery ?? 0) > 0 || (notifications || []).some(n => (n.category === 'PSS_DEADLINE_TOMORROW' || (n.priority === 'Critical' && /deadline|tomorrow/i.test((n.title || '') + (n.message || '')))) && !n.resolved)) && (
+            <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md animate-pulse">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="p-3 bg-red-100 text-red-700 rounded-2xl border border-red-200 shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-red-600 animate-bounce" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-xs sm:text-sm font-black uppercase text-red-950 tracking-wider">
+                      ⚠ PSS DELIVERY ALERT — CRITICAL
+                    </h4>
+                    <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                      {deliveryDashboard?.tomorrowDelivery ?? 1} Due Tomorrow
+                    </span>
+                  </div>
+                  <p className="text-xs text-red-900 mt-1 font-medium leading-relaxed">
+                    <strong>Tailor Workload Notice:</strong> Orders scheduled for delivery tomorrow are pending completion. Please prioritize stitching and alterations on your workbench immediately!
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (typeof openArticulationWithDefaults === "function") {
+                    openArticulationWithDefaults({ tab: "dashboard", filterStatus: "In Progress" });
+                  } else {
+                    setActiveTab("articulation");
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
+              >
+                Go to Workbench ➔
+              </button>
+            </div>
+          )}
 
           {/* 🚨 90% CAPACITY ALERT BANNER */}
           {(activeTailorStats.isOverloaded || (capacityAlerts && capacityAlerts.length > 0)) && (
@@ -1182,18 +1333,73 @@ export const DashboardView = ({
               {hideCommissionUI ? "Here is your personal performance, sales, and transaction breakdown." : "Here is your personal performance, sales, and earned commission breakdown."}
             </p>
           </div>
-          {!['worker', 'tailor', 'accountant'].includes((currentUser?.role || '').toLowerCase()) && (
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handleCheckAbsentReassign}
+              disabled={isAbsentSyncing}
+              title="Sync absent salesman reassignments and restore present salesmen"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 rounded-xl text-xs sm:text-sm font-semibold border border-slate-700 transition-all cursor-pointer shadow-xs"
+            >
+              <UserCheck className={`w-4 h-4 ${isAbsentSyncing ? 'animate-spin' : ''}`} />
+              <span>{isAbsentSyncing ? 'Syncing...' : 'Sync Absent Logic'}</span>
+            </button>
+
+            <button
+              onClick={() => fetchSalesmanDashboard(true)}
+              disabled={loadingSalesmanDashboard}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-md"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingSalesmanDashboard ? 'animate-spin' : ''}`} />
+              <span>{loadingSalesmanDashboard ? 'Syncing...' : 'Live Refresh'}</span>
+            </button>
+
+            {!['worker', 'tailor', 'accountant'].includes((currentUser?.role || '').toLowerCase()) && (
               <button
                 onClick={() => setActiveTab("billing")}
-                className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer shadow-sm"
+                className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-sm"
               >
                 <Plus className="w-4 h-4" />
                 <span>New POS Bill</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        {/* 🚨 CRITICAL TOMORROW DELIVERY ALERT BANNER FOR SALESPERSONS */}
+        {((deliveryDashboard?.tomorrowDelivery ?? 0) > 0 || (notifications || []).some(n => (n.category === 'PSS_DEADLINE_TOMORROW' || (n.priority === 'Critical' && /deadline|tomorrow/i.test((n.title || '') + (n.message || '')))) && !n.resolved)) && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md animate-pulse">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="p-3 bg-red-100 text-red-700 rounded-2xl border border-red-200 shrink-0">
+                <AlertTriangle className="w-6 h-6 text-red-600 animate-bounce" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-black uppercase text-red-950 tracking-wider">
+                    ⚠ PSS DELIVERY ALERT — CRITICAL
+                  </h4>
+                  <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                    {deliveryDashboard?.tomorrowDelivery ?? 1} Due Tomorrow
+                  </span>
+                </div>
+                <p className="text-xs text-red-900 mt-1 font-medium leading-relaxed">
+                  <strong>Assigned Salesperson Alert:</strong> Customer garment orders promised for delivery tomorrow are pending completion. Please follow up with your assigned master tailors or service karigars to ensure on-time delivery!
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (typeof openArticulationWithDefaults === "function") {
+                  openArticulationWithDefaults({ tab: "dashboard" });
+                } else {
+                  setActiveTab("articulation");
+                }
+              }}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
+            >
+              Track Deliveries ➔
+            </button>
+          </div>
+        )}
 
         {/* KPI Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1345,6 +1551,615 @@ export const DashboardView = ({
           )}
         </div>
 
+        {/* ========================================================================= */}
+        {/* 👔 SALESPERSON COMPLETE OWNERSHIP DASHBOARD (हर Salesman का complete ownership dashboard) */}
+        {/* ========================================================================= */}
+        <div className="space-y-6 mt-6" id="salesperson-ownership-dashboard">
+          {/* Absent Reassignment Alert Banner */}
+          {salesmanDashboardData?.pendingList?.some(i => i.reassignedFromSalesmanName) && (
+            <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-4 flex items-start gap-3 text-amber-900 shadow-sm animate-fade-in">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <div className="font-bold text-sm text-amber-950">
+                  Temporary Reassigned Services Active (Absent Salesman Rule)
+                </div>
+                <p className="text-amber-800 mt-0.5">
+                  You are currently managing services reassigned from absent staff colleague(s):{" "}
+                  <strong>
+                    {Array.from(new Set(salesmanDashboardData.pendingList.filter(i => i.reassignedFromSalesmanName).map(i => i.reassignedFromSalesmanName))).join(", ")}
+                  </strong>.
+                  You have complete temporary ownership. When they check in present, ownership will automatically restore back.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Inline Scan Feedback Toast */}
+          {scanMessage && (
+            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between border shadow-sm transition-all animate-fade-in ${
+              scanMessage.type === 'success'
+                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                : 'bg-red-50 text-red-900 border-red-300'
+            }`}>
+              <div className="flex items-center gap-2">
+                {scanMessage.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>{scanMessage.text}</span>
+              </div>
+              <button onClick={() => setScanMessage(null)} className="text-slate-400 hover:text-slate-600 font-black ml-4">✕</button>
+            </div>
+          )}
+
+          {/* 1. Summary KPI Cards (6 Cards) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            {/* Total Assigned Services */}
+            <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Assigned</span>
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Layers className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black text-slate-900 font-sans">
+                  {salesmanDashboardData?.summary?.totalAssignedServices ?? 0}
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Assigned services</p>
+              </div>
+            </div>
+
+            {/* Pending */}
+            <div className="bg-white p-4 rounded-2xl shadow-xs border border-amber-200/80 bg-gradient-to-br from-white to-amber-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Pending</span>
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black text-amber-900 font-sans">
+                  {salesmanDashboardData?.summary?.pending ?? 0}
+                </div>
+                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Need scan / in-work</p>
+              </div>
+            </div>
+
+            {/* Ready */}
+            <div className="bg-white p-4 rounded-2xl shadow-xs border border-emerald-200/80 bg-gradient-to-br from-white to-emerald-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Ready</span>
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black text-emerald-800 font-sans">
+                  {salesmanDashboardData?.summary?.ready ?? 0}
+                </div>
+                <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Ready for pickup</p>
+              </div>
+            </div>
+
+            {/* Delivered */}
+            <div className="bg-white p-4 rounded-2xl shadow-xs border border-blue-200/80 bg-gradient-to-br from-white to-blue-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Delivered</span>
+                <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                  <Truck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black text-blue-900 font-sans">
+                  {salesmanDashboardData?.summary?.delivered ?? 0}
+                </div>
+                <p className="text-[10px] text-blue-600 font-medium mt-0.5">Handed over</p>
+              </div>
+            </div>
+
+            {/* Overdue */}
+            <div className={`p-4 rounded-2xl shadow-xs border flex flex-col justify-between hover:shadow-md transition-all ${
+              (salesmanDashboardData?.summary?.overdue ?? 0) > 0
+                ? 'bg-red-50 border-red-300 ring-2 ring-red-400/30'
+                : 'bg-white border-slate-200/80'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${
+                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-500'
+                }`}>Overdue</span>
+                <div className={`p-2 rounded-xl ${
+                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'bg-red-200 text-red-800' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className={`text-2xl font-black font-sans ${
+                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-900'
+                }`}>
+                  {salesmanDashboardData?.summary?.overdue ?? 0}
+                </div>
+                <p className={`text-[10px] font-medium mt-0.5 ${
+                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-slate-400'
+                }`}>Past delivery date</p>
+              </div>
+            </div>
+
+            {/* Re-Alter Cases */}
+            <div className="bg-white p-4 rounded-2xl shadow-xs border border-purple-200/80 bg-gradient-to-br from-white to-purple-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Re-Alter Cases</span>
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                  <Scissors className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-black text-purple-900 font-sans">
+                  {salesmanDashboardData?.summary?.reAlterCases ?? 0}
+                </div>
+                <p className="text-[10px] text-purple-600 font-medium mt-0.5">Urgent rework</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Daily Follow-up List (Salesman सुबह Login करते ही देखे) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-indigo-600 rounded-full inline-block"></span>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Daily Follow-up List (Salesman Morning Routine)
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  सुबह Login करते ही Action लें: Call customers, follow up ready items, and clear overdue deliveries.
+                </p>
+              </div>
+
+              {/* Follow-up Tabs */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  onClick={() => setActiveFollowupTab("callToday")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeFollowupTab === "callToday"
+                      ? "bg-white text-indigo-700 shadow-xs border border-indigo-100"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <PhoneCall className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>आज किस Customer को Call करना है</span>
+                  <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-mono">
+                    {(salesmanDashboardData?.followUp?.callToday || []).length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveFollowupTab("readyForPickup")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeFollowupTab === "readyForPickup"
+                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-100"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>कौन Ready है</span>
+                  <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-mono">
+                    {(salesmanDashboardData?.followUp?.readyForPickup || []).length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveFollowupTab("overdue")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeFollowupTab === "overdue"
+                      ? "bg-white text-red-700 shadow-xs border border-red-100"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                  <span>कौन Overdue है</span>
+                  <span className="px-1.5 py-0.2 bg-red-100 text-red-800 rounded-full text-[10px] font-mono">
+                    {(salesmanDashboardData?.followUp?.overdue || []).length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveFollowupTab("didNotPickUp")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeFollowupTab === "didNotPickUp"
+                      ? "bg-white text-amber-700 shadow-xs border border-amber-100"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>कौन Delivery लेने नहीं आया</span>
+                  <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px] font-mono">
+                    {(salesmanDashboardData?.followUp?.didNotPickUp || []).length}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Follow-up Items Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-5 py-3.5 font-semibold">Customer & Mobile</th>
+                    <th className="px-5 py-3.5 font-semibold">Bill No</th>
+                    <th className="px-5 py-3.5 font-semibold">Item & Service</th>
+                    <th className="px-5 py-3.5 font-semibold">Assigned Tailor</th>
+                    <th className="px-5 py-3.5 font-semibold">Delivery Date</th>
+                    <th className="px-5 py-3.5 font-semibold">Status</th>
+                    <th className="px-5 py-3.5 font-semibold text-right">Quick Follow-up Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(() => {
+                    const currentList = salesmanDashboardData?.followUp?.[activeFollowupTab] || [];
+                    if (currentList.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={7} className="text-center py-10 text-slate-400">
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                              <p className="text-sm font-bold text-slate-600">
+                                {activeFollowupTab === 'callToday' && 'No customer follow-up calls scheduled for today! All up-to-date.'}
+                                {activeFollowupTab === 'readyForPickup' && 'No items currently awaiting customer pickup.'}
+                                {activeFollowupTab === 'overdue' && 'Great job! Zero overdue delivery cases.'}
+                                {activeFollowupTab === 'didNotPickUp' && 'All ready items have been collected by customers.'}
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return currentList.map((item, idx) => {
+                      const rawPhone = (item.customerPhone || '').replace(/[^0-9]/g, '');
+                      const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+                      const customerName = item.customerName || 'Valued Customer';
+                      const itemName = item.itemName || 'Garment';
+                      const billNo = item.billNo || '';
+
+                      let whatsappMsg = '';
+                      if (activeFollowupTab === 'readyForPickup') {
+                        whatsappMsg = `Namaste ${customerName}! Your garment (${itemName}${billNo ? ', Bill #' + billNo : ''}) is READY for pickup at Vastra. Please visit our store at your convenience!`;
+                      } else if (activeFollowupTab === 'didNotPickUp') {
+                        whatsappMsg = `Namaste ${customerName}! Gentle reminder from Vastra: your garment (${itemName}${billNo ? ', Bill #' + billNo : ''}) is ready and waiting for your collection. Kindly collect it today.`;
+                      } else if (activeFollowupTab === 'overdue') {
+                        whatsappMsg = `Namaste ${customerName}! Following up regarding your garment order (${itemName}${billNo ? ', Bill #' + billNo : ''}) at Vastra. Our tailoring master is finalizing completion for you today.`;
+                      } else {
+                        whatsappMsg = `Namaste ${customerName}! Your garment (${itemName}${billNo ? ', Bill #' + billNo : ''}) is scheduled for delivery today at Vastra. Looking forward to welcoming you!`;
+                      }
+
+                      const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMsg)}` : null;
+
+                      return (
+                        <tr key={item.id || item.barcode || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <div className="font-bold text-slate-800">{customerName}</div>
+                            <div className="text-xs text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span>{item.customerPhone || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 font-mono text-xs font-bold text-indigo-700">
+                            {item.billNo || 'N/A'}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="font-semibold text-slate-800 text-xs">{item.itemName || 'Garment Item'}</div>
+                            <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md inline-block mt-0.5">
+                              {item.serviceType || 'Alteration'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="text-xs font-medium text-slate-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                              {item.assignedTailor || 'In-House Karigar'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="text-xs font-semibold text-slate-700">
+                              {item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' }) : 'Flexible'}
+                            </div>
+                            {item.isOverdue && (
+                              <span className="text-[10px] font-bold text-red-600 flex items-center gap-0.5 mt-0.5">
+                                <AlertTriangle className="w-2.5 h-2.5" /> Overdue
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                              item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : item.isOverdue
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {item.status || 'Pending'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {item.customerPhone && (
+                                <a
+                                  href={`tel:${item.customerPhone}`}
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold border border-emerald-200 transition-all flex items-center gap-1"
+                                  title="Call Customer Now"
+                                >
+                                  <PhoneCall className="w-3.5 h-3.5" />
+                                  <span>Call</span>
+                                </a>
+                              )}
+                              {waUrl && (
+                                <button
+                                  onClick={() => window.open(waUrl, '_blank')}
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                                  title="Send WhatsApp Follow-up Message"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  <span>WhatsApp</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleScanCompleteBarcode(item.barcode || item.billNo || item.id)}
+                                disabled={scanningBarcode}
+                                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-200 transition-all flex items-center gap-1 cursor-pointer"
+                                title="Mark Complete"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Scan Complete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 3. Pending List (जब तक Item Complete Scan नहीं होगा, ये List हटेगी नहीं।) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/60 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-1.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Pending List
+                  </h3>
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-200 rounded-full text-xs font-black">
+                    जब तक Item Complete Scan नहीं होगा, ये List हटेगी नहीं।
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  All active assigned services. Scan the item barcode or unique tag to mark ready/delivered and clear it from the pending ledger.
+                </p>
+              </div>
+
+              {/* Barcode Scanner Input Form */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleScanCompleteBarcode(salesmanScanBarcode);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <div className="relative flex-1 sm:w-64">
+                    <Scan className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={salesmanScanBarcode}
+                      onChange={(e) => setSalesmanScanBarcode(e.target.value)}
+                      placeholder="Scan Barcode / Ticket / Bill No..."
+                      className="w-full pl-9 pr-3 py-2 bg-white border-2 border-indigo-400/50 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={scanningBarcode || !salesmanScanBarcode.trim()}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{scanningBarcode ? 'Scanning...' : 'Scan Complete'}</span>
+                  </button>
+                </form>
+
+                {/* Search Filter */}
+                <div className="relative sm:w-48">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={salesmanPendingSearch}
+                    onChange={(e) => setSalesmanPendingSearch(e.target.value)}
+                    placeholder="Search Pending..."
+                    className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 8 Columns Pending List Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-5 py-3.5 font-semibold">1. Bill No.</th>
+                    <th className="px-5 py-3.5 font-semibold">2. Customer Name</th>
+                    <th className="px-5 py-3.5 font-semibold">3. Mobile</th>
+                    <th className="px-5 py-3.5 font-semibold">4. Item Name</th>
+                    <th className="px-5 py-3.5 font-semibold">5. Service Type</th>
+                    <th className="px-5 py-3.5 font-semibold">6. Assigned Tailor</th>
+                    <th className="px-5 py-3.5 font-semibold">7. Delivery Date</th>
+                    <th className="px-5 py-3.5 font-semibold">8. Current Status</th>
+                    <th className="px-5 py-3.5 font-semibold text-right">Scan Complete Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(() => {
+                    const rawList = salesmanDashboardData?.pendingList || [];
+                    const filtered = rawList.filter(item => {
+                      if (!salesmanPendingSearch) return true;
+                      const q = salesmanPendingSearch.toLowerCase();
+                      return (
+                        (item.billNo || '').toLowerCase().includes(q) ||
+                        (item.customerName || '').toLowerCase().includes(q) ||
+                        (item.customerPhone || '').toLowerCase().includes(q) ||
+                        (item.itemName || '').toLowerCase().includes(q) ||
+                        (item.serviceType || '').toLowerCase().includes(q) ||
+                        (item.assignedTailor || '').toLowerCase().includes(q) ||
+                        (item.status || '').toLowerCase().includes(q) ||
+                        (item.barcode || '').toLowerCase().includes(q)
+                      );
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={9} className="text-center py-12 text-slate-400">
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <PackageCheck className="w-10 h-10 text-emerald-500" />
+                              <p className="text-sm font-bold text-slate-700">
+                                {rawList.length === 0
+                                  ? '🎉 ऑल क्लियर! जब तक नया Item नहीं आएगा या Scan Pending होगा, ये Empty रहेगा।'
+                                  : 'No items matching your search filter.'}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                All items successfully scanned and completed.
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filtered.map((item, idx) => {
+                      return (
+                        <tr key={item.id || item.barcode || idx} className="hover:bg-slate-50/80 transition-colors">
+                          {/* 1. Bill No. */}
+                          <td className="px-5 py-3.5">
+                            <div className="font-mono text-xs font-bold text-indigo-700">
+                              {item.billNo || 'N/A'}
+                            </div>
+                            {item.barcode && (
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                Barcode: {item.barcode}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 2. Customer Name */}
+                          <td className="px-5 py-3.5">
+                            <div className="font-bold text-slate-800 text-xs">
+                              {item.customerName || 'Customer'}
+                            </div>
+                            {item.reassignedFromSalesmanName && (
+                              <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded border border-amber-200 inline-block mt-0.5">
+                                Reassigned from: {item.reassignedFromSalesmanName}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 3. Mobile */}
+                          <td className="px-5 py-3.5">
+                            <div className="text-xs font-mono text-slate-600 flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span>{item.customerPhone || 'N/A'}</span>
+                            </div>
+                            {item.customerPhone && (
+                              <a
+                                href={`tel:${item.customerPhone}`}
+                                className="text-[10px] text-indigo-600 hover:underline font-semibold"
+                              >
+                                Call Now ➔
+                              </a>
+                            )}
+                          </td>
+
+                          {/* 4. Item Name */}
+                          <td className="px-5 py-3.5">
+                            <div className="font-semibold text-slate-800 text-xs">
+                              {item.itemName || 'Garment Item'}
+                            </div>
+                            {item.priority && item.priority !== 'NORMAL' && (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200 inline-block mt-0.5">
+                                {item.priority}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 5. Service Type */}
+                          <td className="px-5 py-3.5">
+                            <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
+                              {item.serviceType || 'Alteration'}
+                            </span>
+                          </td>
+
+                          {/* 6. Assigned Tailor */}
+                          <td className="px-5 py-3.5">
+                            <span className="text-xs font-medium text-slate-800 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                              {item.assignedTailor || 'In-House Karigar'}
+                            </span>
+                          </td>
+
+                          {/* 7. Delivery Date */}
+                          <td className="px-5 py-3.5">
+                            <div className="text-xs font-semibold text-slate-700">
+                              {item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' }) : 'Flexible'}
+                            </div>
+                            {item.isOverdue && (
+                              <span className="text-[10px] font-bold text-red-600 flex items-center gap-0.5 mt-0.5">
+                                <AlertTriangle className="w-2.5 h-2.5" /> Overdue
+                              </span>
+                            )}
+                            {item.isDueToday && (
+                              <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 mt-0.5">
+                                <Clock className="w-2.5 h-2.5" /> Due Today
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 8. Current Status */}
+                          <td className="px-5 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                              item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : item.isOverdue
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {item.status || 'Pending'}
+                            </span>
+                          </td>
+
+                          {/* Scan Complete Action */}
+                          <td className="px-5 py-3.5 text-right">
+                            <button
+                              onClick={() => handleScanCompleteBarcode(item.barcode || item.billNo || item.id)}
+                              disabled={scanningBarcode}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 ml-auto cursor-pointer"
+                              title="Scan complete item to clear from this list"
+                            >
+                              <Scan className="w-3.5 h-3.5" />
+                              <span>Scan & Clear ✓</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         {/* My Recent Sales Ledger */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden mt-6">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -1477,8 +2292,183 @@ export const DashboardView = ({
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* 🌅 MORNING ACTION DASHBOARD (LIKE ALTERATION TYPE SUMMARY - ALL IN ONE LINE) */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4 animate-fade-in" id="morning-action-dashboard">
+        {/* Heading on Top */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <span className="p-1 bg-amber-500/10 text-amber-600 rounded-lg">
+                <Sun className="w-4 h-4 text-amber-500" />
+              </span>
+              <span>Today You Need to Focus On</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Morning Action Dashboard • जब Owner या Manager सुबह Login करे
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              {new Date().toLocaleDateString("en-IN", { weekday: 'short', day: 'numeric', month: 'short' })}
+            </span>
+            <button
+              onClick={() => fetchMorningActions(true)}
+              disabled={loadingMorningActions}
+              title="Refresh Morning Actions"
+              className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingMorningActions ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
 
+        {/* 8 Action Items in One Line (grid-cols-2 md:grid-cols-4 lg:grid-cols-8) - No Scroll Required */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          {/* 1. 🔴 Overdue Deliveries */}
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "alterations", filter: "overdue" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-rose-100 bg-rose-50/30 hover:bg-rose-50 hover:border-rose-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🔴</span>
+              <span className="text-xs font-bold text-rose-950 leading-tight">Overdue Deliveries</span>
+            </div>
+            <span className="text-2xl font-black text-rose-700 font-mono">
+              {morningActions?.overdueDeliveries ?? (alterationStats?.overdue || deliveryDashboard?.overdueDelivery || 0)}
+            </span>
+          </button>
 
+          {/* 2. 🟡 Deliveries Due Today */}
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "dashboard" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-amber-100 bg-amber-50/30 hover:bg-amber-50 hover:border-amber-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🟡</span>
+              <span className="text-xs font-bold text-amber-950 leading-tight">Deliveries Due Today</span>
+            </div>
+            <span className="text-2xl font-black text-amber-700 font-mono">
+              {morningActions?.deliveriesDueToday ?? (deliveryDashboard?.todayDelivery || alterationStats?.pendingToday || 0)}
+            </span>
+          </button>
+
+          {/* 3. 🟠 VIP Customers Pending */}
+          <button
+            onClick={() => setActiveTab("crm")}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-orange-100 bg-orange-50/30 hover:bg-orange-50 hover:border-orange-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🟠</span>
+              <span className="text-xs font-bold text-orange-950 leading-tight">VIP Customers Pending</span>
+            </div>
+            <span className="text-2xl font-black text-orange-700 font-mono">
+              {morningActions?.vipCustomersPending ?? 0}
+            </span>
+          </button>
+
+          {/* 4. 🔵 Salesmen Absent (Work Reassigned) */}
+          <button
+            onClick={() => setActiveTab("attendance")}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-blue-100 bg-blue-50/30 hover:bg-blue-50 hover:border-blue-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🔵</span>
+              <span className="text-xs font-bold text-blue-950 leading-tight">Salesmen Absent</span>
+            </div>
+            <span className="text-2xl font-black text-blue-700 font-mono">
+              {morningActions?.salesmenAbsent ?? (attendanceStats?.absentCount || 0)}
+            </span>
+          </button>
+
+          {/* 5. 🟢 Customers Waiting for Collection */}
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "dashboard" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🟢</span>
+              <span className="text-xs font-bold text-emerald-950 leading-tight">Customers Waiting</span>
+            </div>
+            <span className="text-2xl font-black text-emerald-700 font-mono">
+              {morningActions?.customersWaitingCollection ?? (deliveryDashboard?.readyForCollection || alterationStats?.ready || 0)}
+            </span>
+          </button>
+
+          {/* 6. ⚠️ Tailors at Full Capacity */}
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "dashboard" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-amber-200 bg-amber-100/30 hover:bg-amber-100/60 hover:border-amber-300 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">⚠️</span>
+              <span className="text-xs font-bold text-amber-950 leading-tight">Tailors at Capacity</span>
+            </div>
+            <span className="text-2xl font-black text-amber-800 font-mono">
+              {morningActions?.tailorsAtFullCapacity ?? (capacityAlerts?.length || 0)}
+            </span>
+          </button>
+
+          {/* 7. 📩 Customer Messages Failed */}
+          <button
+            onClick={() => setActiveTab("notifications")}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-purple-100 bg-purple-50/30 hover:bg-purple-50 hover:border-purple-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">📩</span>
+              <span className="text-xs font-bold text-purple-950 leading-tight">Messages Failed</span>
+            </div>
+            <span className="text-2xl font-black text-purple-700 font-mono">
+              {morningActions?.customerMessagesFailed ?? 0}
+            </span>
+          </button>
+
+          {/* 8. 🔁 Re-Alter Cases Registered Today */}
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "alterations" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-rose-100 bg-rose-50/30 hover:bg-rose-50 hover:border-rose-200 transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5 text-center"
+          >
+            <div className="flex flex-col items-center gap-1.5 mb-1.5">
+              <span className="text-xl group-hover:scale-110 transition-transform">🔁</span>
+              <span className="text-xs font-bold text-rose-950 leading-tight">Re-Alter Cases</span>
+            </div>
+            <span className="text-2xl font-black text-rose-700 font-mono">
+              {morningActions?.reAlterCasesToday ?? (alterationStats?.reAlterCount || 0)}
+            </span>
+          </button>
+        </div>
+      </div>
 
       {/* Quick Actions Panel */}
       <QuickActionsPanel
@@ -2924,17 +3914,76 @@ export const DashboardView = ({
                 let actionStr = (log.action || '').toUpperCase();
                 let icon = '⚡';
                 let color = 'indigo';
-                if (actionStr.includes('VIEW')) { icon = '👁️'; color = 'blue'; }
-                else if (actionStr.includes('CREATE') || actionStr.includes('ADD')) { icon = '➕'; color = 'emerald'; }
-                else if (actionStr.includes('DELETE') || actionStr.includes('REMOVE')) { icon = '🗑️'; color = 'red'; }
-                else if (actionStr.includes('UPDATE') || actionStr.includes('EDIT')) { icon = '✏️'; color = 'orange'; }
-                else if (actionStr.includes('LOGIN')) { icon = '🔑'; color = 'teal'; }
 
-                if (actionStr.includes('EXCHANGE')) { icon = '🔄'; color = 'orange'; }
-                if (actionStr.includes('RETURN')) { icon = '↩️'; color = 'red'; }
+                if (actionStr === 'DELIVERY_DATE_CHANGE') {
+                  icon = '📅';
+                  color = 'amber';
+                } else if (actionStr === 'TAILOR_CHANGE') {
+                  icon = '✂️';
+                  color = 'indigo';
+                } else if (actionStr === 'VENDOR_CHANGE') {
+                  icon = '🏭';
+                  color = 'purple';
+                } else if (actionStr === 'SERVICE_CHANGE') {
+                  icon = '🧵';
+                  color = 'blue';
+                } else if (actionStr === 'CUSTOMER_MOBILE_CHANGE') {
+                  icon = '📱';
+                  color = 'teal';
+                } else if (actionStr === 'MANUAL_STATUS_UPDATE') {
+                  icon = '🔄';
+                  color = 'blue';
+                } else if (actionStr === 'MANUAL_DELIVERY') {
+                  icon = '🛍️';
+                  color = 'emerald';
+                } else if (actionStr.includes('VIEW')) {
+                  icon = '👁️';
+                  color = 'blue';
+                } else if (actionStr.includes('CREATE') || actionStr.includes('ADD')) {
+                  icon = '➕';
+                  color = 'emerald';
+                } else if (actionStr.includes('DELETE') || actionStr.includes('REMOVE')) {
+                  icon = '🗑️';
+                  color = 'red';
+                } else if (actionStr.includes('UPDATE') || actionStr.includes('EDIT')) {
+                  icon = '✏️';
+                  color = 'orange';
+                } else if (actionStr.includes('LOGIN')) {
+                  icon = '🔑';
+                  color = 'teal';
+                } else if (actionStr.includes('EXCHANGE')) {
+                  icon = '🔄';
+                  color = 'orange';
+                } else if (actionStr.includes('RETURN')) {
+                  icon = '↩️';
+                  color = 'red';
+                }
 
-                let title = log.item;
+                let title = log.item || log.displayName;
                 let detailStr = '';
+
+                if (actionStr === 'DELIVERY_DATE_CHANGE') {
+                  title = log.item || 'Delivery Date Changed';
+                  detailStr = log.oldValue && log.newValue ? `Rescheduled from ${log.oldValue} to ${log.newValue}` : (log.displayName || 'Delivery schedule updated');
+                } else if (actionStr === 'TAILOR_CHANGE') {
+                  title = log.item || 'Tailor Reassigned';
+                  detailStr = log.oldValue && log.newValue ? `Assigned from ${log.oldValue} to ${log.newValue}` : `Tailor updated to ${log.newValue || 'New Tailor'}`;
+                } else if (actionStr === 'VENDOR_CHANGE') {
+                  title = log.item || 'Vendor Reassigned';
+                  detailStr = log.oldValue && log.newValue ? `Changed from ${log.oldValue} to ${log.newValue}` : `Vendor routed to ${log.newValue || 'Vendor'}`;
+                } else if (actionStr === 'SERVICE_CHANGE') {
+                  title = log.item || 'Service Specifications Changed';
+                  detailStr = log.oldValue && log.newValue ? `${log.fieldChanged || 'Service'}: ${log.oldValue} ➔ ${log.newValue}` : 'Alteration service specifications updated';
+                } else if (actionStr === 'CUSTOMER_MOBILE_CHANGE') {
+                  title = log.item || 'Customer Mobile Changed';
+                  detailStr = log.oldValue && log.newValue ? `Phone: ${log.oldValue} ➔ ${log.newValue}` : `Customer mobile updated`;
+                } else if (actionStr === 'MANUAL_STATUS_UPDATE') {
+                  title = log.item || 'Manual Status Update';
+                  detailStr = log.oldValue && log.newValue ? `Status: ${log.oldValue} ➔ ${log.newValue}` : `Status updated to ${log.newValue || 'new state'}`;
+                } else if (actionStr === 'MANUAL_DELIVERY') {
+                  title = log.item || 'Manual Garment Delivery';
+                  detailStr = `Garment delivered / collected by customer`;
+                }
 
                 if (!title || title.trim() === '') {
                   if (actionStr === 'CREATE_EXCHANGE') {
@@ -2964,6 +4013,12 @@ export const DashboardView = ({
                   detail: detailStr,
                   user: log.userName || 'System',
                   timestamp: log.timestamp || log.createdAt,
+                  dateStr: log.date || '',
+                  timeStr: log.time || '',
+                  reason: log.reason || null,
+                  oldValue: log.oldValue,
+                  newValue: log.newValue,
+                  fieldChanged: log.fieldChanged,
                   icon: icon,
                   color: color
                 };
@@ -2973,6 +4028,8 @@ export const DashboardView = ({
                   blue: { bg: 'bg-blue-50', border: 'border-blue-100', dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
                   teal: { bg: 'bg-teal-50', border: 'border-teal-100', dot: 'bg-teal-500', badge: 'bg-teal-100 text-teal-700' },
                   orange: { bg: 'bg-orange-50', border: 'border-orange-100', dot: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700' },
+                  amber: { bg: 'bg-amber-50', border: 'border-amber-100', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' },
+                  purple: { bg: 'bg-purple-50', border: 'border-purple-100', dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
                   red: { bg: 'bg-red-50', border: 'border-red-100', dot: 'bg-red-500', badge: 'bg-red-100 text-red-700' },
                   indigo: { bg: 'bg-indigo-50', border: 'border-indigo-100', dot: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-700' },
                 };
@@ -3003,7 +4060,7 @@ export const DashboardView = ({
                     </div>
 
                     {/* Icon */}
-                    <div className={`w-8 h-8 rounded-xl ${clr.bg} border ${clr.border} flex items-center justify-center text-sm shrink-0`}>
+                    <div className={`w-8 h-8 rounded-xl ${clr.bg} border ${clr.border} flex items-center justify-center text-sm shrink-0 shadow-xs`}>
                       {item.icon}
                     </div>
 
@@ -3014,19 +4071,42 @@ export const DashboardView = ({
                           {item.title}
                         </p>
                         <span className="text-[9px] text-slate-400 font-mono shrink-0 whitespace-nowrap mt-0.5">
-                          {relTime}
+                          {item.timeStr ? `${item.dateStr ? item.dateStr + ' ' : ''}${item.timeStr}` : relTime}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 font-mono mt-0.5 leading-relaxed">
                         {item.detail}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1">
+
+                      {/* Old Value vs New Value Diff Pill */}
+                      {item.oldValue !== null && item.oldValue !== undefined && item.newValue !== null && item.newValue !== undefined && (
+                        <div className="mt-1 flex items-center gap-1.5 font-mono text-[9px] text-slate-600 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-200/80 w-fit">
+                          <span className="text-slate-400 line-through">{String(item.oldValue)}</span>
+                          <span className="text-indigo-600 font-bold">➔</span>
+                          <span className="font-bold text-slate-800">{String(item.newValue)}</span>
+                        </div>
+                      )}
+
+                      {/* Reason Badge */}
+                      {item.reason && (
+                        <div className="mt-1 flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[9px] font-medium w-fit max-w-full">
+                          <span className="font-bold text-[8px] uppercase tracking-wide text-amber-700 bg-amber-100 px-1 py-0.2 rounded shrink-0">Reason</span>
+                          <span className="italic truncate font-sans">{item.reason}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 mt-1.5">
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${clr.badge}`}>
-                          {(item.action || item.type || '').replace(/_/g, ' ')}
+                          {(item.action || '').replace(/_/g, ' ')}
                         </span>
                         {item.user && (
+                          <span className="text-[9px] text-slate-600 font-mono font-medium">
+                            by <span className="font-bold text-slate-800">{item.user}</span>
+                          </span>
+                        )}
+                        {item.dateStr && !item.timeStr && (
                           <span className="text-[9px] text-slate-400 font-mono">
-                            by {item.user}
+                            • {item.dateStr}
                           </span>
                         )}
                       </div>

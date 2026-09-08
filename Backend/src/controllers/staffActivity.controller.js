@@ -46,7 +46,10 @@ class StaffActivityController {
         { userName: new RegExp(search, 'i') },
         { userEmail: new RegExp(search, 'i') },
         { action: new RegExp(search, 'i') },
-        { module: new RegExp(search, 'i') }
+        { module: new RegExp(search, 'i') },
+        { item: new RegExp(search, 'i') },
+        { displayName: new RegExp(search, 'i') },
+        { reason: new RegExp(search, 'i') }
       ];
     }
 
@@ -72,14 +75,18 @@ class StaffActivityController {
       return {
         _id: log._id,
         activityId: `ACT-${String(log._id).slice(-6).toUpperCase()}`,
-        date: dt.toLocaleDateString('en-IN'),
-        time: dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        date: log.date || dt.toLocaleDateString('en-IN'),
+        time: log.time || dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
         employeeName: log.userName || 'System',
         employeeEmail: log.userEmail || '',
         role: log.module || 'N/A',
         module: log.module || 'General',
         action: log.action,
         record: log.displayName || log.item || log.endpoint || '-',
+        reason: log.reason || null,
+        fieldChanged: log.fieldChanged || null,
+        oldValue: log.oldValue !== undefined ? log.oldValue : null,
+        newValue: log.newValue !== undefined ? log.newValue : null,
         status: logStatus,
         ipAddress: log.ipAddress || '-',
         userAgent: log.userAgent || '-',
