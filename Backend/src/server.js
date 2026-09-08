@@ -66,6 +66,20 @@ connectDB().then(async () => {
     logger.info(`  Socket.IO   : Connected & Ready                      `);
     logger.info(`  Health Check: http://localhost:${PORT}/health        `);
     logger.info(`=======================================================`);
+
+    // Periodic PSS Delivery Deadline Monitor (initial run in 5s, recurring every 15 mins)
+    const NotificationService = require('./services/notification.service');
+    setTimeout(() => {
+      NotificationService.runGlobalPSSDeadlineCheck().catch(err => {
+        logger.error(`[PSS Deadline Monitor Error]: ${err.message}`);
+      });
+    }, 5000);
+
+    setInterval(() => {
+      NotificationService.runGlobalPSSDeadlineCheck().catch(err => {
+        logger.error(`[PSS Deadline Monitor Error]: ${err.message}`);
+      });
+    }, 15 * 60 * 1000);
   });
 
   // Handle Unhandled Rejections

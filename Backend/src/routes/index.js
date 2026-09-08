@@ -66,6 +66,7 @@ router.use('/inventory-lifecycle', inventoryLifecycleRoutes);
 router.use('/reports', reportRoutes);
 router.use('/audit', auditRoutes);
 router.use('/staff-activity', require('./staffActivity.routes'));
+router.use('/notifications', require('./notification.routes'));
 
 // Mock routes to prevent 404 spam from Dashboard UI polling
 router.use('/attendance/dashboard-stats', (req, res) => res.status(200).json({ success: true, data: {} }));

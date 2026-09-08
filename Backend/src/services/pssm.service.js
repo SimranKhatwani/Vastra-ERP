@@ -8,6 +8,7 @@ const SaleBill = require('../models/billing/SaleBill');
 const Customer = require('../models/crm/Customer');
 const Salesman = require('../models/masters/Salesman');
 const Attendance = require('../models/Attendance');
+const NotificationService = require('./notification.service');
 
 class PSSMService {
   static async createPSSM(data, userId, tenantId) {
@@ -162,6 +163,7 @@ class PSSMService {
         customerWaitingOption,
         priority: derivedPriority,
         serviceType: item.serviceType || data.serviceType || 'Alteration',
+        expectedDeliveryDate: item.expectedDeliveryDate || data.expectedDeliveryDate || data.deliveryDate,
         assignedTo,
         instructions: item.instructions || (Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : 'Standard Service'),
         charge: item.charge || 0,
@@ -279,6 +281,8 @@ class PSSMService {
     item.completedAt = new Date();
     item.completedBy = userId;
     await item.save();
+
+    await NotificationService.resolveAlertsForPSSItem(item._id, tenantId, 'READY');
 
     await this.recalculateMasterStatus(item.pssmId, tenantId);
 
@@ -401,6 +405,11 @@ class PSSMService {
     }
 
     await item.save();
+
+    if (['READY', 'COLLECTED', 'CLOSED', 'COMPLETED'].includes(status)) {
+      await NotificationService.resolveAlertsForPSSItem(item._id, tenantId, status);
+    }
+
     await this.recalculateMasterStatus(item.pssmId, tenantId);
 
     return item;
@@ -458,6 +467,10 @@ class PSSMService {
       { tenantId, _id: { $in: targetItemIds } },
       { $set: { status: 'COLLECTED', collectedAt: new Date() } }
     );
+
+    for (const itmId of targetItemIds) {
+      await NotificationService.resolveAlertsForPSSItem(itmId, tenantId, 'COLLECTED');
+    }
 
     // Update inventory piece to reflect customer collection
     try {

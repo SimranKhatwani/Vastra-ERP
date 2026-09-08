@@ -41,6 +41,7 @@ const pssmItemSchema = new mongoose.Schema({
     type: String,
     default: 'Alteration'
   },
+  expectedDeliveryDate: Date,
   assignedTo: String,
   instructions: {
     type: String,

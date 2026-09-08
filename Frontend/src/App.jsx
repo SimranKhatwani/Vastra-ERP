@@ -205,6 +205,38 @@ export default function App() {
     return !!localStorage.getItem("token");
   });
 
+  // Live Indian Standard Time (IST) System Clock
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formattedIndianDateTime = React.useMemo(() => {
+    try {
+      const datePart = currentDateTime.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+      const timePart = currentDateTime.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      return `${datePart} | ${timePart} IST`;
+    } catch (e) {
+      return currentDateTime.toLocaleString();
+    }
+  }, [currentDateTime]);
+
   React.useEffect(() => {
     if (!socket) return;
 
@@ -222,14 +254,19 @@ export default function App() {
       }
 
       if (payload?.notification) {
-        setNotifications((prev) => [{
-          id: payload.notification._id || payload.notification.id,
-          timestamp: 'Just now',
-          title: payload.notification.title || 'Notification',
-          message: payload.notification.message,
-          type: payload.notification.type || 'info',
-          read: false,
-        }, ...prev]);
+        setNotifications((prev) => {
+          const newNotif = {
+            id: payload.notification._id || payload.notification.id,
+            timestamp: 'Just now',
+            title: payload.notification.title || 'Notification',
+            message: payload.notification.message,
+            type: (payload.notification.type || 'info').toLowerCase(),
+            priority: payload.notification.priority || (payload.notification.type === 'CRITICAL' ? 'Critical' : 'Normal'),
+            read: false,
+          };
+          if (prev.some(n => n.id === newNotif.id)) return prev;
+          return [newNotif, ...prev];
+        });
       }
 
       if (payload?.event === 'inventory.updated' && payload.product) {
@@ -439,6 +476,26 @@ export default function App() {
     window.addEventListener("vastra-data-refresh", fetchProducts);
     return () => window.removeEventListener("vastra-data-refresh", fetchProducts);
   }, [isLoggedIn, currentUser?.id, currentUser?._id, currentUser?.email]);
+
+  const fetchNotifications = React.useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await api.get('/notifications');
+      if (res.data?.success && res.data.data?.notifications) {
+        setNotifications(res.data.data.notifications);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch notifications:", err?.message);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isLoggedIn) return;
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, fetchNotifications]);
 
   const [quickArticulateItem, setQuickArticulateItem] = useState(null);
 
@@ -1342,7 +1399,7 @@ export default function App() {
   };
 
   const handleMarkAllNotificationsRead = async () => {
-    setNotifications([]);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     try {
       await api.delete(`/notifications/clear`);
     } catch (error) {
@@ -1694,17 +1751,19 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             {/* Quick System Clock */}
-            <div className="hidden md:flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-[10px] font-mono text-slate-500 font-semibold">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>June 28, 2026 | 22:15 UTC</span>
+            <div className="hidden md:flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-[10px] font-mono text-slate-600 font-bold shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+              <span>{formattedIndianDateTime}</span>
             </div>
 
             {/* Notifications Alert with unread badges */}
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => {
-                  setShowNotificationsDropdown(!showNotificationsDropdown);
+                  const nextState = !showNotificationsDropdown;
+                  setShowNotificationsDropdown(nextState);
                   setShowProfileDropdown(false);
+                  if (nextState) fetchNotifications();
                 }}
                 className="p-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 hover:bg-slate-100 cursor-pointer relative"
               >
@@ -1717,7 +1776,7 @@ export default function App() {
               </button>
 
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-1 z-[99999] text-xs space-y-1 animate-scale-up origin-top-right overflow-hidden">
+                <div className="absolute right-0 mt-3 w-96 max-w-[90vw] bg-white rounded-3xl shadow-2xl border border-slate-100 p-1 z-[99999] text-xs space-y-1 animate-scale-up origin-top-right overflow-hidden">
                   <div className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl mb-2">
                     <span className="font-extrabold text-slate-800 uppercase tracking-widest text-[10px]">
                       Enterprise Alerts
@@ -1729,7 +1788,7 @@ export default function App() {
                       Clear All
                     </button>
                   </div>
-                  <div className="space-y-1.5 max-h-[400px] overflow-y-auto px-2 pb-2 custom-scrollbar">
+                  <div className="space-y-1.5 max-h-[420px] overflow-y-auto px-2 pb-2 custom-scrollbar">
                     {notifications.length === 0 ? (
                       <div className="text-center p-6 text-slate-400">
                         <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
@@ -1774,14 +1833,14 @@ export default function App() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex justify-between items-start mb-0.5 gap-2">
-                                <span className={`font-black truncate ${n.read ? 'opacity-60' : ''}`}>{n.title}</span>
+                                <span className={`font-black text-xs leading-snug ${n.read ? 'opacity-60' : 'text-slate-900'}`}>{n.title}</span>
                                 <span className={`text-[9px] font-bold whitespace-nowrap px-1.5 py-0.5 rounded-md border ${badgeClass} ${n.read ? 'opacity-50' : ''}`}>
                                   {n.priority || 'Info'}
                                 </span>
                               </div>
-                              <p className={`mt-1 leading-snug line-clamp-2 text-[10.5px] ${n.read ? 'opacity-60 font-medium' : 'font-bold'}`}>
+                              <div className={`mt-1 text-[10px] font-mono leading-relaxed whitespace-pre-line ${n.read ? 'opacity-70 font-medium' : 'font-semibold text-slate-800'}`}>
                                 {n.message}
-                              </p>
+                              </div>
                               <div className={`text-[8px] mt-1.5 font-mono uppercase tracking-wider ${n.read ? 'text-slate-400' : 'text-slate-500 font-bold'}`}>
                                 {n.timestamp}
                               </div>
