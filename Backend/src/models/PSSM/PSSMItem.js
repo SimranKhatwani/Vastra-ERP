@@ -41,6 +41,11 @@ const pssmItemSchema = new mongoose.Schema({
     type: String,
     default: 'Alteration'
   },
+  gender: {
+    type: String,
+    enum: ['Gents', 'Ladies', 'Unisex'],
+    default: 'Gents'
+  },
   expectedDeliveryDate: Date,
   assignedTo: String,
   instructions: {

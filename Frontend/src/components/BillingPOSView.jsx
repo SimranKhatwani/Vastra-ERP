@@ -42,7 +42,9 @@ import {
   Loader2,
   ImageIcon,
   Pencil,
-  Tag
+  Tag,
+  Phone,
+  MessageCircle
 } from "lucide-react";
 
 const generateUniqueItemCode = (designNo, size, index = 0) => {
@@ -855,6 +857,11 @@ export const BillingPOSView = ({
   const [pssFocusedIndex, setPssFocusedIndex] = useState(0);
   const [pssCustName, setPssCustName] = useState("");
   const [pssCustPhone, setPssCustPhone] = useState("");
+  const [pssCustAltPhone, setPssCustAltPhone] = useState("");
+  const [pssCustWhatsapp, setPssCustWhatsapp] = useState("");
+  const [pssCustNotes, setPssCustNotes] = useState("");
+  const [pssSameAsMobileWhatsapp, setPssSameAsMobileWhatsapp] = useState(false);
+  const [pssServiceGenderFilter, setPssServiceGenderFilter] = useState('All'); // 'All' | 'Gents' | 'Ladies'
   const [showPssCustNameSuggestions, setShowPssCustNameSuggestions] = useState(false);
   const [showPssCustPhoneSuggestions, setShowPssCustPhoneSuggestions] = useState(false);
 
@@ -864,6 +871,12 @@ export const BillingPOSView = ({
   const handleSelectPssCustomer = (cust) => {
     setPssCustName(cust.name || '');
     setPssCustPhone(cust.phone || '');
+    const altP = cust.alternatePhone || cust.secondaryPhone || '';
+    const waP = cust.whatsappNumber || cust.phone || '';
+    setPssCustAltPhone(altP);
+    setPssCustWhatsapp(waP);
+    setPssSameAsMobileWhatsapp(Boolean(waP && cust.phone && waP === cust.phone));
+    setPssCustNotes(cust.notes || cust.specialInstructions || '');
     setShowPssCustNameSuggestions(false);
     setShowPssCustPhoneSuggestions(false);
     if (cust._id || cust.id) {
@@ -871,7 +884,11 @@ export const BillingPOSView = ({
         ...prev,
         customerId: cust._id || cust.id,
         customerName: cust.name,
-        customerPhone: cust.phone
+        customerPhone: cust.phone,
+        alternatePhone: altP,
+        whatsappNumber: waP,
+        specialInstructions: cust.notes || cust.specialInstructions || '',
+        notes: cust.notes || ''
       }));
     }
   };
@@ -1655,19 +1672,22 @@ export const BillingPOSView = ({
   const handleYesOnPSSPrompt = () => {
     setShowPSSQuestionPromptModal(false);
 
-    // Verify if customer details exist on current generated bill
-    const cName = (pssInvoice?.customerName || "").trim();
-    const cPhone = (pssInvoice?.customerPhone || "").trim();
-    const isWalkInWithoutPhone = !cName || cName === "Walk-in Customer" || cPhone.length < 10;
+    // Verify and populate customer details from current generated bill or active customer
+    const cName = (pssInvoice?.customerName || activeCustomer?.name || "").trim();
+    const cPhone = (pssInvoice?.customerPhone || activeCustomer?.phone || "").trim();
+    const cAltPhone = (pssInvoice?.alternatePhone || activeCustomer?.alternatePhone || "").trim();
+    const cWhatsapp = (pssInvoice?.whatsappNumber || activeCustomer?.whatsappNumber || (cPhone.length === 10 ? cPhone : "")).trim();
+    const cNotes = (pssInvoice?.specialInstructions || pssInvoice?.remarks || activeCustomer?.notes || "").trim();
 
-    if (isWalkInWithoutPhone) {
-      // Customer contact details missing -> prompt user to enter customer info first!
-      setPssCustName(cName === "Walk-in Customer" ? "" : cName);
-      setPssCustPhone(cPhone);
-      setShowPSSCustomerDetailsModal(true);
-    } else {
-      handleOpenPssItemSelection(pssInvoice);
-    }
+    setPssCustName(cName === "Walk-in Customer" ? "" : cName);
+    setPssCustPhone(cPhone);
+    setPssCustAltPhone(cAltPhone);
+    setPssCustWhatsapp(cWhatsapp);
+    setPssSameAsMobileWhatsapp(Boolean(cWhatsapp && cPhone && cWhatsapp === cPhone));
+    setPssCustNotes(cNotes);
+
+    // Show Customer Details Modal so user can review/enter Name, Mobile, Alternate Number, WhatsApp, & Notes
+    setShowPSSCustomerDetailsModal(true);
   };
 
   const handleSavePSSCustomerDetails = () => {
@@ -1683,7 +1703,11 @@ export const BillingPOSView = ({
     const updatedInv = {
       ...pssInvoice,
       customerName: pssCustName.trim(),
-      customerPhone: pssCustPhone.trim()
+      customerPhone: pssCustPhone.trim(),
+      alternatePhone: pssCustAltPhone.trim(),
+      whatsappNumber: pssCustWhatsapp.trim(),
+      specialInstructions: pssCustNotes.trim(),
+      remarks: pssCustNotes.trim()
     };
     setPssInvoice(updatedInv);
     setShowPSSCustomerDetailsModal(false);
@@ -1712,6 +1736,8 @@ export const BillingPOSView = ({
       quantity: item.quantity || item.qty || 1,
       selectedForPSS: false, // Default UNSELECTED, click or SPACEBAR toggles
       serviceType: "Alteration",
+      services: ['Alteration'],
+      gender: item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || item.pieceName || item.productName || '') ? 'Ladies' : 'Gents'),
       tailorName: defaultTailorName,
       deliveryDate: defaultDeliveryDate,
       priority: 'Normal',
@@ -1790,20 +1816,30 @@ export const BillingPOSView = ({
       if (pssCustomerWaitingOption === 'Waiting in Store') derivedPriority = 'HIGH';
       else if (pssCustomerWaitingOption === 'Home Delivery Required') derivedPriority = 'DELIVERY';
 
+      const custNameVal = pssCustName.trim() || pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer';
+      const custPhoneVal = pssCustPhone.trim() || pssInvoice.customerPhone || activeCustomer?.phone || '';
+      const custAltPhoneVal = pssCustAltPhone.trim() || pssInvoice.alternatePhone || activeCustomer?.alternatePhone || '';
+      const custWhatsappVal = pssCustWhatsapp.trim() || pssInvoice.whatsappNumber || activeCustomer?.whatsappNumber || '';
+      const custNotesVal = pssCustNotes.trim() || pssInvoice.specialInstructions || pssGeneralRemarks || '';
+
       const payload = {
         saleBillId: pssInvoice._id,
         invoiceNumber: pssInvoice.invoiceNo,
         billBarcode: pssInvoice.billBarcode || pssInvoice.invoiceNo,
         customerId: pssInvoice.customerId || activeCustomer?._id,
-        customerName: pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer',
-        customerPhone: pssInvoice.customerPhone || activeCustomer?.phone || '',
+        customerName: custNameVal,
+        customerPhone: custPhoneVal,
+        alternatePhone: custAltPhoneVal,
+        whatsappNumber: custWhatsappVal,
+        specialInstructions: custNotesVal,
         salesmanName: pssSalesmanName || pssInvoice?.salesmanName || '',
         customerWaitingOption: pssCustomerWaitingOption,
         priority: derivedPriority,
+        gender: selectedItems[0]?.gender || 'Gents',
         allowWhatsApp: pssAllowWhatsApp,
         tailorName: isDirect ? (pssGeneralTailor || selectedItems[0]?.tailorName || 'Master Tailor') : '',
         expectedDeliveryDate: pssGeneralDeliveryDate || selectedItems[0]?.deliveryDate,
-        remarks: pssGeneralRemarks,
+        remarks: pssGeneralRemarks || custNotesVal || '',
         items: selectedItems.map(item => {
           const itemServices = Array.isArray(item.services) && item.services.length > 0
             ? item.services
@@ -1817,6 +1853,7 @@ export const BillingPOSView = ({
             sku: item.sku || item.barcode,
             size: item.size,
             color: item.color,
+            gender: item.gender || 'Gents',
             services: itemServices,
             serviceType: itemServices[0] || 'Alteration',
             assignedTo: isDirect ? (item.tailorName || pssGeneralTailor || 'Master Tailor') : '',
@@ -1840,11 +1877,15 @@ export const BillingPOSView = ({
         pssmNo: issuedPssmNo,
         originalInvoiceNo,
         billBarcode,
-        customerName: pssInvoice.customerName || activeCustomer?.name || 'Walk-in Customer',
-        customerPhone: pssInvoice.customerPhone || activeCustomer?.phone || '',
+        customerName: custNameVal,
+        customerPhone: custPhoneVal,
+        alternatePhone: custAltPhoneVal,
+        whatsappNumber: custWhatsappVal,
+        specialInstructions: custNotesVal,
         salesmanName: pssSalesmanName || pssInvoice?.salesmanName || 'Counter Staff',
         customerWaitingOption: pssCustomerWaitingOption,
         priority: derivedPriority,
+        gender: selectedItems[0]?.gender || 'Gents',
         allowWhatsApp: pssAllowWhatsApp,
         cashierName: currentUser ? currentUser.name : 'Cashier',
         deliveryDate: pssGeneralDeliveryDate,
@@ -1856,6 +1897,7 @@ export const BillingPOSView = ({
             name: itm.name,
             size: itm.size,
             color: itm.color,
+            gender: itm.gender || 'Gents',
             barcode: itm.barcode || itm.uniqueCode,
             services: itmServices,
             serviceType: itmServices.join(' + '),
@@ -10363,11 +10405,11 @@ export const BillingPOSView = ({
         </div>
       )}
 
-      {/* MODAL: PSS CUSTOMER DETAILS PROMPT (WITH EXISTING CUSTOMER SUGGESTIONS) */}
+      {/* MODAL: PSS CUSTOMER DETAILS PROMPT (WITH EXISTING CUSTOMER SUGGESTIONS & EXTRA CONTACT FIELDS) */}
       {showPSSCustomerDetailsModal && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-fade-in font-sans">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scale-up text-slate-800 space-y-5 relative">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-scale-up text-slate-800 flex flex-col max-h-[92vh] relative">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3 shrink-0">
               <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl">
                 <User className="w-6 h-6" />
               </div>
@@ -10381,7 +10423,7 @@ export const BillingPOSView = ({
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3.5 py-3 overflow-y-auto erp-hide-scrollbar flex-1 pr-1">
               {/* Customer Full Name Input with Suggestions */}
               <div className="relative">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
@@ -10443,7 +10485,11 @@ export const BillingPOSView = ({
                   placeholder="Type 10-digit mobile number..."
                   value={pssCustPhone}
                   onChange={(e) => {
-                    setPssCustPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                    const cleanPhone = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setPssCustPhone(cleanPhone);
+                    if (pssSameAsMobileWhatsapp) {
+                      setPssCustWhatsapp(cleanPhone);
+                    }
                     setShowPssCustPhoneSuggestions(true);
                     setShowPssCustNameSuggestions(false);
                   }}
@@ -10483,9 +10529,87 @@ export const BillingPOSView = ({
                   </div>
                 )}
               </div>
+
+              {/* Alternate Number - Optional & WhatsApp Number - Optional */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Alternate Number */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-slate-400" />
+                      Alternate Number
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400 lowercase italic">optional</span>
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Secondary contact no..."
+                    value={pssCustAltPhone}
+                    onChange={(e) => setPssCustAltPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-rose-500 placeholder:font-sans placeholder:text-xs"
+                  />
+                </div>
+
+                {/* WhatsApp Number */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      WhatsApp Number
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pssSameAsMobileWhatsapp) {
+                          setPssSameAsMobileWhatsapp(false);
+                        } else {
+                          setPssSameAsMobileWhatsapp(true);
+                          setPssCustWhatsapp(pssCustPhone);
+                        }
+                      }}
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                        pssSameAsMobileWhatsapp
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="Auto-fill with Mobile number"
+                    >
+                      {pssSameAsMobileWhatsapp ? '✓ Same as Mobile' : 'Same as Mobile'}
+                    </button>
+                  </div>
+                  <input
+                    type="tel"
+                    placeholder="WhatsApp contact no..."
+                    value={pssCustWhatsapp}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setPssCustWhatsapp(val);
+                      if (val !== pssCustPhone) {
+                        setPssSameAsMobileWhatsapp(false);
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500 placeholder:font-sans placeholder:text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Special Instructions / Notes */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between mb-1">
+                  <span>Special Instructions / Notes</span>
+                  <span className="text-[10px] font-semibold text-slate-400 lowercase italic">optional</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Special alteration notes, fitting preferences, garment instructions..."
+                  value={pssCustNotes}
+                  onChange={(e) => setPssCustNotes(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-rose-500 resize-none placeholder:text-slate-400"
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -10493,14 +10617,14 @@ export const BillingPOSView = ({
                   setShowPssCustNameSuggestions(false);
                   setShowPssCustPhoneSuggestions(false);
                 }}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-colors"
               >
                 Cancel PSS
               </button>
               <button
                 type="button"
                 onClick={handleSavePSSCustomerDetails}
-                className="py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer"
+                className="py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer transition-colors"
               >
                 Save & Continue to PSS
               </button>
@@ -10975,42 +11099,124 @@ export const BillingPOSView = ({
 
               {/* Per-Item Service Selection */}
               <div className="space-y-3">
-                <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center justify-between">
-                  <span>Garments Pending Service Setup ({pssConfigItems.filter(i => i.selectedForPSS).length} Items)</span>
-                  <span className="text-[11px] text-slate-500 font-medium">Select required service per garment</span>
-                </h4>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                    Garments Pending Service Setup ({pssConfigItems.filter(i => i.selectedForPSS).length} Items)
+                  </h4>
+
+                  {/* Filter Tab: All / Gents / Ladies */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-black uppercase text-slate-500 px-2 tracking-wider">Filter:</span>
+                    {['All', 'Gents', 'Ladies'].map(gf => {
+                      const count = gf === 'All'
+                        ? pssConfigItems.filter(i => i.selectedForPSS).length
+                        : pssConfigItems.filter(i => i.selectedForPSS && (i.gender || 'Gents') === gf).length;
+                      const isAct = pssServiceGenderFilter === gf;
+                      return (
+                        <button
+                          key={gf}
+                          type="button"
+                          onClick={() => setPssServiceGenderFilter(gf)}
+                          className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                            isAct
+                              ? gf === 'Ladies'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : gf === 'Gents'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'bg-slate-900 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                          }`}
+                        >
+                          {gf === 'Gents' && <span>👨</span>}
+                          {gf === 'Ladies' && <span>👩</span>}
+                          <span>{gf} ({count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="space-y-3">
-                  {pssConfigItems.filter(i => i.selectedForPSS).map((item, idx) => {
-                    const selectedServices = Array.isArray(item.services) ? item.services : (item.serviceType ? [item.serviceType] : ['Alteration']);
-                    return (
-                      <div
-                        key={item.itemKey || idx}
-                        className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h5 className="text-sm font-black text-slate-900">
-                                {item.name}
-                              </h5>
-                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
-                                Size: {item.size} | Color: {item.color}
-                              </span>
+                  {pssConfigItems
+                    .filter(i => i.selectedForPSS && (pssServiceGenderFilter === 'All' || (i.gender || 'Gents') === pssServiceGenderFilter))
+                    .map((item, idx) => {
+                      const selectedServices = Array.isArray(item.services) ? item.services : (item.serviceType ? [item.serviceType] : ['Alteration']);
+                      const hasAlteration = selectedServices.some(s => s.toLowerCase().includes('alteration'));
+                      return (
+                        <div
+                          key={item.itemKey || idx}
+                          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h5 className="text-sm font-black text-slate-900">
+                                  {item.name}
+                                </h5>
+                                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
+                                  Size: {item.size} | Color: {item.color}
+                                </span>
+                              </div>
+                              <p className="text-xs font-mono text-slate-500 mt-0.5">
+                                Barcode / Unique Code: <strong className="text-slate-800">{item.barcode || item.uniqueCode || 'N/A'}</strong>
+                              </p>
                             </div>
-                            <p className="text-xs font-mono text-slate-500 mt-0.5">
-                              Barcode / Unique Code: <strong className="text-slate-800">{item.barcode || item.uniqueCode || 'N/A'}</strong>
-                            </p>
-                          </div>
 
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {selectedServices.map(sv => (
-                              <span key={sv} className="text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
-                                {sv}
-                              </span>
-                            ))}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Option of Gents / Ladies in front of product if Alteration service is selected */}
+                              {hasAlteration && (
+                                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
+                                  <span className="text-[10px] font-black uppercase text-slate-400 px-1">Gender:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Gents' } : itm));
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                                      (item.gender || 'Gents') === 'Gents'
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                  >
+                                    <span>👨 Gents</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Ladies' } : itm));
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                                      item.gender === 'Ladies'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                  >
+                                    <span>👩 Ladies</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Service Badges - When Alteration is written, show Gents/Ladies under it */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {selectedServices.map(sv => (
+                                  <div key={sv} className="flex flex-col items-center">
+                                    <span className="text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
+                                      {sv}
+                                    </span>
+                                    {sv.toLowerCase().includes('alteration') && (
+                                      <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
+                                        (item.gender || 'Gents') === 'Ladies'
+                                          ? 'bg-pink-50 text-pink-700 border-pink-200'
+                                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                                      }`}>
+                                        {(item.gender || 'Gents')}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
-                        </div>
 
                         {/* Multi-Service Selection */}
                         <div>
@@ -11475,9 +11681,21 @@ export const BillingPOSView = ({
               </div>
 
               {/* Customer Info */}
-              <div className="text-xs space-y-1 border border-slate-100 rounded-xl p-3 bg-white">
+              <div className="text-xs space-y-1.5 border border-slate-100 rounded-xl p-3 bg-white">
                 <p className="font-black text-slate-800">{pssSlipData.customerName} {pssSlipData.customerPhone ? `(${pssSlipData.customerPhone})` : ''}</p>
+                {(pssSlipData.alternatePhone || pssSlipData.whatsappNumber) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-slate-500 text-[11px]">
+                    {pssSlipData.alternatePhone && <span>Alt: <strong className="text-slate-700">{pssSlipData.alternatePhone}</strong></span>}
+                    {pssSlipData.whatsappNumber && <span>WA: <strong className="text-emerald-700">{pssSlipData.whatsappNumber}</strong></span>}
+                  </div>
+                )}
                 <p className="text-slate-500">Cashier: {pssSlipData.cashierName} | Waiting: {pssSlipData.customerWaitingOption}</p>
+                {pssSlipData.specialInstructions && (
+                  <div className="text-amber-900 bg-amber-50 rounded-lg p-2 border border-amber-200 text-[11px] leading-relaxed">
+                    <strong className="block text-[10px] uppercase font-bold text-amber-700">Special Instructions / Notes:</strong>
+                    {pssSlipData.specialInstructions}
+                  </div>
+                )}
               </div>
 
               {/* Items */}
@@ -11507,8 +11725,24 @@ export const BillingPOSView = ({
                     }`}>
                       <div className="flex justify-between items-start gap-2">
                         <div>
-                          <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
-                          <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase mt-0.5 inline-block">{itm.serviceType}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${
+                              (itm.gender || 'Gents') === 'Ladies' ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-blue-100 text-blue-700 border-blue-300'
+                            }`}>
+                              {itm.gender || 'Gents'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-start mt-0.5">
+                            <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase inline-block">
+                              {itm.serviceType}
+                            </span>
+                            <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1 py-0.2 rounded border ${
+                              (itm.gender || 'Gents') === 'Ladies' ? 'bg-pink-50 text-pink-700 border-pink-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}>
+                              {itm.gender || 'Gents'}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {isCollected ? (
@@ -11568,7 +11802,7 @@ export const BillingPOSView = ({
                   const d = pssSlipData;
                   const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
                   const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/><b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color})<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.specialInstructions ? '<b>Notes:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color}) [<b>${it.gender || 'Gents'}</b>]<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Category:</b> <b>${it.gender || 'Gents'}</b><br/><b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}
@@ -11584,9 +11818,9 @@ export const BillingPOSView = ({
                     return;
                   }
                   const d = pssSlipData;
-                  const itemLines = (d.items || []).map((it, i) => `${i + 1}. ${it.name} (${it.size}) — *${it.serviceType}*`).join('\n');
-                  const msg = `🧵 *PSS Service Booking Confirmed!*\n\n📋 *Invoice No:* ${d.originalInvoiceNo}\n🎫 *PSS Ticket:* ${d.pssmNo}\n🔖 *Barcode:* ${d.billBarcode}\n⚡ *Priority:* ${d.priority}\n\n👔 *Garments:*\n${itemLines}\n\n${d.deliveryDate ? '📅 *Expected Delivery:* ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '\n' : ''}Thank you for choosing our store! 🙏`;
-                  const phone = d.customerPhone ? d.customerPhone.replace(/\D/g, '') : '';
+                  const itemLines = (d.items || []).map((it, i) => `${i + 1}. ${it.name} (${it.size} · ${it.gender || 'Gents'}) — *${it.serviceType}*`).join('\n');
+                  const msg = `🧵 *PSS Service Booking Confirmed!*\n\n📋 *Invoice No:* ${d.originalInvoiceNo}\n🎫 *PSS Ticket:* ${d.pssmNo}\n🔖 *Barcode:* ${d.billBarcode}\n⚡ *Priority:* ${d.priority}\n\n👔 *Garments:*\n${itemLines}\n\n${d.deliveryDate ? '📅 *Expected Delivery:* ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '\n' : ''}${d.specialInstructions ? '📝 *Notes:* ' + d.specialInstructions + '\n\n' : ''}Thank you for choosing our store! 🙏`;
+                  const phone = (d.whatsappNumber || d.customerPhone || '').replace(/\D/g, '');
                   const waUrl = phone
                     ? `https://wa.me/91${phone.replace(/^91/, '')}?text=${encodeURIComponent(msg)}`
                     : `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`;

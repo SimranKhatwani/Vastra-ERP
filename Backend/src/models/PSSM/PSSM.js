@@ -20,6 +20,9 @@ const pssmSchema = new mongoose.Schema({
   },
   customerName: String,
   customerPhone: String,
+  alternatePhone: { type: String, trim: true, default: '' },
+  whatsappNumber: { type: String, trim: true, default: '' },
+  specialInstructions: { type: String, trim: true, default: '' },
   inseamBookCode: String,
   salesmanId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -34,6 +37,11 @@ const pssmSchema = new mongoose.Schema({
   serviceType: {
     type: String,
     default: 'Alteration'
+  },
+  gender: {
+    type: String,
+    enum: ['Gents', 'Ladies', 'Unisex'],
+    default: 'Gents'
   },
   expectedDeliveryDate: Date,
   status: {

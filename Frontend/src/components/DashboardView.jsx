@@ -996,13 +996,12 @@ export const DashboardView = ({
               </div>
 
               {/* 7. Capacity Utilization */}
-              <div className={`p-4 rounded-xl border flex flex-col justify-between ${
-                activeTailorStats.capacityUtilization >= 90
-                  ? 'bg-red-50 border-red-300 text-red-950'
-                  : activeTailorStats.capacityUtilization >= 70
-                    ? 'bg-amber-50 border-amber-300 text-amber-950'
-                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-              }`}>
+              <div className={`p-4 rounded-xl border flex flex-col justify-between ${activeTailorStats.capacityUtilization >= 90
+                ? 'bg-red-50 border-red-300 text-red-950'
+                : activeTailorStats.capacityUtilization >= 70
+                  ? 'bg-amber-50 border-amber-300 text-amber-950'
+                  : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                }`}>
                 <div className="flex justify-between items-start mb-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider">Capacity Load</span>
                   <TrendingUp className="w-4 h-4" />
@@ -1016,13 +1015,12 @@ export const DashboardView = ({
                   </div>
                   <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        activeTailorStats.capacityUtilization >= 90
-                          ? 'bg-red-600'
-                          : activeTailorStats.capacityUtilization >= 70
-                            ? 'bg-amber-500'
-                            : 'bg-emerald-500'
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${activeTailorStats.capacityUtilization >= 90
+                        ? 'bg-red-600'
+                        : activeTailorStats.capacityUtilization >= 70
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                        }`}
                       style={{ width: `${Math.min(100, activeTailorStats.capacityUtilization)}%` }}
                     />
                   </div>
@@ -1261,15 +1259,14 @@ export const DashboardView = ({
                           </td>
                           <td className="px-5 py-4">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                job.status === 'Ready for Delivery' || job.status === 'READY'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : job.status === 'In Progress'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : job.status === 'Delivered'
-                                      ? 'bg-slate-100 text-slate-700'
-                                      : 'bg-indigo-100 text-indigo-800'
-                              }`}
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${job.status === 'Ready for Delivery' || job.status === 'READY'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : job.status === 'In Progress'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : job.status === 'Delivered'
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-indigo-100 text-indigo-800'
+                                }`}
                             >
                               {job.status || 'Pending'}
                             </span>
@@ -1576,11 +1573,10 @@ export const DashboardView = ({
 
           {/* Inline Scan Feedback Toast */}
           {scanMessage && (
-            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between border shadow-sm transition-all animate-fade-in ${
-              scanMessage.type === 'success'
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                : 'bg-red-50 text-red-900 border-red-300'
-            }`}>
+            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between border shadow-sm transition-all animate-fade-in ${scanMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+              : 'bg-red-50 text-red-900 border-red-300'
+              }`}>
               <div className="flex items-center gap-2">
                 {scanMessage.type === 'success' ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1660,30 +1656,25 @@ export const DashboardView = ({
             </div>
 
             {/* Overdue */}
-            <div className={`p-4 rounded-2xl shadow-xs border flex flex-col justify-between hover:shadow-md transition-all ${
-              (salesmanDashboardData?.summary?.overdue ?? 0) > 0
-                ? 'bg-red-50 border-red-300 ring-2 ring-red-400/30'
-                : 'bg-white border-slate-200/80'
-            }`}>
+            <div className={`p-4 rounded-2xl shadow-xs border flex flex-col justify-between hover:shadow-md transition-all ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0
+              ? 'bg-red-50 border-red-300 ring-2 ring-red-400/30'
+              : 'bg-white border-slate-200/80'
+              }`}>
               <div className="flex items-center justify-between">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${
-                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-500'
-                }`}>Overdue</span>
-                <div className={`p-2 rounded-xl ${
-                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'bg-red-200 text-red-800' : 'bg-slate-100 text-slate-500'
-                }`}>
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-500'
+                  }`}>Overdue</span>
+                <div className={`p-2 rounded-xl ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'bg-red-200 text-red-800' : 'bg-slate-100 text-slate-500'
+                  }`}>
                   <AlertTriangle className="w-4 h-4" />
                 </div>
               </div>
               <div className="mt-2">
-                <div className={`text-2xl font-black font-sans ${
-                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-900'
-                }`}>
+                <div className={`text-2xl font-black font-sans ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-900'
+                  }`}>
                   {salesmanDashboardData?.summary?.overdue ?? 0}
                 </div>
-                <p className={`text-[10px] font-medium mt-0.5 ${
-                  (salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-slate-400'
-                }`}>Past delivery date</p>
+                <p className={`text-[10px] font-medium mt-0.5 ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-slate-400'
+                  }`}>Past delivery date</p>
               </div>
             </div>
 
@@ -1723,11 +1714,10 @@ export const DashboardView = ({
               <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                 <button
                   onClick={() => setActiveFollowupTab("callToday")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    activeFollowupTab === "callToday"
-                      ? "bg-white text-indigo-700 shadow-xs border border-indigo-100"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFollowupTab === "callToday"
+                    ? "bg-white text-indigo-700 shadow-xs border border-indigo-100"
+                    : "text-slate-600 hover:text-slate-900"
+                    }`}
                 >
                   <PhoneCall className="w-3.5 h-3.5 text-indigo-600" />
                   <span>आज किस Customer को Call करना है</span>
@@ -1738,11 +1728,10 @@ export const DashboardView = ({
 
                 <button
                   onClick={() => setActiveFollowupTab("readyForPickup")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    activeFollowupTab === "readyForPickup"
-                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-100"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFollowupTab === "readyForPickup"
+                    ? "bg-white text-emerald-700 shadow-xs border border-emerald-100"
+                    : "text-slate-600 hover:text-slate-900"
+                    }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   <span>कौन Ready है</span>
@@ -1753,11 +1742,10 @@ export const DashboardView = ({
 
                 <button
                   onClick={() => setActiveFollowupTab("overdue")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    activeFollowupTab === "overdue"
-                      ? "bg-white text-red-700 shadow-xs border border-red-100"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFollowupTab === "overdue"
+                    ? "bg-white text-red-700 shadow-xs border border-red-100"
+                    : "text-slate-600 hover:text-slate-900"
+                    }`}
                 >
                   <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
                   <span>कौन Overdue है</span>
@@ -1768,11 +1756,10 @@ export const DashboardView = ({
 
                 <button
                   onClick={() => setActiveFollowupTab("didNotPickUp")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    activeFollowupTab === "didNotPickUp"
-                      ? "bg-white text-amber-700 shadow-xs border border-amber-100"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFollowupTab === "didNotPickUp"
+                    ? "bg-white text-amber-700 shadow-xs border border-amber-100"
+                    : "text-slate-600 hover:text-slate-900"
+                    }`}
                 >
                   <Clock className="w-3.5 h-3.5 text-amber-600" />
                   <span>कौन Delivery लेने नहीं आया</span>
@@ -1872,13 +1859,12 @@ export const DashboardView = ({
                             )}
                           </td>
                           <td className="px-5 py-3.5">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                              item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : item.isOverdue
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : item.isOverdue
                                 ? 'bg-red-50 text-red-700 border-red-200'
                                 : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}>
+                              }`}>
                               {item.status || 'Pending'}
                             </span>
                           </td>
@@ -2127,13 +2113,12 @@ export const DashboardView = ({
 
                           {/* 8. Current Status */}
                           <td className="px-5 py-3.5">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                              item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : item.isOverdue
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${item.isReady || item.status === 'READY' || item.status === 'Ready for Delivery'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : item.isOverdue
                                 ? 'bg-red-50 text-red-700 border-red-200'
                                 : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}>
+                              }`}>
                               {item.status || 'Pending'}
                             </span>
                           </td>
@@ -2305,9 +2290,7 @@ export const DashboardView = ({
               </span>
               <span>Today You Need to Focus On</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Morning Action Dashboard • जब Owner या Manager सुबह Login करे
-            </p>
+
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
@@ -2474,6 +2457,7 @@ export const DashboardView = ({
       <QuickActionsPanel
         onNavigate={setActiveTab}
         openArticulationWithDefaults={openArticulationWithDefaults}
+        employees={employees}
       />
 
       {/* KPI Stats Grid */}
@@ -3213,13 +3197,12 @@ export const DashboardView = ({
           </div>
 
           {/* 7. Capacity Utilization */}
-          <div className={`p-4 rounded-xl border flex flex-col justify-between ${
-            activeTailorStats.capacityUtilization >= 90
-              ? 'bg-red-50 border-red-300 text-red-950'
-              : activeTailorStats.capacityUtilization >= 70
-                ? 'bg-amber-50 border-amber-300 text-amber-950'
-                : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-          }`}>
+          <div className={`p-4 rounded-xl border flex flex-col justify-between ${activeTailorStats.capacityUtilization >= 90
+            ? 'bg-red-50 border-red-300 text-red-950'
+            : activeTailorStats.capacityUtilization >= 70
+              ? 'bg-amber-50 border-amber-300 text-amber-950'
+              : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+            }`}>
             <div className="flex justify-between items-start mb-1">
               <span className="text-[10px] font-bold uppercase tracking-wider">Capacity Load</span>
               <TrendingUp className="w-4 h-4" />
@@ -3233,13 +3216,12 @@ export const DashboardView = ({
               </div>
               <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    activeTailorStats.capacityUtilization >= 90
-                      ? 'bg-red-600'
-                      : activeTailorStats.capacityUtilization >= 70
-                        ? 'bg-amber-500'
-                        : 'bg-emerald-500'
-                  }`}
+                  className={`h-full rounded-full transition-all duration-500 ${activeTailorStats.capacityUtilization >= 90
+                    ? 'bg-red-600'
+                    : activeTailorStats.capacityUtilization >= 70
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                    }`}
                   style={{ width: `${Math.min(100, activeTailorStats.capacityUtilization)}%` }}
                 />
               </div>

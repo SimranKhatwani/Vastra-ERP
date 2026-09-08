@@ -74,6 +74,7 @@ class AlterationService {
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       priority: data.priority || 'Normal',
+      gender: data.gender || rawItems[0]?.gender || 'Gents',
       trialDate: data.trialDate,
       totalCharges,
       commissionPercentage: commRate,
@@ -94,6 +95,7 @@ class AlterationService {
       customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
       customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
       serviceType: data.serviceType || 'Alteration',
+      gender: data.gender || rawItems[0]?.gender || 'Gents',
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       vendorName: data.vendorName || data.tailorName || '',
@@ -134,6 +136,7 @@ class AlterationService {
         productName: item.productName || item.pieceName || piece?.productId?.name || 'Altered Garment',
         size: item.size || piece?.size || 'FS',
         color: item.color || piece?.primaryColor || 'Standard',
+        gender: item.gender || data.gender || 'Gents',
         barcode: item.barcode || piece?.barcode || '',
         uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
         sku: item.sku || piece?.barcode || '',
@@ -418,6 +421,7 @@ class AlterationService {
         }, extraData.io);
       }
 
+      if (extraData.priority) alteration.priority = extraData.priority;
       if (measurements) alteration.measurements = measurements;
       alteration.updatedBy = userId;
       await alteration.save();

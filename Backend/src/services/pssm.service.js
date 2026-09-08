@@ -88,29 +88,39 @@ class PSSMService {
       customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
       customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
       customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
+      alternatePhone: data.alternatePhone || data.customerAltPhone || '',
+      whatsappNumber: data.whatsappNumber || data.customerWhatsapp || '',
+      specialInstructions: data.specialInstructions || data.notes || data.remarks || '',
       inseamBookCode: data.inseamBookCode || '',
       salesmanId: resolvedSalesmanId,
       salesmanName: resolvedSalesmanName,
       customerWaitingOption,
       priority: derivedPriority,
       serviceType: data.serviceType || 'Alteration',
+      gender: data.gender || rawItems[0]?.gender || 'Gents',
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       vendorName: data.vendorName || data.tailorName || '',
       totalCharges,
       status: initialMasterStatus,
       allowWhatsApp: data.allowWhatsApp !== false,
-      remarks: data.remarks || '',
+      remarks: data.remarks || data.specialInstructions || data.notes || '',
       createdBy: userId
     });
 
-    // Update Customer inseam book code if provided
-    if (data.inseamBookCode && (data.customerId || (foundBill && foundBill.customerId))) {
-      const cId = data.customerId || foundBill.customerId;
-      await Customer.updateOne(
-        { _id: cId, tenantId },
-        { $set: { inseamBookCode: data.inseamBookCode } }
-      ).catch(console.error);
+    // Update Customer inseam book code, alternatePhone, whatsappNumber if provided
+    const targetCustomerId = data.customerId || (foundBill && foundBill.customerId);
+    if (targetCustomerId) {
+      const custUpdates = {};
+      if (data.inseamBookCode) custUpdates.inseamBookCode = data.inseamBookCode;
+      if (data.alternatePhone) custUpdates.alternatePhone = data.alternatePhone;
+      if (data.whatsappNumber) custUpdates.whatsappNumber = data.whatsappNumber;
+      if (Object.keys(custUpdates).length > 0) {
+        await Customer.updateOne(
+          { _id: targetCustomerId, tenantId },
+          { $set: custUpdates }
+        ).catch(console.error);
+      }
     }
 
     const createdItems = [];
@@ -164,6 +174,7 @@ class PSSMService {
         customerWaitingOption,
         priority: derivedPriority,
         serviceType: item.serviceType || data.serviceType || 'Alteration',
+        gender: item.gender || data.gender || 'Gents',
         expectedDeliveryDate: item.expectedDeliveryDate || data.expectedDeliveryDate || data.deliveryDate,
         assignedTo,
         instructions: item.instructions || (Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : 'Standard Service'),

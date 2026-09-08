@@ -19,6 +19,11 @@ const alterationItemSchema = new mongoose.Schema({
   sku: String,
   size: String,
   color: String,
+  gender: {
+    type: String,
+    enum: ['Gents', 'Ladies', 'Unisex'],
+    default: 'Gents'
+  },
   instructions: {
     type: String,
     default: 'Standard Fit'

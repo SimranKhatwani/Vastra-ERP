@@ -10,7 +10,7 @@ class AlterationController {
 
   static updateStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { status, measurements, alterationDetails, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, reason } = req.body;
+    const { status, measurements, alterationDetails, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason } = req.body;
     const extraData = {
       deliveryDate: deliveryDate || expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
@@ -18,6 +18,7 @@ class AlterationController {
       vendorName,
       customerPhone: customerPhone || customerMobile,
       serviceType,
+      priority,
       reason: reason || req.headers['x-audit-reason'],
       userName: req.user?.name || 'Staff Member',
       io: req.app.get('io')
@@ -28,7 +29,7 @@ class AlterationController {
 
   static updateMeasurements = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, reason } = req.body;
+    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason } = req.body;
     const extraData = {
       deliveryDate: deliveryDate || expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
@@ -36,6 +37,7 @@ class AlterationController {
       vendorName,
       customerPhone: customerPhone || customerMobile,
       serviceType,
+      priority,
       reason: reason || req.headers['x-audit-reason'],
       userName: req.user?.name || 'Staff Member',
       io: req.app.get('io')

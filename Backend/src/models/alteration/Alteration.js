@@ -19,6 +19,14 @@ const alterationSchema = new mongoose.Schema({
   },
   customerName: String,
   customerPhone: String,
+  alternatePhone: { type: String, trim: true, default: '' },
+  whatsappNumber: { type: String, trim: true, default: '' },
+  specialInstructions: { type: String, trim: true, default: '' },
+  gender: {
+    type: String,
+    enum: ['Gents', 'Ladies', 'Unisex'],
+    default: 'Gents'
+  },
   expectedDeliveryDate: Date,
   status: {
     type: String,
