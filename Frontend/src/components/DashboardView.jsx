@@ -34,6 +34,13 @@ import {
   Briefcase,
   MoreHorizontal,
   ChevronRight,
+  Droplets,
+  Palette,
+  Flame,
+  Wrench,
+  Award,
+  PackageCheck,
+  Truck,
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -98,11 +105,54 @@ export const DashboardView = ({
   const [attendanceStats, setAttendanceStats] = React.useState(null);
   const [alterationStats, setAlterationStats] = React.useState(null);
   const [altTypeSummary, setAltTypeSummary] = React.useState(null);
+  const [serviceWisePending, setServiceWisePending] = React.useState(null);
+  const [deliveryDashboard, setDeliveryDashboard] = React.useState(null);
+  const [tailorSummaries, setTailorSummaries] = React.useState([]);
+  const [allTailorsSummary, setAllTailorsSummary] = React.useState(null);
+  const [capacityAlerts, setCapacityAlerts] = React.useState([]);
+  const [selectedTailorFilter, setSelectedTailorFilter] = React.useState("All Tailors");
   const [altSummaryDate, setAltSummaryDate] = React.useState("Today");
   const [dbStaffList, setDbStaffList] = React.useState([]);
   const [dbEmployeesList, setDbEmployeesList] = React.useState([]);
   const [dbInvoicesList, setDbInvoicesList] = React.useState([]);
   const [staffApiStats, setStaffApiStats] = React.useState(null);
+  const [tailorJobs, setTailorJobs] = React.useState([]);
+  const [loadingTailorJobs, setLoadingTailorJobs] = React.useState(false);
+  const [updatingJobId, setUpdatingJobId] = React.useState(null);
+
+  const fetchTailorJobs = React.useCallback(async () => {
+    try {
+      setLoadingTailorJobs(true);
+      const res = await api.get('/alterations');
+      if (res.data?.success && Array.isArray(res.data?.data)) {
+        setTailorJobs(res.data.data);
+      }
+    } catch (e) {
+      // quiet fallback
+    } finally {
+      setLoadingTailorJobs(false);
+    }
+  }, []);
+
+  const handleUpdateTailorJobStatus = async (jobId, newStatus) => {
+    try {
+      setUpdatingJobId(jobId);
+      await api.patch(`/alterations/${jobId}/status`, { status: newStatus });
+      await fetchTailorJobs();
+      const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
+      if (res.data?.success && res.data?.data) {
+        const d = res.data.data;
+        if (d.deliveryDashboard) setDeliveryDashboard(d.deliveryDashboard);
+        if (d.tailorSummaries) setTailorSummaries(d.tailorSummaries);
+        if (d.allTailorsSummary) setAllTailorsSummary(d.allTailorsSummary);
+        if (d.capacityAlerts) setCapacityAlerts(d.capacityAlerts);
+      }
+    } catch (err) {
+      console.error("Failed to update job status", err);
+    } finally {
+      setUpdatingJobId(null);
+    }
+  };
 
   React.useEffect(() => {
     const fetchLiveDbData = async () => {
@@ -154,10 +204,18 @@ export const DashboardView = ({
     const fetchAlterationStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await api.get(`/alteration-reports`);
+        if (!token) return;
+        const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
         const data = res.data;
-        if (data && data.success && data.summary) {
-          setAlterationStats(data.summary);
+        if (data && data.success && data.data) {
+          const d = data.data;
+          setAlterationStats(d.summary || d);
+          if (d.serviceWisePending) setServiceWisePending(d.serviceWisePending);
+          if (d.typeSummary) setAltTypeSummary(d.typeSummary);
+          if (d.deliveryDashboard) setDeliveryDashboard(d.deliveryDashboard);
+          if (d.tailorSummaries) setTailorSummaries(d.tailorSummaries);
+          if (d.allTailorsSummary) setAllTailorsSummary(d.allTailorsSummary);
+          if (d.capacityAlerts) setCapacityAlerts(d.capacityAlerts);
         }
       } catch (error) {
         console.error("Failed to fetch alteration stats", error);
@@ -166,6 +224,7 @@ export const DashboardView = ({
 
     fetchAttendanceStats();
     fetchAlterationStats();
+    fetchTailorJobs();
 
     if (currentUser?.role?.toLowerCase() !== 'salesperson') {
       const fetchMorningActions = async () => {
@@ -222,19 +281,79 @@ export const DashboardView = ({
   }, [currentUser]);
 
   React.useEffect(() => {
-    const fetchAlterationTypeSummary = async () => {
+    const fetchAlterationDashboardData = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) return;
         const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
-        if (res.data.success) {
-          setAltTypeSummary(res.data.data.typeSummary);
+        if (res.data?.success && res.data?.data) {
+          const d = res.data.data;
+          if (d.typeSummary) setAltTypeSummary(d.typeSummary);
+          if (d.serviceWisePending) setServiceWisePending(d.serviceWisePending);
+          if (d.summary) setAlterationStats(d.summary);
+          if (d.deliveryDashboard) setDeliveryDashboard(d.deliveryDashboard);
+          if (d.tailorSummaries) setTailorSummaries(d.tailorSummaries);
+          if (d.allTailorsSummary) setAllTailorsSummary(d.allTailorsSummary);
+          if (d.capacityAlerts) setCapacityAlerts(d.capacityAlerts);
         }
       } catch (error) {
-        console.error("Failed to fetch alteration type summary", error);
+        console.error("Failed to fetch alteration dashboard data", error);
       }
     };
-    fetchAlterationTypeSummary();
+    fetchAlterationDashboardData();
+    fetchTailorJobs();
+    const interval = setInterval(() => {
+      fetchAlterationDashboardData();
+      fetchTailorJobs();
+    }, 10000);
+    return () => clearInterval(interval);
   }, [altSummaryDate]);
+
+  React.useEffect(() => {
+    const userObj = currentUser?.user || currentUser || {};
+    const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
+    const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
+    const isTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker', 'karigar'].some(r => curRole.includes(r));
+    if (isTailor && curName && tailorSummaries.length > 0 && selectedTailorFilter === "All Tailors") {
+      const match = tailorSummaries.find(t => {
+        const tName = (t.tailorName || '').toLowerCase().trim();
+        return tName === curName || tName.includes(curName) || curName.includes(tName);
+      });
+      if (match) {
+        setSelectedTailorFilter(match.tailorName);
+      }
+    }
+  }, [currentUser, tailorSummaries, selectedTailorFilter]);
+
+  const activeTailorStats = React.useMemo(() => {
+    if (selectedTailorFilter === "All Tailors" || !selectedTailorFilter) {
+      return allTailorsSummary || {
+        tailorName: 'All Tailors',
+        assignedItems: 0,
+        inProgress: 0,
+        ready: 0,
+        delivered: 0,
+        overdue: 0,
+        averageCompletionTime: '3.8 hrs',
+        capacityUtilization: 0,
+        todayNewWork: 0,
+        isOverloaded: false
+      };
+    }
+    const found = (tailorSummaries || []).find(t => t.tailorName === selectedTailorFilter);
+    return found || {
+      tailorName: selectedTailorFilter,
+      assignedItems: 0,
+      inProgress: 0,
+      ready: 0,
+      delivered: 0,
+      overdue: 0,
+      averageCompletionTime: '3.5 hrs',
+      capacityUtilization: 0,
+      todayNewWork: 0,
+      isOverloaded: false
+    };
+  }, [selectedTailorFilter, tailorSummaries, allTailorsSummary]);
 
   // ─── REAL DYNAMIC KPIs ───────────────────────────────────────
   const now = new Date();
@@ -504,15 +623,544 @@ export const DashboardView = ({
     const myTodayBillsCount = staffApiStats?.todayBillsCount ?? myTodayInvoices.length;
 
     const rawRoleStr = (currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || staffApiStats?.designation || staffApiStats?.role || '').toLowerCase();
-    const isSalesperson = ['salesperson', 'sales', 'sales executive'].some(r => rawRoleStr.includes(r));
-    const isWorkerOrTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].some(r => rawRoleStr.includes(r));
-    
-    // Commission UI is STRICTLY for Salesperson and Worker / Tailor only!
-    // For Cashier, Accountant, Admin, and other staff, hideCommissionUI is TRUE.
-    const hideCommissionUI = !isSalesperson && !isWorkerOrTailor;
+
+    // Tailors have a dedicated Tailor Workload, Capacity & Delivery Dashboard
+    const isTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker', 'karigar'].some(r => rawRoleStr.includes(r));
+    const isSalesperson = ['salesperson', 'sales', 'sales executive'].some(r => rawRoleStr.includes(r)) && !isTailor;
+    const hideCommissionUI = !isSalesperson;
     const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || 'Staff';
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
+
+    if (isTailor) {
+      const myAssignedJobs = tailorJobs.filter(job => {
+        const tName = (job.tailorName || '').toLowerCase().trim();
+        const curNameLower = (currentUser?.name || userObj?.name || '').toLowerCase().trim();
+        if (selectedTailorFilter && selectedTailorFilter !== "All Tailors") {
+          const filterLower = selectedTailorFilter.toLowerCase().trim();
+          return tName.includes(filterLower) || filterLower.includes(tName);
+        }
+        return !curNameLower || tName === curNameLower || tName.includes(curNameLower) || curNameLower.includes(tName);
+      });
+
+      return (
+        <div className="space-y-6 animate-fade-in pb-12" id="tailor-dashboard-view-root">
+          {/* Welcome Banner */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-mono border border-emerald-500/30 capitalize">
+                  {effectiveDisplayRole} Portal
+                </span>
+                <span className="text-slate-400 text-xs font-mono">
+                  Store Front
+                </span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+                Welcome back, {currentUser.name || userObj.name || "Master Tailor"}
+              </h1>
+              <p className="text-sm text-slate-300">
+                Here is your tailoring workload, active tickets, and live delivery schedule breakdown.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  if (typeof openArticulationWithDefaults === "function") {
+                    openArticulationWithDefaults({ tab: "dashboard" });
+                  } else {
+                    setActiveTab("articulation");
+                  }
+                }}
+                className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer shadow-sm hover:shadow-md"
+              >
+                <Scissors className="w-4 h-4" />
+                <span>Open Tailoring Studio ➔</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 🚨 90% CAPACITY ALERT BANNER */}
+          {(activeTailorStats.isOverloaded || (capacityAlerts && capacityAlerts.length > 0)) && (
+            <div className="bg-red-50/95 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-red-100 text-red-700 rounded-xl border border-red-200 shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black uppercase text-red-950 tracking-wider flex items-center gap-2">
+                    <span>🚨 Tailor Capacity Alert — Over 90% Threshold Exceeded!</span>
+                    <span className="bg-red-200 text-red-900 text-[10px] font-black px-2 py-0.5 rounded-full font-mono">
+                      {activeTailorStats.isOverloaded ? `${activeTailorStats.capacityUtilization}% Capacity` : `${capacityAlerts.length} Overloaded`}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-red-800 mt-0.5">
+                    {activeTailorStats.isOverloaded
+                      ? `अगर किसी Tailor की capacity 90% cross हो जाए: ${activeTailorStats.tailorName} has reached ${activeTailorStats.capacityUtilization}% capacity with ${activeTailorStats.inProgress} active in-progress items. Please redistribute or reassign pending tickets!`
+                      : capacityAlerts.map(a => `${a.tailorName} (${a.capacityUtilization}%)`).join(", ") + " have crossed 90% capacity!"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (typeof openArticulationWithDefaults === "function") {
+                    openArticulationWithDefaults({ tab: "tracking" });
+                  } else {
+                    setActiveTab("articulation");
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
+              >
+                Reassign Jobs in Studio ➔
+              </button>
+            </div>
+          )}
+
+          {/* ─── 1. TAILOR WORKLOAD & CAPACITY SUMMARY WIDGET (8 CARDS) ─── */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shadow-xs">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <span>Tailor Workload & Capacity Summary</span>
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                      {selectedTailorFilter}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Summary updated according to the selected master tailor | Active load & productivity metrics
+                  </p>
+                </div>
+              </div>
+
+              {/* Tailor Filter Dropdown */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Select Tailor:</span>
+                <div className="relative flex-1 sm:flex-none">
+                  <select
+                    value={selectedTailorFilter}
+                    onChange={(e) => setSelectedTailorFilter(e.target.value)}
+                    className="w-full sm:w-56 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none hover:bg-slate-100 cursor-pointer shadow-xs appearance-none pr-8 transition-colors"
+                  >
+                    <option value="All Tailors">All Master Tailors (Overview)</option>
+                    {(tailorSummaries || []).map(t => (
+                      <option key={t.tailorName} value={t.tailorName}>
+                        {t.tailorName} ({t.capacityUtilization}%)
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronRight className="w-4 h-4 absolute right-2.5 top-2.5 text-slate-400 rotate-90 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* 8 Required Tailor Summary Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              {/* 1. Assigned Items */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Assigned Items</span>
+                  <div className="p-2 bg-white rounded-lg border border-slate-200 text-slate-700">
+                    <Layers className="w-4 h-4 text-slate-700" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-slate-900 font-mono block">{activeTailorStats.assignedItems}</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Total assigned</span>
+                </div>
+              </div>
+
+              {/* 2. In Progress */}
+              <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">In Progress</span>
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-700">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-amber-950 font-mono block">{activeTailorStats.inProgress}</span>
+                  <span className="text-[10px] text-amber-700 font-medium">On tailor table</span>
+                </div>
+              </div>
+
+              {/* 3. Ready */}
+              <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Ready</span>
+                  <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-indigo-950 font-mono block">{activeTailorStats.ready}</span>
+                  <span className="text-[10px] text-indigo-700 font-medium">Altered & ready</span>
+                </div>
+              </div>
+
+              {/* 4. Delivered */}
+              <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Delivered</span>
+                  <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700">
+                    <PackageCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-emerald-950 font-mono block">{activeTailorStats.delivered}</span>
+                  <span className="text-[10px] text-emerald-700 font-medium">Handed to customer</span>
+                </div>
+              </div>
+
+              {/* 5. Overdue */}
+              <div className="bg-rose-50/70 p-4 rounded-xl border border-rose-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Overdue</span>
+                  <div className="p-2 bg-rose-100 rounded-lg text-rose-700">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-rose-950 font-mono block">{activeTailorStats.overdue}</span>
+                  <span className="text-[10px] text-rose-700 font-medium">{activeTailorStats.overdue > 0 ? "Past delivery date" : "On schedule"}</span>
+                </div>
+              </div>
+
+              {/* 6. Average Completion Time */}
+              <div className="bg-sky-50/70 p-4 rounded-xl border border-sky-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-sky-800 uppercase tracking-wider">Avg Completion</span>
+                  <div className="p-2 bg-sky-100 rounded-lg text-sky-700">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-xl font-black text-sky-950 font-mono block">{activeTailorStats.averageCompletionTime || "3.5 hrs"}</span>
+                  <span className="text-[10px] text-sky-700 font-medium">Turnaround speed</span>
+                </div>
+              </div>
+
+              {/* 7. Capacity Utilization */}
+              <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                activeTailorStats.capacityUtilization >= 90
+                  ? 'bg-red-50 border-red-300 text-red-950'
+                  : activeTailorStats.capacityUtilization >= 70
+                    ? 'bg-amber-50 border-amber-300 text-amber-950'
+                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+              }`}>
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Capacity Load</span>
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-2xl font-black font-mono">{activeTailorStats.capacityUtilization}%</span>
+                    {activeTailorStats.capacityUtilization >= 90 && (
+                      <span className="text-[9px] font-black uppercase text-red-600 bg-red-100 px-1.5 py-0.5 rounded">Alert</span>
+                    )}
+                  </div>
+                  <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        activeTailorStats.capacityUtilization >= 90
+                          ? 'bg-red-600'
+                          : activeTailorStats.capacityUtilization >= 70
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, activeTailorStats.capacityUtilization)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 8. Today's New Work */}
+              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-200/80 flex flex-col justify-between">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">Today's New Work</span>
+                  <div className="p-2 bg-purple-100 rounded-lg text-purple-700">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-purple-950 font-mono block">{activeTailorStats.todayNewWork}</span>
+                  <span className="text-[10px] text-purple-700 font-medium">Assigned today</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── 2. DELIVERY DASHBOARD WIDGET (6 CARDS) ─── */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-xs">
+                  <Truck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <span>Delivery Dashboard</span>
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                      Live Delivery Schedule
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Real-time monitoring of customer pickups, store waiting & pending dispatches
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Delivery KPI Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Ready for Collection */}
+              <div className="bg-emerald-50/70 hover:bg-emerald-100/90 p-4 rounded-xl border border-emerald-200/80 flex flex-col justify-between transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Ready for Collection</span>
+                  <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700">
+                    <PackageCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-emerald-950 font-mono block">{deliveryDashboard?.readyForCollection ?? 0}</span>
+                  <span className="text-[10px] text-emerald-700 font-medium">Ready in store</span>
+                </div>
+              </div>
+
+              {/* Today's Delivery */}
+              <div className="bg-indigo-50/70 hover:bg-indigo-100/90 p-4 rounded-xl border border-indigo-200/80 flex flex-col justify-between transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Today's Delivery</span>
+                  <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-indigo-950 font-mono block">{deliveryDashboard?.todayDelivery ?? 0}</span>
+                  <span className="text-[10px] text-indigo-700 font-medium">Promised today</span>
+                </div>
+              </div>
+
+              {/* Tomorrow Delivery */}
+              <div className="bg-purple-50/70 hover:bg-purple-100/90 p-4 rounded-xl border border-purple-200/80 flex flex-col justify-between transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">Tomorrow Delivery</span>
+                  <div className="p-2 bg-purple-100 rounded-lg text-purple-700">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-purple-950 font-mono block">{deliveryDashboard?.tomorrowDelivery ?? 0}</span>
+                  <span className="text-[10px] text-purple-700 font-medium">Scheduled tomorrow</span>
+                </div>
+              </div>
+
+              {/* Overdue Delivery */}
+              <div className="bg-rose-50/70 hover:bg-rose-100/90 p-4 rounded-xl border border-rose-200/80 flex flex-col justify-between transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Overdue Delivery</span>
+                  <div className="p-2 bg-rose-100 rounded-lg text-rose-700">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-rose-950 font-mono block">{deliveryDashboard?.overdueDelivery ?? 0}</span>
+                  <span className="text-[10px] text-rose-700 font-medium font-bold">{(deliveryDashboard?.overdueDelivery ?? 0) > 0 ? "Deadline Passed!" : "Zero overdue"}</span>
+                </div>
+              </div>
+
+              {/* Customer Waiting */}
+              <div className="bg-amber-50/70 hover:bg-amber-100/90 p-4 rounded-xl border border-amber-200/80 flex flex-col justify-between transition-all group relative overflow-hidden">
+                {(deliveryDashboard?.customerWaiting ?? 0) > 0 && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </span>
+                )}
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Customer Waiting</span>
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-700">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-amber-950 font-mono block">{deliveryDashboard?.customerWaiting ?? 0}</span>
+                  <span className="text-[10px] text-amber-700 font-medium">Waiting in store</span>
+                </div>
+              </div>
+
+              {/* Home Delivery Pending */}
+              <div className="bg-teal-50/70 hover:bg-teal-100/90 p-4 rounded-xl border border-teal-200/80 flex flex-col justify-between transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-teal-800 uppercase tracking-wider">Home Delivery Pending</span>
+                  <div className="p-2 bg-teal-100 rounded-lg text-teal-700">
+                    <Truck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-teal-950 font-mono block">{deliveryDashboard?.homeDeliveryPending ?? 0}</span>
+                  <span className="text-[10px] text-teal-700 font-medium">Dispatch required</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── 3. MY ACTIVE ALTERATION & TAILORING WORKBENCH QUEUE ─── */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
+              <div>
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-rose-500 rounded-full inline-block"></span>
+                  <span>My Tailoring Workbench Queue</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Active garment tickets assigned to your table. Update work status in real-time.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchTailorJobs}
+                  disabled={loadingTailorJobs}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingTailorJobs ? 'animate-spin' : ''}`} />
+                  <span>Refresh Queue</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (typeof openArticulationWithDefaults === "function") {
+                      openArticulationWithDefaults({ tab: "dashboard" });
+                    } else {
+                      setActiveTab("articulation");
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>Full Studio ➔</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider">
+                  <tr>
+                    <th className="px-5 py-4 font-semibold">Ticket #</th>
+                    <th className="px-5 py-4 font-semibold">Customer</th>
+                    <th className="px-5 py-4 font-semibold">Garment / Piece</th>
+                    <th className="px-5 py-4 font-semibold">Service Type</th>
+                    <th className="px-5 py-4 font-semibold">Delivery Date</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 font-semibold text-right">Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100/80 text-slate-700">
+                  {myAssignedJobs.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-5 py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center gap-2">
+                          <Scissors className="w-8 h-8 text-slate-300" />
+                          <p className="font-bold text-slate-600 text-sm">No active jobs on your table right now</p>
+                          <p className="text-xs text-slate-400">New tailoring and alteration assignments will appear here automatically.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    myAssignedJobs.map((job, idx) => {
+                      const isOverdue = job.deliveryDate && job.deliveryDate < new Date().toISOString().split('T')[0] && job.status !== 'Delivered';
+                      const isToday = job.deliveryDate === new Date().toISOString().split('T')[0];
+                      const isUpdating = updatingJobId === (job._id || job.id);
+
+                      return (
+                        <tr key={job._id || job.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-5 py-4">
+                            <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md text-xs border border-indigo-100">
+                              {job.alterationId || job.alterationNo || job.ticketNo || `ALT-${idx + 101}`}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 font-bold text-slate-800">
+                            <div>{job.customerName || "Walk-in Customer"}</div>
+                            {job.customerPhone && (
+                              <div className="text-[10px] text-slate-400 font-mono font-normal">{job.customerPhone}</div>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-xs font-semibold text-slate-700">
+                            <div>{job.productName || "Garment Piece"}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              {job.size ? `Size: ${job.size}` : ''} {job.color ? `| Color: ${job.color}` : ''}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                              {job.serviceType || (Array.isArray(job.alterationDetails) && job.alterationDetails.length > 0 ? job.alterationDetails.join(', ') : 'Standard Alteration')}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-xs">
+                            <div className={`font-mono font-bold ${isOverdue ? 'text-rose-600' : isToday ? 'text-amber-600' : 'text-slate-600'}`}>
+                              {job.deliveryDate || 'Flexible'}
+                            </div>
+                            {isOverdue && <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 rounded">Overdue</span>}
+                            {isToday && <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 rounded">Deliver Today</span>}
+                          </td>
+                          <td className="px-5 py-4">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                job.status === 'Ready for Delivery' || job.status === 'READY'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : job.status === 'In Progress'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : job.status === 'Delivered'
+                                      ? 'bg-slate-100 text-slate-700'
+                                      : 'bg-indigo-100 text-indigo-800'
+                              }`}
+                            >
+                              {job.status || 'Pending'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            {job.status === 'In Progress' ? (
+                              <button
+                                onClick={() => handleUpdateTailorJobStatus(job._id || job.id, 'Ready for Delivery')}
+                                disabled={isUpdating}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Mark Ready ✓</span>
+                              </button>
+                            ) : job.status === 'Ready for Delivery' || job.status === 'READY' ? (
+                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                Ready for Pickup
+                              </span>
+                            ) : job.status === 'Delivered' ? (
+                              <span className="text-xs font-bold text-slate-400">Completed</span>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateTailorJobStatus(job._id || job.id, 'In Progress')}
+                                disabled={isUpdating}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>Start Work ➔</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6 animate-fade-in pb-12" id="dashboard-view-root">
@@ -1248,6 +1896,524 @@ export const DashboardView = ({
           </div>
         );
       })()}
+
+      {/* ─── DELIVERY DASHBOARD WIDGET ─── */}
+      {(() => {
+        const handleNavigateAlteration = (filterStatus = "All", tab = "dashboard") => {
+          if (typeof openArticulationWithDefaults === "function") {
+            openArticulationWithDefaults({ tab, filterStatus });
+          } else {
+            setActiveTab("articulation");
+          }
+        };
+
+        const readyForCollection = deliveryDashboard?.readyForCollection ?? 0;
+        const todayDelivery = deliveryDashboard?.todayDelivery ?? 0;
+        const tomorrowDelivery = deliveryDashboard?.tomorrowDelivery ?? 0;
+        const overdueDelivery = deliveryDashboard?.overdueDelivery ?? 0;
+        const customerWaiting = deliveryDashboard?.customerWaiting ?? 0;
+        const homeDeliveryPending = deliveryDashboard?.homeDeliveryPending ?? 0;
+
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4 mt-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-xs">
+                  <Truck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <span>Delivery Dashboard</span>
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                      Live Delivery Schedule
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Real-time monitoring of customer pickups, store waiting & pending dispatches
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleNavigateAlteration("Ready for Delivery", "dashboard")}
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer self-stretch sm:self-auto justify-center"
+              >
+                <PackageCheck className="w-4 h-4" />
+                <span>Open Pickup & Dispatch Panel ➔</span>
+              </button>
+            </div>
+
+            {/* Delivery KPI Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Ready for Collection */}
+              <div
+                onClick={() => handleNavigateAlteration("Ready for Delivery", "dashboard")}
+                className="bg-emerald-50/70 hover:bg-emerald-100/90 p-4 rounded-xl border border-emerald-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Ready for Collection</span>
+                  <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700 group-hover:scale-110 transition-transform">
+                    <PackageCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-emerald-950 font-mono block">{readyForCollection}</span>
+                  <span className="text-[10px] text-emerald-700 font-medium">Ready in store</span>
+                </div>
+              </div>
+
+              {/* Today's Delivery */}
+              <div
+                onClick={() => handleNavigateAlteration("All", "dashboard")}
+                className="bg-indigo-50/70 hover:bg-indigo-100/90 p-4 rounded-xl border border-indigo-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Today's Delivery</span>
+                  <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700 group-hover:scale-110 transition-transform">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-indigo-950 font-mono block">{todayDelivery}</span>
+                  <span className="text-[10px] text-indigo-700 font-medium">Promised today</span>
+                </div>
+              </div>
+
+              {/* Tomorrow Delivery */}
+              <div
+                onClick={() => handleNavigateAlteration("All", "dashboard")}
+                className="bg-purple-50/70 hover:bg-purple-100/90 p-4 rounded-xl border border-purple-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">Tomorrow Delivery</span>
+                  <div className="p-2 bg-purple-100 rounded-lg text-purple-700 group-hover:scale-110 transition-transform">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-purple-950 font-mono block">{tomorrowDelivery}</span>
+                  <span className="text-[10px] text-purple-700 font-medium">Scheduled tomorrow</span>
+                </div>
+              </div>
+
+              {/* Overdue Delivery */}
+              <div
+                onClick={() => handleNavigateAlteration("Delayed", "reports")}
+                className="bg-rose-50/70 hover:bg-rose-100/90 p-4 rounded-xl border border-rose-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Overdue Delivery</span>
+                  <div className="p-2 bg-rose-100 rounded-lg text-rose-700 group-hover:scale-110 transition-transform">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-rose-950 font-mono block">{overdueDelivery}</span>
+                  <span className="text-[10px] text-rose-700 font-medium font-bold">{overdueDelivery > 0 ? "Deadline Passed!" : "Zero overdue"}</span>
+                </div>
+              </div>
+
+              {/* Customer Waiting */}
+              <div
+                onClick={() => handleNavigateAlteration("In Progress", "dashboard")}
+                className="bg-amber-50/70 hover:bg-amber-100/90 p-4 rounded-xl border border-amber-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group relative overflow-hidden"
+              >
+                {customerWaiting > 0 && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </span>
+                )}
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Customer Waiting</span>
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-700 group-hover:scale-110 transition-transform">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-amber-950 font-mono block">{customerWaiting}</span>
+                  <span className="text-[10px] text-amber-700 font-medium">Waiting in store</span>
+                </div>
+              </div>
+
+              {/* Home Delivery Pending */}
+              <div
+                onClick={() => handleNavigateAlteration("All", "dashboard")}
+                className="bg-teal-50/70 hover:bg-teal-100/90 p-4 rounded-xl border border-teal-200/80 flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-teal-800 uppercase tracking-wider">Home Delivery Pending</span>
+                  <div className="p-2 bg-teal-100 rounded-lg text-teal-700 group-hover:scale-110 transition-transform">
+                    <Truck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-teal-950 font-mono block">{homeDeliveryPending}</span>
+                  <span className="text-[10px] text-teal-700 font-medium">Dispatch required</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── TAILOR WORKLOAD & CAPACITY DASHBOARD ─── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4 mt-6">
+        {/* Header & Tailor Selector */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shadow-xs">
+              <Users className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <span>Tailor Workload & Capacity Summary</span>
+                <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                  {selectedTailorFilter}
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Summary updated according to the selected master tailor | Active load & productivity metrics
+              </p>
+            </div>
+          </div>
+
+          {/* Tailor Filter Dropdown */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Select Tailor:</span>
+            <div className="relative flex-1 sm:flex-none">
+              <select
+                value={selectedTailorFilter}
+                onChange={(e) => setSelectedTailorFilter(e.target.value)}
+                className="w-full sm:w-56 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none hover:bg-slate-100 cursor-pointer shadow-xs appearance-none pr-8 transition-colors"
+              >
+                <option value="All Tailors">All Master Tailors (Overview)</option>
+                {(tailorSummaries || []).map(t => (
+                  <option key={t.tailorName} value={t.tailorName}>
+                    {t.tailorName} ({t.capacityUtilization}%)
+                  </option>
+                ))}
+              </select>
+              <ChevronRight className="w-4 h-4 absolute right-2.5 top-2.5 text-slate-400 rotate-90 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* 🚨 90% CAPACITY ALERT BANNER */}
+        {(activeTailorStats.isOverloaded || (capacityAlerts && capacityAlerts.length > 0)) && (
+          <div className="bg-red-50/95 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-red-100 text-red-700 rounded-xl border border-red-200 shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase text-red-950 tracking-wider flex items-center gap-2">
+                  <span>🚨 Tailor Capacity Alert — Over 90% Threshold Exceeded!</span>
+                  <span className="bg-red-200 text-red-900 text-[10px] font-black px-2 py-0.5 rounded-full font-mono">
+                    {activeTailorStats.isOverloaded ? `${activeTailorStats.capacityUtilization}% Capacity` : `${capacityAlerts.length} Overloaded`}
+                  </span>
+                </h4>
+                <p className="text-xs text-red-800 mt-0.5">
+                  {activeTailorStats.isOverloaded
+                    ? `अगर किसी Tailor की capacity 90% cross हो जाए: ${activeTailorStats.tailorName} has reached ${activeTailorStats.capacityUtilization}% capacity with ${activeTailorStats.inProgress} active in-progress items. Please redistribute or reassign pending tickets!`
+                    : capacityAlerts.map(a => `${a.tailorName} (${a.capacityUtilization}%)`).join(", ") + " have crossed 90% capacity!"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (typeof openArticulationWithDefaults === "function") {
+                  openArticulationWithDefaults({ tab: "tracking" });
+                } else {
+                  setActiveTab("articulation");
+                }
+              }}
+              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
+            >
+              Reassign Jobs in Studio ➔
+            </button>
+          </div>
+        )}
+
+        {/* 8 Required Tailor Summary Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {/* 1. Assigned Items */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Assigned Items</span>
+              <div className="p-2 bg-white rounded-lg border border-slate-200 text-slate-700">
+                <Layers className="w-4 h-4 text-slate-700" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-slate-900 font-mono block">{activeTailorStats.assignedItems}</span>
+              <span className="text-[10px] text-slate-500 font-medium">Total assigned</span>
+            </div>
+          </div>
+
+          {/* 2. In Progress */}
+          <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">In Progress</span>
+              <div className="p-2 bg-amber-100 rounded-lg text-amber-700">
+                <Clock className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-amber-950 font-mono block">{activeTailorStats.inProgress}</span>
+              <span className="text-[10px] text-amber-700 font-medium">On tailor table</span>
+            </div>
+          </div>
+
+          {/* 3. Ready */}
+          <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Ready</span>
+              <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-indigo-950 font-mono block">{activeTailorStats.ready}</span>
+              <span className="text-[10px] text-indigo-700 font-medium">Altered & ready</span>
+            </div>
+          </div>
+
+          {/* 4. Delivered */}
+          <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Delivered</span>
+              <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700">
+                <PackageCheck className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-emerald-950 font-mono block">{activeTailorStats.delivered}</span>
+              <span className="text-[10px] text-emerald-700 font-medium">Handed to customer</span>
+            </div>
+          </div>
+
+          {/* 5. Overdue */}
+          <div className="bg-rose-50/70 p-4 rounded-xl border border-rose-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Overdue</span>
+              <div className="p-2 bg-rose-100 rounded-lg text-rose-700">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-rose-950 font-mono block">{activeTailorStats.overdue}</span>
+              <span className="text-[10px] text-rose-700 font-medium">{activeTailorStats.overdue > 0 ? "Past delivery date" : "On schedule"}</span>
+            </div>
+          </div>
+
+          {/* 6. Average Completion Time */}
+          <div className="bg-sky-50/70 p-4 rounded-xl border border-sky-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-sky-800 uppercase tracking-wider">Avg Completion</span>
+              <div className="p-2 bg-sky-100 rounded-lg text-sky-700">
+                <Zap className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xl font-black text-sky-950 font-mono block">{activeTailorStats.averageCompletionTime || "3.5 hrs"}</span>
+              <span className="text-[10px] text-sky-700 font-medium">Turnaround speed</span>
+            </div>
+          </div>
+
+          {/* 7. Capacity Utilization */}
+          <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+            activeTailorStats.capacityUtilization >= 90
+              ? 'bg-red-50 border-red-300 text-red-950'
+              : activeTailorStats.capacityUtilization >= 70
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+          }`}>
+            <div className="flex justify-between items-start mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Capacity Load</span>
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-2xl font-black font-mono">{activeTailorStats.capacityUtilization}%</span>
+                {activeTailorStats.capacityUtilization >= 90 && (
+                  <span className="text-[9px] font-black uppercase text-red-600 bg-red-100 px-1.5 py-0.5 rounded">Alert</span>
+                )}
+              </div>
+              <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    activeTailorStats.capacityUtilization >= 90
+                      ? 'bg-red-600'
+                      : activeTailorStats.capacityUtilization >= 70
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(100, activeTailorStats.capacityUtilization)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 8. Today's New Work */}
+          <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-200/80 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">Today's New Work</span>
+              <div className="p-2 bg-purple-100 rounded-lg text-purple-700">
+                <Sparkles className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-purple-950 font-mono block">{activeTailorStats.todayNewWork}</span>
+              <span className="text-[10px] text-purple-700 font-medium">Assigned today</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── SERVICE WISE PENDING WIDGET ─── */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4 mt-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-violet-50 text-violet-600 rounded-2xl border border-violet-100 shadow-xs">
+              <Layers className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <span>Service Wise Pending</span>
+                <span className="bg-violet-100 text-violet-800 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                  {serviceWisePending?.Total ?? 0} Pending
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Software Service Category wise pending items.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              if (typeof openArticulationWithDefaults === "function") {
+                openArticulationWithDefaults({ tab: "dashboard", filterStatus: "Pending" });
+              } else {
+                setActiveTab("articulation");
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <span>View All Pending in Studio ➔</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3">
+          {[
+            {
+              key: "Alteration",
+              label: "Alteration",
+              icon: <Scissors className="w-5 h-5 text-rose-600 group-hover:scale-110 transition-transform" />,
+              border: "border-rose-100/60",
+              bg: "bg-rose-50/30 hover:bg-rose-50 hover:border-rose-200",
+              text: "text-rose-900"
+            },
+            {
+              key: "Fall & Pico",
+              label: "Fall & Pico",
+              icon: <Sparkles className="w-5 h-5 text-teal-600 group-hover:scale-110 transition-transform" />,
+              border: "border-teal-100/60",
+              bg: "bg-teal-50/30 hover:bg-teal-50 hover:border-teal-200",
+              text: "text-teal-900"
+            },
+            {
+              key: "Dry Clean",
+              label: "Dry Clean",
+              icon: <Droplets className="w-5 h-5 text-sky-600 group-hover:scale-110 transition-transform" />,
+              border: "border-sky-100/60",
+              bg: "bg-sky-50/30 hover:bg-sky-50 hover:border-sky-200",
+              text: "text-sky-900"
+            },
+            {
+              key: "Embroidery",
+              label: "Embroidery",
+              icon: <Palette className="w-5 h-5 text-purple-600 group-hover:scale-110 transition-transform" />,
+              border: "border-purple-100/60",
+              bg: "bg-purple-50/30 hover:bg-purple-50 hover:border-purple-200",
+              text: "text-purple-900"
+            },
+            {
+              key: "Charak",
+              label: "Charak",
+              icon: <Flame className="w-5 h-5 text-amber-600 group-hover:scale-110 transition-transform" />,
+              border: "border-amber-100/60",
+              bg: "bg-amber-50/30 hover:bg-amber-50 hover:border-amber-200",
+              text: "text-amber-900"
+            },
+            {
+              key: "Repair",
+              label: "Repair",
+              icon: <Wrench className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" />,
+              border: "border-blue-100/60",
+              bg: "bg-blue-50/30 hover:bg-blue-50 hover:border-blue-200",
+              text: "text-blue-900"
+            },
+            {
+              key: "Finishing",
+              label: "Finishing",
+              icon: <Award className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform" />,
+              border: "border-emerald-100/60",
+              bg: "bg-emerald-50/30 hover:bg-emerald-50 hover:border-emerald-200",
+              text: "text-emerald-900"
+            },
+            {
+              key: "Others",
+              label: "Others",
+              icon: <MoreHorizontal className="w-5 h-5 text-slate-600 group-hover:scale-110 transition-transform" />,
+              border: "border-slate-200/60",
+              bg: "bg-slate-50 hover:bg-slate-100 hover:border-slate-300",
+              text: "text-slate-900"
+            }
+          ].map((cat) => {
+            const count = serviceWisePending?.[cat.key] || 0;
+            const total = serviceWisePending?.Total || 0;
+            const percent = total > 0 ? ((count / total) * 100).toFixed(1) : "0.0";
+
+            return (
+              <button
+                key={cat.key}
+                onClick={() => {
+                  if (typeof openArticulationWithDefaults === "function") {
+                    openArticulationWithDefaults({ tab: "dashboard", filterStatus: "Pending", filterServiceType: cat.key });
+                  } else {
+                    setActiveTab("articulation");
+                  }
+                }}
+                className={`group flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border ${cat.border} ${cat.bg} transition-all cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5`}
+              >
+                <div className="flex flex-col items-center gap-1.5 mb-2">
+                  {cat.icon}
+                  <span className={`text-[11px] font-bold ${cat.text} text-center leading-tight`}>{cat.label}</span>
+                </div>
+                <span className="text-2xl font-black text-slate-900 font-mono mb-1">{count}</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200/60">
+                  {count > 0 ? percent : "0"}%
+                </span>
+              </button>
+            );
+          })}
+
+          {/* TOTAL PENDING CARD */}
+          <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-violet-200 bg-violet-50/80 shadow-xs">
+            <div className="flex flex-col items-center gap-1 mb-2 text-violet-900">
+              <Layers className="w-5 h-5 text-violet-600" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-center">Total</span>
+            </div>
+            <span className="text-2xl font-black text-violet-950 font-mono mb-1">{serviceWisePending?.Total ?? 0}</span>
+            <span className="text-[10px] font-bold text-violet-700 bg-white px-2 py-0.5 rounded-full border border-violet-200">
+              100%
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* ─── ALTERATION TYPE SUMMARY WIDGET (DASHBOARD SYNC) ─── */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4 mt-6">

@@ -4371,6 +4371,29 @@ export const BillingPOSView = ({
       couponDiscount,
       gstTotal,
       grandTotal,
+      isGstApplied,
+      gstRate: isGstApplied ? (Number(gstRateInput) || 0) : 0,
+      cgstRate: isGstApplied ? (Number(cgstRateInput) || 0) : 0,
+      sgstRate: isGstApplied ? (Number(sgstRateInput) || 0) : 0,
+      igstRate: isGstApplied ? (Number(igstRateInput) || 0) : 0,
+      taxableAmount: isGstApplied ? taxableAmount : 0,
+      cgstAmount: isGstApplied ? cgstAmount : 0,
+      sgstAmount: isGstApplied ? sgstAmount : 0,
+      igstAmount: isGstApplied ? igstAmount : 0,
+      totalTax: isGstApplied ? totalTax : 0,
+      taxDetails,
+      taxBreakdown: isGstApplied && totalTax > 0
+        ? [
+            {
+              gstPercent: Number(gstRateInput) || 0,
+              taxableAmount,
+              cgst: cgstAmount,
+              sgst: sgstAmount,
+              igst: igstAmount,
+              totalTax
+            }
+          ]
+        : [{ gstPercent: 0, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }],
       paymentMethod: displayPaymentMode,
       paymentMode: displayPaymentMode,
       transactions: compiledTransactions,

@@ -70,6 +70,9 @@ router.use('/notifications', require('./notification.routes'));
 
 // Mock routes to prevent 404 spam from Dashboard UI polling
 router.use('/attendance/dashboard-stats', (req, res) => res.status(200).json({ success: true, data: {} }));
-router.use('/alteration-reports', (req, res) => res.status(200).json({ success: true, data: [] }));
+const AlterationController = require('../controllers/alteration.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
+const { tenantContext } = require('../middlewares/tenantContext.middleware');
+router.use('/alteration-reports', authenticate, tenantContext, AlterationController.getDashboard);
 
 module.exports = router;

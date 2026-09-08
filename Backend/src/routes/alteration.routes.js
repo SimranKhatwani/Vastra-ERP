@@ -16,5 +16,7 @@ router.get('/pending-items', authorize(PERMISSIONS.ALTERATION_READ), AlterationC
 router.get('/dashboard', authorize(PERMISSIONS.ALTERATION_READ), AlterationController.getDashboard);
 router.get('/:id', authorize(PERMISSIONS.ALTERATION_READ), AlterationController.getAlterationById);
 router.patch('/:id/status', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('UPDATE_ALTERATION_STATUS', 'alterations'), AlterationController.updateStatus);
+router.patch('/:id/measurements', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('UPDATE_ALTERATION_MEASUREMENTS', 'alterations'), AlterationController.updateMeasurements);
+router.patch('/:id', authorize(PERMISSIONS.ALTERATION_UPDATE), auditLog('UPDATE_ALTERATION', 'alterations'), AlterationController.updateStatus);
 
 module.exports = router;

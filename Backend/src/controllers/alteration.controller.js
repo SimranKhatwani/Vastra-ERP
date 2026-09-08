@@ -10,9 +10,16 @@ class AlterationController {
 
   static updateStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body;
-    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId);
+    const { status, measurements, alterationDetails } = req.body;
+    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails);
     return res.status(200).json(new ApiResponse(200, alteration, `Alteration status updated to ${status}.`));
+  });
+
+  static updateMeasurements = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { measurements, alterationDetails, status } = req.body;
+    const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails);
+    return res.status(200).json(new ApiResponse(200, alteration, 'Alteration measurements updated successfully.'));
   });
 
   static getAlterations = asyncHandler(async (req, res) => {
@@ -32,7 +39,13 @@ class AlterationController {
 
   static getDashboard = asyncHandler(async (req, res) => {
     const dashboard = await AlterationService.getAlterationDashboard(req.tenantId, req.query.dateRange);
-    return res.status(200).json(new ApiResponse(200, dashboard, 'Alteration dashboard metrics fetched.'));
+    return res.status(200).json({
+      success: true,
+      statusCode: 200,
+      data: dashboard,
+      summary: dashboard.summary,
+      message: 'Alteration dashboard metrics fetched.'
+    });
   });
 }
 

@@ -92,12 +92,24 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     // Priority 1: Use taxBreakdown array (most detailed)
     if (invoice.taxBreakdown && invoice.taxBreakdown.length > 0) {
       invoice.taxBreakdown.forEach(tb => {
-        const rate = Number(tb.gstPercent || tb.rate || 0);
+        let rate = Number(tb.gstPercent || tb.rate || 0);
         const taxable = Number(tb.taxableAmount || 0);
-        const cgst = Number(tb.cgst || 0);
-        const sgst = Number(tb.sgst || 0);
-        const igst = Number(tb.igst || 0);
+        let cgst = Number(tb.cgst || 0);
+        let sgst = Number(tb.sgst || 0);
+        let igst = Number(tb.igst || 0);
         const totalTax = Number(tb.totalTax || (cgst + sgst + igst) || 0);
+
+        if (rate <= 0 && taxable > 0 && totalTax > 0) {
+          rate = parseFloat(((totalTax / taxable) * 100).toFixed(2));
+        }
+        if (rate <= 0 && (Number(invoice.gstRate || 0) > 0 || Number(tDet.gstRate || 0) > 0)) {
+          rate = Number(invoice.gstRate || tDet.gstRate || 0);
+        }
+        if (cgst === 0 && sgst === 0 && igst === 0 && totalTax > 0) {
+          cgst = parseFloat((totalTax / 2).toFixed(2));
+          sgst = parseFloat((totalTax - cgst).toFixed(2));
+        }
+
         if (rate > 0 || totalTax > 0) {
           taxMap.set(rate, { gstPercent: rate, taxableAmount: taxable, cgst, sgst, igst, totalTax });
         }
@@ -105,26 +117,56 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     }
 
     // Priority 2: Use taxDetails object
-    if (taxMap.size === 0 && tDet.gstRate > 0) {
-      taxMap.set(tDet.gstRate, {
-        gstPercent: tDet.gstRate,
-        taxableAmount: tDet.taxableAmount || 0,
-        cgst: tDet.cgstAmount || 0,
-        sgst: tDet.sgstAmount || 0,
-        igst: tDet.igstAmount || 0,
-        totalTax: tDet.totalTax || 0
-      });
+    if (taxMap.size === 0 && (Number(tDet.gstRate || 0) > 0 || Number(tDet.totalTax || 0) > 0)) {
+      const taxable = Number(tDet.taxableAmount || 0);
+      const totalTax = Number(tDet.totalTax || 0);
+      let rate = Number(tDet.gstRate || 0);
+      if (rate <= 0 && taxable > 0 && totalTax > 0) {
+        rate = parseFloat(((totalTax / taxable) * 100).toFixed(2));
+      }
+      let cgst = Number(tDet.cgstAmount || 0);
+      let sgst = Number(tDet.sgstAmount || 0);
+      let igst = Number(tDet.igstAmount || 0);
+      if (cgst === 0 && sgst === 0 && igst === 0 && totalTax > 0) {
+        if (Number(tDet.igstRate || 0) > 0) {
+          igst = totalTax;
+        } else {
+          cgst = parseFloat((totalTax / 2).toFixed(2));
+          sgst = parseFloat((totalTax - cgst).toFixed(2));
+        }
+      }
+      if (rate > 0 || totalTax > 0) {
+        taxMap.set(rate, {
+          gstPercent: rate,
+          taxableAmount: taxable,
+          cgst,
+          sgst,
+          igst,
+          totalTax
+        });
+      }
     }
 
     // Priority 3: Use individual invoice fields
-    if (taxMap.size === 0 && (invoice.totalTax > 0 || invoice.gstTotal > 0)) {
-      const rate = Number(invoice.gstRate || 0);
+    if (taxMap.size === 0 && (Number(invoice.totalTax || 0) > 0 || Number(invoice.gstTotal || 0) > 0 || Number(invoice.taxAmount || 0) > 0)) {
       const totalTax = Number(invoice.totalTax || invoice.gstTotal || invoice.taxAmount || 0);
-      const taxable = Number(invoice.taxableAmount || (invoice.grandTotal - totalTax) || 0);
-      const cgst = Number(invoice.cgstAmount || 0);
-      const sgst = Number(invoice.sgstAmount || 0);
-      const igst = Number(invoice.igstAmount || 0);
-      if (totalTax > 0) {
+      const taxable = Number(invoice.taxableAmount || (invoice.grandTotal - totalTax) || (invoice.subTotal - (invoice.discountTotal || 0)) || 0);
+      let rate = Number(invoice.gstRate || invoice.taxRate || invoice.gstPercent || invoice.gstPercentage || invoice.appliedGstRate || tDet.gstRate || 0);
+      if (rate <= 0 && taxable > 0 && totalTax > 0) {
+        rate = parseFloat(((totalTax / taxable) * 100).toFixed(2));
+      }
+      let cgst = Number(invoice.cgstAmount || tDet.cgstAmount || 0);
+      let sgst = Number(invoice.sgstAmount || tDet.sgstAmount || 0);
+      let igst = Number(invoice.igstAmount || tDet.igstAmount || 0);
+      if (cgst === 0 && sgst === 0 && igst === 0 && totalTax > 0) {
+        if (Number(invoice.igstRate || tDet.igstRate || 0) > 0) {
+          igst = totalTax;
+        } else {
+          cgst = parseFloat((totalTax / 2).toFixed(2));
+          sgst = parseFloat((totalTax - cgst).toFixed(2));
+        }
+      }
+      if (totalTax > 0 || rate > 0) {
         taxMap.set(rate, { gstPercent: rate, taxableAmount: taxable, cgst, sgst, igst, totalTax });
       }
     }
