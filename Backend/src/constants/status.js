@@ -78,6 +78,14 @@ const TENANT_STATUS = {
   PENDING: 'PENDING'
 };
 
+const TAILORING_JOB_STATUS = {
+  PENDING: 'Pending',
+  IN_PROGRESS: 'In Progress',
+  READY: 'Ready',
+  DELIVERED: 'Delivered',
+  CANCELLED: 'Cancelled'
+};
+
 module.exports = {
   INVENTORY_STATUS,
   LIFECYCLE_EVENT,
@@ -85,5 +93,6 @@ module.exports = {
   PAYMENT_MODE,
   LEDGER_TYPE,
   ALTERATION_STATUS,
-  TENANT_STATUS
+  TENANT_STATUS,
+  TAILORING_JOB_STATUS
 };

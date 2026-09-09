@@ -10,6 +10,7 @@ const Salesman = require('../models/masters/Salesman');
 const Attendance = require('../models/Attendance');
 const NotificationService = require('./notification.service');
 const AuditService = require('./audit.service');
+const TailoringJobService = require('./tailoringJob.service');
 
 class PSSMService {
   static async createPSSM(data, userId, tenantId) {
@@ -104,6 +105,8 @@ class PSSMService {
       totalCharges,
       status: initialMasterStatus,
       allowWhatsApp: data.allowWhatsApp !== false,
+      trialRequired: Boolean(data.trialRequired),
+      trialDate: data.trialRequired && data.trialDate ? data.trialDate : undefined,
       remarks: data.remarks || data.specialInstructions || data.notes || '',
       createdBy: userId
     });
@@ -124,6 +127,7 @@ class PSSMService {
     }
 
     const createdItems = [];
+    const createdTailoringJobs = [];
 
     for (const item of rawItems) {
       let piece = null;
@@ -156,19 +160,21 @@ class PSSMService {
 
       const assignedTo = item.assignedTo || item.tailorName || data.tailorName || '';
       const itemStatus = assignedTo ? 'ASSIGNED' : 'PENDING_ASSIGNMENT';
+      const pieceId = piece ? piece._id : undefined;
+      const resolvedProductId = item.productId || piece?.productId;
+      const itmTrialReq = item.trialRequired !== undefined ? Boolean(item.trialRequired) : Boolean(data.trialRequired);
 
       const pssmItemDoc = await PSSMItem.create({
         tenantId,
         pssmId: pssmRecord._id,
         saleBillId: resolvedSaleBillId,
-        inventoryPieceId: piece ? piece._id : undefined,
-        pieceName: item.pieceName || item.productName || piece?.productId?.name || 'Garment Item',
-        productName: item.productName || item.pieceName || piece?.productId?.name || 'Garment Item',
-        size: item.size || piece?.size || 'FS',
-        color: item.color || piece?.primaryColor || 'Standard',
-        barcode: itemBarcode,
-        uniqueCode: itemUniqueCode,
-        sku: item.sku || itemBarcode,
+        inventoryPieceId: pieceId,
+        barcode: item.barcode || undefined,
+        uniqueCode: item.uniqueCode || item.barcode || undefined,
+        productId: resolvedProductId,
+        productName: item.productName || item.name || 'Garment Item',
+        size: item.size || 'FS',
+        color: item.color || 'Standard',
         salesmanId: item.salesmanId || resolvedSalesmanId,
         salesmanName: item.salesmanName || resolvedSalesmanName,
         customerWaitingOption,
@@ -180,10 +186,27 @@ class PSSMService {
         instructions: item.instructions || (Array.isArray(item.alterationDetails) ? item.alterationDetails.join(', ') : 'Standard Service'),
         charge: item.charge || 0,
         status: itemStatus,
+        trialRequired: itmTrialReq,
+        trialDate: itmTrialReq && (item.trialDate || data.trialDate) ? (item.trialDate || data.trialDate) : undefined,
         alterationDetails: item.alterationDetails || [],
         measurements: item.measurements || {},
         createdBy: userId
       });
+
+      // Auto-create TailoringJob when serviceType is 'Alteration'
+      if ((item.serviceType || data.serviceType || 'Alteration') === 'Alteration') {
+        try {
+          const job = await TailoringJobService.createFromPSSMItem(pssmRecord, pssmItemDoc, userId, tenantId);
+          if (job) {
+            pssmItemDoc.tailoringJob = job; // attach for downstream use
+            pssmItemDoc.tailorInvoiceNo = job.tailorInvoiceNo;
+            await pssmItemDoc.save();
+            createdTailoringJobs.push(job);
+          }
+        } catch (tjErr) {
+          console.error('[PSSMService] TailoringJob creation failed (non-fatal):', tjErr.message);
+        }
+      }
 
       createdItems.push(pssmItemDoc);
     }
@@ -197,7 +220,8 @@ class PSSMService {
 
     return {
       pssmRecord,
-      items: createdItems
+      items: createdItems,
+      tailoringJobs: createdTailoringJobs
     };
   }
 
@@ -221,9 +245,12 @@ class PSSMService {
       customerWaitingOption: item.customerWaitingOption || item.pssmId?.customerWaitingOption,
       expectedDeliveryDate: item.pssmId?.expectedDeliveryDate,
       priority: item.priority || item.pssmId?.priority || 'NORMAL',
+      trialRequired: item.trialRequired !== undefined ? item.trialRequired : item.pssmId?.trialRequired,
+      trialDate: item.trialDate || item.pssmId?.trialDate,
       productName: item.productName,
       barcode: item.barcode,
       uniqueCode: item.uniqueCode,
+      tailorInvoiceNo: item.tailorInvoiceNo,
       size: item.size,
       color: item.color,
       serviceType: item.serviceType,
@@ -270,6 +297,8 @@ class PSSMService {
       assignedTo: item.assignedTo || 'Pending Assignment',
       priority: item.priority || item.pssmId?.priority || 'NORMAL',
       status: item.status,
+      trialRequired: item.trialRequired !== undefined ? item.trialRequired : item.pssmId?.trialRequired,
+      trialDate: item.trialDate || item.pssmId?.trialDate,
       expectedDeliveryDate: item.pssmId?.expectedDeliveryDate,
       createdAt: item.createdAt,
       reassignedFromSalesmanName: item.reassignedFromSalesmanName,
@@ -918,6 +947,36 @@ class PSSMService {
 
     if (measurements) item.measurements = measurements;
     if (alterationDetails && !newAltDetails) item.alterationDetails = alterationDetails;
+    if (extra.trialRequired !== undefined) {
+      item.trialRequired = Boolean(extra.trialRequired);
+      if (!item.trialRequired) item.trialDate = undefined;
+      if (pssm) {
+        pssm.trialRequired = item.trialRequired;
+        if (!item.trialRequired) pssm.trialDate = undefined;
+      }
+    }
+    if (extra.trialDate && item.trialRequired) {
+      item.trialDate = new Date(extra.trialDate);
+      if (pssm) pssm.trialDate = item.trialDate;
+    }
+    if (extra.fittingResult !== undefined) {
+      item.fittingResult = extra.fittingResult;
+      if (pssm) pssm.fittingResult = extra.fittingResult;
+    }
+    if (extra.requiredChanges !== undefined) {
+      item.requiredChanges = extra.requiredChanges;
+      if (pssm) pssm.requiredChanges = extra.requiredChanges;
+    }
+    if (extra.reAlterationRequired !== undefined) {
+      item.reAlterationRequired = Boolean(extra.reAlterationRequired);
+      if (pssm) pssm.reAlterationRequired = Boolean(extra.reAlterationRequired);
+    }
+    if (extra.remarks || extra.specialInstructions || extra.customAlterationText) {
+      const rem = extra.remarks || extra.specialInstructions || extra.customAlterationText;
+      item.instructions = rem;
+      if (pssm) pssm.remarks = rem;
+    }
+    if (pssm) await pssm.save();
 
     if (status === 'COLLECTED') {
       try {

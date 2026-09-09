@@ -74,7 +74,17 @@ const pssmSchema = new mongoose.Schema({
   reassignedFromSalesmanName: String,
   reassignedReason: String,
   reassignedAt: Date,
+  trialRequired: {
+    type: Boolean,
+    default: false
+  },
   trialDate: Date,
+  fittingResult: String,
+  requiredChanges: String,
+  reAlterationRequired: {
+    type: Boolean,
+    default: false
+  },
   remarks: String
 });
 

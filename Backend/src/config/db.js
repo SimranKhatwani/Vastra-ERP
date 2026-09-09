@@ -18,7 +18,7 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(primaryURI, {
       autoIndex: true,
-      serverSelectionTimeoutMS: 5000 // 5 sec timeout to avoid hanging indefinitely
+      serverSelectionTimeoutMS: 30000 // 30 sec timeout for reliable cloud database connection
     });
 
     logger.info(`MongoDB Connected successfully: ${conn.connection.host}/${conn.connection.name}`);

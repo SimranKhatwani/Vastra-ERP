@@ -37,7 +37,11 @@ const alterationItemSchema = new mongoose.Schema({
     default: 'PENDING'
   },
   alterationDetails: [String],
-  measurements: mongoose.Schema.Types.Mixed
+  measurements: mongoose.Schema.Types.Mixed,
+  tailorInvoiceNo: {
+    type: String,
+    index: true
+  }
 });
 
 alterationItemSchema.plugin(baseSchemaPlugin);

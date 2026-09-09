@@ -76,7 +76,22 @@ const pssmItemSchema = new mongoose.Schema({
   },
   reassignedFromSalesmanName: String,
   reassignedReason: String,
-  reassignedAt: Date
+  reassignedAt: Date,
+  trialRequired: {
+    type: Boolean,
+    default: false
+  },
+  trialDate: Date,
+  fittingResult: String,
+  requiredChanges: String,
+  reAlterationRequired: {
+    type: Boolean,
+    default: false
+  },
+  tailorInvoiceNo: {
+    type: String,
+    index: true
+  }
 });
 
 pssmItemSchema.plugin(baseSchemaPlugin);

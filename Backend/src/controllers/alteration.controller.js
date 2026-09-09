@@ -10,7 +10,28 @@ class AlterationController {
 
   static updateStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { status, measurements, alterationDetails, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason } = req.body;
+    const {
+      status,
+      measurements,
+      alterationDetails,
+      deliveryDate,
+      expectedDeliveryDate,
+      tailorName,
+      vendorName,
+      customerPhone,
+      customerMobile,
+      serviceType,
+      priority,
+      reason,
+      trialRequired,
+      trialDate,
+      fittingResult,
+      requiredChanges,
+      reAlterationRequired,
+      remarks,
+      specialInstructions,
+      customAlterationText
+    } = req.body;
     const extraData = {
       deliveryDate: deliveryDate || expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
@@ -21,6 +42,14 @@ class AlterationController {
       priority,
       reason: reason || req.headers['x-audit-reason'],
       userName: req.user?.name || 'Staff Member',
+      trialRequired,
+      trialDate,
+      fittingResult,
+      requiredChanges,
+      reAlterationRequired,
+      remarks: remarks || specialInstructions || customAlterationText,
+      specialInstructions: specialInstructions || remarks || customAlterationText,
+      customAlterationText: customAlterationText || remarks || specialInstructions,
       io: req.app.get('io')
     };
     const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails, extraData);
@@ -29,7 +58,27 @@ class AlterationController {
 
   static updateMeasurements = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason, saveAsMaster, garmentType } = req.body;
+    const {
+      measurements,
+      alterationDetails,
+      status,
+      deliveryDate,
+      expectedDeliveryDate,
+      tailorName,
+      vendorName,
+      customerPhone,
+      customerMobile,
+      serviceType,
+      priority,
+      reason,
+      saveAsMaster,
+      garmentType,
+      trialRequired,
+      trialDate,
+      fittingResult,
+      requiredChanges,
+      reAlterationRequired
+    } = req.body;
     const extraData = {
       deliveryDate: deliveryDate || expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
@@ -42,6 +91,11 @@ class AlterationController {
       userName: req.user?.name || 'Staff Member',
       saveAsMaster,
       garmentType,
+      trialRequired,
+      trialDate,
+      fittingResult,
+      requiredChanges,
+      reAlterationRequired,
       io: req.app.get('io')
     };
     const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails, extraData);

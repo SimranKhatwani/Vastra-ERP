@@ -26,6 +26,7 @@ const inventoryLifecycleRoutes = require('./inventoryLifecycle.routes');
 
 const permissionRoutes = require('./permission.routes');
 const commissionRoutes = require('./commission.routes');
+const tailoringJobRoutes = require('./tailoringJob.routes');
 
 const router = express.Router();
 
@@ -50,6 +51,7 @@ router.use('/customers', customerRoutes);
 router.use('/ledger', ledgerRoutes);
 router.use('/alterations', alterationRoutes);
 router.use('/pssm', pssmRoutes);
+router.use('/tailoring-jobs', tailoringJobRoutes);
 router.use('/returns', returnRoutes);
 router.use('/categories', require('./category.routes'));
 router.use('/brands', require('./brand.routes'));

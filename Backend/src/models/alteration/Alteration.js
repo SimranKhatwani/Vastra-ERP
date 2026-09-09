@@ -65,7 +65,17 @@ const alterationSchema = new mongoose.Schema({
     type: String,
     default: 'Normal'
   },
+  trialRequired: {
+    type: Boolean,
+    default: false
+  },
   trialDate: Date,
+  fittingResult: String,
+  requiredChanges: String,
+  reAlterationRequired: {
+    type: Boolean,
+    default: false
+  },
   remarks: String
 });
 

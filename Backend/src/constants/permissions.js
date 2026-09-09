@@ -131,7 +131,13 @@ const PERMISSIONS = {
 
   // Settings & System
   SETTINGS_UPDATE: 'settings.update',
-  AUDIT_READ: 'audit.read'
+  AUDIT_READ: 'audit.read',
+  
+  // Tailoring Jobs
+  TAILORING_JOB_CREATE: 'tailoring_job.create',
+  TAILORING_JOB_READ: 'tailoring_job.read',
+  TAILORING_JOB_UPDATE: 'tailoring_job.update',
+  TAILORING_JOB_DELETE: 'tailoring_job.delete'
 };
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);

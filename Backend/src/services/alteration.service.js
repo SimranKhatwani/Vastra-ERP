@@ -7,7 +7,9 @@ const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT, ALTERATION_STATUS } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
+const NotificationService = require('./notification.service');
 const AuditService = require('./audit.service');
+const TailoringJobService = require('./tailoringJob.service');
 
 class AlterationService {
   static async createAlteration(data, userId, tenantId) {
@@ -78,7 +80,8 @@ class AlterationService {
       sourceType: data.sourceType || 'SHOWROOM_PURCHASE',
       garmentDescription: data.garmentDescription || '',
       fabricDetails: data.fabricDetails || '',
-      trialDate: data.trialDate,
+      trialRequired: Boolean(data.trialRequired),
+      trialDate: data.trialRequired && data.trialDate ? data.trialDate : undefined,
       totalCharges,
       commissionPercentage: commRate,
       commissionAmount: commAmount,
@@ -104,7 +107,8 @@ class AlterationService {
       tailorName: data.tailorName || 'Default Tailor',
       vendorName: data.vendorName || data.tailorName || '',
       priority: data.priority || 'Normal',
-      trialDate: data.trialDate,
+      trialRequired: Boolean(data.trialRequired),
+      trialDate: data.trialRequired && data.trialDate ? data.trialDate : undefined,
       totalCharges,
       status: ALTERATION_STATUS.RECEIVED,
       remarks: data.remarks || data.customAlterationText || data.specialInstructions,
@@ -119,6 +123,7 @@ class AlterationService {
     }
 
     const createdItems = [];
+    const createdTailoringJobs = [];
 
     for (const item of rawItems) {
       let piece = null;
@@ -152,7 +157,7 @@ class AlterationService {
         createdBy: userId
       });
 
-      await PSSMItem.create({
+      const pssmItemDoc = await PSSMItem.create({
         tenantId,
         pssmId: pssmRecord._id,
         saleBillId: resolvedSaleBillId,
@@ -174,6 +179,25 @@ class AlterationService {
         charge: item.charge || 0,
         createdBy: userId
       });
+
+      // Auto-create TailoringJob when serviceType is 'Alteration'
+      if ((item.serviceType || data.serviceType || 'Alteration') === 'Alteration') {
+        try {
+          const job = await TailoringJobService.createFromPSSMItem(pssmRecord, pssmItemDoc, userId, tenantId);
+          if (job) {
+            pssmItemDoc.tailoringJob = job; // attach for downstream use
+            pssmItemDoc.tailorInvoiceNo = job.tailorInvoiceNo;
+            await pssmItemDoc.save();
+            
+            altItem.tailorInvoiceNo = job.tailorInvoiceNo;
+            await altItem.save();
+            
+            createdTailoringJobs.push(job);
+          }
+        } catch (tjErr) {
+          console.error('[AlterationService] TailoringJob creation failed (non-fatal):', tjErr.message);
+        }
+      }
 
       if (resolvedSaleBillId) {
         const itemBarcode = item.barcode || item.uniqueCode;
@@ -248,7 +272,7 @@ class AlterationService {
       }
     }
 
-    return { alteration, items: createdItems };
+    return { alteration, items: createdItems, tailoringJobs: createdTailoringJobs };
   }
 
   static async getPendingAlterationItems(tenantId) {
@@ -454,6 +478,17 @@ class AlterationService {
       }
 
       if (extraData.priority) alteration.priority = extraData.priority;
+      if (extraData.trialRequired !== undefined) {
+        alteration.trialRequired = Boolean(extraData.trialRequired);
+        if (!alteration.trialRequired) alteration.trialDate = undefined;
+      }
+      if (extraData.trialDate && alteration.trialRequired) alteration.trialDate = new Date(extraData.trialDate);
+      if (extraData.fittingResult !== undefined) alteration.fittingResult = extraData.fittingResult;
+      if (extraData.requiredChanges !== undefined) alteration.requiredChanges = extraData.requiredChanges;
+      if (extraData.reAlterationRequired !== undefined) alteration.reAlterationRequired = Boolean(extraData.reAlterationRequired);
+      if (extraData.remarks || extraData.specialInstructions || extraData.customAlterationText) {
+        alteration.remarks = extraData.remarks || extraData.specialInstructions || extraData.customAlterationText;
+      }
       if (measurements) alteration.measurements = measurements;
       alteration.updatedBy = userId;
       await alteration.save();
@@ -598,6 +633,7 @@ class AlterationService {
       const barcode = firstItem.barcode || piece.barcode || '';
       const uniqueCode = firstItem.uniqueCode || piece.uniqueCode || '';
       const sku = firstItem.sku || piece.barcode || product.sku || '';
+      const tailorInvoiceNo = firstItem.tailorInvoiceNo || '';
       const measurements = firstItem.measurements || alt.measurements || {};
       const alterationDetails = (firstItem.alterationDetails && firstItem.alterationDetails.length > 0)
         ? firstItem.alterationDetails
@@ -618,13 +654,30 @@ class AlterationService {
         sku,
         size,
         color,
+        tailorInvoiceNo,
         tailorName: alt.tailorName || 'Master Tailor',
         priority: alt.priority || 'Normal',
-        status: alt.status,
+        status: (() => {
+          const s = String(alt.status || '').toUpperCase().replace(/[-\s]/g, '_');
+          if (s === 'IN_CUTTING' || s === 'CUTTING') return 'In Cutting';
+          if (s === 'IN_STITCHING' || s === 'STITCHING' || s === 'IN_PROGRESS' || s === 'ASSIGNED') return 'In Stitching';
+          if (s === 'IN_TRIAL' || s === 'TRIAL' || s === 'READY_FOR_TRIAL') return 'In Trial';
+          if (s === 'RE_ALTERATION' || s === 'REALTERATION' || s === 'REWORK') return 'Re-Alteration';
+          if (s === 'QUALITY_CHECK' || s === 'QC' || s === 'QA') return 'Quality Check';
+          if (s === 'READY' || s === 'READY_FOR_DELIVERY' || s === 'COMPLETED') return 'Ready';
+          if (s === 'COLLECTED' || s === 'DELIVERED' || s === 'CLOSED') return 'Delivered';
+          if (s === 'CANCELLED') return 'Cancelled';
+          return alt.status || 'Pending';
+        })(),
         deliveryDate: alt.expectedDeliveryDate ? alt.expectedDeliveryDate.toISOString().split('T')[0] : '',
-        trialDate: alt.trialDate ? alt.trialDate.toISOString().split('T')[0] : '',
+        trialRequired: Boolean(alt.trialRequired),
+        trialDate: alt.trialRequired && alt.trialDate ? (new Date(alt.trialDate).toISOString().split('T')[0]) : '',
+        fittingResult: alt.fittingResult || '',
+        requiredChanges: alt.requiredChanges || '',
+        reAlterationRequired: Boolean(alt.reAlterationRequired),
         alterationDetails,
         measurements,
+        remarks: alt.remarks || firstItem.instructions || '',
         specialInstructions: alt.remarks || firstItem.instructions || '',
         customAlterationText: alt.remarks || '',
         totalCharges: alt.totalCharges || 0,
@@ -664,15 +717,26 @@ class AlterationService {
           Object.values(pi.measurements).some(v => v !== null && v !== '' && v !== undefined);
 
         let displayStatus = 'Pending';
-        if (pi.status === 'READY' || pi.status === 'READY_FOR_DELIVERY') {
-          displayStatus = 'Ready for Delivery';
-        } else if (pi.status === 'COLLECTED' || pi.status === 'CLOSED') {
+        const normStatus = String(pi.status || '').toUpperCase().replace(/[-\s]/g, '_');
+        if (normStatus === 'IN_CUTTING' || normStatus === 'CUTTING') {
+          displayStatus = 'In Cutting';
+        } else if (normStatus === 'IN_STITCHING' || normStatus === 'STITCHING') {
+          displayStatus = 'In Stitching';
+        } else if (normStatus === 'IN_TRIAL' || normStatus === 'TRIAL' || normStatus === 'READY_FOR_TRIAL') {
+          displayStatus = 'In Trial';
+        } else if (normStatus === 'RE_ALTERATION' || normStatus === 'REALTERATION' || normStatus === 'REWORK') {
+          displayStatus = 'Re-Alteration';
+        } else if (normStatus === 'QUALITY_CHECK' || normStatus === 'QC' || normStatus === 'QA') {
+          displayStatus = 'Quality Check';
+        } else if (normStatus === 'READY' || normStatus === 'READY_FOR_DELIVERY' || normStatus === 'COMPLETED') {
+          displayStatus = 'Ready';
+        } else if (normStatus === 'COLLECTED' || normStatus === 'DELIVERED' || normStatus === 'CLOSED') {
           displayStatus = 'Delivered';
-        } else if (!hasMeasurements && (pi.status === 'PENDING_ASSIGNMENT' || pi.status === 'ASSIGNED' || !pi.status)) {
+        } else if (!hasMeasurements && (normStatus === 'PENDING_ASSIGNMENT' || normStatus === 'ASSIGNED' || !normStatus)) {
           displayStatus = 'Pending';
-        } else if (pi.status === 'ASSIGNED' || pi.status === 'IN_PROGRESS') {
-          displayStatus = 'In Progress';
-        } else if (pi.status === 'PENDING_ASSIGNMENT') {
+        } else if (normStatus === 'IN_PROGRESS' || normStatus === 'ASSIGNED') {
+          displayStatus = 'In Stitching';
+        } else if (normStatus === 'PENDING_ASSIGNMENT' || !normStatus) {
           displayStatus = 'Pending';
         } else if (pi.status) {
           displayStatus = pi.status;
@@ -681,6 +745,11 @@ class AlterationService {
         const altDetails = (Array.isArray(pi.alterationDetails) && pi.alterationDetails.length > 0)
           ? pi.alterationDetails
           : (pi.serviceType ? [pi.serviceType] : ['Standard Service']);
+
+        const isPssmTrialReq = Boolean(pi.trialRequired !== undefined ? pi.trialRequired : pssm.trialRequired);
+        const pssmTrialDate = isPssmTrialReq
+          ? (pi.trialDate ? new Date(pi.trialDate).toISOString().split('T')[0] : (pssm.trialDate ? new Date(pssm.trialDate).toISOString().split('T')[0] : ''))
+          : '';
 
         return {
           _id: pi._id,
@@ -701,14 +770,19 @@ class AlterationService {
           priority: pi.priority === 'DELIVERY' || pssm.priority === 'DELIVERY' ? 'Urgent' : (pi.priority || pssm.priority || 'Normal'),
           status: displayStatus,
           rawStatus: pi.status,
-          needsMeasurements: !hasMeasurements && displayStatus !== 'Delivered' && displayStatus !== 'Ready for Delivery',
+          needsMeasurements: !hasMeasurements && displayStatus !== 'Delivered' && displayStatus !== 'Ready',
           deliveryDate: pssm.expectedDeliveryDate ? new Date(pssm.expectedDeliveryDate).toISOString().split('T')[0] : '',
-          trialDate: pssm.trialDate ? new Date(pssm.trialDate).toISOString().split('T')[0] : '',
+          trialRequired: isPssmTrialReq,
+          trialDate: pssmTrialDate,
+          fittingResult: pi.fittingResult || pssm.fittingResult || '',
+          requiredChanges: pi.requiredChanges || pssm.requiredChanges || '',
+          reAlterationRequired: Boolean(pi.reAlterationRequired !== undefined ? pi.reAlterationRequired : pssm.reAlterationRequired),
           alterationDetails: altDetails,
           serviceType: pi.serviceType || altDetails.join(' + '),
           measurements: pi.measurements || {},
-          specialInstructions: pi.instructions || '',
-          customAlterationText: pi.instructions || '',
+          remarks: pi.instructions || pssm.remarks || '',
+          specialInstructions: pi.instructions || pssm.remarks || '',
+          customAlterationText: pi.instructions || pssm.remarks || '',
           totalCharges: pi.charge || pssm.totalCharges || 0,
           items: [{
             _id: pi._id,
