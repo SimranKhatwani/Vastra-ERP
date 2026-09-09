@@ -248,6 +248,99 @@ class CustomerService {
     }));
     return formatExportData(exportData, format);
   }
+
+  static async getCustomerMeasurements(customerIdOrPhone, tenantId) {
+    const mongoose = require('mongoose');
+    const Alteration = require('../models/alteration/Alteration');
+    
+    let customer = null;
+    if (mongoose.Types.ObjectId.isValid(customerIdOrPhone)) {
+      customer = await Customer.findOne({ _id: customerIdOrPhone, tenantId, isDeleted: false }).lean();
+    }
+    if (!customer && customerIdOrPhone) {
+      customer = await Customer.findOne({ phone: customerIdOrPhone, tenantId, isDeleted: false }).lean();
+    }
+
+    const query = { tenantId, isDeleted: false };
+    if (customer) {
+      query.$or = [{ customerId: customer._id }, { customerPhone: customer.phone }];
+    } else if (customerIdOrPhone) {
+      query.customerPhone = customerIdOrPhone;
+    }
+
+    const pastAltTickets = await Alteration.find(query).sort({ createdAt: -1 }).lean();
+    const history = [];
+
+    for (const alt of pastAltTickets) {
+      const m = alt.measurements || (alt.items && alt.items[0] && alt.items[0].measurements);
+      if (m && typeof m === 'object' && Object.keys(m).length > 0 && Object.values(m).some(v => v !== null && v !== '' && v !== undefined)) {
+        history.push({
+          id: alt._id,
+          ticketId: alt.alterationNo || alt.alterationId,
+          invoiceNumber: alt.invoiceNumber,
+          sourceType: alt.sourceType || 'SHOWROOM_PURCHASE',
+          garmentType: alt.productName || 'Garment',
+          gender: alt.gender || 'Gents',
+          measurements: m,
+          tailorName: alt.tailorName,
+          notes: alt.instructions || alt.customAlterationText || '',
+          date: alt.createdAt
+        });
+      }
+    }
+
+    if (customer && customer.measurementHistory && Array.isArray(customer.measurementHistory)) {
+      for (const h of customer.measurementHistory) {
+        history.push({
+          id: h._id || `cust-m-${Math.random()}`,
+          ticketId: h.ticketId || 'MASTER_PROFILE',
+          garmentType: h.garmentType || 'Master Profile',
+          measurements: h.measurements || {},
+          tailorName: h.tailorName || 'Master Tailor',
+          notes: h.notes || '',
+          date: h.takenAt || new Date()
+        });
+      }
+    }
+
+    history.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    return {
+      customer: customer ? {
+        _id: customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        gender: customer.gender
+      } : null,
+      masterMeasurements: customer?.masterMeasurements || (history[0]?.measurements) || {},
+      history
+    };
+  }
+
+  static async updateMasterMeasurements(customerId, measurements, garmentType, tenantId, tailorName = '') {
+    const mongoose = require('mongoose');
+    let customer = null;
+    if (mongoose.Types.ObjectId.isValid(customerId)) {
+      customer = await Customer.findOne({ _id: customerId, tenantId, isDeleted: false });
+    }
+    if (!customer && customerId) {
+      customer = await Customer.findOne({ phone: customerId, tenantId, isDeleted: false });
+    }
+    if (!customer) throw new ApiError(404, 'Customer not found.');
+
+    customer.masterMeasurements = measurements;
+    if (!customer.measurementHistory) customer.measurementHistory = [];
+    customer.measurementHistory.unshift({
+      garmentType: garmentType || 'Garment',
+      measurements,
+      tailorName,
+      notes: 'Master measurements updated',
+      takenAt: new Date()
+    });
+
+    await customer.save();
+    return customer;
+  }
 }
 
 module.exports = CustomerService;

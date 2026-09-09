@@ -29,7 +29,7 @@ class AlterationController {
 
   static updateMeasurements = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason } = req.body;
+    const { measurements, alterationDetails, status, deliveryDate, expectedDeliveryDate, tailorName, vendorName, customerPhone, customerMobile, serviceType, priority, reason, saveAsMaster, garmentType } = req.body;
     const extraData = {
       deliveryDate: deliveryDate || expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate || deliveryDate,
@@ -40,6 +40,8 @@ class AlterationController {
       priority,
       reason: reason || req.headers['x-audit-reason'],
       userName: req.user?.name || 'Staff Member',
+      saveAsMaster,
+      garmentType,
       io: req.app.get('io')
     };
     const alteration = await AlterationService.updateStatus(id, status, req.user.id, req.tenantId, measurements, alterationDetails, extraData);

@@ -61,6 +61,23 @@ class CustomerController {
     }
     return res.status(200).json(new ApiResponse(200, exportResult.content, 'Customers exported successfully.'));
   });
+
+  static getCustomerMeasurements = asyncHandler(async (req, res) => {
+    const data = await CustomerService.getCustomerMeasurements(req.params.id, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, data, 'Customer measurements fetched.'));
+  });
+
+  static lookupMeasurements = asyncHandler(async (req, res) => {
+    const queryTerm = req.query.phone || req.query.customerId || req.query.q;
+    const data = await CustomerService.getCustomerMeasurements(queryTerm, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, data, 'Customer measurements fetched.'));
+  });
+
+  static updateMasterMeasurements = asyncHandler(async (req, res) => {
+    const { measurements, garmentType, tailorName } = req.body;
+    const customer = await CustomerService.updateMasterMeasurements(req.params.id, measurements, garmentType, req.tenantId, tailorName);
+    return res.status(200).json(new ApiResponse(200, customer, 'Master measurements updated successfully.'));
+  });
 }
 
 module.exports = CustomerController;

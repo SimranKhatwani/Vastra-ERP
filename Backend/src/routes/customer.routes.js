@@ -41,6 +41,10 @@ router.put('/loyalty-settings', async (req, res) => {
   }
 });
 
+router.get('/lookup-measurements', authorize(PERMISSIONS.CRM_READ), CustomerController.lookupMeasurements);
+router.get('/:id/measurements', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomerMeasurements);
+router.post('/:id/master-measurements', authorize(PERMISSIONS.CRM_UPDATE), auditLog('UPDATE_CUSTOMER_MEASUREMENTS', 'crm'), CustomerController.updateMasterMeasurements);
+
 router.get('/:id', authorize(PERMISSIONS.CRM_READ), CustomerController.getCustomerById);
 router.get('/:id/history', authorize(PERMISSIONS.CRM_READ), CustomerController.getPurchaseHistory);
 router.put('/:id', authorize(PERMISSIONS.CRM_UPDATE), auditLog('UPDATE_CUSTOMER', 'crm'), CustomerController.updateCustomer);

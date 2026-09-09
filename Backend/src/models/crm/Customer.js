@@ -25,6 +25,20 @@ const customerSchema = new mongoose.Schema({
       reason: { type: String, default: '' },
       date: { type: Date, default: Date.now }
     }
+  ],
+  masterMeasurements: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  measurementHistory: [
+    {
+      garmentType: { type: String, default: '' },
+      measurements: { type: mongoose.Schema.Types.Mixed, default: {} },
+      ticketId: { type: String, default: '' },
+      tailorName: { type: String, default: '' },
+      notes: { type: String, default: '' },
+      takenAt: { type: Date, default: Date.now }
+    }
   ]
 });
 

@@ -75,6 +75,9 @@ class AlterationService {
       tailorName: data.tailorName || 'Default Tailor',
       priority: data.priority || 'Normal',
       gender: data.gender || rawItems[0]?.gender || 'Gents',
+      sourceType: data.sourceType || 'SHOWROOM_PURCHASE',
+      garmentDescription: data.garmentDescription || '',
+      fabricDetails: data.fabricDetails || '',
       trialDate: data.trialDate,
       totalCharges,
       commissionPercentage: commRate,
@@ -89,13 +92,14 @@ class AlterationService {
       tenantId,
       pssmNo: generatedNo,
       saleBillId: resolvedSaleBillId,
-      billNo: data.invoiceNumber || (foundBill ? foundBill.billNo : ''),
-      billBarcode: data.billBarcode || data.invoiceNumber || (foundBill ? foundBill.billNo : ''),
+      billNo: data.invoiceNumber || (foundBill ? foundBill.billNo : (data.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'CUSTOMER-OWN-GARMENT' : '')),
+      billBarcode: data.billBarcode || data.invoiceNumber || (foundBill ? foundBill.billNo : (data.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'CUSTOMER-OWN-GARMENT' : '')),
       customerId: data.customerId || (foundBill ? foundBill.customerId : undefined),
       customerName: data.customerName || (foundBill ? foundBill.customerName : ''),
       customerPhone: data.customerPhone || (foundBill ? foundBill.customerPhone : ''),
       serviceType: data.serviceType || 'Alteration',
       gender: data.gender || rawItems[0]?.gender || 'Gents',
+      sourceType: data.sourceType || 'SHOWROOM_PURCHASE',
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
       tailorName: data.tailorName || 'Default Tailor',
       vendorName: data.vendorName || data.tailorName || '',
@@ -137,6 +141,7 @@ class AlterationService {
         size: item.size || piece?.size || 'FS',
         color: item.color || piece?.primaryColor || 'Standard',
         gender: item.gender || data.gender || 'Gents',
+        sourceType: data.sourceType || 'SHOWROOM_PURCHASE',
         barcode: item.barcode || piece?.barcode || '',
         uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
         sku: item.sku || piece?.barcode || '',
@@ -156,6 +161,8 @@ class AlterationService {
         productName: item.productName || item.pieceName || piece?.productId?.name || 'Altered Garment',
         size: item.size || piece?.size || 'FS',
         color: item.color || piece?.primaryColor || 'Standard',
+        gender: item.gender || data.gender || 'Gents',
+        sourceType: data.sourceType || 'SHOWROOM_PURCHASE',
         barcode: item.barcode || piece?.barcode || '',
         uniqueCode: item.uniqueCode || piece?.uniqueCode || '',
         sku: item.sku || piece?.barcode || '',
@@ -214,6 +221,31 @@ class AlterationService {
       await CommissionService.recordAlterationCommission(alteration, tenantId, userId);
     } catch (commErr) {
       console.error('[AlterationService] Failed to record worker commission:', commErr);
+    }
+
+    // Optionally update customer master measurement if requested
+    if (data.saveAsMaster && (data.customerId || data.customerPhone) && data.measurements) {
+      try {
+        const Customer = require('../models/crm/Customer');
+        let cust = null;
+        if (data.customerId) cust = await Customer.findOne({ _id: data.customerId, tenantId });
+        if (!cust && data.customerPhone) cust = await Customer.findOne({ phone: data.customerPhone, tenantId });
+        if (cust) {
+          cust.masterMeasurements = data.measurements;
+          if (!cust.measurementHistory) cust.measurementHistory = [];
+          cust.measurementHistory.unshift({
+            garmentType: data.productName || 'Garment',
+            measurements: data.measurements,
+            ticketId: alteration.alterationNo || alteration.alterationId,
+            tailorName: alteration.tailorName || 'Master Tailor',
+            notes: 'Saved from Alteration Creation',
+            takenAt: new Date()
+          });
+          await cust.save();
+        }
+      } catch (cErr) {
+        console.warn("Notice: could not save master measurement on creation:", cErr.message);
+      }
     }
 
     return { alteration, items: createdItems };
@@ -425,6 +457,35 @@ class AlterationService {
       if (measurements) alteration.measurements = measurements;
       alteration.updatedBy = userId;
       await alteration.save();
+
+      // Update customer master profile ONLY if explicitly requested (never automatically overwrite)
+      if (extraData.saveAsMaster && measurements) {
+        try {
+          const Customer = require('../models/crm/Customer');
+          let cust = null;
+          if (alteration.customerId) {
+            cust = await Customer.findOne({ _id: alteration.customerId, tenantId });
+          }
+          if (!cust && alteration.customerPhone) {
+            cust = await Customer.findOne({ phone: alteration.customerPhone, tenantId });
+          }
+          if (cust) {
+            cust.masterMeasurements = measurements;
+            if (!cust.measurementHistory) cust.measurementHistory = [];
+            cust.measurementHistory.unshift({
+              garmentType: alteration.productName || 'Garment',
+              measurements,
+              ticketId: alteration.alterationNo || alteration.alterationId,
+              tailorName: alteration.tailorName || 'Master Tailor',
+              notes: 'Saved from Alteration Job',
+              takenAt: new Date()
+            });
+            await cust.save();
+          }
+        } catch (cErr) {
+          console.warn("Notice: could not update customer master measurement:", cErr.message);
+        }
+      }
 
       if (measurements || alterationDetails) {
         const altItem = await AlterationItem.findOne({ alterationId, tenantId });

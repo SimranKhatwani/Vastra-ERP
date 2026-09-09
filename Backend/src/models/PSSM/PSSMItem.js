@@ -46,6 +46,11 @@ const pssmItemSchema = new mongoose.Schema({
     enum: ['Gents', 'Ladies', 'Unisex'],
     default: 'Gents'
   },
+  sourceType: {
+    type: String,
+    enum: ['SHOWROOM_PURCHASE', 'CUSTOMER_OWN_GARMENT'],
+    default: 'SHOWROOM_PURCHASE'
+  },
   expectedDeliveryDate: Date,
   assignedTo: String,
   instructions: {

@@ -51,6 +51,15 @@ import {
   ShieldCheck,
   History
 } from "lucide-react";
+import { GarmentMeasurementSection } from "./GarmentMeasurementSection";
+import { MeasurementHistoryModal } from "./MeasurementHistoryModal";
+import {
+  GENTS_GARMENTS_CONFIG,
+  LADIES_GARMENTS_CONFIG,
+  OPTIONAL_MEASUREMENT_FIELDS,
+  detectGarmentType,
+  getGarmentMeasurementFields
+} from "../helpers/measurementConfig";
 
 export const ArticulationView = ({
   customers = [],
@@ -297,6 +306,7 @@ export const ArticulationView = ({
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [alterationsFilterType, setAlterationsFilterType] = useState("All");
   const [altGenderFilter, setAltGenderFilter] = useState("All"); // "All" | "Gents" | "Ladies"
+  const [altSourceFilter, setAltSourceFilter] = useState("All"); // "All" | "SHOWROOM_PURCHASE" | "CUSTOMER_OWN_GARMENT"
   const [altSummaryDate, setAltSummaryDate] = useState("Today");
   const [altTypeSummary, setAltTypeSummary] = useState(null);
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
@@ -350,6 +360,14 @@ export const ArticulationView = ({
 
   // --- NEW ALTERATION WIZARD STATE ---
   const [showCreateAltModal, setShowCreateAltModal] = useState(false);
+  const [altCreationMode, setAltCreationMode] = useState("SHOWROOM_PURCHASE"); // "SHOWROOM_PURCHASE" | "CUSTOMER_OWN_GARMENT"
+  const [cogCustomerName, setCogCustomerName] = useState("");
+  const [cogCustomerPhone, setCogCustomerPhone] = useState("");
+  const [cogGarmentName, setCogGarmentName] = useState("");
+  const [cogFabricColor, setCogFabricColor] = useState("");
+  const [cogSize, setCogSize] = useState("M");
+  const [cogGender, setCogGender] = useState("Gents");
+  const [cogServiceType, setCogServiceType] = useState("Custom Tailoring");
   const [altInvoiceSearch, setAltInvoiceSearch] = useState("");
   const [altInvoices, setAltInvoices] = useState([]);
   const [searchingAltInvoices, setSearchingAltInvoices] = useState(false);
@@ -363,42 +381,49 @@ export const ArticulationView = ({
   const [altCustomText, setAltCustomText] = useState("");
   const [altMeasurements, setAltMeasurements] = useState({});
   const [altCharges, setAltCharges] = useState(0);
+  const [cogGarmentType, setCogGarmentType] = useState("Shirt");
+  const [cogSaveAsMaster, setCogSaveAsMaster] = useState(false);
+  const [showroomGarmentType, setShowroomGarmentType] = useState("Shirt");
+  const [showroomSaveAsMaster, setShowroomSaveAsMaster] = useState(false);
 
   // --- MEASUREMENT MODAL STATE FOR EXISTING TICKETS ---
   const [showMeasurementModal, setShowMeasurementModal] = useState(false);
   const [editingMeasurementAlt, setEditingMeasurementAlt] = useState(null);
   const [startWorkAfterMeasurement, setStartWorkAfterMeasurement] = useState(false);
   const [savingMeasurements, setSavingMeasurements] = useState(false);
-  const [measurementForm, setMeasurementForm] = useState({
-    Chest: "",
-    Waist: "",
-    Length: "",
-    Shoulder: "",
-    Sleeve: "",
-    Neck: "",
-    Hip: "",
-    Thigh: "",
-    Bottom: "",
-    Inseam: ""
-  });
+  const [modalMeasurementGender, setModalMeasurementGender] = useState("Gents");
+  const [modalMeasurementGarment, setModalMeasurementGarment] = useState("Shirt");
+  const [modalSaveAsMaster, setModalSaveAsMaster] = useState(false);
+  const [measurementForm, setMeasurementForm] = useState({});
+
+  // --- GLOBAL MEASUREMENT HISTORY MODAL STATE ---
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyModalCustomer, setHistoryModalCustomer] = useState({ phone: "", id: "", name: "" });
+
+  const handleOpenCustomerHistory = (phone, id, name) => {
+    setHistoryModalCustomer({
+      phone: phone || "",
+      id: id || "",
+      name: name || "Customer"
+    });
+    setHistoryModalOpen(true);
+  };
 
   const handleOpenMeasurementModal = (alt, andStartWork = false) => {
     if (!alt) return;
     setEditingMeasurementAlt(alt);
     setStartWorkAfterMeasurement(andStartWork);
+
+    const isLady = alt.gender === "Ladies" || /(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(alt.productName || alt.pieceName || "");
+    const gGender = isLady ? "Ladies" : "Gents";
+    setModalMeasurementGender(gGender);
+
+    const detectedGarment = detectGarmentType(alt.productName || alt.pieceName || "", gGender);
+    setModalMeasurementGarment(detectedGarment);
+
     const existing = alt.measurements || {};
-    setMeasurementForm({
-      Chest: existing.Chest || existing.chest || "",
-      Waist: existing.Waist || existing.waist || "",
-      Length: existing.Length || existing.length || "",
-      Shoulder: existing.Shoulder || existing.shoulder || "",
-      Sleeve: existing.Sleeve || existing.sleeve || "",
-      Neck: existing.Neck || existing.neck || "",
-      Hip: existing.Hip || existing.hip || "",
-      Thigh: existing.Thigh || existing.thigh || "",
-      Bottom: existing.Bottom || existing.bottom || "",
-      Inseam: existing.Inseam || existing.inseam || ""
-    });
+    setMeasurementForm({ ...existing });
+    setModalSaveAsMaster(false); // Current job measurement must never automatically overwrite customer master!
     setShowMeasurementModal(true);
   };
 
@@ -423,7 +448,9 @@ export const ArticulationView = ({
       const nextStatus = startWorkAfterMeasurement ? "In Progress" : (editingMeasurementAlt.status || "Pending");
       const res = await api.patch(`/alterations/${editingMeasurementAlt._id}/measurements`, {
         measurements: cleaned,
-        status: nextStatus
+        status: nextStatus,
+        saveAsMaster: modalSaveAsMaster,
+        garmentType: modalMeasurementGarment
       });
 
       if (res.data?.success) {
@@ -432,7 +459,9 @@ export const ArticulationView = ({
             "Measurements Saved",
             startWorkAfterMeasurement
               ? "Measurements recorded and work moved to In Progress!"
-              : "Measurements saved successfully.",
+              : modalSaveAsMaster
+                ? "Measurements saved with job & master profile updated!"
+                : "Measurements saved securely with tailoring job.",
             "success"
           );
         }
@@ -794,6 +823,109 @@ export const ArticulationView = ({
 
   const handleSaveAlterationTicket = async (e) => {
     e.preventDefault();
+
+    // MODE 1: CUSTOMER OWN GARMENT / FABRIC (CUSTOM TAILORING)
+    if (altCreationMode === "CUSTOMER_OWN_GARMENT") {
+      if (!cogCustomerName.trim()) {
+        if (onAddNotification) onAddNotification("Warning", "Please enter customer name.", "warning");
+        return;
+      }
+      if (!cogGarmentName.trim()) {
+        if (onAddNotification) onAddNotification("Warning", "Please specify the garment / fabric name.", "warning");
+        return;
+      }
+
+      const effectiveDetails = altDetails.length > 0
+        ? altDetails
+        : [cogServiceType || "Custom Tailoring"];
+
+      const payload = {
+        sourceType: 'CUSTOMER_OWN_GARMENT',
+        invoiceNumber: 'CUSTOMER-OWN-GARMENT',
+        customerName: cogCustomerName.trim(),
+        customerPhone: cogCustomerPhone.trim(),
+        productName: cogGarmentName.trim(),
+        garmentDescription: cogGarmentName.trim(),
+        fabricDetails: cogFabricColor.trim(),
+        color: cogFabricColor.trim() || 'Standard',
+        size: cogSize.trim() || 'Custom',
+        tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
+        priority: altPriority || 'Normal',
+        status: "Pending",
+        deliveryDate: altDeliveryDate,
+        trialDate: altTrialDate,
+        serviceType: cogServiceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Custom Tailoring'),
+        gender: cogGender || 'Gents',
+        alterationDetails: effectiveDetails,
+        customAlterationText: altCustomText,
+        specialInstructions: altCustomText || effectiveDetails.join(', '),
+        measurements: altMeasurements,
+        saveAsMaster: cogSaveAsMaster,
+        garmentType: cogGarmentType,
+        charge: Number(altCharges || 0),
+        items: [{
+          sourceType: 'CUSTOMER_OWN_GARMENT',
+          pieceName: cogGarmentName.trim(),
+          gender: cogGender || 'Gents',
+          instructions: effectiveDetails.join(', ') || altCustomText || 'Custom Tailoring',
+          alterationDetails: effectiveDetails,
+          measurements: altMeasurements,
+          charge: Number(altCharges || 0)
+        }]
+      };
+
+      try {
+        const res = await api.post(`/alterations`, payload);
+        const data = res.data;
+        if (data.success) {
+          const createdAlt = data.data?.alteration || data.data || {};
+          const ticketSlipObj = {
+            _id: createdAlt._id || `alt-${Date.now()}`,
+            alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+            sourceType: 'CUSTOMER_OWN_GARMENT',
+            invoiceNumber: 'CUSTOMER-OWN-GARMENT',
+            customerName: cogCustomerName.trim(),
+            customerPhone: cogCustomerPhone.trim(),
+            productName: cogGarmentName.trim(),
+            size: cogSize.trim() || 'Custom',
+            color: cogFabricColor.trim() || 'Standard',
+            serviceType: cogServiceType || 'Custom Tailoring',
+            gender: cogGender || 'Gents',
+            tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+            priority: altPriority || 'Normal',
+            status: "Pending",
+            deliveryDate: altDeliveryDate,
+            trialDate: altTrialDate,
+            alterationDetails: effectiveDetails,
+            customAlterationText: altCustomText,
+            specialInstructions: altCustomText || effectiveDetails.join(', '),
+            measurements: altMeasurements,
+            createdAt: new Date().toISOString()
+          };
+
+          if (onAddNotification) {
+            onAddNotification("Custom Tailoring Ticket Saved", `Ticket ${ticketSlipObj.alterationId} assigned & generated successfully.`, "success");
+          }
+
+          setShowCreateAltModal(false);
+          fetchAlterations();
+          fetchPendingAlterations();
+          setSelectedJobTicket(ticketSlipObj);
+        } else {
+          if (onAddNotification) {
+            onAddNotification("Error", data.message || "Failed to create custom tailoring ticket.", "danger");
+          }
+        }
+      } catch (err) {
+        console.error("Save custom tailoring error:", err);
+        if (onAddNotification) {
+          onAddNotification("Error", "Network or server failure.", "danger");
+        }
+      }
+      return;
+    }
+
+    // MODE 2: SHOWROOM PURCHASE (FROM BILLING)
     if (!selectedAltInvoice || !selectedAltItem) {
       if (onAddNotification) onAddNotification("Error", "Please select an invoice and item first.", "danger");
       return;
@@ -806,6 +938,7 @@ export const ArticulationView = ({
         : [selectedAltItem.serviceType || "Standard Service"]);
 
     const payload = {
+      sourceType: 'SHOWROOM_PURCHASE',
       invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber || selectedAltInvoice._id,
       invoiceId: selectedAltInvoice._id,
       saleBillId: selectedAltInvoice._id,
@@ -831,8 +964,11 @@ export const ArticulationView = ({
       customAlterationText: altCustomText,
       specialInstructions: altCustomText || effectiveDetails.join(', '),
       measurements: altMeasurements,
+      saveAsMaster: showroomSaveAsMaster,
+      garmentType: showroomGarmentType,
       charge: Number(altCharges || 0),
       items: [{
+        sourceType: 'SHOWROOM_PURCHASE',
         barcode: selectedAltItem.barcode || selectedAltItem.sku || selectedAltItem.uniqueCode,
         inventoryPieceId: selectedAltItem.inventoryPieceId || selectedAltItem._id,
         pieceName: selectedAltItem.productName || selectedAltItem.name,
@@ -867,6 +1003,7 @@ export const ArticulationView = ({
         const ticketSlipObj = {
           _id: createdAlt._id || `alt-${Date.now()}`,
           alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+          sourceType: 'SHOWROOM_PURCHASE',
           invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber,
           invoiceId: selectedAltInvoice._id,
           customerName: selectedAltInvoice.customerName || 'Walk-in Customer',
@@ -1095,7 +1232,8 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
-          <b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>
+          <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
+          ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
           <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
           <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone})
         </div>
@@ -1172,7 +1310,8 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
-          <b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>
+          <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
+          ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
           <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
           <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone || 'N/A'})
         </div>
@@ -2374,15 +2513,24 @@ export const ArticulationView = ({
                     setAltTrialDate(trial.toISOString().split('T')[0]);
 
                     // Reset states & show modal
+                    setAltCreationMode("SHOWROOM_PURCHASE");
+                    setCogCustomerName("");
+                    setCogCustomerPhone("");
+                    setCogGarmentName("");
+                    setCogFabricColor("");
+                    setCogSize("M");
+                    setCogGender("Gents");
+                    setCogServiceType("Custom Tailoring");
                     setSelectedAltInvoice(null);
                     setSelectedAltItem(null);
                     setAltInvoiceSearch("");
                     setAltInvoices([]);
-                    setAltTailorName("");
+                    setAltTailorName(tailorOptions[0] || "");
                     setAltPriority("Normal");
                     setAltDetails([]);
                     setAltCustomText("");
                     setAltMeasurements({});
+                    setAltCharges(0);
                     setShowCreateAltModal(true);
                   }}
                   className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
@@ -2400,36 +2548,70 @@ export const ArticulationView = ({
               </div>
             </div>
 
-            {/* GENDER & STATUS FILTER BAR */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs font-sans">
-              {/* Category Filter Pills: All | Gents | Ladies */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
-                <span className="text-[10px] font-black uppercase text-slate-500 px-2 tracking-wider">Category:</span>
-                {["All", "Gents", "Ladies"].map((g) => {
-                  const isAct = altGenderFilter === g;
-                  const count = g === "All"
-                    ? alterationRecords.length
-                    : alterationRecords.filter(a => (a.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(a.productName || '') ? 'Ladies' : 'Gents')) === g).length;
-                  return (
-                    <button
-                      key={g}
-                      onClick={() => setAltGenderFilter(g)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isAct
-                          ? (g === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : g === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs')
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
-                      }`}
-                    >
-                      {g === 'Gents' && <span>👨</span>}
-                      {g === 'Ladies' && <span>👩</span>}
-                      <span>{g} ({count})</span>
-                    </button>
-                  );
-                })}
+            {/* SOURCE, GENDER & STATUS FILTER BAR */}
+            <div className="flex flex-col gap-2.5 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs font-sans">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Source Filter: ALL | ALTERATION FROM BILLING (SHOWROOM PURCHASE) | CUSTOMER OWN GARMENT */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-black uppercase text-slate-500 px-2 tracking-wider">Source:</span>
+                  {[
+                    { id: "All", label: "All Tickets" },
+                    { id: "SHOWROOM_PURCHASE", label: "🏪 Alteration from Billing (Showroom Purchase)" },
+                    { id: "CUSTOMER_OWN_GARMENT", label: "🧵 Customer Own Garment" }
+                  ].map((src) => {
+                    const isAct = altSourceFilter === src.id;
+                    const count = src.id === "All"
+                      ? alterationRecords.length
+                      : alterationRecords.filter(a => (a.sourceType || 'SHOWROOM_PURCHASE') === src.id).length;
+                    return (
+                      <button
+                        key={src.id}
+                        onClick={() => setAltSourceFilter(src.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isAct
+                            ? (src.id === 'CUSTOMER_OWN_GARMENT'
+                                ? 'bg-emerald-700 text-white shadow-xs'
+                                : src.id === 'SHOWROOM_PURCHASE'
+                                  ? 'bg-indigo-700 text-white shadow-xs'
+                                  : 'bg-slate-900 text-white shadow-xs')
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                        }`}
+                      >
+                        <span>{src.label} ({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Category Filter Pills: All | Gents | Ladies */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-black uppercase text-slate-500 px-2 tracking-wider">Category:</span>
+                  {["All", "Gents", "Ladies"].map((g) => {
+                    const isAct = altGenderFilter === g;
+                    const count = g === "All"
+                      ? alterationRecords.length
+                      : alterationRecords.filter(a => (a.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(a.productName || '') ? 'Ladies' : 'Gents')) === g).length;
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => setAltGenderFilter(g)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isAct
+                            ? (g === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : g === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs')
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                        }`}
+                      >
+                        {g === 'Gents' && <span>👨</span>}
+                        {g === 'Ladies' && <span>👩</span>}
+                        <span>{g} ({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Status Filter Pills */}
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 border-t border-slate-100 pt-2">
                 {["All", "Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map((st) => {
                   const count = st === "All" ? alterationRecords.length : alterationRecords.filter(a => a.status === st).length;
                   return (
@@ -2453,7 +2635,7 @@ export const ArticulationView = ({
                     <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
                       <th className="p-3.5 w-24">Ticket #</th>
                       <th className="p-3.5 w-16">Alt Seq</th>
-                      <th className="p-3.5 w-28">Invoice No</th>
+                      <th className="p-3.5 w-28">Invoice No / Source</th>
                       <th className="p-3.5">Customer</th>
                       <th className="p-3.5">Product / Garment</th>
                       <th className="p-3.5 w-24">Master Tailor</th>
@@ -2469,6 +2651,10 @@ export const ArticulationView = ({
                       .filter(a => {
                         const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
                         if (!matchesStatus) return false;
+
+                        const aSource = a.sourceType || 'SHOWROOM_PURCHASE';
+                        const matchesSource = altSourceFilter === "All" || aSource === altSourceFilter;
+                        if (!matchesSource) return false;
 
                         const aGender = a.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(a.productName || '') ? 'Ladies' : 'Gents');
                         const matchesGender = altGenderFilter === "All" || aGender === altGenderFilter;
@@ -2509,7 +2695,10 @@ export const ArticulationView = ({
                           (a.sku || "").toLowerCase().includes(q) ||
                           (a.uniqueCode || "").toLowerCase().includes(q) ||
                           (a.barcode || "").toLowerCase().includes(q) ||
-                          (a.tailorName || "").toLowerCase().includes(q)
+                          (a.tailorName || "").toLowerCase().includes(q) ||
+                          (a.sourceType || "").toLowerCase().includes(q) ||
+                          (a.garmentDescription || "").toLowerCase().includes(q) ||
+                          (a.fabricDetails || "").toLowerCase().includes(q)
                         );
                       })
                       .map((alt) => {
@@ -2539,15 +2728,27 @@ export const ArticulationView = ({
                               {alt.alterationSequence}
                             </td>
                             <td className="p-2 whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenInvoicePreview(alt.invoiceNumber || alt.invoiceId, alt.saleBillId)}
-                                className="font-mono font-bold text-indigo-600 hover:text-indigo-900 hover:underline bg-indigo-50/70 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-100 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[10px]"
-                                title="Click to view full Invoice Receipt"
-                              >
-                                <FileText className="w-3 h-3 text-indigo-500" />
-                                <span>{alt.invoiceNumber || alt.invoiceId}</span>
-                              </button>
+                              {alt.sourceType === 'CUSTOMER_OWN_GARMENT' ? (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-black tracking-tight shadow-2xs">
+                                    🧵 Customer Own Garment
+                                  </span>
+                                  <span className="text-[9px] font-semibold text-emerald-600">Custom Tailoring</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Showroom Purchase</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenInvoicePreview(alt.invoiceNumber || alt.invoiceId, alt.saleBillId)}
+                                    className="font-mono font-bold text-indigo-600 hover:text-indigo-900 hover:underline bg-indigo-50/70 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-100 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[10px]"
+                                    title="Click to view full Invoice Receipt"
+                                  >
+                                    <FileText className="w-3 h-3 text-indigo-500" />
+                                    <span>{alt.invoiceNumber || alt.invoiceId}</span>
+                                  </button>
+                                </div>
+                              )}
                             </td>
                             <td className="p-3.5">
                               <p className="font-extrabold text-slate-800">{alt.customerName}</p>
@@ -2567,9 +2768,18 @@ export const ArticulationView = ({
                                       }`}>
                                         {altGender}
                                       </span>
+                                      {alt.sourceType === 'CUSTOMER_OWN_GARMENT' && (
+                                        <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                          Customer Own
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                      SKU: {alt.sku} | Size: {alt.size} / {alt.color}
+                                      {alt.sourceType === 'CUSTOMER_OWN_GARMENT' ? (
+                                        <span>Fabric/Color: <strong className="text-slate-600">{alt.color || 'Standard'}</strong> | Size: <strong className="text-slate-600">{alt.size || 'Custom'}</strong></span>
+                                      ) : (
+                                        <span>SKU: {alt.sku} | Size: {alt.size} / {alt.color}</span>
+                                      )}
                                     </p>
                                   </>
                                 );
@@ -2612,7 +2822,7 @@ export const ArticulationView = ({
                                   ))
                                 )}
                                 {mKeys.length > 0 ? (
-                                  <div className="flex items-center gap-1 flex-wrap">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="text-[10px] font-mono text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
                                       {mKeys.slice(0, 4).map(k => `${k}: ${alt.measurements[k]}"`).join(', ')}
                                       {mKeys.length > 4 && ` +${mKeys.length - 4} more`}
@@ -2625,16 +2835,34 @@ export const ArticulationView = ({
                                     >
                                       Edit
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCustomerHistory(alt.customerPhone, alt.customerId, alt.customerName)}
+                                      className="text-[10px] text-slate-500 hover:text-slate-800 font-bold cursor-pointer"
+                                      title="View Customer Measurement History"
+                                    >
+                                      History
+                                    </button>
                                   </div>
                                 ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenMeasurementModal(alt, false)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 hover:border-amber-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-2xs hover:shadow-xs cursor-pointer mt-1"
-                                  >
-                                    <Ruler className="w-3 h-3 text-amber-600" />
-                                    <span>+ Add Measurements</span>
-                                  </button>
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenMeasurementModal(alt, false)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 hover:border-amber-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+                                    >
+                                      <Ruler className="w-3 h-3 text-amber-600" />
+                                      <span>+ Add Measurements</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCustomerHistory(alt.customerPhone, alt.customerId, alt.customerName)}
+                                      className="p-1 text-slate-400 hover:text-slate-700 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                                      title="View Customer Measurement History"
+                                    >
+                                      <History className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 )}
                                 {alt.specialInstructions && alt.specialInstructions !== 'Custom Fitting' && alt.specialInstructions !== 'Standard Service' && (
                                   <span className="text-[10px] text-slate-400 italic" title={alt.specialInstructions}>
@@ -3239,8 +3467,13 @@ export const ArticulationView = ({
                 <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
               </div>
               <div>
-                <span>Target Invoice: <strong>{selectedJobTicket.invoiceNumber || selectedJobTicket.invoiceId}</strong></span>
+                <span>Source: <strong className={selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'text-emerald-700' : 'text-indigo-700'}>{selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? '🧵 Customer Own Garment / Fabric' : '🏪 Showroom Purchase (Billing)'}</strong></span>
               </div>
+              {selectedJobTicket.sourceType !== 'CUSTOMER_OWN_GARMENT' && selectedJobTicket.invoiceNumber && selectedJobTicket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' && (
+                <div>
+                  <span>Target Invoice: <strong>{selectedJobTicket.invoiceNumber || selectedJobTicket.invoiceId}</strong></span>
+                </div>
+              )}
               <div className="flex flex-col gap-0.5">
                 <span>Customer: <strong>{selectedJobTicket.customerName}</strong></span>
                 <span>Mobile: {selectedJobTicket.customerPhone}</span>
@@ -3487,7 +3720,7 @@ export const ArticulationView = ({
               <div className="flex items-center gap-2">
                 <Scissors className="w-5 h-5 text-rose-600 animate-pulse" />
                 <h3 className="text-sm font-black uppercase tracking-wide">
-                  New Alteration Request
+                  New Alteration / Tailoring Ticket
                 </h3>
               </div>
               <button
@@ -3498,199 +3731,165 @@ export const ArticulationView = ({
               </button>
             </div>
 
-            {/* Step 1: Select Invoice */}
-            {!selectedAltInvoice && (
-              <div className="space-y-4">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Search Target Invoice</label>
-                  <div className="flex gap-2">
+            {/* Top Mode Selection: Showroom Purchase vs Customer Own Garment */}
+            <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setAltCreationMode("SHOWROOM_PURCHASE")}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  altCreationMode === "SHOWROOM_PURCHASE"
+                    ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>🏪 Showroom Purchase (Existing Bill)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAltCreationMode("CUSTOMER_OWN_GARMENT")}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  altCreationMode === "CUSTOMER_OWN_GARMENT"
+                    ? "bg-rose-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>🧵 Customer Own Garment / Fabric (Custom Tailoring)</span>
+              </button>
+            </div>
+
+            {/* OPTION 1: CUSTOMER OWN GARMENT / FABRIC FORM */}
+            {altCreationMode === "CUSTOMER_OWN_GARMENT" && (
+              <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1 font-sans">
+                {/* Notice Banner */}
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-emerald-900">
+                  <span className="text-base">🧵</span>
+                  <div>
+                    <p className="font-extrabold">Custom Tailoring — Customer Own Garment / Fabric</p>
+                    <p className="text-[11px] text-emerald-700">Customer brings their own garment or fabric for tailoring/alteration. No showroom billing invoice needed.</p>
+                  </div>
+                </div>
+
+                {/* Customer Details Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Customer Name *</label>
                     <input
                       type="text"
-                      placeholder="Enter Invoice Number, Customer Name or Phone..."
-                      value={altInvoiceSearch}
-                      onChange={(e) => setAltInvoiceSearch(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleSearchAltInvoices(); }}
-                      className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                      required
+                      placeholder="e.g. Rajesh Sharma"
+                      value={cogCustomerName}
+                      onChange={(e) => setCogCustomerName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
                     />
-                    <button
-                      onClick={handleSearchAltInvoices}
-                      disabled={searchingAltInvoices}
-                      className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Customer Phone / Mobile *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 9876543210"
+                      value={cogCustomerPhone}
+                      onChange={(e) => setCogCustomerPhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Garment / Fabric Details Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Garment / Fabric Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Linen Kurta, Safari Suit, Blouse"
+                      value={cogGarmentName}
+                      onChange={(e) => setCogGarmentName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Fabric / Color / Material</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Navy Blue Raw Silk, Cotton White"
+                      value={cogFabricColor}
+                      onChange={(e) => setCogFabricColor(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Size / Approximate Fit</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 40, XL, Custom, Free Size"
+                      value={cogSize}
+                      onChange={(e) => setCogSize(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Gender & Service Selection Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Category / Gender *</label>
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setCogGender("Gents")}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          cogGender === "Gents" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <span>👨 Gents</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCogGender("Ladies")}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          cogGender === "Ladies" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <span>👩 Ladies</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Service Type</label>
+                    <select
+                      value={cogServiceType}
+                      onChange={(e) => setCogServiceType(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-rose-500 outline-none"
                     >
-                      {searchingAltInvoices ? 'Searching...' : 'Search'}
-                    </button>
+                      <option value="Custom Tailoring">Custom Tailoring</option>
+                      <option value="Alteration">Alteration</option>
+                      <option value="Full Stitching">Full Stitching</option>
+                      <option value="Fitting & Hemming">Fitting & Hemming</option>
+                      <option value="Repairs / Redesign">Repairs / Redesign</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Tailoring Charge (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={altCharges}
+                      onChange={(e) => setAltCharges(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-rose-500 outline-none"
+                    />
                   </div>
                 </div>
 
-                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
-                  {altInvoices.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400">
-                      No invoices searched yet or no results found.
-                    </div>
-                  ) : (
-                    altInvoices.map((inv) => (
-                      <div
-                        key={inv._id}
-                        onClick={() => {
-                          setSelectedAltInvoice(inv);
-                          setSelectedAltItem(null);
-                        }}
-                        className="p-3.5 hover:bg-rose-50/50 cursor-pointer transition-colors flex justify-between items-center text-xs"
-                      >
-                        <div>
-                          <p className="font-extrabold text-slate-800">{inv.invoiceNo}</p>
-                          <p className="text-slate-500">{inv.customerName} · {inv.customerPhone}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-slate-800">₹{(inv.grandTotal || 0).toLocaleString('en-IN')}</p>
-                          <p className="text-[10px] text-slate-400">{new Date(inv.createdAt).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Select Item from Invoice */}
-            {selectedAltInvoice && !selectedAltItem && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-xs">
-                  <div>
-                    <p className="font-extrabold text-slate-800">Selected Invoice: {selectedAltInvoice.invoiceNo}</p>
-                    <p className="text-slate-500">{selectedAltInvoice.customerName} · {selectedAltInvoice.customerPhone}</p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedAltInvoice(null)}
-                    className="text-xs text-rose-600 font-bold hover:underline"
-                  >
-                    Change Invoice
-                  </button>
-                </div>
-
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Select Garment to Alter</h4>
-                <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto">
-                  {selectedAltInvoice.items && selectedAltInvoice.items.length > 0 ? (
-                    selectedAltInvoice.items.map((item, idx) => (
-                      <div
-                        key={item._id || idx}
-                        onClick={() => {
-                          setSelectedAltItem(item);
-                          // Populate default measurements if possible
-                          setAltMeasurements({
-                            Chest: "",
-                            Waist: "",
-                            Shoulder: "",
-                            Sleeve: "",
-                            Length: ""
-                          });
-                        }}
-                        className="p-3 border border-slate-200 hover:border-rose-300 hover:bg-rose-50/20 rounded-xl cursor-pointer transition-all flex justify-between items-center text-xs"
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-bold text-slate-800">{item.name}</p>
-                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${
-                              (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                                ? 'bg-pink-100 text-pink-700 border-pink-300'
-                                : 'bg-blue-100 text-blue-700 border-blue-300'
-                            }`}>
-                              {item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-400">SKU: {item.sku || '-'} · Qty: {item.quantity}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold">
-                            {item.size || 'N/A'} / {item.color || 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-slate-400">No items found in this invoice.</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Complete Alteration details */}
-            {selectedAltInvoice && selectedAltItem && (
-              <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                {/* Selected Info Summary Header */}
-                <div className="flex justify-between items-start bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
-                      
-                      {/* Option of Gents / Ladies in front of product for Alteration / Garment */}
-                      <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
-                        <span className="text-[10px] font-black uppercase text-slate-400 px-1">Gender:</span>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Gents' }))}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                            (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Gents'
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          <span>👨 Gents</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Ladies' }))}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                            (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                              ? 'bg-rose-600 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          <span>👩 Ladies</span>
-                        </button>
-                      </div>
-
-                      {/* Service Type Badge with Gents / Ladies under Alteration */}
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] font-black uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          {selectedAltItem.serviceType || 'Alteration'}
-                        </span>
-                        <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
-                          (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                            ? 'bg-pink-50 text-pink-700 border-pink-200'
-                            : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}>
-                          {selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs font-mono font-bold text-indigo-700 mt-0.5">
-                      Barcode: <span className="text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200">{selectedAltItem.barcode || selectedAltItem.sku || 'N/A'}</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Invoice: <span className="font-bold text-slate-800">{selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber}</span> · Customer: <span className="font-bold text-slate-800">{selectedAltInvoice.customerName}</span> ({selectedAltInvoice.customerPhone || 'N/A'})
-                    </p>
-                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                      Size: <span className="font-bold text-slate-600">{selectedAltItem.size || 'M'}</span> | Color: <span className="font-bold text-slate-600">{selectedAltItem.color || 'Standard'}</span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedAltItem(null);
-                      setSelectedAltInvoice(null);
-                    }}
-                    className="text-xs text-rose-600 font-bold hover:underline shrink-0"
-                  >
-                    Change Garment
-                  </button>
-                </div>
-
-                {/* Alteration Details Selection */}
+                {/* Alteration & Work Checkboxes */}
                 <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Alteration Details (Select all that apply)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Services / Alteration Details (Select all that apply)</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {[
+                      "Custom Stitching",
                       "Sleeve Shortening",
                       "Sleeve Lengthening",
                       "Waist Fitting",
@@ -3724,9 +3923,9 @@ export const ArticulationView = ({
 
                 {/* Custom Note */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Custom Alteration Note / Instructions</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Special Instructions / Custom Notes</label>
                   <textarea
-                    placeholder="Enter any custom measurements, specifications or instructions..."
+                    placeholder="Enter any specific customer requirements, fabric notes, lining, stitching style..."
                     value={altCustomText}
                     onChange={(e) => setAltCustomText(e.target.value)}
                     className="w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition-all text-xs"
@@ -3787,23 +3986,32 @@ export const ArticulationView = ({
                   </div>
                 </div>
 
-                {/* Measurements Inputs */}
-                <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Alteration Measurements (Inches)</label>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                    {["Chest", "Waist", "Shoulder", "Sleeve", "Length", "Neck", "Hip", "Thigh", "Bottom"].map((m) => (
-                      <div key={m} className="space-y-0.5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase">{m}</label>
-                        <input
-                          type="text"
-                          placeholder='-'
-                          value={altMeasurements[m] || ""}
-                          onChange={(e) => setAltMeasurements({ ...altMeasurements, [m]: e.target.value })}
-                          className="w-full border border-slate-200 rounded-lg p-2 text-center text-xs font-bold focus:ring-1 focus:ring-rose-500 outline-none"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                {/* Tailoring Garment Measurements */}
+                <div className="border-t border-slate-100 pt-3">
+                  <GarmentMeasurementSection
+                    gender={cogGender}
+                    onGenderChange={setCogGender}
+                    garmentType={cogGarmentType}
+                    onGarmentChange={(g) => {
+                      setCogGarmentType(g);
+                      if (!cogGarmentName || cogGarmentName.trim() === "" || Object.keys(GENTS_GARMENTS_CONFIG).concat(Object.keys(LADIES_GARMENTS_CONFIG)).includes(cogGarmentName)) {
+                        setCogGarmentName(g);
+                      }
+                    }}
+                    measurements={altMeasurements}
+                    onChange={setAltMeasurements}
+                    customerPhone={cogCustomerPhone}
+                    customerName={cogCustomerName || "Customer"}
+                    saveAsMaster={cogSaveAsMaster}
+                    onSaveAsMasterChange={setCogSaveAsMaster}
+                    onOpenHistory={() => handleOpenCustomerHistory(
+                      cogCustomerPhone,
+                      null,
+                      cogCustomerName || "Customer"
+                    )}
+                    allowGenderSwitch={false}
+                    themeColor="rose"
+                  />
                 </div>
 
                 {/* Action Buttons */}
@@ -3820,10 +4028,347 @@ export const ArticulationView = ({
                     className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
-                    <span>Save Alteration Ticket</span>
+                    <span>Save Custom Tailoring Ticket</span>
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* OPTION 2: SHOWROOM PURCHASE (FROM BILLING) */}
+            {altCreationMode === "SHOWROOM_PURCHASE" && (
+              <>
+                {/* Step 1: Select Invoice */}
+                {!selectedAltInvoice && (
+                  <div className="space-y-4">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Search Target Invoice</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Enter Invoice Number, Customer Name or Phone..."
+                          value={altInvoiceSearch}
+                          onChange={(e) => setAltInvoiceSearch(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleSearchAltInvoices(); }}
+                          className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                        />
+                        <button
+                          onClick={handleSearchAltInvoices}
+                          disabled={searchingAltInvoices}
+                          className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {searchingAltInvoices ? 'Searching...' : 'Search'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
+                      {altInvoices.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-slate-400">
+                          No invoices searched yet or no results found.
+                        </div>
+                      ) : (
+                        altInvoices.map((inv) => (
+                          <div
+                            key={inv._id}
+                            onClick={() => {
+                              setSelectedAltInvoice(inv);
+                              setSelectedAltItem(null);
+                            }}
+                            className="p-3.5 hover:bg-rose-50/50 cursor-pointer transition-colors flex justify-between items-center text-xs"
+                          >
+                            <div>
+                              <p className="font-extrabold text-slate-800">{inv.invoiceNo}</p>
+                              <p className="text-slate-500">{inv.customerName} · {inv.customerPhone}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-slate-800">₹{(inv.grandTotal || 0).toLocaleString('en-IN')}</p>
+                              <p className="text-[10px] text-slate-400">{new Date(inv.createdAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Select Item from Invoice */}
+                {selectedAltInvoice && !selectedAltItem && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-xs">
+                      <div>
+                        <p className="font-extrabold text-slate-800">Selected Invoice: {selectedAltInvoice.invoiceNo}</p>
+                        <p className="text-slate-500">{selectedAltInvoice.customerName} · {selectedAltInvoice.customerPhone}</p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedAltInvoice(null)}
+                        className="text-xs text-rose-600 font-bold hover:underline"
+                      >
+                        Change Invoice
+                      </button>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Select Garment to Alter</h4>
+                    <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto">
+                      {selectedAltInvoice.items && selectedAltInvoice.items.length > 0 ? (
+                        selectedAltInvoice.items.map((item, idx) => (
+                          <div
+                            key={item._id || idx}
+                            onClick={() => {
+                              setSelectedAltItem(item);
+                              // Populate default measurements if possible
+                              setAltMeasurements({
+                                Chest: "",
+                                Waist: "",
+                                Shoulder: "",
+                                Sleeve: "",
+                                Length: ""
+                              });
+                            }}
+                            className="p-3 border border-slate-200 hover:border-rose-300 hover:bg-rose-50/20 rounded-xl cursor-pointer transition-all flex justify-between items-center text-xs"
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-bold text-slate-800">{item.name}</p>
+                                <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${
+                                  (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                                    ? 'bg-pink-100 text-pink-700 border-pink-300'
+                                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                                }`}>
+                                  {item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400">SKU: {item.sku || '-'} · Qty: {item.quantity}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold">
+                                {item.size || 'N/A'} / {item.color || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-slate-400">No items found in this invoice.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Complete Alteration details */}
+                {selectedAltInvoice && selectedAltItem && (
+                  <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                    {/* Selected Info Summary Header */}
+                    <div className="flex justify-between items-start bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
+                          
+                          {/* Option of Gents / Ladies in front of product for Alteration / Garment */}
+                          <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
+                            <span className="text-[10px] font-black uppercase text-slate-400 px-1">Gender:</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Gents' }))}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                                (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Gents'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              <span>👨 Gents</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Ladies' }))}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                                (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                                  ? 'bg-rose-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              <span>👩 Ladies</span>
+                            </button>
+                          </div>
+
+                          {/* Service Type Badge with Gents / Ladies under Alteration */}
+                          <div className="flex flex-col items-center">
+                            <span className="text-[10px] font-black uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              {selectedAltItem.serviceType || 'Alteration'}
+                            </span>
+                            <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
+                              (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                                ? 'bg-pink-50 text-pink-700 border-pink-200'
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}>
+                              {selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs font-mono font-bold text-indigo-700 mt-0.5">
+                          Barcode: <span className="text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200">{selectedAltItem.barcode || selectedAltItem.sku || 'N/A'}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Invoice: <span className="font-bold text-slate-800">{selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber}</span> · Customer: <span className="font-bold text-slate-800">{selectedAltInvoice.customerName}</span> ({selectedAltInvoice.customerPhone || 'N/A'})
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          Size: <span className="font-bold text-slate-600">{selectedAltItem.size || 'M'}</span> | Color: <span className="font-bold text-slate-600">{selectedAltItem.color || 'Standard'}</span>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAltItem(null);
+                          setSelectedAltInvoice(null);
+                        }}
+                        className="text-xs text-rose-600 font-bold hover:underline shrink-0"
+                      >
+                        Change Garment
+                      </button>
+                    </div>
+
+                    {/* Alteration Details Selection */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Alteration Details (Select all that apply)</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          "Sleeve Shortening",
+                          "Sleeve Lengthening",
+                          "Waist Fitting",
+                          "Shoulder Fitting",
+                          "Bottom Hemming",
+                          "Length Shortening",
+                          "Chest Fitting",
+                          "Neck Alteration"
+                        ].map((detail) => (
+                          <label
+                            key={detail}
+                            className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${altDetails.includes(detail) ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={altDetails.includes(detail)}
+                              onChange={() => {
+                                if (altDetails.includes(detail)) {
+                                  setAltDetails(altDetails.filter(d => d !== detail));
+                                } else {
+                                  setAltDetails([...altDetails, detail]);
+                                }
+                              }}
+                              className="sr-only"
+                            />
+                            {detail}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom Note */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Custom Alteration Note / Instructions</label>
+                      <textarea
+                        placeholder="Enter any custom measurements, specifications or instructions..."
+                        value={altCustomText}
+                        onChange={(e) => setAltCustomText(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition-all text-xs"
+                        rows="2"
+                      />
+                    </div>
+
+                    {/* Grid for Tailor, Priority, Dates */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Assign Master Tailor</label>
+                        <select
+                          value={altTailorName}
+                          onChange={(e) => setAltTailorName(e.target.value)}
+                          required
+                          className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                        >
+                          <option value="">Select Master Tailor</option>
+                          {tailorOptions.map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Ticket Priority</label>
+                        <select
+                          value={altPriority}
+                          onChange={(e) => setAltPriority(e.target.value)}
+                          className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                        >
+                          <option value="Normal">Normal (3 Days)</option>
+                          <option value="Urgent">Urgent (24 Hours)</option>
+                          <option value="Express">Express (Same Day)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Expected Trial Date</label>
+                        <input
+                          type="date"
+                          value={altTrialDate}
+                          onChange={(e) => setAltTrialDate(e.target.value)}
+                          required
+                          className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Expected Delivery Date</label>
+                        <input
+                          type="date"
+                          value={altDeliveryDate}
+                          onChange={(e) => setAltDeliveryDate(e.target.value)}
+                          required
+                          className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Measurements Section */}
+                    <div className="border-t border-slate-100 pt-3">
+                      <GarmentMeasurementSection
+                        gender={selectedAltItem?.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem?.productName || selectedAltItem?.name || '') ? 'Ladies' : 'Gents')}
+                        garmentType={showroomGarmentType}
+                        onGarmentChange={setShowroomGarmentType}
+                        measurements={altMeasurements}
+                        onChange={setAltMeasurements}
+                        customerPhone={selectedAltInvoice?.customerPhone}
+                        customerId={selectedAltInvoice?.customerId?._id || selectedAltInvoice?.customerId}
+                        customerName={selectedAltInvoice?.customerName || "Customer"}
+                        saveAsMaster={showroomSaveAsMaster}
+                        onSaveAsMasterChange={setShowroomSaveAsMaster}
+                        onOpenHistory={() => handleOpenCustomerHistory(
+                          selectedAltInvoice?.customerPhone,
+                          selectedAltInvoice?.customerId?._id || selectedAltInvoice?.customerId,
+                          selectedAltInvoice?.customerName || "Customer"
+                        )}
+                        allowGenderSwitch={true}
+                        themeColor="rose"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2.5 border-t border-slate-100 pt-4 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateAltModal(false)}
+                        className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Save Alteration Ticket</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
             )}
 
           </div>
@@ -4114,7 +4659,7 @@ export const ArticulationView = ({
       {/* ============================================================================== */}
       {showMeasurementModal && editingMeasurementAlt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
 
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-200/70 flex items-center justify-between">
@@ -4131,26 +4676,44 @@ export const ArticulationView = ({
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMeasurementModal(false);
-                  setEditingMeasurementAlt(null);
-                }}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenCustomerHistory(
+                    editingMeasurementAlt.customerPhone,
+                    editingMeasurementAlt.customerId,
+                    editingMeasurementAlt.customerName
+                  )}
+                  className="px-3 py-1.5 bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer"
+                  title="View complete customer history"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>Customer History</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMeasurementModal(false);
+                    setEditingMeasurementAlt(null);
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
             <form onSubmit={handleSaveMeasurements} className="p-6 overflow-y-auto space-y-4">
 
               {/* Item Summary Info Box */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                 <div>
                   <span className="text-slate-400 font-bold block">Customer:</span>
-                  <span className="font-black text-slate-800">{editingMeasurementAlt.customerName} ({editingMeasurementAlt.customerPhone || 'N/A'})</span>
+                  <span className="font-black text-slate-800">{editingMeasurementAlt.customerName}</span>
+                  {editingMeasurementAlt.customerPhone && (
+                    <span className="text-[10px] text-slate-500 font-mono block">{editingMeasurementAlt.customerPhone}</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-slate-400 font-bold block">Invoice:</span>
@@ -4175,42 +4738,27 @@ export const ArticulationView = ({
                 </div>
               )}
 
-              {/* Measurements Input Grid */}
-              <div>
-                <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-2">
-                  Garment Fit Measurements (Inches)
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                  {[
-                    { key: "Chest", label: "Chest / Bust" },
-                    { key: "Waist", label: "Waist" },
-                    { key: "Length", label: "Length" },
-                    { key: "Shoulder", label: "Shoulder" },
-                    { key: "Sleeve", label: "Sleeve" },
-                    { key: "Neck", label: "Neck / Collar" },
-                    { key: "Hip", label: "Hip" },
-                    { key: "Thigh", label: "Thigh" },
-                    { key: "Bottom", label: "Bottom Hem" },
-                    { key: "Inseam", label: "Inseam" }
-                  ].map((m) => (
-                    <div key={m.key} className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 focus-within:border-amber-400 focus-within:bg-amber-50/20 transition-all">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        {m.label}
-                      </span>
-                      <div className="flex items-center">
-                        <input
-                          type="text"
-                          value={measurementForm[m.key] || ""}
-                          onChange={(e) => setMeasurementForm(prev => ({ ...prev, [m.key]: e.target.value }))}
-                          placeholder="e.g. 38"
-                          className="w-full bg-transparent text-sm font-black text-slate-900 outline-none font-mono"
-                        />
-                        <span className="text-[10px] font-bold text-slate-400 font-mono ml-1">in</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Enterprise Garment Measurement Section */}
+              <GarmentMeasurementSection
+                gender={modalMeasurementGender}
+                onGenderChange={setModalMeasurementGender}
+                garmentType={modalMeasurementGarment}
+                onGarmentChange={setModalMeasurementGarment}
+                measurements={measurementForm}
+                onChange={setMeasurementForm}
+                customerPhone={editingMeasurementAlt.customerPhone}
+                customerId={editingMeasurementAlt.customerId}
+                customerName={editingMeasurementAlt.customerName}
+                saveAsMaster={modalSaveAsMaster}
+                onSaveAsMasterChange={setModalSaveAsMaster}
+                onOpenHistory={() => handleOpenCustomerHistory(
+                  editingMeasurementAlt.customerPhone,
+                  editingMeasurementAlt.customerId,
+                  editingMeasurementAlt.customerName
+                )}
+                allowGenderSwitch={true}
+                themeColor="amber"
+              />
 
               {/* Footer Buttons */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -4537,6 +5085,28 @@ export const ArticulationView = ({
           </div>
         </div>
       )}
+
+      {/* ─── GLOBAL CUSTOMER MEASUREMENT HISTORY TIMELINE MODAL ─── */}
+      <MeasurementHistoryModal
+        isOpen={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        customerPhone={historyModalCustomer.phone}
+        customerId={historyModalCustomer.id}
+        customerName={historyModalCustomer.name}
+        onSelectMeasurements={(mObj, label) => {
+          if (showMeasurementModal) {
+            setMeasurementForm(prev => ({ ...prev, ...mObj }));
+            if (onAddNotification) {
+              onAddNotification("Measurements Loaded", `Loaded measurements from ${label}.`, "success");
+            }
+          } else if (showCreateAltModal) {
+            setAltMeasurements(prev => ({ ...prev, ...mObj }));
+            if (onAddNotification) {
+              onAddNotification("Measurements Loaded", `Loaded measurements from ${label}.`, "success");
+            }
+          }
+        }}
+      />
 
     </div>
   );
