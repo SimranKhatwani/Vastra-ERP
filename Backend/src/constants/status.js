@@ -57,8 +57,15 @@ const LEDGER_TYPE = {
 
 const ALTERATION_STATUS = {
   RECEIVED: 'Pending',
+  PENDING: 'Pending',
+  IN_CUTTING: 'In Cutting',
+  IN_STITCHING: 'In Stitching',
   IN_PROGRESS: 'In Progress',
+  IN_TRIAL: 'In Trial',
   READY_FOR_TRIAL: 'Ready for Trial',
+  RE_ALTERATION: 'Re-Alteration',
+  QUALITY_CHECK: 'Quality Check',
+  READY: 'Ready',
   READY_FOR_DELIVERY: 'Ready for Delivery',
   DELIVERED: 'Delivered',
   CANCELLED: 'Cancelled'

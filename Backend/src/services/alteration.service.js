@@ -520,12 +520,18 @@ class AlterationService {
       let nextPssmStatus = pssmItem.status;
       if (status === 'Pending' || status === 'PENDING_ASSIGNMENT') {
         nextPssmStatus = 'PENDING_ASSIGNMENT';
-      } else if (status === 'In Progress' || status === 'Assigned' || status === 'IN_PROGRESS' || status === 'ASSIGNED') {
+      } else if (['In Cutting', 'In Stitching', 'In Progress', 'Assigned', 'IN_PROGRESS', 'ASSIGNED'].includes(status)) {
         if (!hasMeas) {
-          throw new ApiError(400, 'Measurements are required before starting work (In Progress). Please enter measurements first.');
+          throw new ApiError(400, 'Measurements are required before starting work. Please enter measurements first.');
         }
-        nextPssmStatus = 'IN_PROGRESS';
-      } else if (status === 'Ready for Delivery' || status === 'Ready for Trial' || status === 'READY' || status === 'COMPLETED') {
+        nextPssmStatus = status === 'In Cutting' ? 'IN_CUTTING' : (status === 'In Stitching' ? 'IN_STITCHING' : 'IN_PROGRESS');
+      } else if (status === 'In Trial' || status === 'Ready for Trial') {
+        nextPssmStatus = 'IN_TRIAL';
+      } else if (status === 'Re-Alteration') {
+        nextPssmStatus = 'RE_ALTERATION';
+      } else if (status === 'Quality Check') {
+        nextPssmStatus = 'QUALITY_CHECK';
+      } else if (status === 'Ready' || status === 'Ready for Delivery' || status === 'READY' || status === 'COMPLETED') {
         nextPssmStatus = 'READY';
       } else if (status === 'Delivered' || status === 'COLLECTED' || status === 'DELIVERED') {
         nextPssmStatus = 'COLLECTED';
@@ -843,9 +849,14 @@ class AlterationService {
     const normalizeJobStatus = (s) => {
       if (!s) return 'PENDING';
       const str = String(s).toUpperCase().replace(/[-\s]/g, '_');
-      if (['READY', 'READY_FOR_DELIVERY', 'READY_FOR_TRIAL', 'READY_FOR_COLLECTION'].includes(str)) return 'READY';
+      if (['IN_CUTTING', 'CUTTING'].includes(str)) return 'IN_CUTTING';
+      if (['IN_STITCHING', 'STITCHING'].includes(str)) return 'IN_STITCHING';
+      if (['IN_TRIAL', 'TRIAL', 'READY_FOR_TRIAL'].includes(str)) return 'IN_TRIAL';
+      if (['RE_ALTERATION', 'REALTERATION', 'REWORK'].includes(str)) return 'RE_ALTERATION';
+      if (['QUALITY_CHECK', 'QC', 'QA'].includes(str)) return 'QUALITY_CHECK';
+      if (['READY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION'].includes(str)) return 'READY';
       if (['COLLECTED', 'DELIVERED', 'CLOSED', 'COMPLETED'].includes(str)) return 'DELIVERED';
-      if (['IN_PROGRESS', 'ASSIGNED', 'INPROGRESS'].includes(str)) return 'IN_PROGRESS';
+      if (['IN_PROGRESS', 'ASSIGNED', 'INPROGRESS'].includes(str)) return 'IN_STITCHING';
       return 'PENDING';
     };
 
@@ -915,18 +926,37 @@ class AlterationService {
              (job.expectedDeliveryDate && job.expectedDeliveryDate >= startDate && job.expectedDeliveryDate <= endDate);
     });
 
-    // Compute Summary KPIs:
-    const readyForDelivery = unifiedJobs.filter(j => j.status === 'READY').length;
-    const inProgress = unifiedJobs.filter(j => j.status === 'IN_PROGRESS').length;
-    const totalPending = unifiedJobs.filter(j => j.status === 'PENDING').length;
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
 
-    const delayedJobsCount = unifiedJobs.filter(j => {
+    // Compute the 11 Tailoring Dashboard Summary KPIs:
+    const todaysJobs = unifiedJobs.filter(j => j.createdAt >= todayStart && j.createdAt <= todayEnd).length;
+    const dueToday = unifiedJobs.filter(j => {
       if (!j.expectedDeliveryDate) return false;
-      return j.status !== 'DELIVERED' && j.status !== 'READY' && j.expectedDeliveryDate < now;
+      return j.status !== 'DELIVERED' && j.expectedDeliveryDate >= todayStart && j.expectedDeliveryDate <= todayEnd;
+    }).length;
+    const overdue = unifiedJobs.filter(j => {
+      if (!j.expectedDeliveryDate) return false;
+      return j.status !== 'DELIVERED' && j.status !== 'READY' && j.expectedDeliveryDate < todayStart;
     }).length;
 
-    const totalDelivered = unifiedJobs.filter(j => j.status === 'DELIVERED').length;
-    const totalCompleted = readyForDelivery + totalDelivered;
+    const pendingCount = unifiedJobs.filter(j => j.status === 'PENDING').length;
+    const inCuttingCount = unifiedJobs.filter(j => j.status === 'IN_CUTTING').length;
+    const inStitchingCount = unifiedJobs.filter(j => j.status === 'IN_STITCHING').length;
+    const inTrialCount = unifiedJobs.filter(j => j.status === 'IN_TRIAL').length;
+    const reAlterationCount = unifiedJobs.filter(j => j.status === 'RE_ALTERATION').length;
+    const qualityCheckCount = unifiedJobs.filter(j => j.status === 'QUALITY_CHECK').length;
+    const readyCount = unifiedJobs.filter(j => j.status === 'READY').length;
+    const deliveredCount = unifiedJobs.filter(j => j.status === 'DELIVERED').length;
+
+    const readyForDelivery = readyCount;
+    const inProgress = inCuttingCount + inStitchingCount;
+    const totalPending = pendingCount;
+    const delayedJobsCount = overdue;
+    const totalDelivered = deliveredCount;
+    const totalCompleted = readyCount + deliveredCount;
 
     const totalAlterations = filteredJobs.length > 0 ? filteredJobs.length : unifiedJobs.length;
     const completionRate = totalAlterations > 0 ? Math.round(((readyForDelivery + totalDelivered) / Math.max(1, totalAlterations)) * 100) : 0;
@@ -1042,10 +1072,7 @@ class AlterationService {
     const totalTypeCount = Object.values(typesCount).reduce((a, b) => a + b, 0);
 
     // ─── DELIVERY DASHBOARD CALCULATIONS ───
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    // todayStart & todayEnd already declared above
 
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
@@ -1200,13 +1227,23 @@ class AlterationService {
     return {
       summary: {
         totalAlterations,
+        todaysJobs,
+        dueToday,
+        overdue,
+        pending: pendingCount,
+        inCutting: inCuttingCount,
+        inStitching: inStitchingCount,
+        inTrial: inTrialCount,
+        reAlteration: reAlterationCount,
+        qualityCheck: qualityCheckCount,
+        ready: readyCount,
+        delivered: deliveredCount,
+        // Legacy / Backward compatibility
         readyForDelivery,
         inProgress,
         delayedJobsCount,
         completionRate: Math.min(100, completionRate),
-        pending: totalPending,
-        completed: totalCompleted,
-        delivered: totalDelivered
+        completed: totalCompleted
       },
       deliveryDashboard,
       tailorSummaries,

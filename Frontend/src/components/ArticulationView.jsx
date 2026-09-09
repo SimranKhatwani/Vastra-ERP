@@ -138,12 +138,13 @@ export const ArticulationView = ({
       color: "Royal Crimson",
       tailorName: "Master Ramesh Kumar",
       priority: "Urgent",
-      status: "Ready for Delivery",
+      status: "Ready",
       deliveryDate: new Date().toISOString().split('T')[0],
       trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
       alterationDetails: ["Sleeve Shortening", "Waist Fitting"],
       measurements: { Chest: "42", Waist: "36", Shoulder: "18.5", Sleeve: "24.5" },
-      createdBy: "Cashier"
+      createdBy: "Cashier",
+      createdAt: new Date().toISOString()
     },
     {
       _id: "alt-102",
@@ -156,12 +157,13 @@ export const ArticulationView = ({
       color: "Charcoal Gray",
       tailorName: "Ustad Imran Ansari",
       priority: "Normal",
-      status: "In Progress",
+      status: "In Stitching",
       deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
       trialDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
       alterationDetails: ["Shoulder Padding", "Length Adjustment"],
       measurements: { Chest: "40", Waist: "34", Shoulder: "17.5", Sleeve: "25" },
-      createdBy: "Admin"
+      createdBy: "Admin",
+      createdAt: new Date().toISOString()
     },
     {
       _id: "alt-103",
@@ -174,12 +176,13 @@ export const ArticulationView = ({
       color: "Classic White",
       tailorName: "Darzi Amit Saxena",
       priority: "Express",
-      status: "In Progress",
-      deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      status: "In Cutting",
+      deliveryDate: new Date().toISOString().split('T')[0],
       trialDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
       alterationDetails: ["Side Slit Fitting", "Collar Adjustment"],
       measurements: { Chest: "38", Waist: "32", Shoulder: "17", Sleeve: "24" },
-      createdBy: "Cashier"
+      createdBy: "Cashier",
+      createdAt: new Date().toISOString()
     },
     {
       _id: "alt-104",
@@ -197,7 +200,8 @@ export const ArticulationView = ({
       trialDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
       alterationDetails: ["Bottom Hemming", "Thigh Fitting"],
       measurements: { Waist: "32", Length: "40", Thigh: "23", Bottom: "15" },
-      createdBy: "Cashier"
+      createdBy: "Cashier",
+      createdAt: new Date().toISOString()
     },
     {
       _id: "alt-105",
@@ -210,12 +214,13 @@ export const ArticulationView = ({
       color: "Emerald Green",
       tailorName: "Master Ramesh Kumar",
       priority: "Urgent",
-      status: "Ready for Delivery",
-      deliveryDate: new Date().toISOString().split('T')[0],
-      trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      status: "In Trial",
+      deliveryDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      trialDate: new Date().toISOString().split('T')[0],
       alterationDetails: ["Bust Fitting", "Drape Stitching"],
       measurements: { Bust: "36", Waist: "30", Length: "52" },
-      createdBy: "Admin"
+      createdBy: "Admin",
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
     },
     {
       _id: "alt-106",
@@ -233,7 +238,46 @@ export const ArticulationView = ({
       trialDate: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
       alterationDetails: ["Lapel Ironing", "Waistcoat Fitting"],
       measurements: { Chest: "42", Waist: "36", Shoulder: "18.5" },
-      createdBy: "Cashier"
+      createdBy: "Cashier",
+      createdAt: new Date(Date.now() - 86400000 * 5).toISOString()
+    },
+    {
+      _id: "alt-107",
+      alterationId: "ALT-2026-107",
+      invoiceNumber: "INV-2026-8807",
+      customerName: "Sameer Joshi",
+      customerPhone: "9845612378",
+      productName: "Bandhgala Velvet Jodhpuri",
+      size: "40",
+      color: "Midnight Navy",
+      tailorName: "Master Ramesh Kumar",
+      priority: "Urgent",
+      status: "Re-Alteration",
+      deliveryDate: new Date().toISOString().split('T')[0],
+      trialDate: new Date().toISOString().split('T')[0],
+      alterationDetails: ["Armhole Loosening", "Chest Reshaping"],
+      measurements: { Chest: "40", Waist: "35", Shoulder: "18" },
+      createdBy: "Cashier",
+      createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
+    },
+    {
+      _id: "alt-108",
+      alterationId: "ALT-2026-108",
+      invoiceNumber: "INV-2026-8808",
+      customerName: "Kavita Singhal",
+      customerPhone: "9811223344",
+      productName: "Handloom Chanderi Kurti",
+      size: "34",
+      color: "Dusty Peach",
+      tailorName: "Karigar Mansoor Alam",
+      priority: "Normal",
+      status: "Quality Check",
+      deliveryDate: new Date().toISOString().split('T')[0],
+      trialDate: new Date().toISOString().split('T')[0],
+      alterationDetails: ["Side Seam Tapering", "Neckline Finishing"],
+      measurements: { Bust: "34", Waist: "28", Hip: "36" },
+      createdBy: "Admin",
+      createdAt: new Date().toISOString()
     }
   ], []);
 
@@ -357,6 +401,88 @@ export const ArticulationView = ({
       }
     );
   }, [selectedTailorFilter, tailorSummaries, allTailorsSummary]);
+
+  const [dashboardSummaryData, setDashboardSummaryData] = useState(null);
+
+  // ─── 11 TAILORING DASHBOARD SUMMARY METRICS ───
+  const tailoringSummaryMetrics = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let todaysJobs = 0;
+    let dueToday = 0;
+    let overdue = 0;
+    let pending = 0;
+    let inCutting = 0;
+    let inStitching = 0;
+    let inTrial = 0;
+    let reAlteration = 0;
+    let qualityCheck = 0;
+    let ready = 0;
+    let delivered = 0;
+
+    (alterationRecords || []).forEach(alt => {
+      const createdDateStr = alt.createdAt ? new Date(alt.createdAt).toISOString().split('T')[0] : '';
+      const delDateStr = alt.deliveryDate || (alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate).toISOString().split('T')[0] : '');
+      const st = (alt.status || 'Pending').toLowerCase().trim();
+
+      // Today's Jobs
+      if (createdDateStr === todayStr) {
+        todaysJobs++;
+      }
+
+      // Delivered
+      const isDelivered = st === 'delivered' || st === 'collected' || st === 'closed';
+      if (isDelivered) {
+        delivered++;
+      }
+
+      // Ready
+      const isReady = st === 'ready' || st === 'ready for delivery' || st === 'ready for pickup';
+      if (isReady) {
+        ready++;
+      }
+
+      // Due Today
+      if (!isDelivered && delDateStr === todayStr) {
+        dueToday++;
+      }
+
+      // Overdue
+      if (!isDelivered && !isReady && delDateStr && delDateStr < todayStr) {
+        overdue++;
+      }
+
+      // Specific workflow stages
+      if (st === 'pending' || st === 'received' || st === 'pending assignment') {
+        pending++;
+      } else if (st === 'in cutting' || st === 'cutting') {
+        inCutting++;
+      } else if (st === 'in stitching' || st === 'stitching' || st === 'in progress' || st === 'assigned') {
+        inStitching++;
+      } else if (st === 'in trial' || st === 'trial' || st === 'ready for trial') {
+        inTrial++;
+      } else if (st === 're-alteration' || st === 'realteration' || st === 'rework') {
+        reAlteration++;
+      } else if (st === 'quality check' || st === 'qc' || st === 'qa') {
+        qualityCheck++;
+      }
+    });
+
+    return {
+      total: alterationRecords?.length || 0,
+      todaysJobs: dashboardSummaryData?.todaysJobs ?? todaysJobs,
+      dueToday: dashboardSummaryData?.dueToday ?? dueToday,
+      overdue: dashboardSummaryData?.overdue ?? overdue,
+      pending: dashboardSummaryData?.pending ?? pending,
+      inCutting: dashboardSummaryData?.inCutting ?? inCutting,
+      inStitching: dashboardSummaryData?.inStitching ?? inStitching,
+      inTrial: dashboardSummaryData?.inTrial ?? inTrial,
+      reAlteration: dashboardSummaryData?.reAlteration ?? reAlteration,
+      qualityCheck: dashboardSummaryData?.qualityCheck ?? qualityCheck,
+      ready: dashboardSummaryData?.ready ?? ready,
+      delivered: dashboardSummaryData?.delivered ?? delivered
+    };
+  }, [alterationRecords, dashboardSummaryData]);
 
   // --- NEW ALTERATION WIZARD STATE ---
   const [showCreateAltModal, setShowCreateAltModal] = useState(false);
@@ -1559,14 +1685,14 @@ export const ArticulationView = ({
 
   const handleUpdateAlterationStatus = async (alterationId, newStatus) => {
     const targetAlt = (alterationRecords || []).find(a => a._id === alterationId);
-    if (newStatus === "In Progress") {
+    if (["In Progress", "In Cutting", "In Stitching"].includes(newStatus)) {
       const mKeys = targetAlt?.measurements ? Object.keys(targetAlt.measurements) : [];
       const hasMeas = mKeys.length > 0 && Object.values(targetAlt.measurements).some(v => v !== null && v !== '' && v !== undefined);
       if (!hasMeas) {
         if (onAddNotification) {
           onAddNotification(
             "Measurements Required",
-            "Measurements must be added before work can be started (In Progress).",
+            `Measurements must be added before work can be started (${newStatus}).`,
             "warning"
           );
         }
@@ -1612,6 +1738,7 @@ export const ArticulationView = ({
       const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
       if (res.data.success) {
         setAltTypeSummary(res.data.data.typeSummary);
+        if (res.data.data.summary) setDashboardSummaryData(res.data.data.summary);
         if (res.data.data.serviceWisePending) setServiceWisePending(res.data.data.serviceWisePending);
         if (res.data.data.deliveryDashboard) setDeliveryDashboard(res.data.data.deliveryDashboard);
         if (res.data.data.tailorSummaries) setTailorSummaries(res.data.data.tailorSummaries);
@@ -2430,52 +2557,215 @@ export const ArticulationView = ({
               )}
             </div>
 
-            {/* KPI METRIC CARDS */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Tickets</p>
-                  <p className="text-xl font-black text-slate-900 font-mono mt-0.5">{alterationRecords.length}</p>
+            {/* ─── TAILORING DASHBOARD 11 SUMMARY FEATURES ─── */}
+            <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3.5">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-gradient-to-br from-rose-500 to-indigo-600 text-white rounded-xl shadow-xs">
+                    <Scissors className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                      <span>Tailoring Dashboard Live Summary</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Real-time summary breakdown across today's queue, delivery commitments, and all workshop stages. Click any card to filter jobs.
+                    </p>
+                  </div>
                 </div>
-                <div className="p-2.5 bg-slate-100 text-slate-600 rounded-xl">
-                  <FileText className="w-5 h-5" />
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAlterationsFilterStatus("All")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                      alterationsFilterStatus === "All"
+                        ? "bg-slate-900 text-white shadow-xs ring-1 ring-slate-800"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    }`}
+                    title="View All Tickets"
+                  >
+                    <span>All Tickets ({alterationRecords.length})</span>
+                  </button>
+                  {alterationsFilterStatus !== "All" && (
+                    <button
+                      type="button"
+                      onClick={() => setAlterationsFilterStatus("All")}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                    >
+                      <span>Filtered: {alterationsFilterStatus} (Clear ✕)</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</p>
-                  <p className="text-xl font-black text-emerald-600 font-mono mt-0.5">
-                    {alterationRecords.filter(a => a.status === "Ready for Delivery").length}
-                  </p>
-                </div>
-                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-                  <MessageSquare className="w-5 h-5" />
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">In Progress Work</p>
-                  <p className="text-xl font-black text-indigo-600 font-mono mt-0.5">
-                    {alterationRecords.filter(a => a.status === "In Progress" || a.status === "Assigned").length}
-                  </p>
-                </div>
-                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
-                  <Clock className="w-5 h-5" />
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Delayed / Overdue</p>
-                  <p className="text-xl font-black text-rose-600 font-mono mt-0.5">
-                    {alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length}
-                  </p>
-                </div>
-                <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
+              {/* 11 Summary Cards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 sm:gap-2.5">
+                {[
+                  {
+                    id: "Today's Jobs",
+                    title: "Today's Jobs",
+                    count: tailoringSummaryMetrics.todaysJobs,
+                    icon: Calendar,
+                    border: "border-indigo-200",
+                    bg: "bg-indigo-50/70 hover:bg-indigo-100/80",
+                    activeBg: "bg-indigo-600 text-white ring-2 ring-indigo-500",
+                    text: "text-indigo-900",
+                    iconColor: "text-indigo-600",
+                    sub: "Booked today"
+                  },
+                  {
+                    id: "Due Today",
+                    title: "Due Today",
+                    count: tailoringSummaryMetrics.dueToday,
+                    icon: Clock,
+                    border: "border-amber-200",
+                    bg: "bg-amber-50/70 hover:bg-amber-100/80",
+                    activeBg: "bg-amber-500 text-white ring-2 ring-amber-400",
+                    text: "text-amber-900",
+                    iconColor: "text-amber-600",
+                    sub: "Promise today"
+                  },
+                  {
+                    id: "Overdue",
+                    title: "Overdue",
+                    count: tailoringSummaryMetrics.overdue,
+                    icon: AlertTriangle,
+                    border: "border-rose-200",
+                    bg: "bg-rose-50/70 hover:bg-rose-100/80",
+                    activeBg: "bg-rose-600 text-white ring-2 ring-rose-500",
+                    text: "text-rose-900",
+                    iconColor: "text-rose-600",
+                    sub: "Past deadline"
+                  },
+                  {
+                    id: "Pending",
+                    title: "Pending",
+                    count: tailoringSummaryMetrics.pending,
+                    icon: FileText,
+                    border: "border-slate-200",
+                    bg: "bg-slate-50/80 hover:bg-slate-100",
+                    activeBg: "bg-slate-800 text-white ring-2 ring-slate-700",
+                    text: "text-slate-900",
+                    iconColor: "text-slate-600",
+                    sub: "Queued tickets"
+                  },
+                  {
+                    id: "In Cutting",
+                    title: "In Cutting",
+                    count: tailoringSummaryMetrics.inCutting,
+                    icon: Scissors,
+                    border: "border-orange-200",
+                    bg: "bg-orange-50/70 hover:bg-orange-100/80",
+                    activeBg: "bg-orange-600 text-white ring-2 ring-orange-500",
+                    text: "text-orange-900",
+                    iconColor: "text-orange-600",
+                    sub: "Pattern cutting"
+                  },
+                  {
+                    id: "In Stitching",
+                    title: "In Stitching",
+                    count: tailoringSummaryMetrics.inStitching,
+                    icon: Layers,
+                    border: "border-blue-200",
+                    bg: "bg-blue-50/70 hover:bg-blue-100/80",
+                    activeBg: "bg-blue-600 text-white ring-2 ring-blue-500",
+                    text: "text-blue-900",
+                    iconColor: "text-blue-600",
+                    sub: "With tailor"
+                  },
+                  {
+                    id: "In Trial",
+                    title: "In Trial",
+                    count: tailoringSummaryMetrics.inTrial,
+                    icon: Shirt,
+                    border: "border-purple-200",
+                    bg: "bg-purple-50/70 hover:bg-purple-100/80",
+                    activeBg: "bg-purple-600 text-white ring-2 ring-purple-500",
+                    text: "text-purple-900",
+                    iconColor: "text-purple-600",
+                    sub: "Fitting trial"
+                  },
+                  {
+                    id: "Re-Alteration",
+                    title: "Re-Alteration",
+                    count: tailoringSummaryMetrics.reAlteration,
+                    icon: RefreshCw,
+                    border: "border-red-200",
+                    bg: "bg-red-50/70 hover:bg-red-100/80",
+                    activeBg: "bg-red-600 text-white ring-2 ring-red-500",
+                    text: "text-red-900",
+                    iconColor: "text-red-600",
+                    sub: "Post-trial fix"
+                  },
+                  {
+                    id: "Quality Check",
+                    title: "Quality Check",
+                    count: tailoringSummaryMetrics.qualityCheck,
+                    icon: ShieldCheck,
+                    border: "border-teal-200",
+                    bg: "bg-teal-50/70 hover:bg-teal-100/80",
+                    activeBg: "bg-teal-600 text-white ring-2 ring-teal-500",
+                    text: "text-teal-900",
+                    iconColor: "text-teal-600",
+                    sub: "QC inspection"
+                  },
+                  {
+                    id: "Ready",
+                    title: "Ready",
+                    count: tailoringSummaryMetrics.ready,
+                    icon: CheckCircle2,
+                    border: "border-emerald-200",
+                    bg: "bg-emerald-50/70 hover:bg-emerald-100/80",
+                    activeBg: "bg-emerald-600 text-white ring-2 ring-emerald-500",
+                    text: "text-emerald-900",
+                    iconColor: "text-emerald-600",
+                    sub: "Ready for pickup"
+                  },
+                  {
+                    id: "Delivered",
+                    title: "Delivered",
+                    count: tailoringSummaryMetrics.delivered,
+                    icon: PackageCheck,
+                    border: "border-emerald-300",
+                    bg: "bg-emerald-50/50 hover:bg-emerald-100/70",
+                    activeBg: "bg-slate-900 text-white ring-2 ring-slate-800",
+                    text: "text-emerald-950",
+                    iconColor: "text-emerald-700",
+                    sub: "Collected"
+                  }
+                ].map(card => {
+                  const Icon = card.icon;
+                  const isActive = alterationsFilterStatus === card.id;
+                  return (
+                    <div
+                      key={card.id}
+                      onClick={() => setAlterationsFilterStatus(prev => prev === card.id ? "All" : card.id)}
+                      className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none relative group ${
+                        isActive
+                          ? `${card.activeBg} shadow-md -translate-y-0.5 scale-[1.02]`
+                          : `${card.bg} ${card.border} hover:shadow-sm hover:-translate-y-0.5`
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <div className={`p-1 rounded-md shrink-0 ${isActive ? "bg-white/20 text-white" : `${card.iconColor} bg-white shadow-2xs`}`}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={`text-base sm:text-lg font-black font-mono leading-none ${isActive ? "text-white" : card.text}`}>
+                          {card.count}
+                        </span>
+                      </div>
+                      <div className="mt-0.5">
+                        <p className={`text-[10px] sm:text-[11px] font-black uppercase tracking-tight leading-[13px] whitespace-normal break-words ${isActive ? "text-white" : "text-slate-800"}`}>
+                          {card.title}
+                        </p>
+                        <p className={`text-[8.5px] font-medium leading-none mt-1 truncate ${isActive ? "text-white/80" : "text-slate-500"}`}>
+                          {card.sub}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -2609,22 +2899,6 @@ export const ArticulationView = ({
                   })}
                 </div>
               </div>
-
-              {/* Status Filter Pills */}
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5 border-t border-slate-100 pt-2">
-                {["All", "Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map((st) => {
-                  const count = st === "All" ? alterationRecords.length : alterationRecords.filter(a => a.status === st).length;
-                  return (
-                    <button
-                      key={st}
-                      onClick={() => setAlterationsFilterStatus(st)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${alterationsFilterStatus === st ? "bg-slate-900 text-white border-slate-900 shadow-xs" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"}`}
-                    >
-                      {st} ({count})
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* ALTERATIONS MASTER DATA TABLE */}
@@ -2649,7 +2923,42 @@ export const ArticulationView = ({
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
                     {alterationRecordsWithSequence
                       .filter(a => {
-                        const matchesStatus = alterationsFilterStatus === "All" || a.status === alterationsFilterStatus;
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const createdDateStr = a.createdAt ? new Date(a.createdAt).toISOString().split('T')[0] : '';
+                        const delDateStr = a.deliveryDate || (a.expectedDeliveryDate ? new Date(a.expectedDeliveryDate).toISOString().split('T')[0] : '');
+                        const st = (a.status || 'Pending').toLowerCase().trim();
+                        const isDelivered = st === 'delivered' || st === 'collected' || st === 'closed';
+                        const isReady = st === 'ready' || st === 'ready for delivery' || st === 'ready for pickup';
+
+                        let matchesStatus = true;
+                        if (alterationsFilterStatus === "All") {
+                          matchesStatus = true;
+                        } else if (alterationsFilterStatus === "Today's Jobs") {
+                          matchesStatus = (createdDateStr === todayStr);
+                        } else if (alterationsFilterStatus === "Due Today") {
+                          matchesStatus = (!isDelivered && delDateStr === todayStr);
+                        } else if (alterationsFilterStatus === "Overdue") {
+                          matchesStatus = (!isDelivered && !isReady && delDateStr && delDateStr < todayStr);
+                        } else if (alterationsFilterStatus === "Pending") {
+                          matchesStatus = (st === 'pending' || st === 'received' || st === 'pending assignment');
+                        } else if (alterationsFilterStatus === "In Cutting") {
+                          matchesStatus = (st === 'in cutting' || st === 'cutting');
+                        } else if (alterationsFilterStatus === "In Stitching" || alterationsFilterStatus === "In Progress") {
+                          matchesStatus = (st === 'in stitching' || st === 'stitching' || st === 'in progress' || st === 'assigned');
+                        } else if (alterationsFilterStatus === "In Trial" || alterationsFilterStatus === "Ready for Trial") {
+                          matchesStatus = (st === 'in trial' || st === 'trial' || st === 'ready for trial');
+                        } else if (alterationsFilterStatus === "Re-Alteration") {
+                          matchesStatus = (st === 're-alteration' || st === 'realteration' || st === 'rework');
+                        } else if (alterationsFilterStatus === "Quality Check") {
+                          matchesStatus = (st === 'quality check' || st === 'qc' || st === 'qa');
+                        } else if (alterationsFilterStatus === "Ready" || alterationsFilterStatus === "Ready for Delivery") {
+                          matchesStatus = isReady;
+                        } else if (alterationsFilterStatus === "Delivered") {
+                          matchesStatus = isDelivered;
+                        } else {
+                          matchesStatus = (st === alterationsFilterStatus.toLowerCase());
+                        }
+
                         if (!matchesStatus) return false;
 
                         const aSource = a.sourceType || 'SHOWROOM_PURCHASE';
@@ -2703,7 +3012,7 @@ export const ArticulationView = ({
                       })
                       .map((alt) => {
                         const mKeys = Object.keys(alt.measurements || {});
-                        const isReadyForDelivery = alt.status === "Ready for Delivery";
+                        const isReadyForDelivery = alt.status === "Ready for Delivery" || alt.status === "Ready";
                         return (
                           <tr key={alt._id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="p-2 font-mono font-bold text-rose-600 whitespace-nowrap text-xs">
@@ -2891,14 +3200,18 @@ export const ArticulationView = ({
                               <select
                                 value={alt.status || 'Pending'}
                                 onChange={(e) => handleUpdateAlterationStatus(alt._id, e.target.value)}
-                                className={`text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500 border ${mKeys.length === 0 && alt.status !== 'Ready for Delivery' && alt.status !== 'Delivered'
+                                className={`text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500 border ${mKeys.length === 0 && alt.status !== 'Ready for Delivery' && alt.status !== 'Ready' && alt.status !== 'Delivered'
                                     ? 'bg-amber-50/70 border-amber-200 text-amber-900'
                                     : 'bg-slate-50 border-slate-200 text-slate-800'
                                   }`}
                               >
                                 <option value="Pending">Pending {mKeys.length === 0 ? '(Needs Meas)' : ''}</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Ready for Trial">Ready for Trial</option>
+                                <option value="In Cutting">In Cutting</option>
+                                <option value="In Stitching">In Stitching</option>
+                                <option value="In Trial">In Trial</option>
+                                <option value="Re-Alteration">Re-Alteration</option>
+                                <option value="Quality Check">Quality Check</option>
+                                <option value="Ready">Ready</option>
                                 <option value="Ready for Delivery">Ready for Delivery</option>
                                 <option value="Delivered">Delivered</option>
                                 <option value="Cancelled">Cancelled</option>
@@ -2920,24 +3233,14 @@ export const ArticulationView = ({
                               )}
                             </td>
                             <td className="p-3.5">
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => setSelectedJobTicket(alt)}
-                                  className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
-                                  title="Print / View Receipt"
-                                >
-                                  <Printer className="w-3 h-3" />
-                                  <span>Receipt</span>
-                                </button>
-                                <button
-                                  onClick={() => handleOpenAuditModal(alt)}
-                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
-                                  title="Audit Trail: Software में हुए हर बदलाव का Record"
-                                >
-                                  <History className="w-3 h-3 text-amber-600" />
-                                  <span>Audit</span>
-                                </button>
-                              </div>
+                              <button
+                                onClick={() => setSelectedJobTicket(alt)}
+                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                                title="Print / View Receipt"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Receipt</span>
+                              </button>
                             </td>
                           </tr>
                         );
