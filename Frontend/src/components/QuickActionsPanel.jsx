@@ -45,11 +45,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
       if (dbTailors.length > 0) return dbTailors.map(t => t.name);
     }
     return [
-      'Master Ramesh Kumar',
-      'Ustad Imran Ansari',
-      'Darzi Amit Saxena',
-      'Karigar Mansoor Alam',
-      'Master Jitendra Dev'
+
     ];
   }, [employees]);
 
@@ -296,21 +292,21 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
     // Filter alterations for search input in alteration modal
     const filteredAlterations = isAlterationAction && inputValue.trim().length > 0
       ? alterationsList.filter(a => {
-          const q = inputValue.toLowerCase();
-          return (
-            (a.alterationId && a.alterationId.toLowerCase().includes(q)) ||
-            (a.alterationNo && a.alterationNo.toLowerCase().includes(q)) ||
-            (a.invoiceNumber && a.invoiceNumber.toLowerCase().includes(q)) ||
-            (a.customerName && a.customerName.toLowerCase().includes(q)) ||
-            (a.customerPhone && a.customerPhone.includes(q)) ||
-            (a.productName && a.productName.toLowerCase().includes(q))
-          );
-        })
+        const q = inputValue.toLowerCase();
+        return (
+          (a.alterationId && a.alterationId.toLowerCase().includes(q)) ||
+          (a.alterationNo && a.alterationNo.toLowerCase().includes(q)) ||
+          (a.invoiceNumber && a.invoiceNumber.toLowerCase().includes(q)) ||
+          (a.customerName && a.customerName.toLowerCase().includes(q)) ||
+          (a.customerPhone && a.customerPhone.includes(q)) ||
+          (a.productName && a.productName.toLowerCase().includes(q))
+        );
+      })
       : alterationsList;
 
     let inputLabel = "Enter Value";
     let inputType = "text";
-    
+
     if (activeModal === 'scan_bill' || activeModal === 'search_bill') inputLabel = "Enter Invoice Number / Customer Phone";
     else if (activeModal === 'scan_item' || activeModal === 'search_barcode' || activeModal === 'print_tag') inputLabel = "Enter SKU or Barcode";
     else if (activeModal === 'search_customer') inputLabel = "Enter Customer Name or Phone";
@@ -329,7 +325,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
               <X className="w-5 h-5" />
             </button>
           </div>
-          
+
           <div className="p-6">
             {/* SUCCESS VIEW */}
             {result && isAlterationAction ? (
@@ -417,11 +413,10 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
                           <div
                             key={alt._id}
                             onClick={() => handleSelectAlterationTicket(alt)}
-                            className={`p-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-all border ${
-                              isSelected
+                            className={`p-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-all border ${isSelected
                                 ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold shadow-2xs'
                                 : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
-                            }`}
+                              }`}
                           >
                             <div>
                               <div className="flex items-center gap-1.5">
@@ -536,15 +531,14 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
                             key={p}
                             type="button"
                             onClick={() => setNewPriority(p)}
-                            className={`py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                              newPriority === p
+                            className={`py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${newPriority === p
                                 ? p === 'Express'
                                   ? 'bg-rose-600 text-white border-rose-600'
                                   : p === 'Urgent'
-                                  ? 'bg-amber-500 text-white border-amber-500'
-                                  : 'bg-slate-900 text-white border-slate-900'
+                                    ? 'bg-amber-500 text-white border-amber-500'
+                                    : 'bg-slate-900 text-white border-slate-900'
                                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
+                              }`}
                           >
                             {p}
                           </button>
@@ -589,11 +583,10 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
                 <button
                   type="submit"
                   disabled={loading || !selectedAlt}
-                  className={`w-full text-white font-bold py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
-                    isAssignTailor
+                  className={`w-full text-white font-bold py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${isAssignTailor
                       ? 'bg-violet-600 hover:bg-violet-700'
                       : 'bg-amber-600 hover:bg-amber-700'
-                  }`}
+                    }`}
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : action.label}
                 </button>

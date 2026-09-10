@@ -42,6 +42,12 @@ class ReportController {
     return res.status(200).json(new ApiResponse(200, report, 'Alteration report generated.'));
   });
 
+  static getTailoringReport = asyncHandler(async (req, res) => {
+    const { reportType, startDate, endDate } = req.query;
+    const report = await ReportService.getTailoringReport(reportType, startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Tailoring report generated.'));
+  });
+
   static getReturnReport = asyncHandler(async (req, res) => {
     const report = await ReportService.getReturnReport(req.tenantId);
     return res.status(200).json(new ApiResponse(200, report, 'Return report generated.'));

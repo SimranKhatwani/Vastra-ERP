@@ -16,6 +16,7 @@ router.get('/gst', authorize(PERMISSIONS.REPORTS_GST), ReportController.getGSTRe
 router.get('/customer', authorize(PERMISSIONS.CRM_READ), ReportController.getCustomerReport);
 router.get('/payment', authorize(PERMISSIONS.PAYMENT_READ), ReportController.getPaymentReport);
 router.get('/alteration', authorize(PERMISSIONS.ALTERATION_READ), ReportController.getAlterationReport);
+router.get('/tailoring', authorize(PERMISSIONS.ALTERATION_READ), ReportController.getTailoringReport);
 router.get('/return', authorize(PERMISSIONS.RETURN_READ), ReportController.getReturnReport);
 router.get('/manual-adjustments', authorize(PERMISSIONS.REPORTS_SALES), ReportController.getManualAdjustmentsReport);
 module.exports = router;

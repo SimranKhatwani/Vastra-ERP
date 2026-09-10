@@ -77,6 +77,96 @@ const normalizeJobStatus = (s) => {
   return s;
 };
 
+export const TAILORING_REPORT_TYPES = [
+  {
+    id: "daily_tailoring_jobs",
+    label: "Daily Tailoring Jobs",
+    icon: Calendar,
+    description: "Daily scheduled, active & incoming tailoring jobs"
+  },
+  {
+    id: "pending_tailoring_jobs",
+    label: "Pending Jobs",
+    icon: Clock,
+    description: "Garments currently in cutting, stitching or awaiting trial"
+  },
+  {
+    id: "overdue_tailoring_jobs",
+    label: "Overdue Jobs",
+    icon: AlertTriangle,
+    description: "Garments that have passed promised customer delivery date"
+  },
+  {
+    id: "ready_not_collected",
+    label: "Ready but Not Collected",
+    icon: PackageCheck,
+    description: "Completed alterations staged in showroom awaiting customer pickup"
+  },
+  {
+    id: "tailor_workload",
+    label: "Tailor-wise Workload",
+    icon: Scissors,
+    description: "Active assigned jobs, backlog queue & capacity per master tailor"
+  },
+  {
+    id: "tailor_completed_jobs",
+    label: "Tailor-wise Completed Jobs",
+    icon: Award,
+    description: "Total delivered garments and throughput efficiency per tailor"
+  },
+  {
+    id: "realteration",
+    label: "Re-Alteration Report",
+    icon: RefreshCw,
+    description: "Refitting, rework and re-alteration tickets for quality assurance"
+  },
+  {
+    id: "tailoring_charges",
+    label: "Tailoring Charges Report",
+    icon: DollarSign,
+    description: "Financial ledger of alteration fees, advance payments & balance dues"
+  },
+  {
+    id: "customer_tailoring_history",
+    label: "Customer Tailoring History",
+    icon: Users,
+    description: "Customer-wise alteration frequency, volume and lifetime spend"
+  }
+];
+
+const formatReportDate = (d) => {
+  if (!d) return "-";
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return String(d);
+  }
+};
+
+const formatReportDateTime = (d) => {
+  if (!d) return "-";
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return String(d);
+  }
+};
+
 export const ArticulationView = ({
   customers = [],
   employees = [],
@@ -124,9 +214,15 @@ export const ArticulationView = ({
   }, [products]);
 
   const defaultTailors = useMemo(() => {
-    const dbTailors = (employees || []).filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
-    if (dbTailors.length > 0) {
-      return dbTailors.map((t, idx) => ({
+    const isTailorRole = (e) => {
+      const des = (e.designation || "").toLowerCase();
+      const rol = (e.role || "").toLowerCase();
+      return des.includes("tailor") || rol.includes("tailor") || des.includes("karigar") || rol.includes("karigar") || des.includes("darzi") || rol.includes("darzi") || des.includes("stitcher") || rol.includes("stitcher");
+    };
+    const dbTailors = (employees || []).filter(isTailorRole);
+    const sourceList = dbTailors.length > 0 ? dbTailors : (employees || []);
+    if (sourceList.length > 0) {
+      return sourceList.map((t, idx) => ({
         id: t._id || t.id || `t-${idx}`,
         name: t.name,
         jobs: t.currentWorkload || 0,
@@ -134,169 +230,9 @@ export const ArticulationView = ({
       }));
     }
     return [
-      { id: "tr-1", name: "Master Ramesh Kumar", jobs: 2, availability: "Available" },
-      { id: "tr-2", name: "Ustad Imran Ansari", jobs: 5, availability: "Busy" },
-      { id: "tr-3", name: "Darzi Amit Saxena", jobs: 8, availability: "Unavailable" },
-      { id: "tr-4", name: "Karigar Mansoor Alam", jobs: 1, availability: "Available" },
-      { id: "tr-5", name: "Master Jitendra Dev", jobs: 4, availability: "Busy" }
+      { id: "t-default", name: "In-House Master Tailor", jobs: 0, availability: "Available" }
     ];
   }, [employees]);
-
-  const defaultAlterationsList = useMemo(() => [
-    {
-      _id: "alt-101",
-      alterationId: "ALT-2026-101",
-      invoiceNumber: "INV-2026-8801",
-      customerName: "Ritu Sharma",
-      customerPhone: "9823456789",
-      productName: "Silk Brocade Sherwani",
-      size: "42",
-      color: "Royal Crimson",
-      tailorName: "Master Ramesh Kumar",
-      priority: "Urgent",
-      status: "Ready",
-      deliveryDate: new Date().toISOString().split('T')[0],
-      alterationDetails: ["Sleeve Shortening", "Waist Fitting"],
-      measurements: { Chest: "42", Waist: "36", Shoulder: "18.5", Sleeve: "24.5" },
-      createdBy: "Cashier",
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: "alt-102",
-      alterationId: "ALT-2026-102",
-      invoiceNumber: "INV-2026-8802",
-      customerName: "Ananya Roy",
-      customerPhone: "9812345678",
-      productName: "Italian Cut Blazer",
-      size: "40",
-      color: "Charcoal Gray",
-      tailorName: "Ustad Imran Ansari",
-      priority: "Normal",
-      status: "In Stitching",
-      deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-      alterationDetails: ["Shoulder Padding", "Length Adjustment"],
-      measurements: { Chest: "40", Waist: "34", Shoulder: "17.5", Sleeve: "25" },
-      createdBy: "Admin",
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: "alt-103",
-      alterationId: "ALT-2026-103",
-      invoiceNumber: "INV-2026-8803",
-      customerName: "Vikram Malhotra",
-      customerPhone: "9834567890",
-      productName: "Designer Kurta Pajama",
-      size: "38",
-      color: "Classic White",
-      tailorName: "Darzi Amit Saxena",
-      priority: "Express",
-      status: "In Cutting",
-      deliveryDate: new Date().toISOString().split('T')[0],
-      alterationDetails: ["Side Slit Fitting", "Collar Adjustment"],
-      measurements: { Chest: "38", Waist: "32", Shoulder: "17", Sleeve: "24" },
-      createdBy: "Cashier",
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: "alt-104",
-      alterationId: "ALT-2026-104",
-      invoiceNumber: "INV-2026-8804",
-      customerName: "Deepak Verma",
-      customerPhone: "9876543210",
-      productName: "Slim Fit Formal Trousers",
-      size: "32",
-      color: "Navy Blue",
-      tailorName: "Karigar Mansoor Alam",
-      priority: "Normal",
-      status: "Pending",
-      deliveryDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
-      alterationDetails: ["Bottom Hemming", "Thigh Fitting"],
-      measurements: { Waist: "32", Length: "40", Thigh: "23", Bottom: "15" },
-      createdBy: "Cashier",
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: "alt-105",
-      alterationId: "ALT-2026-105",
-      invoiceNumber: "INV-2026-8805",
-      customerName: "Pooja Hegde",
-      customerPhone: "9865432109",
-      productName: "Embroidered Anarkali Suit",
-      size: "36",
-      color: "Emerald Green",
-      tailorName: "Master Ramesh Kumar",
-      priority: "Urgent",
-      status: "In Trial",
-      deliveryDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-      trialRequired: true,
-      trialDate: new Date().toISOString().split('T')[0],
-      fittingResult: "Waist needs 0.5 inch loosening",
-      requiredChanges: "Adjust waist seam",
-      reAlterationRequired: false,
-      alterationDetails: ["Bust Fitting", "Drape Stitching"],
-      measurements: { Bust: "36", Waist: "30", Length: "52" },
-      createdBy: "Admin",
-      createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
-    },
-    {
-      _id: "alt-106",
-      alterationId: "ALT-2026-106",
-      invoiceNumber: "INV-2026-8806",
-      customerName: "Rahul Kapoor",
-      customerPhone: "9854321098",
-      productName: "3-Piece Tuxedo Suit",
-      size: "42",
-      color: "Midnight Black",
-      tailorName: "Master Jitendra Dev",
-      priority: "Normal",
-      status: "Delivered",
-      deliveryDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-      alterationDetails: ["Lapel Ironing", "Waistcoat Fitting"],
-      measurements: { Chest: "42", Waist: "36", Shoulder: "18.5" },
-      createdBy: "Cashier",
-      createdAt: new Date(Date.now() - 86400000 * 5).toISOString()
-    },
-    {
-      _id: "alt-107",
-      alterationId: "ALT-2026-107",
-      invoiceNumber: "INV-2026-8807",
-      customerName: "Sameer Joshi",
-      customerPhone: "9845612378",
-      productName: "Bandhgala Velvet Jodhpuri",
-      size: "40",
-      color: "Midnight Navy",
-      tailorName: "Master Ramesh Kumar",
-      priority: "Urgent",
-      status: "Re-Alteration",
-      reAlterationRequired: true,
-      fittingResult: "Tight around chest and armhole",
-      requiredChanges: "Loosen 0.5 inch on armhole and chest seam",
-      remarks: "Handle velvet fabric gently with silk thread",
-      deliveryDate: new Date().toISOString().split('T')[0],
-      alterationDetails: ["Armhole Loosening", "Chest Reshaping"],
-      measurements: { Chest: "40.5", Waist: "35", Shoulder: "18" },
-      createdBy: "Cashier",
-      createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
-    },
-    {
-      _id: "alt-108",
-      alterationId: "ALT-2026-108",
-      invoiceNumber: "INV-2026-8808",
-      customerName: "Kavita Singhal",
-      customerPhone: "9811223344",
-      productName: "Handloom Chanderi Kurti",
-      size: "34",
-      color: "Dusty Peach",
-      tailorName: "Karigar Mansoor Alam",
-      priority: "Normal",
-      status: "Quality Check",
-      deliveryDate: new Date().toISOString().split('T')[0],
-      alterationDetails: ["Side Seam Tapering", "Neckline Finishing"],
-      measurements: { Bust: "34", Waist: "28", Hip: "36" },
-      createdBy: "Admin",
-      createdAt: new Date().toISOString()
-    }
-  ], []);
 
   // ─── ACTIVE PANEL FOCUS STATE ───
   // 'customer_search' | 'order_info' | 'garments' | 'fabric_search' | 'fabrics' | 'colors' | 'measurements' | 'customizations' | 'tailors'
@@ -1017,7 +953,7 @@ export const ArticulationView = ({
       pssmItemId: pendingItem.pssmItemId
     });
 
-    setAltTailorName(tailorOptions[0] || "Master Ramesh Kumar");
+    setAltTailorName(tailorOptions[0] || "");
     setAltPriority("Normal");
     setAltDeliveryDate(pendingItem.expectedDeliveryDate ? new Date(pendingItem.expectedDeliveryDate).toISOString().split('T')[0] : delivery.toISOString().split('T')[0]);
     const isTrialReq = pendingItem.trialRequired !== undefined ? Boolean(pendingItem.trialRequired) : Boolean(pendingItem.trialDate);
@@ -1116,7 +1052,7 @@ export const ArticulationView = ({
             fabricDetails: item.fabricColor.trim(),
             color: item.fabricColor.trim() || 'Standard',
             size: item.size.trim() || 'Custom',
-            tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
+            tailorName: altTailorName || (tailorOptions[0] || ''),
             priority: altPriority || 'Normal',
             status: "Pending",
             deliveryDate: altDeliveryDate,
@@ -1163,7 +1099,7 @@ export const ArticulationView = ({
               color: item.fabricColor.trim() || 'Standard',
               serviceType: item.serviceType || 'Custom Tailoring',
               gender: item.gender || 'Gents',
-              tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+              tailorName: altTailorName || (tailorOptions[0] || ''),
               priority: altPriority || 'Normal',
               status: "Pending",
               deliveryDate: altDeliveryDate,
@@ -1228,7 +1164,7 @@ export const ArticulationView = ({
       sku: selectedAltItem.sku || selectedAltItem.barcode,
       size: selectedAltItem.size || 'M',
       color: selectedAltItem.color || 'Standard',
-      tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
+      tailorName: altTailorName || (tailorOptions[0] || ''),
       priority: altPriority || 'Normal',
       status: "Pending",
       deliveryDate: altDeliveryDate,
@@ -1260,7 +1196,7 @@ export const ArticulationView = ({
       if (selectedAltItem.isPssm && selectedAltItem.pssmItemId) {
         try {
           await api.patch(`/pssm/items/${selectedAltItem.pssmItemId}/assign`, {
-            tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar')
+            tailorName: altTailorName || (tailorOptions[0] || '')
           });
           await api.patch(`/pssm/items/${selectedAltItem.pssmItemId}/status`, {
             status: 'IN_PROGRESS',
@@ -1295,7 +1231,7 @@ export const ArticulationView = ({
           size: selectedAltItem.size || 'M',
           color: selectedAltItem.color || 'Standard',
           serviceType: selectedAltItem.serviceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Alteration'),
-          tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+          tailorName: altTailorName || (tailorOptions[0] || ''),
           priority: altPriority || 'Normal',
           status: "Pending",
           deliveryDate: altDeliveryDate,
@@ -1346,6 +1282,10 @@ export const ArticulationView = ({
 
   // Reports & Employee Performance Data State
   const [reportsData, setReportsData] = useState(null);
+  const [tailoringReportType, setTailoringReportType] = useState("daily_tailoring_jobs");
+  const [tailoringReportData, setTailoringReportData] = useState(null);
+  const [reportSearchQuery, setReportSearchQuery] = useState("");
+  const [showVisualAnalytics, setShowVisualAnalytics] = useState(false);
   const [performanceData, setPerformanceData] = useState(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
@@ -1394,13 +1334,167 @@ export const ArticulationView = ({
     }
   };
 
+  const fetchTailoringReport = async () => {
+    try {
+      const query = new URLSearchParams({ reportType: tailoringReportType });
+      const today = new Date();
+      if (filterDateRange === "Today") {
+        const date = today.toISOString().split('T')[0];
+        query.set("startDate", date);
+        query.set("endDate", date);
+      } else if (filterDateRange === "ThisMonth") {
+        query.set("startDate", new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]);
+        query.set("endDate", today.toISOString().split('T')[0]);
+      } else if (filterDateRange === "ThisWeek") {
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        query.set("startDate", weekStart.toISOString().split('T')[0]);
+        query.set("endDate", today.toISOString().split('T')[0]);
+      }
+      const res = await api.get(`/reports/tailoring?${query.toString()}`);
+      if (res.data?.success) setTailoringReportData(res.data.data);
+    } catch (err) {
+      console.error("Failed to fetch tailoring report:", err);
+    }
+  };
+
   useEffect(() => {
     if (activeStudioTab === "reports") {
       fetchReports();
+      fetchTailoringReport();
     } else if (activeStudioTab === "tracking") {
       fetchPerformance();
     }
-  }, [activeStudioTab, filterDateRange, filterEmployee, filterStatus, filterPriority]);
+  }, [activeStudioTab, filterDateRange, filterEmployee, filterStatus, filterPriority, tailoringReportType]);
+
+  const filteredTailoringRows = useMemo(() => {
+    const rawRows = (tailoringReportData?.data && tailoringReportData.data.length > 0)
+      ? tailoringReportData.data
+      : (alterationRecords || []).map(a => ({
+          _id: a._id,
+          id: a._id,
+          alterationId: a.alterationId || a.alterationNo,
+          tailorInvoiceNo: a.tailorInvoiceNo || a.invoiceNumber || a.alterationId,
+          invoiceNumber: a.invoiceNumber || a.tailorInvoiceNo || a.alterationId,
+          jobDate: a.createdAt,
+          createdAt: a.createdAt,
+          expectedDeliveryDate: a.deliveryDate || a.expectedDeliveryDate,
+          deliveryDate: a.deliveryDate || a.expectedDeliveryDate,
+          customerName: a.customerName || 'Walk-in Customer',
+          mobileNumber: a.customerPhone || '',
+          customerPhone: a.customerPhone || '',
+          garmentService: (a.alterationDetails && a.alterationDetails.length > 0) ? a.alterationDetails.join(', ') : (a.productName ? `${a.productName} (${a.serviceType || 'Alteration'})` : (a.serviceType || 'Alteration')),
+          productName: a.productName || 'Garment',
+          tailorName: a.tailorName || 'Unassigned',
+          priority: a.priority || 'Normal',
+          status: a.status || 'Pending',
+          tailoringCharges: a.totalCharges || a.charge || 0,
+          charge: a.totalCharges || a.charge || 0,
+          measurements: a.measurements || {},
+          barcode: a.barcode || a.alterationId,
+          specialInstructions: a.specialInstructions || a.customAlterationText || ''
+        }));
+    const rows = rawRows;
+    const normalize = (value) => String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfWeek = new Date(todayStart);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    return rows.filter((row) => {
+      const rowDate = row.jobDate || row.createdAt || row.lastJobDate;
+      const date = rowDate ? new Date(rowDate) : null;
+      const matchesDate = filterDateRange === "All" || (
+        date && (
+          filterDateRange === "Today" ? date >= todayStart && date < new Date(todayStart.getTime() + 86400000) :
+            filterDateRange === "ThisWeek" ? date >= startOfWeek && date < new Date(todayStart.getTime() + 86400000) :
+              filterDateRange === "ThisMonth" ? date >= startOfMonth && date < new Date(todayStart.getTime() + 86400000) :
+                true
+        )
+      );
+      const matchesEmployee = filterEmployee === "All" || normalize(row.tailorName) === normalize(filterEmployee);
+      const rowStatus = normalize(row.status || row.currentStatus);
+      const statusAliases = {
+        pending: ['pending', 'received', 'pendingassignment'],
+        inprogress: ['inprogress', 'institching', 'assigned', 'incutting'],
+        readyfortrial: ['readyfortrial', 'intrial'],
+        readyfordelivery: ['readyfordelivery', 'ready', 'readyforpickup'],
+        delivered: ['delivered', 'collected', 'closed']
+      };
+      const requestedStatus = normalize(filterStatus);
+      const matchesStatus = filterStatus === "All" || (statusAliases[requestedStatus] || [requestedStatus]).includes(rowStatus);
+      const matchesPriority = filterPriority === "All" || normalize(row.priority) === normalize(filterPriority);
+
+      // Search filter
+      const q = reportSearchQuery.trim().toLowerCase();
+      const matchesSearch = !q || (
+        (row.tailorInvoiceNo && String(row.tailorInvoiceNo).toLowerCase().includes(q)) ||
+        (row.customerName && String(row.customerName).toLowerCase().includes(q)) ||
+        (row.mobileNumber && String(row.mobileNumber).toLowerCase().includes(q)) ||
+        (row.tailorName && String(row.tailorName).toLowerCase().includes(q)) ||
+        (row.garmentService && String(row.garmentService).toLowerCase().includes(q)) ||
+        (row.garment && String(row.garment).toLowerCase().includes(q)) ||
+        (row.productName && String(row.productName).toLowerCase().includes(q)) ||
+        (row.pssmNo && String(row.pssmNo).toLowerCase().includes(q))
+      );
+
+      return matchesDate && matchesEmployee && matchesStatus && matchesPriority && matchesSearch;
+    });
+  }, [tailoringReportData, alterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority, reportSearchQuery]);
+
+  const filteredTailoringSummary = useMemo(() => {
+    const rows = filteredTailoringRows;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const normalize = (value) => String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+    const isPendingStatus = (st) => !['ready', 'delivered', 'cancelled'].includes(normalize(st));
+
+    return {
+      totalRecords: rows.length,
+      totalCharges: rows.reduce((sum, row) => sum + Number(row.tailoringCharges || row.totalCharges || 0), 0),
+      pendingJobs: rows.filter((row) => isPendingStatus(row.status || row.currentStatus)).length,
+      readyNotCollected: rows.filter((row) => normalize(row.status || row.currentStatus) === 'ready').length,
+      overdueJobs: rows.filter((row) => isPendingStatus(row.status || row.currentStatus) && row.expectedDeliveryDate && new Date(row.expectedDeliveryDate) < today).length
+    };
+  }, [filteredTailoringRows]);
+
+  const filteredAlterationRecords = useMemo(() => {
+    const normalize = (value) => String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfWeek = new Date(todayStart);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const dateInRange = (value) => {
+      if (filterDateRange === 'All') return true;
+      const date = value ? new Date(value) : null;
+      if (!date) return false;
+      const end = new Date(todayStart.getTime() + 86400000);
+      if (filterDateRange === 'Today') return date >= todayStart && date < end;
+      if (filterDateRange === 'ThisWeek') return date >= startOfWeek && date < end;
+      if (filterDateRange === 'ThisMonth') return date >= startOfMonth && date < end;
+      return true;
+    };
+    const statusMatches = (value) => {
+      if (filterStatus === 'All') return true;
+      const status = normalize(value);
+      const aliases = {
+        pending: ['pending', 'received', 'pendingassignment'],
+        inprogress: ['inprogress', 'institching', 'assigned', 'incutting'],
+        readyfortrial: ['readyfortrial', 'intrial'],
+        readyfordelivery: ['readyfordelivery', 'ready', 'readyforpickup'],
+        delivered: ['delivered', 'collected', 'closed']
+      };
+      return (aliases[normalize(filterStatus)] || [normalize(filterStatus)]).includes(status);
+    };
+    return (alterationRecords || []).filter((record) => (
+      dateInRange(record.createdAt || record.jobDate || record.deliveryDate) &&
+      (filterEmployee === 'All' || normalize(record.tailorName) === normalize(filterEmployee)) &&
+      statusMatches(record.status) &&
+      (filterPriority === 'All' || normalize(record.priority) === normalize(filterPriority))
+    ));
+  }, [alterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority]);
 
   const getServiceWhatsAppMessage = (target) => {
     if (!target) return "";
@@ -1462,6 +1556,40 @@ export const ArticulationView = ({
   };
 
   const handleExportReportsCSV = () => {
+    if (activeStudioTab === "reports") {
+      const activeRows = filteredTailoringRows;
+      if (!activeRows || !activeRows.length) {
+        if (onAddNotification) onAddNotification("Info", "No report records match the selected filters to export.", "info");
+        return;
+      }
+      const currentReport = TAILORING_REPORT_TYPES.find(r => r.id === tailoringReportType) || { label: "Tailoring_Report" };
+      const sample = activeRows[0];
+      const keys = Object.keys(sample);
+      const headers = keys.map(k => k.replace(/([A-Z])/g, " $1").trim().toUpperCase());
+      const csvRows = activeRows.map(row => keys.map(k => {
+        const val = row[k];
+        if (val === null || val === undefined) return '""';
+        if (k.toLowerCase().includes('date') || k === 'createdAt') {
+          return `"${formatReportDate(val)}"`;
+        }
+        const strVal = String(val);
+        if (strVal.includes(',') || strVal.includes('"') || strVal.includes('\n')) {
+          return `"${strVal.replace(/"/g, '""')}"`;
+        }
+        return `"${strVal}"`;
+      }));
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...csvRows.map(r => r.join(","))].join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${currentReport.label.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      if (onAddNotification) onAddNotification("CSV Exported", `${currentReport.label} downloaded successfully.`, "success");
+      return;
+    }
+
     if (!alterationRecords || !alterationRecords.length) return;
     const headers = ["Ticket ID", "Invoice Number", "Customer Name", "Customer Phone", "Product Name", "Size", "Color", "Master Tailor", "Priority", "Status", "Delivery Date", "Created Date"];
     const rows = alterationRecords.map(a => [
@@ -2005,7 +2133,7 @@ export const ArticulationView = ({
   };
 
   // Section 8: Tailors
-  const [selectedTailor, setSelectedTailor] = useState(defaultTailors[0]);
+  const [selectedTailor, setSelectedTailor] = useState(() => defaultTailors[0] || { id: "t-default", name: "In-House Master Tailor", jobs: 0, availability: "Available" });
   const [activeTailorIndex, setActiveTailorIndex] = useState(0);
 
   // ─── REFS FOR KEYBOARD FOCUSING ───
@@ -2032,13 +2160,13 @@ export const ArticulationView = ({
   const totalFabricRequired = parseFloat((fabricRequiredBase + shrinkageLoss + cuttingLoss).toFixed(2));
 
   const fabricReserved = isFabricReserved ? totalFabricRequired : 0;
-  const fabricRemaining = parseFloat((selectedFabric.stock - totalFabricRequired).toFixed(2));
+  const fabricRemaining = parseFloat(((selectedFabric?.stock || 0) - totalFabricRequired).toFixed(2));
 
   // ─── COST BREAKDOWN (SECTION 11) ───
-  const fabricCost = Math.round(totalFabricRequired * selectedFabric.price);
+  const fabricCost = Math.round(totalFabricRequired * (selectedFabric?.price || 0));
   const accessoriesCost = customizations.Buttons !== "Premium Bone" ? 250 : 150;
   const embroideryCost = customizations.Embroidery !== "None" ? 650 : 0;
-  const tailorCost = selectedTailor.availability === "Busy" ? 950 : 750;
+  const tailorCost = selectedTailor?.availability === "Busy" ? 950 : 750;
   const alterationCost = 0;
   const discount = 0;
   const subtotal = fabricCost + accessoriesCost + embroideryCost + tailorCost + alterationCost;
@@ -2075,14 +2203,12 @@ export const ArticulationView = ({
   }, [products, defaultFabrics]);
 
   useEffect(() => {
-    const dbTailors = (employees || []).filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
-    if (dbTailors.length > 0) {
-      const isMock = !selectedTailor || selectedTailor.id === "tr-1" || selectedTailor.id === "tr-2" || selectedTailor.id === "tr-3" || selectedTailor.id === "tr-4" || selectedTailor.id === "tr-5";
-      if (isMock) {
+    if (defaultTailors && defaultTailors.length > 0) {
+      if (!selectedTailor || !defaultTailors.some(t => t.id === selectedTailor.id)) {
         setSelectedTailor(defaultTailors[0]);
       }
     }
-  }, [employees, defaultTailors]);
+  }, [defaultTailors]);
 
   // ─── KEYBOARD LISTENERS (HOTKEYS & NAVIGATION) ───
   useEffect(() => {
@@ -2245,7 +2371,7 @@ export const ArticulationView = ({
         }
       }
 
-      if (focusedSection === "tailors") {
+      if (focusedSection === "tailors" && defaultTailors.length > 0) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setActiveTailorIndex((prev) => (prev + 1) % defaultTailors.length);
@@ -2254,8 +2380,11 @@ export const ArticulationView = ({
           setActiveTailorIndex((prev) => (prev - 1 + defaultTailors.length) % defaultTailors.length);
         } else if (e.key === "Enter") {
           e.preventDefault();
-          setSelectedTailor(defaultTailors[activeTailorIndex]);
-          onAddNotification("Tailor Assigned", `${defaultTailors[activeTailorIndex].name} assigned to tailoring job.`, "success");
+          const target = defaultTailors[activeTailorIndex] || defaultTailors[0];
+          if (target) {
+            setSelectedTailor(target);
+            if (onAddNotification) onAddNotification("Tailor Assigned", `${target.name} assigned to tailoring job.`, "success");
+          }
         }
       }
     };
@@ -2369,7 +2498,8 @@ export const ArticulationView = ({
 
   const handleSendToProduction = () => {
     setOrderStatus("In Production");
-    onAddNotification("Production Stage Loaded", `Garment sent to workflow line. Assigned: ${selectedTailor.name}.`, "success");
+    const tailorName = selectedTailor?.name || 'In-House Master Tailor';
+    onAddNotification("Production Stage Loaded", `Garment sent to workflow line. Assigned: ${tailorName}.`, "success");
 
     if (selectedFabric && selectedFabric.id) {
       const matchedProd = products.find(p => p._id === selectedFabric.id || p.id === selectedFabric.id);
@@ -2381,7 +2511,7 @@ export const ArticulationView = ({
           quantity: Math.ceil(totalFabricRequired),
           referenceType: "Job Card",
           referenceNumber: orderNo,
-          remarks: `Fabric issued to tailor ${selectedTailor.name} for bespoke ${selectedGarment}`
+          remarks: `Fabric issued to tailor ${tailorName} for bespoke ${selectedGarment}`
         });
       }
     }
@@ -2399,9 +2529,9 @@ export const ArticulationView = ({
         garmentType: selectedGarment,
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
-        fabric: selectedFabric.name,
-        color: selectedColor.name,
-        tailor: selectedTailor.name,
+        fabric: selectedFabric?.name || 'Standard Fabric',
+        color: selectedColor?.name || 'Standard Color',
+        tailor: selectedTailor?.name || 'In-House Master Tailor',
         measurements: measurements,
         customizations: customizations,
         orderNo: orderNo,
@@ -3594,257 +3724,732 @@ export const ArticulationView = ({
         {/* ============================================================================== */}
         {/* TAB 2: ALTERATION REPORTS */}
         {/* ============================================================================== */}
-        {activeStudioTab === "reports" && (
-          <div className="space-y-6 animate-fade-in">
+        {activeStudioTab === "reports" && (() => {
+          const currentReportConfig = TAILORING_REPORT_TYPES.find(r => r.id === tailoringReportType) || TAILORING_REPORT_TYPES[0];
+          const todayDateStr = new Date().toISOString().split('T')[0];
 
-            {/* INTERACTIVE FILTERS BAR */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                  <Filter className="w-4 h-4 text-indigo-600" />
-                  <span>Report Filters:</span>
+          return (
+            <div className="space-y-5 animate-fade-in">
+
+              {/* ─── 1. UNIFIED EXECUTIVE KPI SUMMARY ROW (NO CARDS IN MIDDLE) ─── */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Report Records</p>
+                    <span className="p-1.5 bg-slate-100 text-slate-600 rounded-lg">
+                      <FileText className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+                    {filteredTailoringSummary.totalRecords}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate" title={currentReportConfig.label}>
+                    {currentReportConfig.label}
+                  </p>
                 </div>
 
-                <select
-                  value={filterDateRange}
-                  onChange={(e) => setFilterDateRange(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="All">Date Range: All Time</option>
-                  <option value="Today">Today</option>
-                  <option value="ThisWeek">This Week</option>
-                  <option value="ThisMonth">This Month</option>
-                </select>
-
-                <select
-                  value={filterEmployee}
-                  onChange={(e) => setFilterEmployee(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="All">Master Tailor: All</option>
-                  {defaultTailors.map(t => (
-                    <option key={t.id} value={t.name}>{t.name}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="All">Status: All</option>
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Ready for Trial">Ready for Trial</option>
-                  <option value="Ready for Delivery">Ready for Delivery</option>
-                  <option value="Delivered">Delivered</option>
-                </select>
-
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="All">Priority: All</option>
-                  <option value="Normal">Normal</option>
-                  <option value="Urgent">Urgent</option>
-                  <option value="Express">Express</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleExportReportsCSV}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export CSV</span>
-                </button>
-              </div>
-            </div>
-
-            {/* BI SUMMARY KPI CARDS */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Alterations</p>
-                <p className="text-2xl font-black text-slate-900 font-mono mt-1">
-                  {reportsData?.summary?.totalAlterations || alterationRecords.length}
-                </p>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion Rate</p>
-                <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
-                  {reportsData?.summary?.completionRate || (alterationRecords.length ? Math.round((alterationRecords.filter(a => a.status === 'Delivered' || a.status === 'Ready for Delivery').length / alterationRecords.length) * 100) : 0)}%
-                </p>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</p>
-                <p className="text-2xl font-black text-indigo-600 font-mono mt-1">
-                  {reportsData?.summary?.readyForDeliveryCount || alterationRecords.filter(a => a.status === 'Ready for Delivery').length}
-                </p>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Progress Work</p>
-                <p className="text-2xl font-black text-amber-600 font-mono mt-1">
-                  {reportsData?.summary?.inProgressCount || alterationRecords.filter(a => a.status === 'In Progress').length}
-                </p>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delayed Job Rate</p>
-                <p className="text-2xl font-black text-rose-600 font-mono mt-1">
-                  {reportsData?.summary?.delayedRate || (alterationRecords.length ? Math.round((alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length / alterationRecords.length) * 100) : 0)}%
-                </p>
-              </div>
-            </div>
-
-            {/* VISUAL CHARTS GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* CHART 1: STATUS BREAKDOWN */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-rose-600" />
-                    <span>Alteration Status Breakdown</span>
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400">Live Analytics</span>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-amber-200 transition-all">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider">Pending Jobs</p>
+                    <span className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
+                      <Clock className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-amber-600 font-mono mt-1">
+                    {filteredTailoringSummary.pendingJobs}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    In cutting & stitching
+                  </p>
                 </div>
 
-                <div className="space-y-3">
-                  {["Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map(st => {
-                    const count = alterationRecords.filter(a => a.status === st).length;
-                    const pct = alterationRecords.length ? Math.round((count / alterationRecords.length) * 100) : 0;
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-rose-200 transition-all">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-rose-600 uppercase tracking-wider">Overdue Alerts</p>
+                    <span className="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-rose-600 font-mono mt-1">
+                    {tailoringReportType === 'overdue_tailoring_jobs' ? filteredTailoringRows.length : (filteredTailoringSummary.overdueJobs || filteredAlterationRecords.filter(a => a.deliveryDate && a.deliveryDate < todayDateStr && !['Delivered', 'Collected', 'Closed'].includes(a.status)).length)}
+                  </p>
+                  <p className="text-[10px] text-rose-500 font-medium mt-0.5">
+                    Past delivery deadline
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Ready in Showroom</p>
+                    <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                      <PackageCheck className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-indigo-600 font-mono mt-1">
+                    {filteredTailoringSummary.readyNotCollected || filteredAlterationRecords.filter(a => ['Ready for Delivery', 'Ready'].includes(a.status)).length}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Awaiting customer pickup
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-200 transition-all col-span-2 md:col-span-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Tailoring Revenue</p>
+                    <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                      <DollarSign className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
+                    ₹{Number(filteredTailoringSummary.totalCharges || 0).toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Total charges ledger
+                  </p>
+                </div>
+              </div>
+
+              {/* ─── 2. THE 9 REPORT CATEGORIES (STYLISH NAVIGATION PILL BAR) ─── */}
+              <div className="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {TAILORING_REPORT_TYPES.map((rep) => {
+                    const Icon = rep.icon;
+                    const isActive = tailoringReportType === rep.id;
                     return (
-                      <div key={st} className="space-y-1">
-                        <div className="flex justify-between text-xs font-bold">
-                          <span className="text-slate-700">{st}</span>
-                          <span className="font-mono text-slate-500">{count} jobs ({pct}%)</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${st === 'Delivered' ? 'bg-emerald-500' : st === 'Ready for Delivery' ? 'bg-indigo-500' : st === 'In Progress' ? 'bg-amber-500' : st === 'Cancelled' ? 'bg-rose-500' : 'bg-slate-400'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
+                      <button
+                        key={rep.id}
+                        type="button"
+                        onClick={() => setTailoringReportType(rep.id)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 scale-[1.01]"
+                            : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/60"
+                        }`}
+                      >
+                        <Icon className={`w-3 h-3 ${isActive ? "text-white" : "text-slate-400"}`} />
+                        <span>{rep.label}</span>
+                      </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* CHART 2: GARMENT TYPE & PRIORITY DISTRIBUTION */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                    <PieChart className="w-4 h-4 text-indigo-600" />
-                    <span>Garment Category Breakdown</span>
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400">Volume</span>
-                </div>
-
-                <div className="space-y-3">
-                  {["Shirt", "Pant", "Suit", "Kurta", "Sherwani", "Blazer"].map(g => {
-                    const count = alterationRecords.filter(a => (a.productName || '').toLowerCase().includes(g.toLowerCase())).length;
-                    const pct = alterationRecords.length ? Math.round((count / alterationRecords.length) * 100) : 0;
-                    return (
-                      <div key={g} className="space-y-1">
-                        <div className="flex justify-between text-xs font-bold">
-                          <span className="text-slate-700">{g}</span>
-                          <span className="font-mono text-slate-500">{count} garments ({pct}%)</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
+              {/* ─── 3. ACTIVE REPORT CONTAINER & TOOLBAR ─── */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                {/* TOOLBAR HEADER */}
+                <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                      {React.createElement(currentReportConfig.icon, { className: "w-4 h-4" })}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                          {currentReportConfig.label}
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {filteredTailoringRows.length} {filteredTailoringRows.length === 1 ? 'record' : 'records'}
+                        </span>
                       </div>
-                    );
-                  })}
+                      <p className="text-[10px] text-slate-400 mt-0.5">{currentReportConfig.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowVisualAnalytics(prev => !prev)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                        showVisualAnalytics ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                      title="Toggle visual status breakdown"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span>{showVisualAnalytics ? "Hide Analytics" : "Visual Analytics"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={fetchTailoringReport}
+                      className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl transition-colors cursor-pointer"
+                      title="Refresh Report Data"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExportReportsCSV}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export CSV</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* DELAYED JOBS AUDIT TABLE */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  <span>Delayed Alteration Jobs Audit</span>
-                </h3>
-                <span className="text-[10px] font-mono text-rose-600 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
-                  Action Required
-                </span>
-              </div>
+                {/* FILTERS & SEARCH ROW */}
+                <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex-1 min-w-[220px] max-w-sm relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={reportSearchQuery}
+                      onChange={(e) => setReportSearchQuery(e.target.value)}
+                      placeholder="Search ticket #, customer, phone, tailor, garment..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    {reportSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setReportSearchQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                      <th className="p-3">Ticket #</th>
-                      <th className="p-3 text-indigo-700 font-extrabold">Tailor Invoice No</th>
-                      <th className="p-3">Customer</th>
-                      <th className="p-3">Garment</th>
-                      <th className="p-3">Master Tailor</th>
-                      <th className="p-3">Delivery Date</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Overdue Days</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {alterationRecords
-                      .filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered')
-                      .map(alt => {
-                        const targetDate = new Date(alt.deliveryDate);
-                        const daysOverdue = Math.max(1, Math.floor((new Date() - targetDate) / (1000 * 60 * 60 * 24)));
-                        return (
-                          <tr key={alt._id} className="hover:bg-rose-50/40">
-                            <td className="p-3 font-mono font-bold text-rose-600">
-                              <span>{alt.alterationId}</span>
-                            </td>
-                            <td className="p-3 font-mono font-bold text-indigo-700">
-                              {alt.tailorInvoiceNo ? (
-                                <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-black">
-                                  {alt.tailorInvoiceNo}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={filterDateRange}
+                      onChange={(e) => setFilterDateRange(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="All">Date: All Time</option>
+                      <option value="Today">Today</option>
+                      <option value="ThisWeek">This Week</option>
+                      <option value="ThisMonth">This Month</option>
+                    </select>
+
+                    <select
+                      value={filterEmployee}
+                      onChange={(e) => setFilterEmployee(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="All">Tailor: All</option>
+                      {tailorOptions.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+
+                    {!['pending_tailoring_jobs', 'overdue_tailoring_jobs', 'ready_not_collected', 'tailor_workload', 'tailor_completed_jobs', 'customer_tailoring_history'].includes(tailoringReportType) && (
+                      <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="All">Status: All</option>
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Ready for Trial">Ready for Trial</option>
+                        <option value="Ready for Delivery">Ready for Delivery</option>
+                        <option value="Delivered">Delivered</option>
+                      </select>
+                    )}
+
+                    {!['tailor_workload', 'tailor_completed_jobs', 'customer_tailoring_history', 'tailoring_charges'].includes(tailoringReportType) && (
+                      <select
+                        value={filterPriority}
+                        onChange={(e) => setFilterPriority(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="All">Priority: All</option>
+                        <option value="Normal">Normal</option>
+                        <option value="Urgent">Urgent</option>
+                        <option value="Express">Express</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                {/* ─── 4. STRUCTURED DATA TABLES FOR EACH REPORT TYPE ─── */}
+                <div className="overflow-x-auto">
+                  {/* CASE 1: TAILOR-WISE WORKLOAD */}
+                  {tailoringReportType === "tailor_workload" && (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="p-3.5">Master Tailor</th>
+                          <th className="p-3.5">Pending Jobs Queue</th>
+                          <th className="p-3.5">Active Value (₹)</th>
+                          <th className="p-3.5">Capacity Status</th>
+                          <th className="p-3.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => {
+                          const count = Number(row.pendingJobs || 0);
+                          const isHigh = count > 6;
+                          const isMedium = count > 3;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs">
+                                  {(row.tailorName || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <span>{row.tailorName || 'Unassigned'}</span>
+                              </td>
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-black text-sm text-slate-900 min-w-[24px]">{count}</span>
+                                  <div className="w-28 bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${isHigh ? 'bg-rose-500' : isMedium ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                      style={{ width: `${Math.min(100, count * 12.5)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-mono font-bold text-slate-800">
+                                ₹{Number(row.totalCharges || 0).toLocaleString('en-IN')}
+                              </td>
+                              <td className="p-3.5">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1 ${
+                                  isHigh ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                  isMedium ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                  'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isHigh ? 'bg-rose-500' : isMedium ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                                  {isHigh ? 'High Workload' : isMedium ? 'Moderate' : 'Available'}
                                 </span>
-                              ) : (
-                                <span className="text-slate-400 italic text-[10px]">N/A</span>
-                              )}
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTailoringReportType("pending_tailoring_jobs");
+                                    setFilterEmployee(row.tailorName);
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-800 font-bold text-[11px] hover:underline"
+                                >
+                                  View Jobs →
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* CASE 2: TAILOR-WISE COMPLETED JOBS */}
+                  {tailoringReportType === "tailor_completed_jobs" && (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="p-3.5">Master Tailor</th>
+                          <th className="p-3.5">Completed Alterations</th>
+                          <th className="p-3.5">Total Value Handled (₹)</th>
+                          <th className="p-3.5">Throughput Rating</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
+                                {(row.tailorName || 'U').charAt(0).toUpperCase()}
+                              </div>
+                              <span>{row.tailorName || 'Unassigned'}</span>
                             </td>
-                            <td className="p-3 font-bold">{alt.customerName} ({alt.customerPhone})</td>
-                            <td className="p-3">{alt.productName}</td>
-                            <td className="p-3 font-bold">{alt.tailorName || 'Unassigned'}</td>
-                            <td className="p-3 font-mono text-rose-600 font-bold">{alt.deliveryDate}</td>
-                            <td className="p-3">
-                              <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
-                                {alt.status}
+                            <td className="p-3.5">
+                              <span className="font-mono font-black text-sm text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60">
+                                {row.completedJobs || 0} Delivered
                               </span>
                             </td>
-                            <td className="p-3 font-mono font-black text-rose-600">
-                              +{daysOverdue} Days Overdue
+                            <td className="p-3.5 font-mono font-bold text-slate-800">
+                              ₹{Number(row.totalCharges || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="p-3.5">
+                              <span className="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
+                                <Award className="w-3.5 h-3.5 text-emerald-600" />
+                                {Number(row.completedJobs || 0) > 10 ? 'Top Producer' : 'Active Producer'}
+                              </span>
                             </td>
                           </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* CASE 3: RE-ALTERATION REPORT */}
+                  {tailoringReportType === "realteration" && (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="p-3.5">Rework Ticket #</th>
+                          <th className="p-3.5">Date Logged</th>
+                          <th className="p-3.5">Customer</th>
+                          <th className="p-3.5">Garment</th>
+                          <th className="p-3.5">Assigned Tailor</th>
+                          <th className="p-3.5">Rework Instructions</th>
+                          <th className="p-3.5">Priority</th>
+                          <th className="p-3.5">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-rose-600">
+                              <span className="bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                {row.tailorInvoiceNo || row.pssmNo || 'REWORK'}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-600 text-[11px] whitespace-nowrap">
+                              {formatReportDateTime(row.createdAt || row.jobDate)}
+                            </td>
+                            <td className="p-3.5">
+                              <p className="font-bold text-slate-900">{row.customerName}</p>
+                              {row.mobileNumber && <p className="text-[10px] text-slate-400 font-mono">{row.mobileNumber}</p>}
+                            </td>
+                            <td className="p-3.5 font-medium text-slate-800">{row.garment || row.productName || 'Garment'}</td>
+                            <td className="p-3.5 font-bold text-slate-700">{row.tailorName || 'Unassigned'}</td>
+                            <td className="p-3.5 max-w-[220px]">
+                              <p className="text-[11px] text-slate-700 line-clamp-2 bg-slate-50 p-1.5 rounded border border-slate-100">
+                                {row.instructions || 'Customer requested refitting'}
+                              </p>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-100 text-rose-800">
+                                {row.priority || 'Urgent'}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800">
+                                {row.status || 'Re-Alteration'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* CASE 4: TAILORING CHARGES REPORT */}
+                  {tailoringReportType === "tailoring_charges" && (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="p-3.5">Tailor Invoice No</th>
+                          <th className="p-3.5">Job Date</th>
+                          <th className="p-3.5">Customer</th>
+                          <th className="p-3.5">Tailor</th>
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5">Total Charge</th>
+                          <th className="p-3.5">Advance Paid</th>
+                          <th className="p-3.5">Balance Due</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => {
+                          const charge = Number(row.tailoringCharges || 0);
+                          const advance = Number(row.advancePaid || 0);
+                          const balance = Number(row.balance || (charge - advance));
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3.5 font-mono font-bold text-indigo-700">
+                                <span className="bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                  {row.tailorInvoiceNo || '-'}
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-mono text-slate-600 text-[11px] whitespace-nowrap">
+                                {formatReportDate(row.jobDate)}
+                              </td>
+                              <td className="p-3.5 font-bold text-slate-900">{row.customerName}</td>
+                              <td className="p-3.5 font-medium text-slate-700">{row.tailorName || 'Unassigned'}</td>
+                              <td className="p-3.5">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                                  {row.status || 'Pending'}
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-mono font-bold text-slate-900">₹{charge.toLocaleString('en-IN')}</td>
+                              <td className="p-3.5 font-mono text-emerald-700 font-bold">₹{advance.toLocaleString('en-IN')}</td>
+                              <td className="p-3.5 font-mono font-black">
+                                <span className={balance > 0 ? "text-rose-600 bg-rose-50 px-2 py-0.5 rounded" : "text-slate-400"}>
+                                  ₹{balance.toLocaleString('en-IN')}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* CASE 5: CUSTOMER TAILORING HISTORY */}
+                  {tailoringReportType === "customer_tailoring_history" && (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="p-3.5">Customer Name</th>
+                          <th className="p-3.5">Mobile Number</th>
+                          <th className="p-3.5">Total Alterations</th>
+                          <th className="p-3.5">Completed Garments</th>
+                          <th className="p-3.5">Total Spent (₹)</th>
+                          <th className="p-3.5">Last Visited Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3.5 font-bold text-slate-900">{row.customerName}</td>
+                            <td className="p-3.5 font-mono text-slate-600">{row.mobileNumber || '-'}</td>
+                            <td className="p-3.5 font-mono font-bold text-slate-900">{row.totalJobs || 0}</td>
+                            <td className="p-3.5 font-mono font-bold text-emerald-600">{row.completedJobs || 0}</td>
+                            <td className="p-3.5 font-mono font-black text-slate-900">
+                              ₹{Number(row.totalCharges || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-600 text-[11px] whitespace-nowrap">
+                              {formatReportDate(row.lastJobDate)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* CASE 6: DEFAULT JOB LISTS (Daily Tailoring Jobs, Pending Jobs, Overdue Jobs, Ready but Not Collected) */}
+                  {!['tailor_workload', 'tailor_completed_jobs', 'realteration', 'tailoring_charges', 'customer_tailoring_history'].includes(tailoringReportType) && (
+                    <table className="w-full text-left border-collapse text-xs" style={{tableLayout:'fixed'}}>
+                      <colgroup>
+                        <col style={{width:'120px'}} />
+                        <col style={{width:'100px'}} />
+                        <col style={{width:'180px'}} />
+                        <col style={{width:'130px'}} />
+                        <col style={{width:'80px'}} />
+                        <col style={{width:'90px'}} />
+                        <col style={{width:'80px'}} />
+                        <col style={{width:'110px'}} />
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                          <th className="px-2 py-2">Ticket / Date</th>
+                          <th className="px-2 py-2">Delivery</th>
+                          <th className="px-2 py-2">Customer & Garment</th>
+                          <th className="px-2 py-2">Tailor</th>
+                          <th className="px-2 py-2">Priority</th>
+                          <th className="px-2 py-2">Status</th>
+                          <th className="px-2 py-2">Charges</th>
+                          <th className="px-2 py-2 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredTailoringRows.map((row, idx) => {
+                          const isOverdue = row.expectedDeliveryDate && row.expectedDeliveryDate < todayDateStr && !['ready', 'delivered', 'collected'].includes(String(row.status || '').toLowerCase());
+                          const isReady = String(row.status || '').toLowerCase().includes('ready');
+                          const rowObj = row._id ? row : null;
+                          return (
+                            <tr key={idx} className={`hover:bg-slate-50/80 transition-colors ${isOverdue ? 'bg-rose-50/30' : ''}`}>
+                              {/* Col 1: Ticket + Date */}
+                              <td className="px-2 py-2 align-middle">
+                                <span className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold text-indigo-700 text-[10px] block truncate" title={row.tailorInvoiceNo || '-'}>
+                                  {row.tailorInvoiceNo || '-'}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-mono block mt-0.5 truncate">
+                                  {formatReportDateTime(row.jobDate || row.createdAt)}
+                                </span>
+                              </td>
+                              {/* Col 2: Delivery */}
+                              <td className="px-2 py-2 align-middle">
+                                <span className={`text-[10px] font-bold block truncate ${isOverdue ? 'text-rose-600' : 'text-slate-700'}`}>
+                                  {formatReportDate(row.expectedDeliveryDate)}
+                                </span>
+                                {isOverdue && <span className="text-[8px] font-black uppercase text-rose-600 bg-rose-50 px-1 py-0.5 rounded mt-0.5 inline-block">OVERDUE</span>}
+                              </td>
+                              {/* Col 3: Customer + Garment */}
+                              <td className="px-2 py-2 align-middle">
+                                <p className="font-bold text-slate-900 text-[11px] truncate" title={row.customerName}>{row.customerName || 'Walk-in'}</p>
+                                {row.mobileNumber && <p className="text-[9px] text-slate-400 font-mono truncate">{row.mobileNumber}</p>}
+                                <p className="text-[10px] text-slate-600 truncate" title={row.garmentService}>{row.garmentService || 'Alteration'}</p>
+                              </td>
+                              {/* Col 4: Tailor */}
+                              <td className="px-2 py-2 align-middle">
+                                <span className="font-bold text-slate-800 text-[10px] block truncate" title={row.tailorName}>
+                                  {row.tailorName || 'Unassigned'}
+                                </span>
+                              </td>
+                              {/* Col 5: Priority */}
+                              <td className="px-2 py-2 align-middle">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap ${
+                                  String(row.priority).toLowerCase() === 'urgent' ? 'bg-rose-100 text-rose-800' :
+                                  String(row.priority).toLowerCase() === 'express' ? 'bg-purple-100 text-purple-800' :
+                                  'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {row.priority || 'Normal'}
+                                </span>
+                              </td>
+                              {/* Col 6: Status */}
+                              <td className="px-2 py-2 align-middle">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide inline-flex items-center gap-1 whitespace-nowrap ${
+                                  isReady ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                  String(row.status || '').toLowerCase() === 'delivered' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                  String(row.status || '').toLowerCase().includes('overdue') || isOverdue ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                  'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}>
+                                  <span className={`w-1 h-1 rounded-full flex-shrink-0 ${isReady ? 'bg-indigo-500' : String(row.status || '').toLowerCase() === 'delivered' ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                                  <span className="truncate max-w-[60px]" title={row.status}>{row.status || 'Pending'}</span>
+                                </span>
+                              </td>
+                              {/* Col 7: Charges */}
+                              <td className="px-2 py-2 align-middle font-mono font-bold text-slate-900 text-[11px] whitespace-nowrap">
+                                ₹{Number(row.tailoringCharges || 0).toLocaleString('en-IN')}
+                              </td>
+                              {/* Col 8: Actions — always shown */}
+                              <td className="px-2 py-2 align-middle">
+                                <div className="flex items-center justify-center gap-1">
+                                  {/* WhatsApp notification */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setWhatsappModalTarget(row)}
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                      isReady && row.mobileNumber
+                                        ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-400'
+                                    }`}
+                                    title={isReady ? 'Notify customer on WhatsApp' : 'Notify (available when Ready)'}
+                                  >
+                                    <MessageSquare className="w-3 h-3" />
+                                  </button>
+                                  {/* Print job slip */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // Build a ticket-like obj from row and open the modal
+                                      const altMatch = (alterationRecords || []).find(a => a._id === row._id || a.tailorInvoiceNo === row.tailorInvoiceNo || a.alterationId === row.alterationId);
+                                      setSelectedJobTicket(altMatch || {
+                                        ...row,
+                                        alterationId: row.tailorInvoiceNo || row.alterationId || row._id,
+                                        customerPhone: row.mobileNumber || row.customerPhone,
+                                        totalCharges: row.tailoringCharges || 0,
+                                        serviceType: row.garmentService || 'Alteration',
+                                        alterationDetails: row.garmentService ? [row.garmentService] : ['Alteration'],
+                                        barcode: row.tailorInvoiceNo || row._id
+                                      });
+                                    }}
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-600 transition-colors cursor-pointer"
+                                    title="Print / View Job Slip"
+                                  >
+                                    <Printer className="w-3 h-3" />
+                                  </button>
+                                  {/* Reassign tailor */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const altMatch = (alterationRecords || []).find(a => a._id === row._id || a.tailorInvoiceNo === row.tailorInvoiceNo);
+                                      if (altMatch) handleOpenTailorModal(altMatch);
+                                      else if (onAddNotification) onAddNotification('Info', 'Open the Alterations tab to reassign tailor for this job.', 'info');
+                                    }}
+                                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors cursor-pointer"
+                                    title="Reassign Master Tailor"
+                                  >
+                                    <Scissors className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* EMPTY STATE */}
+                  {filteredTailoringRows.length === 0 && (
+                    <div className="p-12 text-center space-y-2">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center mx-auto">
+                        <Filter className="w-6 h-6" />
+                      </div>
+                      <p className="text-xs font-black uppercase text-slate-700">No records found</p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        No tailoring records match the selected filters for {currentReportConfig.label}. Try adjusting the date range or tailor filter.
+                      </p>
+                      {(filterDateRange !== "All" || filterEmployee !== "All" || filterStatus !== "All" || reportSearchQuery) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterDateRange("All");
+                            setFilterEmployee("All");
+                            setFilterStatus("All");
+                            setFilterPriority("All");
+                            setReportSearchQuery("");
+                          }}
+                          className="mt-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 cursor-pointer inline-block"
+                        >
+                          Clear All Filters
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ─── 5. COLLAPSIBLE VISUAL BREAKDOWN & ANALYTICS DRAWER ─── */}
+              {showVisualAnalytics && (
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-indigo-600" />
+                      <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                        Visual Breakdown & Volume Analytics
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">Live Studio Analytics</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* CHART 1: STATUS BREAKDOWN */}
+                    <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                      <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Status Distribution</h4>
+                      {["Pending", "In Progress", "Ready for Trial", "Ready for Delivery", "Delivered", "Cancelled"].map(st => {
+                        const count = filteredAlterationRecords.filter(a => a.status === st).length;
+                        const pct = filteredAlterationRecords.length ? Math.round((count / filteredAlterationRecords.length) * 100) : 0;
+                        return (
+                          <div key={st} className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span className="text-slate-700">{st}</span>
+                              <span className="font-mono text-slate-500">{count} jobs ({pct}%)</span>
+                            </div>
+                            <div className="w-full bg-slate-200/60 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${st === 'Delivered' ? 'bg-emerald-500' : st === 'Ready for Delivery' ? 'bg-indigo-500' : st === 'In Progress' ? 'bg-amber-500' : st === 'Cancelled' ? 'bg-rose-500' : 'bg-slate-400'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
                         );
                       })}
+                    </div>
 
-                    {alterationRecords.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="p-6 text-center text-slate-400 font-medium">
-                          🎉 Outstanding! No delayed alteration jobs in backlog.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    {/* CHART 2: GARMENT TYPE BREAKDOWN */}
+                    <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                      <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Garment Category Breakdown</h4>
+                      {["Shirt", "Pant", "Suit", "Kurta", "Sherwani", "Blazer"].map(g => {
+                        const count = filteredAlterationRecords.filter(a => (a.productName || '').toLowerCase().includes(g.toLowerCase())).length;
+                        const pct = filteredAlterationRecords.length ? Math.round((count / filteredAlterationRecords.length) * 100) : 0;
+                        return (
+                          <div key={g} className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span className="text-slate-700">{g}</span>
+                              <span className="font-mono text-slate-500">{count} garments ({pct}%)</span>
+                            </div>
+                            <div className="w-full bg-slate-200/60 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
-
-          </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================================== */}
         {/* TAB 3: EMPLOYEE ALTERATION TRACKING (PRODUCTIVITY ONLY, NO COMMISSION) */}
@@ -3872,7 +4477,8 @@ export const ArticulationView = ({
 
             {/* TAILOR PERFORMANCE CARDS GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {(performanceData?.metrics || defaultTailors.map((t, idx) => {
+              {(performanceData?.metrics || (defaultTailors || []).map((t, idx) => {
+                if (!t) return null;
                 const tailorAlts = alterationRecords.filter(a => a.tailorName === t.name);
                 const assignedCount = tailorAlts.length || t.jobs || 0;
                 const completedCount = tailorAlts.filter(a => a.status === 'Delivered' || a.status === 'Ready for Delivery').length;
@@ -3881,7 +4487,7 @@ export const ArticulationView = ({
                 const readyForDeliveryCount = tailorAlts.filter(a => a.status === 'Ready for Delivery').length;
                 const delayedCount = tailorAlts.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length;
                 const completionPct = assignedCount ? Math.round((completedCount / assignedCount) * 100) : 100;
-                const availabilityStatus = t.availability || (inProgressCount >= 5 ? 'Busy' : 'Available');
+                const availabilityStatus = t?.availability || (inProgressCount >= 5 ? 'Busy' : 'Available');
 
                 let performanceIndicator = 'Good';
                 if (completionPct >= 85 && delayedCount === 0) performanceIndicator = 'Excellent';
@@ -3891,7 +4497,7 @@ export const ArticulationView = ({
 
                 return {
                   employeeId: `EMP-TR-${101 + idx}`,
-                  employeeName: t.name,
+                  employeeName: t?.name || 'Master Tailor',
                   designation: 'Master Tailor',
                   assignedCount,
                   completedCount,

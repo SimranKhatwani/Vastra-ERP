@@ -56,7 +56,7 @@ const getAuthHeaders = () => ({
 });
 
 export const ReportsView = ({ onAddNotification }) => {
-  const [activeSection, setActiveSection] = useState("dashboard"); // 'dashboard', 'sales', 'inventory', 'people', 'financial'
+  const [activeSection, setActiveSection] = useState("dashboard"); // 'dashboard', 'sales', 'inventory', 'people', 'financial', 'tailoring'
   const [selectedReport, setSelectedReport] = useState(null); // Selected report inside section
   const [loading, setLoading] = useState(false);
 
@@ -90,13 +90,15 @@ export const ReportsView = ({ onAddNotification }) => {
   const loadSectionReport = async (section, reportType) => {
     setLoading(true);
     try {
-      let endpoint = `/reports/${reportType || section}`;
+      let endpoint = section === "tailoring"
+        ? `/reports/tailoring?reportType=${encodeURIComponent(reportType || "daily_tailoring_jobs")}`
+        : `/reports/${reportType || section}`;
       let queryParams = [];
       if (dateRange.start) queryParams.push(`startDate=${dateRange.start}`);
       if (dateRange.end) queryParams.push(`endDate=${dateRange.end}`);
       
       if (queryParams.length > 0) {
-        endpoint += `?${queryParams.join('&')}`;
+        endpoint += `${endpoint.includes("?") ? "&" : "?"}${queryParams.join('&')}`;
       }
 
       const res = await api.get(endpoint);
@@ -198,6 +200,7 @@ export const ReportsView = ({ onAddNotification }) => {
           { id: "inventory", label: "Inventory Analytics", icon: Package },
           { id: "people", label: "People & HR Analytics", icon: Users },
           { id: "financial", label: "Financial Analytics & Expenses", icon: PieIcon },
+          { id: "tailoring", label: "Alteration & Tailoring", icon: Layers },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSection === tab.id;
@@ -260,6 +263,14 @@ export const ReportsView = ({ onAddNotification }) => {
                 count: "Executive Statement",
                 icon: PieIcon,
                 color: "bg-amber-500",
+              },
+              {
+                id: "tailoring",
+                title: "Alteration & Tailoring",
+                desc: "Re-alteration cases, tailoring jobs, charges & collection status",
+                count: "9 Active Reports",
+                icon: Layers,
+                color: "bg-rose-500",
               },
             ].map((card) => {
               const Icon = card.icon;
@@ -463,7 +474,7 @@ export const ReportsView = ({ onAddNotification }) => {
       {activeSection !== "dashboard" && (
         <div className="space-y-6">
           {/* Sub-Report Type Selector Tabs */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-xs flex flex-wrap items-center gap-2">
+          <div className={`${activeSection === "tailoring" ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "flex flex-wrap"} bg-white p-3 rounded-2xl border border-slate-100 shadow-xs gap-2`}>
             {getSectionReportCards(activeSection).map((card) => {
               const isSelected = selectedReport === card.id;
               return (
@@ -473,13 +484,18 @@ export const ReportsView = ({ onAddNotification }) => {
                     setSelectedReport(card.id);
                     loadSectionReport(activeSection, card.id);
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                  className={`${activeSection === "tailoring" ? "w-full text-left p-4" : "px-4 py-2"} rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
                     isSelected
                       ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                       : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
-                  {card.label}
+                  <span className="block">{card.label}</span>
+                  {activeSection === "tailoring" && (
+                    <span className={`block mt-1 text-[11px] font-medium leading-4 ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
+                      {card.desc}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -490,9 +506,11 @@ export const ReportsView = ({ onAddNotification }) => {
             <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">
-                  {(selectedReport || activeSection).replace('_', ' ').toUpperCase()} REPORT & LIVE AUDIT
+                  {getReportTitle(activeSection, selectedReport)}
                 </h3>
-                <p className="text-xs text-slate-400">Live dynamic reporting & metrics powered by MongoDB Aggregations</p>
+                <p className="text-xs text-slate-400">
+                  {getReportDescription(activeSection, selectedReport)}
+                </p>
               </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
@@ -551,7 +569,7 @@ export const ReportsView = ({ onAddNotification }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {Object.entries(reportData.summary).map(([k, v]) => (
                     <div key={k} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{k.replace(/([A-Z])/g, " $1")}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{formatFieldLabel(k)}</p>
                       <p className="text-sm font-black font-mono text-slate-800 mt-1">
                         {typeof v === "number" ? (k.toLowerCase().includes("count") || k.toLowerCase().includes("total") && !k.toLowerCase().includes("sales") && !k.toLowerCase().includes("purchases") && !k.toLowerCase().includes("gst") && !k.toLowerCase().includes("receivables") && !k.toLowerCase().includes("payables") ? v : `₹${fmt(v)}`) : v}
                       </p>
@@ -567,7 +585,7 @@ export const ReportsView = ({ onAddNotification }) => {
                     <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
                       {(reportData?.data?.length ? Object.keys(reportData.data[0]) : ["Status"]).slice(0, 8).map((h) => (
                         <th key={h} className="p-3">
-                          {h.replace(/([A-Z])/g, " $1")}
+                          {formatFieldLabel(h)}
                         </th>
                       ))}
                     </tr>
@@ -582,7 +600,7 @@ export const ReportsView = ({ onAddNotification }) => {
                       .map((row, i) => (
                         <tr key={i} className="hover:bg-slate-50/50">
                           {Object.entries(row).slice(0, 8).map(([key, val], colIdx) => {
-                            const strVal = String(val ?? "");
+                            const strVal = formatReportValue(key, val);
                             if (strVal === "Returned" || strVal === "Partially Returned") {
                               return (
                                 <td key={colIdx} className="p-3">
@@ -660,6 +678,33 @@ export const ReportsView = ({ onAddNotification }) => {
   );
 };
 
+function formatFieldLabel(field) {
+  return field
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (character) => character.toUpperCase())
+    .replace(/Pssm/i, "PSSM")
+    .replace(/No$/i, "No.");
+}
+
+function formatReportValue(field, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (field.toLowerCase().includes("date") || field === "createdAt") {
+    return new Date(value).toLocaleDateString("en-IN");
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function getReportTitle(section, report) {
+  const card = getSectionReportCards(section).find((item) => item.id === report);
+  return `${card?.label || formatFieldLabel(report || section)} Report`;
+}
+
+function getReportDescription(section, report) {
+  const card = getSectionReportCards(section).find((item) => item.id === report);
+  return card?.desc || "Live dynamic reporting and metrics powered by MongoDB aggregations";
+}
+
 // Helper to get Report Cards per Section
 function getSectionReportCards(section) {
   switch (section) {
@@ -689,6 +734,18 @@ function getSectionReportCards(section) {
         { id: "financial_summary", label: "Financial Statement", desc: "Profit & Loss, Cash Flow & Bank Ledger Summary" },
         { id: "expenses", label: "Expense Management", desc: "Categorized expenses, payouts & vendor expense log" },
       ];
+    case "tailoring":
+      return [
+        { id: "daily_tailoring_jobs", label: "Daily Tailoring Jobs", desc: "Complete tailoring and alteration job register" },
+        { id: "pending_tailoring_jobs", label: "Pending Jobs", desc: "Jobs currently in progress" },
+        { id: "overdue_tailoring_jobs", label: "Overdue Jobs", desc: "Pending jobs beyond expected delivery date" },
+        { id: "ready_not_collected", label: "Ready but Not Collected", desc: "Completed jobs awaiting customer collection" },
+        { id: "tailor_workload", label: "Tailor-wise Workload", desc: "Pending workload grouped by tailor" },
+        { id: "tailor_completed_jobs", label: "Tailor-wise Completed Jobs", desc: "Completed jobs and charges grouped by tailor" },
+        { id: "realteration", label: "Re-Alteration Report", desc: "Garments returned for alteration or rework" },
+        { id: "tailoring_charges", label: "Tailoring Charges Report", desc: "Tailoring charges, advances, and outstanding balances" },
+        { id: "customer_tailoring_history", label: "Customer Tailoring History", desc: "Customer-wise tailoring jobs, charges, and latest activity" },
+      ];
     default:
       return [];
   }
@@ -704,6 +761,8 @@ function getDefaultReportForSection(section) {
       return "performance";
     case "financial":
       return "financial_summary";
+    case "tailoring":
+      return "daily_tailoring_jobs";
     default:
       return "";
   }
