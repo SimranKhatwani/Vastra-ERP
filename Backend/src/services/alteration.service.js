@@ -13,6 +13,9 @@ const TailoringJobService = require('./tailoringJob.service');
 
 class AlterationService {
   static async createAlteration(data, userId, tenantId) {
+    if (data.sourceType === 'CUSTOMER_OWN_GARMENT' && !/^[6-9]\d{9}$/.test(String(data.customerPhone || '').trim())) {
+      throw new ApiError(400, 'A valid 10-digit customer mobile number is required for custom tailoring.');
+    }
     let totalCharges = 0;
     const SaleBill = require('../models/billing/SaleBill');
     const SaleItem = require('../models/billing/SaleItem');
@@ -180,8 +183,9 @@ class AlterationService {
         createdBy: userId
       });
 
-      // Auto-create TailoringJob when serviceType is 'Alteration'
-      if ((item.serviceType || data.serviceType || 'Alteration') === 'Alteration') {
+      // Auto-create a tailoring job for every tailoring service, including customer-owned garments.
+      const tailoringServiceTypes = ['Alteration', 'Custom Tailoring', 'Full Stitching', 'Fitting & Hemming', 'Repairs / Redesign'];
+      if (tailoringServiceTypes.includes(item.serviceType || data.serviceType || 'Alteration')) {
         try {
           const job = await TailoringJobService.createFromPSSMItem(pssmRecord, pssmItemDoc, userId, tenantId);
           if (job) {
@@ -649,6 +653,9 @@ class AlterationService {
         customerName: alt.customerName || (alt.customerId ? alt.customerId.name : (alt.saleBillId ? (alt.saleBillId.customerName || alt.saleBillId.customerId?.name) : 'Walk-in Customer')),
         customerPhone: alt.customerPhone || (alt.customerId ? alt.customerId.phone : (alt.saleBillId ? (alt.saleBillId.customerPhone || alt.saleBillId.customerId?.phone) : '')),
         productName,
+        sourceType: alt.sourceType || 'SHOWROOM_PURCHASE',
+        gender: alt.gender || firstItem.gender || 'Gents',
+        serviceType: firstItem.serviceType || alt.serviceType || 'Alteration',
         barcode,
         uniqueCode,
         sku,
@@ -721,8 +728,9 @@ class AlterationService {
 
         let tailorInvoiceNo = pi.tailorInvoiceNo || jobsByItemId.get(pi._id.toString())?.tailorInvoiceNo || '';
 
-        // Auto-heal missing Tailor Invoice No for alteration PSSM items
-        if (!tailorInvoiceNo && (pi.serviceType || 'Alteration') === 'Alteration') {
+        // Auto-heal missing Tailor Invoice No for any tailoring PSSM item.
+        const tailoringServiceTypes = ['Alteration', 'Custom Tailoring', 'Full Stitching', 'Fitting & Hemming', 'Repairs / Redesign'];
+        if (!tailorInvoiceNo && tailoringServiceTypes.includes(pi.serviceType || pssm.serviceType || 'Alteration')) {
           try {
             const newJob = await TailoringJobService.createFromPSSMItem(pssm, pi, pi.createdBy, tenantId);
             if (newJob) {
@@ -782,6 +790,8 @@ class AlterationService {
           saleBill: pssm.saleBillId || null,
           customerName: custName,
           customerPhone: custPhone,
+          sourceType: pi.sourceType || pssm.sourceType || 'SHOWROOM_PURCHASE',
+          gender: pi.gender || pssm.gender || 'Gents',
           productName: pi.productName || pi.pieceName || 'Garment Item',
           barcode: pi.barcode || pi.uniqueCode || '',
           uniqueCode: pi.uniqueCode || pi.barcode || '',

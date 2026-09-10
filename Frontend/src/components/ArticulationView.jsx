@@ -502,15 +502,27 @@ export const ArticulationView = ({
   }, [alterationRecords, dashboardSummaryData]);
 
   // --- NEW ALTERATION WIZARD STATE ---
+  const COG_ITEM_DEFAULT = () => ({
+    garmentName: "",
+    fabricColor: "",
+    size: "M",
+    gender: "Gents",
+    garmentType: "Shirt",
+    serviceType: "Custom Tailoring",
+    charge: 0,
+    alterationDetails: [],
+    customText: "",
+    measurements: {}
+  });
+
   const [showCreateAltModal, setShowCreateAltModal] = useState(false);
   const [altCreationMode, setAltCreationMode] = useState("SHOWROOM_PURCHASE"); // "SHOWROOM_PURCHASE" | "CUSTOMER_OWN_GARMENT"
   const [cogCustomerName, setCogCustomerName] = useState("");
   const [cogCustomerPhone, setCogCustomerPhone] = useState("");
-  const [cogGarmentName, setCogGarmentName] = useState("");
-  const [cogFabricColor, setCogFabricColor] = useState("");
-  const [cogSize, setCogSize] = useState("M");
-  const [cogGender, setCogGender] = useState("Gents");
-  const [cogServiceType, setCogServiceType] = useState("Custom Tailoring");
+  // Multi-item support for Customer Own Garment mode
+  const [cogItems, setCogItems] = useState([COG_ITEM_DEFAULT()]);
+  const [cogGender, setCogGender] = useState("Gents"); // kept for backward compat
+  const [cogServiceType, setCogServiceType] = useState("Custom Tailoring"); // kept for backward compat
   const [altInvoiceSearch, setAltInvoiceSearch] = useState("");
   const [altInvoices, setAltInvoices] = useState([]);
   const [searchingAltInvoices, setSearchingAltInvoices] = useState(false);
@@ -1077,102 +1089,112 @@ export const ArticulationView = ({
         if (onAddNotification) onAddNotification("Warning", "Please enter customer name.", "warning");
         return;
       }
-      if (!cogGarmentName.trim()) {
-        if (onAddNotification) onAddNotification("Warning", "Please specify the garment / fabric name.", "warning");
+      if (!/^[6-9]\d{9}$/.test(cogCustomerPhone.trim())) {
+        if (onAddNotification) onAddNotification("Warning", "Please enter a valid 10-digit mobile number.", "warning");
+        return;
+      }
+      const validItems = cogItems.filter(it => it.garmentName.trim());
+      if (validItems.length === 0) {
+        if (onAddNotification) onAddNotification("Warning", "Please add at least one garment with a name.", "warning");
         return;
       }
 
-      const effectiveDetails = altDetails.length > 0
-        ? altDetails
-        : [cogServiceType || "Custom Tailoring"];
-
-      const payload = {
-        sourceType: 'CUSTOMER_OWN_GARMENT',
-        invoiceNumber: 'CUSTOMER-OWN-GARMENT',
-        customerName: cogCustomerName.trim(),
-        customerPhone: cogCustomerPhone.trim(),
-        productName: cogGarmentName.trim(),
-        garmentDescription: cogGarmentName.trim(),
-        fabricDetails: cogFabricColor.trim(),
-        color: cogFabricColor.trim() || 'Standard',
-        size: cogSize.trim() || 'Custom',
-        tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
-        priority: altPriority || 'Normal',
-        status: "Pending",
-        deliveryDate: altDeliveryDate,
-        trialRequired: altTrialRequired,
-        trialDate: altTrialRequired ? altTrialDate : '',
-        serviceType: cogServiceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Custom Tailoring'),
-        gender: cogGender || 'Gents',
-        alterationDetails: effectiveDetails,
-        customAlterationText: altCustomText,
-        specialInstructions: altCustomText || effectiveDetails.join(', '),
-        measurements: altMeasurements,
-        saveAsMaster: cogSaveAsMaster,
-        garmentType: cogGarmentType,
-        charge: Number(altCharges || 0),
-        items: [{
-          sourceType: 'CUSTOMER_OWN_GARMENT',
-          pieceName: cogGarmentName.trim(),
-          gender: cogGender || 'Gents',
-          instructions: effectiveDetails.join(', ') || altCustomText || 'Custom Tailoring',
-          alterationDetails: effectiveDetails,
-          measurements: altMeasurements,
-          charge: Number(altCharges || 0)
-        }]
-      };
-
       try {
-        const res = await api.post(`/alterations`, payload);
-        const data = res.data;
-        if (data.success) {
-          const createdAlt = data.data?.alteration || data.data || {};
-          const tailoringJobs = data.data?.tailoringJobs || [];
-          const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : (createdAlt.tailorInvoiceNo || null);
+        let lastTicket = null;
+        for (const item of validItems) {
+          const effectiveDetails = item.alterationDetails.length > 0
+            ? item.alterationDetails
+            : [item.serviceType || "Custom Tailoring"];
 
-          const ticketSlipObj = {
-            _id: createdAlt._id || `alt-${Date.now()}`,
-            alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
-            tailorInvoiceNo: tailorInvoiceNo,
+          const payload = {
             sourceType: 'CUSTOMER_OWN_GARMENT',
             invoiceNumber: 'CUSTOMER-OWN-GARMENT',
             customerName: cogCustomerName.trim(),
             customerPhone: cogCustomerPhone.trim(),
-            productName: cogGarmentName.trim(),
-            size: cogSize.trim() || 'Custom',
-            color: cogFabricColor.trim() || 'Standard',
-            serviceType: cogServiceType || 'Custom Tailoring',
-            gender: cogGender || 'Gents',
-            tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+            productName: item.garmentName.trim(),
+            garmentDescription: item.garmentName.trim(),
+            fabricDetails: item.fabricColor.trim(),
+            color: item.fabricColor.trim() || 'Standard',
+            size: item.size.trim() || 'Custom',
+            tailorName: altTailorName || (tailorOptions[0] || 'Default Tailor'),
             priority: altPriority || 'Normal',
             status: "Pending",
             deliveryDate: altDeliveryDate,
             trialRequired: altTrialRequired,
             trialDate: altTrialRequired ? altTrialDate : '',
+            serviceType: item.serviceType || 'Custom Tailoring',
+            gender: item.gender || 'Gents',
             alterationDetails: effectiveDetails,
-            customAlterationText: altCustomText,
-            specialInstructions: altCustomText || effectiveDetails.join(', '),
-            measurements: altMeasurements,
-            createdAt: new Date().toISOString()
+            customAlterationText: item.customText || altCustomText,
+            specialInstructions: item.customText || altCustomText || effectiveDetails.join(', '),
+            measurements: item.measurements || {},
+            saveAsMaster: cogSaveAsMaster,
+            garmentType: item.garmentType || cogGarmentType,
+            charge: Number(item.charge || 0),
+            totalCharges: Number(item.charge || 0),
+            items: [{
+              sourceType: 'CUSTOMER_OWN_GARMENT',
+              pieceName: item.garmentName.trim(),
+              gender: item.gender || 'Gents',
+              serviceType: item.serviceType || 'Custom Tailoring',
+              instructions: effectiveDetails.join(', ') || item.customText || 'Custom Tailoring',
+              alterationDetails: effectiveDetails,
+              measurements: item.measurements || {},
+              charge: Number(item.charge || 0)
+            }]
           };
 
-          if (onAddNotification) {
-            onAddNotification("Custom Tailoring Ticket Saved", `Ticket ${ticketSlipObj.alterationId} assigned & generated successfully.`, "success");
+          const res = await api.post(`/alterations`, payload);
+          const data = res.data;
+          if (data.success) {
+            const createdAlt = data.data?.alteration || data.data || {};
+            const tailoringJobs = data.data?.tailoringJobs || [];
+            const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : createdAlt.tailorInvoiceNo || null;
+            lastTicket = {
+              _id: createdAlt._id || `alt-${Date.now()}`,
+              alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+              tailorInvoiceNo,
+              sourceType: 'CUSTOMER_OWN_GARMENT',
+              invoiceNumber: 'CUSTOMER-OWN-GARMENT',
+              customerName: cogCustomerName.trim(),
+              customerPhone: cogCustomerPhone.trim(),
+              productName: item.garmentName.trim(),
+              size: item.size.trim() || 'Custom',
+              color: item.fabricColor.trim() || 'Standard',
+              serviceType: item.serviceType || 'Custom Tailoring',
+              gender: item.gender || 'Gents',
+              tailorName: altTailorName || (tailorOptions[0] || 'Master Ramesh Kumar'),
+              priority: altPriority || 'Normal',
+              status: "Pending",
+              deliveryDate: altDeliveryDate,
+              trialRequired: altTrialRequired,
+              trialDate: altTrialRequired ? altTrialDate : '',
+              alterationDetails: effectiveDetails,
+              customAlterationText: item.customText || altCustomText,
+              specialInstructions: item.customText || altCustomText || effectiveDetails.join(', '),
+              measurements: item.measurements || {},
+              charge: Number(item.charge || 0),
+              createdAt: new Date().toISOString()
+            };
+          } else {
+            if (onAddNotification) onAddNotification("Error", data.message || `Failed to save garment: ${item.garmentName}`, "danger");
           }
+        }
 
+        if (lastTicket) {
+          if (onAddNotification) {
+            onAddNotification("Custom Tailoring Saved", `${validItems.length} garment ticket(s) created successfully for ${cogCustomerName.trim()}.`, "success");
+          }
           setShowCreateAltModal(false);
           fetchAlterations();
           fetchPendingAlterations();
-          setSelectedJobTicket(ticketSlipObj);
-        } else {
-          if (onAddNotification) {
-            onAddNotification("Error", data.message || "Failed to create custom tailoring ticket.", "danger");
-          }
+          setSelectedJobTicket(lastTicket);
+          setCogItems([COG_ITEM_DEFAULT()]);
         }
       } catch (err) {
         console.error("Save custom tailoring error:", err);
         if (onAddNotification) {
-          onAddNotification("Error", "Network or server failure.", "danger");
+          onAddNotification("Error", err.response?.data?.message || "Network or server failure.", "danger");
         }
       }
       return;
@@ -2584,8 +2606,8 @@ export const ArticulationView = ({
                           type="button"
                           onClick={() => setAltGenderFilter(gf)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${isAct
-                              ? gf === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : gf === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            ? gf === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : gf === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
                         >
                           {gf === 'Gents' && <span>👨</span>}
@@ -2682,8 +2704,8 @@ export const ArticulationView = ({
                                   {item.productName}
                                 </h4>
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${itemGender === 'Ladies'
-                                    ? 'bg-pink-100 text-pink-700 border-pink-300'
-                                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                                  ? 'bg-pink-100 text-pink-700 border-pink-300'
+                                  : 'bg-blue-100 text-blue-700 border-blue-300'
                                   }`}>
                                   {itemGender}
                                 </span>
@@ -2693,8 +2715,8 @@ export const ArticulationView = ({
                                   {item.serviceType || 'Alteration'}
                                 </span>
                                 <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${itemGender === 'Ladies'
-                                    ? 'bg-pink-50 text-pink-700 border-pink-200'
-                                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                                  ? 'bg-pink-50 text-pink-700 border-pink-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
                                   }`}>
                                   {itemGender}
                                 </span>
@@ -2752,8 +2774,8 @@ export const ArticulationView = ({
                     type="button"
                     onClick={() => setAlterationsFilterStatus("All")}
                     className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${alterationsFilterStatus === "All"
-                        ? "bg-slate-900 text-white shadow-xs ring-1 ring-slate-800"
-                        : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      ? "bg-slate-900 text-white shadow-xs ring-1 ring-slate-800"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
                       }`}
                     title="View All Tickets"
                   >
@@ -2914,8 +2936,8 @@ export const ArticulationView = ({
                       key={card.id}
                       onClick={() => setAlterationsFilterStatus(prev => prev === card.id ? "All" : card.id)}
                       className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none relative group ${isActive
-                          ? `${card.activeBg} shadow-md -translate-y-0.5 scale-[1.02]`
-                          : `${card.bg} ${card.border} hover:shadow-sm hover:-translate-y-0.5`
+                        ? `${card.activeBg} shadow-md -translate-y-0.5 scale-[1.02]`
+                        : `${card.bg} ${card.border} hover:shadow-sm hover:-translate-y-0.5`
                         }`}
                     >
                       <div className="flex items-center justify-between gap-1 mb-1">
@@ -2977,9 +2999,7 @@ export const ArticulationView = ({
                     setAltCreationMode("SHOWROOM_PURCHASE");
                     setCogCustomerName("");
                     setCogCustomerPhone("");
-                    setCogGarmentName("");
-                    setCogFabricColor("");
-                    setCogSize("M");
+                    setCogItems([COG_ITEM_DEFAULT()]);
                     setCogGender("Gents");
                     setCogServiceType("Custom Tailoring");
                     setSelectedAltInvoice(null);
@@ -3023,18 +3043,18 @@ export const ArticulationView = ({
                     const isAct = altSourceFilter === src.id;
                     const count = src.id === "All"
                       ? alterationRecords.length
-                      : alterationRecords.filter(a => (a.sourceType || 'SHOWROOM_PURCHASE') === src.id).length;
+                      : alterationRecords.filter(a => (a.sourceType || (a.invoiceNumber === 'CUSTOMER-OWN-GARMENT' ? 'CUSTOMER_OWN_GARMENT' : 'SHOWROOM_PURCHASE')) === src.id).length;
                     return (
                       <button
                         key={src.id}
                         onClick={() => setAltSourceFilter(src.id)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${isAct
-                            ? (src.id === 'CUSTOMER_OWN_GARMENT'
-                              ? 'bg-emerald-700 text-white shadow-xs'
-                              : src.id === 'SHOWROOM_PURCHASE'
-                                ? 'bg-indigo-700 text-white shadow-xs'
-                                : 'bg-slate-900 text-white shadow-xs')
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                          ? (src.id === 'CUSTOMER_OWN_GARMENT'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : src.id === 'SHOWROOM_PURCHASE'
+                              ? 'bg-indigo-700 text-white shadow-xs'
+                              : 'bg-slate-900 text-white shadow-xs')
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
                           }`}
                       >
                         <span>{src.label} ({count})</span>
@@ -3056,8 +3076,8 @@ export const ArticulationView = ({
                         key={g}
                         onClick={() => setAltGenderFilter(g)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${isAct
-                            ? (g === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : g === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs')
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                          ? (g === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : g === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs')
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
                           }`}
                       >
                         {g === 'Gents' && <span>👨</span>}
@@ -3132,7 +3152,7 @@ export const ArticulationView = ({
 
                         if (!matchesStatus) return false;
 
-                        const aSource = a.sourceType || 'SHOWROOM_PURCHASE';
+                        const aSource = a.sourceType || (a.invoiceNumber === 'CUSTOMER-OWN-GARMENT' ? 'CUSTOMER_OWN_GARMENT' : 'SHOWROOM_PURCHASE');
                         const matchesSource = altSourceFilter === "All" || aSource === altSourceFilter;
                         if (!matchesSource) return false;
 
@@ -3252,8 +3272,8 @@ export const ArticulationView = ({
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <p className="font-bold text-slate-800">{alt.productName}</p>
                                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${altGender === 'Ladies'
-                                          ? 'bg-pink-100 text-pink-700 border-pink-300'
-                                          : 'bg-blue-100 text-blue-700 border-blue-300'
+                                        ? 'bg-pink-100 text-pink-700 border-pink-300'
+                                        : 'bg-blue-100 text-blue-700 border-blue-300'
                                         }`}>
                                         {altGender}
                                       </span>
@@ -3411,10 +3431,10 @@ export const ArticulationView = ({
                                   }
                                 }}
                                 className={`text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500 border ${normalizeJobStatus(alt.status) === 'In Trial'
-                                    ? 'bg-purple-50 border-purple-300 text-purple-950 ring-1 ring-purple-400'
-                                    : mKeys.length === 0 && normalizeJobStatus(alt.status) !== 'Ready for Delivery' && normalizeJobStatus(alt.status) !== 'Ready' && normalizeJobStatus(alt.status) !== 'Delivered'
-                                      ? 'bg-amber-50/70 border-amber-200 text-amber-900'
-                                      : 'bg-slate-50 border-slate-200 text-slate-800'
+                                  ? 'bg-purple-50 border-purple-300 text-purple-950 ring-1 ring-purple-400'
+                                  : mKeys.length === 0 && normalizeJobStatus(alt.status) !== 'Ready for Delivery' && normalizeJobStatus(alt.status) !== 'Ready' && normalizeJobStatus(alt.status) !== 'Delivered'
+                                    ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                                    : 'bg-slate-50 border-slate-200 text-slate-800'
                                   }`}
                               >
                                 <option value="Pending">Pending {mKeys.length === 0 ? '(Needs Meas)' : ''}</option>
@@ -3435,8 +3455,8 @@ export const ArticulationView = ({
                                   type="button"
                                   onClick={() => handleOpenTrialModal(alt)}
                                   className={`mt-1.5 w-full inline-flex items-center justify-center gap-1 px-2 py-1 text-white rounded-lg text-[10px] font-black uppercase tracking-wider shadow-xs hover:shadow transition-all cursor-pointer transform active:scale-95 ${normalizeJobStatus(alt.status) === 'Re-Alteration'
-                                      ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
-                                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
+                                    ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
+                                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
                                     }`}
                                   title="View / Edit Trial Assessment, Measurements & Changes"
                                 >
@@ -4081,7 +4101,7 @@ export const ArticulationView = ({
             {/* Printable Ticket Receipt Body */}
             <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-[70vh] overflow-y-auto erp-hide-scrollbar">
               <div className="text-center font-black text-slate-900 text-base">
-                VASTRA ERP — ALTERATION TICKET
+                ALTERATION TICKET
               </div>
               <div className="text-center text-[10px] text-slate-500">
                 Bespoke Tailoring & Garment Fitting Slip
@@ -4403,8 +4423,8 @@ export const ArticulationView = ({
                 type="button"
                 onClick={() => setAltCreationMode("SHOWROOM_PURCHASE")}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${altCreationMode === "SHOWROOM_PURCHASE"
-                    ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                    : "text-slate-600 hover:text-slate-900"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900"
                   }`}
               >
                 <span>🏪 Showroom Purchase (Existing Bill)</span>
@@ -4413,23 +4433,23 @@ export const ArticulationView = ({
                 type="button"
                 onClick={() => setAltCreationMode("CUSTOMER_OWN_GARMENT")}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${altCreationMode === "CUSTOMER_OWN_GARMENT"
-                    ? "bg-rose-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
                   }`}
               >
                 <span>🧵 Customer Own Garment / Fabric (Custom Tailoring)</span>
               </button>
             </div>
 
-            {/* OPTION 1: CUSTOMER OWN GARMENT / FABRIC FORM */}
+            {/* OPTION 1: CUSTOMER OWN GARMENT / FABRIC FORM - Multi-item */}
             {altCreationMode === "CUSTOMER_OWN_GARMENT" && (
-              <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1 font-sans">
+              <form onSubmit={handleSaveAlterationTicket} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1 font-sans">
                 {/* Notice Banner */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-emerald-900">
                   <span className="text-base">🧵</span>
                   <div>
                     <p className="font-extrabold">Custom Tailoring — Customer Own Garment / Fabric</p>
-                    <p className="text-[11px] text-emerald-700">Customer brings their own garment or fabric for tailoring/alteration. No showroom billing invoice needed.</p>
+                    <p className="text-[11px] text-emerald-700">Customer brings their own garment or fabric. No showroom invoice needed. Add multiple garments below.</p>
                   </div>
                 </div>
 
@@ -4452,151 +4472,199 @@ export const ArticulationView = ({
                       type="text"
                       required
                       placeholder="e.g. 9876543210"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="[6-9][0-9]{9}"
                       value={cogCustomerPhone}
-                      onChange={(e) => setCogCustomerPhone(e.target.value)}
+                      onChange={(e) => setCogCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
                     />
                   </div>
                 </div>
 
-                {/* Garment / Fabric Details Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                  <div className="space-y-1 sm:col-span-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Garment / Fabric Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Linen Kurta, Safari Suit, Blouse"
-                      value={cogGarmentName}
-                      onChange={(e) => setCogGarmentName(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Fabric / Color / Material</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Navy Blue Raw Silk, Cotton White"
-                      value={cogFabricColor}
-                      onChange={(e) => setCogFabricColor(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Size / Approximate Fit</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 40, XL, Custom, Free Size"
-                      value={cogSize}
-                      onChange={(e) => setCogSize(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Gender & Service Selection Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Category / Gender *</label>
-                    <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-                      <button
-                        type="button"
-                        onClick={() => setCogGender("Gents")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${cogGender === "Gents" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
-                          }`}
-                      >
-                        <span>👨 Gents</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCogGender("Ladies")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${cogGender === "Ladies" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
-                          }`}
-                      >
-                        <span>👩 Ladies</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Service Type</label>
-                    <select
-                      value={cogServiceType}
-                      onChange={(e) => setCogServiceType(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-rose-500 outline-none"
+                {/* ─── GARMENT ITEMS LIST ─── */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase text-slate-700 tracking-wide flex items-center gap-1.5">
+                      <Shirt className="w-3.5 h-3.5 text-rose-600" />
+                      Garment Items ({cogItems.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCogItems(prev => [...prev, COG_ITEM_DEFAULT()])}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
                     >
-                      <option value="Custom Tailoring">Custom Tailoring</option>
-                      <option value="Alteration">Alteration</option>
-                      <option value="Full Stitching">Full Stitching</option>
-                      <option value="Fitting & Hemming">Fitting & Hemming</option>
-                      <option value="Repairs / Redesign">Repairs / Redesign</option>
-                    </select>
+                      <span>+ Add Garment</span>
+                    </button>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Tailoring Charge (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={altCharges}
-                      onChange={(e) => setAltCharges(Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-rose-500 outline-none"
-                    />
-                  </div>
+                  {cogItems.map((item, idx) => {
+                    const updateItem = (field, value) => {
+                      setCogItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+                    };
+                    const toggleDetail = (detail) => {
+                      setCogItems(prev => prev.map((it, i) => {
+                        if (i !== idx) return it;
+                        const has = it.alterationDetails.includes(detail);
+                        return { ...it, alterationDetails: has ? it.alterationDetails.filter(d => d !== detail) : [...it.alterationDetails, detail] };
+                      }));
+                    };
+
+                    return (
+                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 relative shadow-xs">
+                        {/* Item Header */}
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                            <span className="w-5 h-5 bg-rose-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shrink-0">{idx + 1}</span>
+                            Garment #{idx + 1}
+                          </span>
+                          {cogItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setCogItems(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-rose-500 hover:text-rose-700 text-[11px] font-bold flex items-center gap-0.5 cursor-pointer hover:bg-rose-50 px-1.5 py-0.5 rounded-lg transition-colors"
+                            >
+                              <X className="w-3 h-3" /> Remove
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Row 1: Garment Name + Size */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Garment / Fabric Name *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. Linen Kurta, Sherwani"
+                              value={item.garmentName}
+                              onChange={(e) => updateItem('garmentName', e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Size / Fit</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 40, XL, Custom"
+                              value={item.size}
+                              onChange={(e) => updateItem('size', e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 2: Fabric/Color + Gender toggle + Service Type + Charge */}
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end">
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Fabric / Color</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Navy Blue Raw Silk"
+                              value={item.fabricColor}
+                              onChange={(e) => updateItem('fabricColor', e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Gender *</label>
+                            <div className="flex items-center bg-white p-0.5 rounded-xl border border-slate-200 shadow-2xs gap-0.5">
+                              <button type="button" onClick={() => updateItem('gender', 'Gents')}
+                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${item.gender === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>
+                                <span>👨 Gents</span>
+                              </button>
+                              <button type="button" onClick={() => updateItem('gender', 'Ladies')}
+                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${item.gender === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>
+                                <span>👩 Ladies</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Service Type</label>
+                            <select
+                              value={item.serviceType}
+                              onChange={(e) => updateItem('serviceType', e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-rose-500 outline-none"
+                            >
+                              <option value="Custom Tailoring">Custom Tailoring</option>
+                              <option value="Alteration">Alteration</option>
+                              <option value="Full Stitching">Full Stitching</option>
+                              <option value="Fitting & Hemming">Fitting & Hemming</option>
+                              <option value="Repairs / Redesign">Repairs / Redesign</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-emerald-700 uppercase">Tailoring Charges (₹)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={item.charge}
+                              onChange={(e) => updateItem('charge', Number(e.target.value) || 0)}
+                              className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 focus:ring-2 focus:ring-emerald-400 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 3: Alteration Checkboxes */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-500 uppercase">Services / Alteration Details</label>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {["Custom Stitching", "Sleeve Shortening", "Sleeve Lengthening", "Waist Fitting", "Shoulder Fitting", "Bottom Hemming", "Length Shortening", "Chest Fitting", "Neck Alteration"].map((detail) => (
+                              <label key={detail} className={`flex items-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold cursor-pointer transition-all ${item.alterationDetails.includes(detail) ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={item.alterationDetails.includes(detail)} onChange={() => toggleDetail(detail)} className="sr-only" />
+                                {detail}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Row 4: Special Instructions */}
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-black text-slate-500 uppercase">Special Instructions (for this garment)</label>
+                          <textarea
+                            placeholder="Specific requirements, fabric notes, stitching style..."
+                            value={item.customText}
+                            onChange={(e) => updateItem('customText', e.target.value)}
+                            className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-xs resize-none"
+                            rows="2"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 border-t border-slate-200 pt-3">
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase">Measurements to Enter (in inches)</label>
+                            <p className="text-[10px] text-slate-500">Enter the standard measurements shown below for this garment, or use an existing customer measurement.</p>
+                          </div>
+                          <GarmentMeasurementSection
+                            gender={item.gender}
+                            onGenderChange={(gender) => updateItem('gender', gender)}
+                            garmentType={item.garmentType || 'Shirt'}
+                            onGarmentChange={(garmentType) => updateItem('garmentType', garmentType)}
+                            measurements={item.measurements || {}}
+                            onChange={(measurements) => updateItem('measurements', measurements)}
+                            customerPhone={cogCustomerPhone}
+                            customerName={cogCustomerName || 'Customer'}
+                            saveAsMaster={cogSaveAsMaster}
+                            onSaveAsMasterChange={setCogSaveAsMaster}
+                            themeColor="rose"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Charges Summary */}
+                  {cogItems.length > 1 && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-800">Total Tailoring Charges ({cogItems.length} garments):</span>
+                      <span className="text-base font-black text-emerald-800">₹{cogItems.reduce((s, it) => s + Number(it.charge || 0), 0).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Alteration & Work Checkboxes */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Services / Alteration Details (Select all that apply)</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      "Custom Stitching",
-                      "Sleeve Shortening",
-                      "Sleeve Lengthening",
-                      "Waist Fitting",
-                      "Shoulder Fitting",
-                      "Bottom Hemming",
-                      "Length Shortening",
-                      "Chest Fitting",
-                      "Neck Alteration"
-                    ].map((detail) => (
-                      <label
-                        key={detail}
-                        className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${altDetails.includes(detail) ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={altDetails.includes(detail)}
-                          onChange={() => {
-                            if (altDetails.includes(detail)) {
-                              setAltDetails(altDetails.filter(d => d !== detail));
-                            } else {
-                              setAltDetails([...altDetails, detail]);
-                            }
-                          }}
-                          className="sr-only"
-                        />
-                        {detail}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Note */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Special Instructions / Custom Notes</label>
-                  <textarea
-                    placeholder="Enter any specific customer requirements, fabric notes, lining, stitching style..."
-                    value={altCustomText}
-                    onChange={(e) => setAltCustomText(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition-all text-xs"
-                    rows="2"
-                  />
-                </div>
-
-                {/* Grid for Tailor, Priority, Dates */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Shared: Tailor, Priority, Trial, Delivery */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase">Assign Master Tailor</label>
                     <select
@@ -4627,77 +4695,27 @@ export const ArticulationView = ({
 
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase">Trial Required?</label>
-                    <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setAltTrialRequired(false)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!altTrialRequired ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                        No
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAltTrialRequired(true)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${altTrialRequired ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                        Yes
-                      </button>
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200">
+                      <button type="button" onClick={() => setAltTrialRequired(false)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!altTrialRequired ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>No</button>
+                      <button type="button" onClick={() => setAltTrialRequired(true)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${altTrialRequired ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}>Yes</button>
                     </div>
                   </div>
 
-                  {altTrialRequired ? (
+                  {altTrialRequired && (
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-purple-700 uppercase">Expected Trial Date *</label>
-                      <input
-                        type="date"
-                        value={altTrialDate}
-                        onChange={(e) => setAltTrialDate(e.target.value)}
-                        required={altTrialRequired}
-                        className="w-full border border-purple-300 bg-purple-50/50 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-xs font-semibold text-purple-900"
-                      />
+                      <input type="date" value={altTrialDate} onChange={(e) => setAltTrialDate(e.target.value)} required={altTrialRequired}
+                        className="w-full border border-purple-300 bg-purple-50/50 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-xs font-semibold text-purple-900" />
                     </div>
-                  ) : null}
+                  )}
 
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase">Expected Delivery Date</label>
-                    <input
-                      type="date"
-                      value={altDeliveryDate}
-                      onChange={(e) => setAltDeliveryDate(e.target.value)}
-                      required
-                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
-                    />
+                    <input type="date" value={altDeliveryDate} onChange={(e) => setAltDeliveryDate(e.target.value)} required
+                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold" />
                   </div>
-                </div>
-
-                {/* Tailoring Garment Measurements */}
-                <div className="border-t border-slate-100 pt-3">
-                  <GarmentMeasurementSection
-                    gender={cogGender}
-                    onGenderChange={setCogGender}
-                    garmentType={cogGarmentType}
-                    onGarmentChange={(g) => {
-                      setCogGarmentType(g);
-                      if (!cogGarmentName || cogGarmentName.trim() === "" || Object.keys(GENTS_GARMENTS_CONFIG).concat(Object.keys(LADIES_GARMENTS_CONFIG)).includes(cogGarmentName)) {
-                        setCogGarmentName(g);
-                      }
-                    }}
-                    measurements={altMeasurements}
-                    onChange={setAltMeasurements}
-                    customerPhone={cogCustomerPhone}
-                    customerName={cogCustomerName || "Customer"}
-                    saveAsMaster={cogSaveAsMaster}
-                    onSaveAsMasterChange={setCogSaveAsMaster}
-                    onOpenHistory={() => handleOpenCustomerHistory(
-                      cogCustomerPhone,
-                      null,
-                      cogCustomerName || "Customer"
-                    )}
-                    allowGenderSwitch={false}
-                    themeColor="rose"
-                  />
                 </div>
 
                 {/* Action Buttons */}
@@ -4714,11 +4732,12 @@ export const ArticulationView = ({
                     className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
-                    <span>Save Custom Tailoring Ticket</span>
+                    <span>Save {cogItems.length > 1 ? `${cogItems.length} Tailoring Tickets` : 'Custom Tailoring Ticket'}</span>
                   </button>
                 </div>
               </form>
             )}
+
 
             {/* OPTION 2: SHOWROOM PURCHASE (FROM BILLING) */}
             {altCreationMode === "SHOWROOM_PURCHASE" && (
@@ -4816,8 +4835,8 @@ export const ArticulationView = ({
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="font-bold text-slate-800">{item.name}</p>
                                 <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${(item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                                    ? 'bg-pink-100 text-pink-700 border-pink-300'
-                                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                                  ? 'bg-pink-100 text-pink-700 border-pink-300'
+                                  : 'bg-blue-100 text-blue-700 border-blue-300'
                                   }`}>
                                   {item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')}
                                 </span>
@@ -4854,8 +4873,8 @@ export const ArticulationView = ({
                               type="button"
                               onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Gents' }))}
                               className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Gents'
-                                  ? 'bg-blue-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
                                 }`}
                             >
                               <span>👨 Gents</span>
@@ -4864,8 +4883,8 @@ export const ArticulationView = ({
                               type="button"
                               onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Ladies' }))}
                               className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                                  ? 'bg-rose-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
                                 }`}
                             >
                               <span>👩 Ladies</span>
@@ -4878,8 +4897,8 @@ export const ArticulationView = ({
                               {selectedAltItem.serviceType || 'Alteration'}
                             </span>
                             <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
-                                ? 'bg-pink-50 text-pink-700 border-pink-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                              ? 'bg-pink-50 text-pink-700 border-pink-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
                               }`}>
                               {selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')}
                             </span>
@@ -4983,6 +5002,18 @@ export const ArticulationView = ({
                           <option value="Urgent">Urgent (24 Hours)</option>
                           <option value="Express">Express (Same Day)</option>
                         </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Tailoring Charges (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={altCharges}
+                          onChange={(e) => setAltCharges(Number(e.target.value) || 0)}
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-rose-500 outline-none"
+                        />
                       </div>
 
                       <div className="space-y-1">
@@ -5992,8 +6023,8 @@ export const ArticulationView = ({
                       type="button"
                       onClick={() => setTrialReAlteration(false)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!trialReAlteration
-                          ? 'bg-teal-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-teal-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       No (QC)
@@ -6002,8 +6033,8 @@ export const ArticulationView = ({
                       type="button"
                       onClick={() => setTrialReAlteration(true)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${trialReAlteration
-                          ? 'bg-red-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-red-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       Yes (Re-Alt)
@@ -6013,8 +6044,8 @@ export const ArticulationView = ({
 
                 {/* Status Destination Preview Badge */}
                 <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${trialReAlteration
-                    ? 'bg-red-50 border-red-200 text-red-800'
-                    : 'bg-teal-50 border-teal-200 text-teal-800'
+                  ? 'bg-red-50 border-red-200 text-red-800'
+                  : 'bg-teal-50 border-teal-200 text-teal-800'
                   }`}>
                   <span className="flex items-center gap-1.5">
                     {trialReAlteration ? <RefreshCw className="w-3.5 h-3.5 text-red-600 animate-spin-slow" /> : <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />}
@@ -6040,8 +6071,8 @@ export const ArticulationView = ({
                   type="submit"
                   disabled={savingTrialAssessment}
                   className={`px-5 py-2 font-bold text-white rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer ${trialReAlteration
-                      ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
-                      : 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/30'
+                    ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                    : 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/30'
                     }`}
                 >
                   {savingTrialAssessment ? (

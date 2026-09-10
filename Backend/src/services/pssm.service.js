@@ -14,6 +14,9 @@ const TailoringJobService = require('./tailoringJob.service');
 
 class PSSMService {
   static async createPSSM(data, userId, tenantId) {
+    if (data.sourceType === 'CUSTOMER_OWN_GARMENT' && !/^[6-9]\d{9}$/.test(String(data.customerPhone || '').trim())) {
+      throw new ApiError(400, 'A valid 10-digit customer mobile number is required for custom tailoring.');
+    }
     let rawItems = data.items || [];
     if (!rawItems.length) {
       throw new ApiError(400, 'PSSM request must contain at least one item.');
@@ -193,8 +196,9 @@ class PSSMService {
         createdBy: userId
       });
 
-      // Auto-create TailoringJob when serviceType is 'Alteration'
-      if ((item.serviceType || data.serviceType || 'Alteration') === 'Alteration') {
+      // Auto-create a tailoring job for every tailoring service, including customer-owned garments.
+      const tailoringServiceTypes = ['Alteration', 'Custom Tailoring', 'Full Stitching', 'Fitting & Hemming', 'Repairs / Redesign'];
+      if (tailoringServiceTypes.includes(item.serviceType || data.serviceType || 'Alteration')) {
         try {
           const job = await TailoringJobService.createFromPSSMItem(pssmRecord, pssmItemDoc, userId, tenantId);
           if (job) {

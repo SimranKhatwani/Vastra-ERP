@@ -29,9 +29,10 @@ class TailoringJobService {
       throw new Error('PSSM Record or Item missing for TailoringJob creation');
     }
 
-    // Only Alteration triggers TailoringJob
+    // All tailoring services get a trackable tailoring job.
     const serviceType = pssmItemDoc.serviceType || pssmRecord.serviceType || 'Alteration';
-    if (serviceType !== 'Alteration') {
+    const tailoringServiceTypes = ['Alteration', 'Custom Tailoring', 'Full Stitching', 'Fitting & Hemming', 'Repairs / Redesign'];
+    if (!tailoringServiceTypes.includes(serviceType)) {
       return null;
     }
 
