@@ -231,31 +231,54 @@ class PSSMService {
       .sort({ createdAt: -1 })
       .lean();
 
-    return items.map(item => ({
-      _id: item._id,
-      pssmId: item.pssmId?._id,
-      pssmNo: item.pssmId?.pssmNo,
-      billNo: item.pssmId?.billNo,
-      billBarcode: item.pssmId?.billBarcode,
-      customerId: item.pssmId?.customerId,
-      customerName: item.pssmId?.customerName,
-      customerPhone: item.pssmId?.customerPhone,
-      salesmanId: item.salesmanId || item.pssmId?.salesmanId,
-      salesmanName: item.salesmanName || item.pssmId?.salesmanName || 'N/A',
-      customerWaitingOption: item.customerWaitingOption || item.pssmId?.customerWaitingOption,
-      expectedDeliveryDate: item.pssmId?.expectedDeliveryDate,
-      priority: item.priority || item.pssmId?.priority || 'NORMAL',
-      trialRequired: item.trialRequired !== undefined ? item.trialRequired : item.pssmId?.trialRequired,
-      trialDate: item.trialDate || item.pssmId?.trialDate,
-      productName: item.productName,
-      barcode: item.barcode,
-      uniqueCode: item.uniqueCode,
-      tailorInvoiceNo: item.tailorInvoiceNo,
-      size: item.size,
-      color: item.color,
-      serviceType: item.serviceType,
-      status: item.status,
-      createdAt: item.createdAt
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const TailoringJobService = require('./tailoringJob.service');
+
+    const itemIds = items.map(i => i._id);
+    const existingJobs = await TailoringJob.find({ tenantId, pssmItemId: { $in: itemIds } }).lean();
+    const jobsByItemId = new Map(existingJobs.map(j => [j.pssmItemId?.toString(), j]));
+
+    return Promise.all(items.map(async (item) => {
+      let tailorInvoiceNo = item.tailorInvoiceNo || jobsByItemId.get(item._id.toString())?.tailorInvoiceNo || '';
+
+      if (!tailorInvoiceNo && (item.serviceType || 'Alteration') === 'Alteration') {
+        try {
+          const newJob = await TailoringJobService.createFromPSSMItem(item.pssmId, item, item.createdBy, tenantId);
+          if (newJob) {
+            tailorInvoiceNo = newJob.tailorInvoiceNo;
+            await PSSMItem.updateOne({ _id: item._id }, { $set: { tailorInvoiceNo: newJob.tailorInvoiceNo } });
+          }
+        } catch (e) {
+          console.warn('[getPendingAssignments] Auto-create TailoringJob failed:', e.message);
+        }
+      }
+
+      return {
+        _id: item._id,
+        pssmId: item.pssmId?._id,
+        pssmNo: item.pssmId?.pssmNo,
+        billNo: item.pssmId?.billNo,
+        billBarcode: item.pssmId?.billBarcode,
+        customerId: item.pssmId?.customerId,
+        customerName: item.pssmId?.customerName,
+        customerPhone: item.pssmId?.customerPhone,
+        salesmanId: item.salesmanId || item.pssmId?.salesmanId,
+        salesmanName: item.salesmanName || item.pssmId?.salesmanName || 'N/A',
+        customerWaitingOption: item.customerWaitingOption || item.pssmId?.customerWaitingOption,
+        expectedDeliveryDate: item.pssmId?.expectedDeliveryDate,
+        priority: item.priority || item.pssmId?.priority || 'NORMAL',
+        trialRequired: item.trialRequired !== undefined ? item.trialRequired : item.pssmId?.trialRequired,
+        trialDate: item.trialDate || item.pssmId?.trialDate,
+        productName: item.productName,
+        barcode: item.barcode,
+        uniqueCode: item.uniqueCode,
+        tailorInvoiceNo: tailorInvoiceNo || '',
+        size: item.size,
+        color: item.color,
+        serviceType: item.serviceType,
+        status: item.status,
+        createdAt: item.createdAt
+      };
     }));
   }
 

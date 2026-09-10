@@ -627,6 +627,7 @@ export const BillingPOSView = ({
     setAltSpecialInstructions(item.alterationRecord?.specialInstructions || "");
     setAltDeliveryDate(item.alterationRecord?.deliveryDate || "");
     setAltDeliveryTime(item.alterationRecord?.deliveryTime || "05:00 PM");
+    setAltTrialRequired(item.alterationRecord?.trialRequired !== undefined ? item.alterationRecord.trialRequired : true);
     setAltTrialDate(item.alterationRecord?.trialDate || "");
     setAltPriority(item.alterationRecord?.priority || "Normal");
     setAltSelectedTailor((tailorEmployeesList || []).find(t => t.name === item.alterationRecord?.tailorName) || null);
@@ -895,6 +896,12 @@ export const BillingPOSView = ({
   const [pssGeneralTailor, setPssGeneralTailor] = useState("");
   const [pssGeneralService, setPssGeneralService] = useState("Alteration");
   const [pssGeneralDeliveryDate, setPssGeneralDeliveryDate] = useState("");
+  const [pssGeneralTrialRequired, setPssGeneralTrialRequired] = useState(true);
+  const [pssGeneralTrialDate, setPssGeneralTrialDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().split("T")[0];
+  });
   const [pssGeneralPriority, setPssGeneralPriority] = useState("NORMAL");
   const [pssGeneralRemarks, setPssGeneralRemarks] = useState("");
   const [isSubmittingPSS, setIsSubmittingPSS] = useState(false);
@@ -1398,6 +1405,7 @@ export const BillingPOSView = ({
     return d.toISOString().split("T")[0];
   });
   const [altDeliveryTime, setAltDeliveryTime] = useState("05:00 PM");
+  const [altTrialRequired, setAltTrialRequired] = useState(true);
   const [altTrialDate, setAltTrialDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 2);
@@ -1498,7 +1506,8 @@ export const BillingPOSView = ({
       specialInstructions: altSpecialInstructions,
       deliveryDate: altDeliveryDate,
       deliveryTime: altDeliveryTime,
-      trialDate: altTrialDate,
+      trialRequired: altTrialRequired,
+      trialDate: altTrialRequired ? altTrialDate : '',
       priority: altPriority,
       status: "Pending",
       createdBy: currentUser ? currentUser.name : "Cashier"
@@ -1720,26 +1729,25 @@ export const BillingPOSView = ({
 
     const defaultTailorName = tailorEmployeesList[0]?.name || "Master Tailor";
     const defaultDeliveryDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const defaultTrialDate = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const itemsConfig = inv.items.map((item, idx) => ({
-      itemKey: idx,
       _id: item._id || item.inventoryPieceId || item.id,
       inventoryPieceId: item.inventoryPieceId || item._id,
       name: item.name || item.pieceName || item.productName || 'Garment Item',
       productName: item.name || item.pieceName || item.productName || 'Garment Item',
       barcode: item.barcode || item.uniqueCode || item.sku || '',
       uniqueCode: item.uniqueCode || item.barcode || '',
-      sku: item.sku || item.barcode || '',
-      size: item.size || 'FS',
-      color: item.color || item.primaryColor || 'Standard',
-      price: item.unitPrice || item.rate || item.price || 0,
-      quantity: item.quantity || item.qty || 1,
-      selectedForPSS: false, // Default UNSELECTED, click or SPACEBAR toggles
+      ...item,
+      itemKey: `pss-item-${idx}-${item.barcode || item.uniqueCode || idx}`,
+      selectedForPSS: true,
       serviceType: "Alteration",
       services: ['Alteration'],
       gender: item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || item.pieceName || item.productName || '') ? 'Ladies' : 'Gents'),
       tailorName: defaultTailorName,
       deliveryDate: defaultDeliveryDate,
+      trialRequired: true,
+      trialDate: defaultTrialDate,
       priority: 'Normal',
       selectedOptions: [],
       measurements: {},
@@ -1752,6 +1760,8 @@ export const BillingPOSView = ({
     setPssGeneralService("Alteration");
     setPssGeneralTailor(defaultTailorName);
     setPssGeneralDeliveryDate(defaultDeliveryDate);
+    setPssGeneralTrialRequired(true);
+    setPssGeneralTrialDate(defaultTrialDate);
     setPssGeneralPriority('Normal');
     setPssGeneralRemarks('');
     setShowPSSItemSelectModal(true);
@@ -1839,11 +1849,15 @@ export const BillingPOSView = ({
         allowWhatsApp: pssAllowWhatsApp,
         tailorName: isDirect ? (pssGeneralTailor || selectedItems[0]?.tailorName || 'Master Tailor') : '',
         expectedDeliveryDate: pssGeneralDeliveryDate || selectedItems[0]?.deliveryDate,
+        trialRequired: pssGeneralTrialRequired !== false,
+        trialDate: pssGeneralTrialDate || undefined,
         remarks: pssGeneralRemarks || custNotesVal || '',
         items: selectedItems.map(item => {
           const itemServices = Array.isArray(item.services) && item.services.length > 0
             ? item.services
             : [item.serviceType || pssGeneralService || 'Alteration'];
+          const hasItemAlt = itemServices.some(s => s.toLowerCase().includes('alteration'));
+          const itemTrialReq = hasItemAlt ? (item.trialRequired !== undefined ? item.trialRequired : pssGeneralTrialRequired !== false) : false;
           return {
             inventoryPieceId: item.inventoryPieceId || item._id,
             pieceName: item.name,
@@ -1857,6 +1871,8 @@ export const BillingPOSView = ({
             services: itemServices,
             serviceType: itemServices[0] || 'Alteration',
             assignedTo: isDirect ? (item.tailorName || pssGeneralTailor || 'Master Tailor') : '',
+            trialRequired: itemTrialReq,
+            trialDate: itemTrialReq ? (item.trialDate || pssGeneralTrialDate || undefined) : undefined,
             alterationDetails: itemServices,
             measurements: item.measurements || {},
             instructions: itemServices.join(' + '),
@@ -1867,6 +1883,9 @@ export const BillingPOSView = ({
 
       const res = await api.post('/pssm', payload);
       const createdData = res.data?.data?.pssmRecord || res.data?.data || {};
+      const createdItems = createdData.items || res.data?.data?.items || [];
+      const tailoringJobs = res.data?.data?.tailoringJobs || [];
+      const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : null;
 
       const issuedPssmNo = createdData.pssmNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
       const originalInvoiceNo = pssInvoice.invoiceNo;
@@ -1875,6 +1894,7 @@ export const BillingPOSView = ({
       // Build PSS Slip data
       const slipData = {
         pssmNo: issuedPssmNo,
+        tailorInvoiceNo,
         originalInvoiceNo,
         billBarcode,
         customerName: custNameVal,
@@ -1889,10 +1909,18 @@ export const BillingPOSView = ({
         allowWhatsApp: pssAllowWhatsApp,
         cashierName: currentUser ? currentUser.name : 'Cashier',
         deliveryDate: pssGeneralDeliveryDate,
-        items: selectedItems.map(itm => {
+        trialRequired: pssGeneralTrialRequired !== false,
+        trialDate: pssGeneralTrialDate,
+        items: selectedItems.map((itm, idx) => {
           const itmServices = Array.isArray(itm.services) && itm.services.length > 0
             ? itm.services
             : [itm.serviceType || pssGeneralService || 'Alteration'];
+          const hasItmAlt = itmServices.some(s => s.toLowerCase().includes('alteration'));
+          const itmTrialReq = hasItmAlt ? (itm.trialRequired !== undefined ? itm.trialRequired : pssGeneralTrialRequired !== false) : false;
+          const matchingCreatedItem = createdItems[idx] || createdItems.find(ci => ci.barcode === (itm.barcode || itm.uniqueCode)) || {};
+          const matchingJob = tailoringJobs[idx] || tailoringJobs.find(tj => String(tj.pssmItemId) === String(matchingCreatedItem._id)) || {};
+          const itemTailorInvoiceNo = matchingCreatedItem.tailorInvoiceNo || matchingJob.tailorInvoiceNo || (hasItmAlt ? tailorInvoiceNo : null);
+
           return {
             name: itm.name,
             size: itm.size,
@@ -1901,6 +1929,9 @@ export const BillingPOSView = ({
             barcode: itm.barcode || itm.uniqueCode,
             services: itmServices,
             serviceType: itmServices.join(' + '),
+            tailorInvoiceNo: itemTailorInvoiceNo,
+            trialRequired: itmTrialReq,
+            trialDate: itmTrialReq ? (itm.trialDate || pssGeneralTrialDate || '') : '',
             assignedTo: isDirect ? (itm.tailorName || pssGeneralTailor || 'Master Tailor') : 'Pending Assignment',
             alterationDetails: itmServices,
             instructions: itmServices.join(' + ')
@@ -1975,6 +2006,7 @@ export const BillingPOSView = ({
             color: it.color,
             barcode: it.barcode || it.uniqueCode,
             serviceType: it.serviceType || 'Alteration',
+            tailorInvoiceNo: it.tailorInvoiceNo,
             status: it.status || 'PENDING_ASSIGNMENT',
             assignedTo: it.assignedTo || 'Pending Assignment',
             alterationDetails: it.alterationDetails || [],
@@ -9831,14 +9863,43 @@ export const BillingPOSView = ({
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Expected Trial Date</label>
-                      <input
-                        type="date"
-                        value={altTrialDate}
-                        onChange={(e) => setAltTrialDate(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none"
-                      />
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Trial Required?</label>
+                        <div className="flex items-center gap-2.5">
+                          <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="altModalTrialReq"
+                              checked={altTrialRequired !== false}
+                              onChange={() => setAltTrialRequired(true)}
+                              className="accent-purple-600 cursor-pointer"
+                            />
+                            Yes
+                          </label>
+                          <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="altModalTrialReq"
+                              checked={altTrialRequired === false}
+                              onChange={() => setAltTrialRequired(false)}
+                              className="accent-purple-600 cursor-pointer"
+                            />
+                            No
+                          </label>
+                        </div>
+                      </div>
+                      {altTrialRequired !== false && (
+                        <div className="pt-1">
+                          <label className="text-[10px] font-bold text-purple-700 uppercase block mb-1">Expected Trial Date</label>
+                          <input
+                            type="date"
+                            value={altTrialDate}
+                            onChange={(e) => setAltTrialDate(e.target.value)}
+                            className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
@@ -11260,6 +11321,58 @@ export const BillingPOSView = ({
                           )}
                         </div>
 
+                        {/* Trial Required Option (Shown when Alteration service is selected) */}
+                        {hasAlteration && (
+                          <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] font-black uppercase text-purple-950 flex items-center gap-1.5">
+                                <span>👔</span> Trial Required?
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`trialReq-${item.itemKey || idx}`}
+                                    checked={item.trialRequired !== false}
+                                    onChange={() => {
+                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: true } : itm));
+                                    }}
+                                    className="accent-purple-600 cursor-pointer"
+                                  />
+                                  <span>Yes</span>
+                                </label>
+                                <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`trialReq-${item.itemKey || idx}`}
+                                    checked={item.trialRequired === false}
+                                    onChange={() => {
+                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: false } : itm));
+                                    }}
+                                    className="accent-purple-600 cursor-pointer"
+                                  />
+                                  <span>No</span>
+                                </label>
+                              </div>
+                            </div>
+
+                            {item.trialRequired !== false && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase text-purple-900">Trial Date:</span>
+                                <input
+                                  type="date"
+                                  value={item.trialDate || pssGeneralTrialDate || ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialDate: v } : itm));
+                                  }}
+                                  className="bg-white border border-purple-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-purple-950 outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Tailor Assignment */}
                         {pssAssignmentOption === "DIRECT" && (
                           <div>
@@ -11349,8 +11462,8 @@ export const BillingPOSView = ({
                 </div>
               </div>
 
-              {/* Delivery Date & Priority */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Delivery Date, Trial Date & Priority */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
                     Promised Delivery Date
@@ -11360,6 +11473,51 @@ export const BillingPOSView = ({
                     value={pssGeneralDeliveryDate}
                     onChange={(e) => setPssGeneralDeliveryDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      Trial Date
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="pssGenTrialReq"
+                          checked={pssGeneralTrialRequired !== false}
+                          onChange={() => setPssGeneralTrialRequired(true)}
+                          className="accent-purple-600 cursor-pointer"
+                        />
+                        Yes
+                      </label>
+                      <label className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="pssGenTrialReq"
+                          checked={pssGeneralTrialRequired === false}
+                          onChange={() => setPssGeneralTrialRequired(false)}
+                          className="accent-purple-600 cursor-pointer"
+                        />
+                        No
+                      </label>
+                    </div>
+                  </div>
+                  <input
+                    type="date"
+                    disabled={pssGeneralTrialRequired === false}
+                    value={pssGeneralTrialDate}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPssGeneralTrialDate(v);
+                      setPssConfigItems(prev => prev.map(itm => ({ ...itm, trialDate: itm.trialDate || v })));
+                    }}
+                    className={`w-full border rounded-xl text-xs font-mono font-bold px-3 py-2 outline-none ${
+                      pssGeneralTrialRequired === false
+                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-purple-50/50 border-purple-300 text-purple-950 focus:ring-2 focus:ring-purple-500'
+                    }`}
                   />
                 </div>
 
@@ -11633,6 +11791,17 @@ export const BillingPOSView = ({
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">PSS Ticket No</span>
                   <span className="font-black text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">{pssSlipData.pssmNo}</span>
                 </div>
+                {(() => {
+                  const itemTIs = (pssSlipData.items || []).map(i => i.tailorInvoiceNo).filter(Boolean);
+                  const allTIs = Array.from(new Set([pssSlipData.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', ');
+                  if (!allTIs) return null;
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-semibold uppercase tracking-wider">Tailor Invoice No</span>
+                      <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg font-mono text-[11px]">{allTIs}</span>
+                    </div>
+                  );
+                })()}
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Bill Barcode</span>
                   <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-lg font-mono">{pssSlipData.billBarcode}</span>
@@ -11654,6 +11823,17 @@ export const BillingPOSView = ({
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 font-semibold uppercase tracking-wider">Delivery Date</span>
                     <span className="font-bold text-amber-700">{new Date(pssSlipData.deliveryDate).toLocaleDateString('en-IN')}</span>
+                  </div>
+                )}
+                {Boolean(pssSlipData.trialRequired && pssSlipData.trialDate) && (
+                  <div className="flex justify-between items-center bg-purple-50/60 p-1.5 rounded-lg border border-purple-200/60">
+                    <span className="text-purple-900 font-bold uppercase tracking-wider flex items-center gap-1 text-[11px]">
+                      <span>👔</span>
+                      <span>Trial Date</span>
+                    </span>
+                    <span className="font-black text-purple-700 bg-white border border-purple-300 px-2 py-0.5 rounded shadow-2xs">
+                      {new Date(pssSlipData.trialDate).toLocaleDateString('en-IN')}
+                    </span>
                   </div>
                 )}
                 {/* Overall PSS Status */}
@@ -11733,15 +11913,20 @@ export const BillingPOSView = ({
                               {itm.gender || 'Gents'}
                             </span>
                           </div>
-                          <div className="flex flex-col items-start mt-0.5">
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
                             <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase inline-block">
                               {itm.serviceType}
                             </span>
-                            <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1 py-0.2 rounded border ${
-                              (itm.gender || 'Gents') === 'Ladies' ? 'bg-pink-50 text-pink-700 border-pink-200' : 'bg-blue-50 text-blue-700 border-blue-200'
-                            }`}>
-                              {itm.gender || 'Gents'}
-                            </span>
+                            {itm.tailorInvoiceNo && (
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-300 font-black px-2 py-0.5 rounded font-mono inline-block">
+                                TI: {itm.tailorInvoiceNo}
+                              </span>
+                            )}
+                            {Boolean((itm.trialRequired !== undefined ? itm.trialRequired : pssSlipData.trialRequired) && (itm.trialDate || pssSlipData.trialDate)) && (
+                              <span className="text-[10px] bg-purple-50 text-purple-800 border border-purple-300 font-black px-2 py-0.5 rounded uppercase inline-flex items-center gap-1">
+                                <span>👔 Trial: {new Date(itm.trialDate || pssSlipData.trialDate).toLocaleDateString('en-IN')}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -11802,7 +11987,7 @@ export const BillingPOSView = ({
                   const d = pssSlipData;
                   const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
                   const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div><p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.specialInstructions ? '<b>Notes:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color}) [<b>${it.gender || 'Gents'}</b>]<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/><b>Category:</b> <b>${it.gender || 'Gents'}</b><br/><b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div>${d.tailorInvoiceNo ? `<p style="margin:2px 0;font-size:11px;color:#4f46e5;font-weight:bold">Tailor Invoice: ${d.tailorInvoiceNo}</p>` : ''}<p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.specialInstructions ? '<b>Notes:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color}) [<b>${it.gender || 'Gents'}</b>]<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/>${it.tailorInvoiceNo ? '<b>Tailor Invoice:</b> <span style="color:#4f46e5;font-weight:bold">' + it.tailorInvoiceNo + '</span><br/>' : ''}<b>Category:</b> <b>${it.gender || 'Gents'}</b><br/>${it.trialRequired !== undefined ? '<b>Trial Req:</b> ' + (it.trialRequired ? 'YES' : 'NO') + (it.trialDate ? ' (Trial Date: ' + (new Date(it.trialDate).toLocaleDateString('en-IN') || it.trialDate) + ')' : '') + '<br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

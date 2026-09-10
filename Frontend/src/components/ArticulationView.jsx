@@ -49,7 +49,9 @@ import {
   Truck,
   Zap,
   ShieldCheck,
-  History
+  History,
+  Edit3,
+  Loader2
 } from "lucide-react";
 import { GarmentMeasurementSection } from "./GarmentMeasurementSection";
 import { MeasurementHistoryModal } from "./MeasurementHistoryModal";
@@ -60,6 +62,20 @@ import {
   detectGarmentType,
   getGarmentMeasurementFields
 } from "../helpers/measurementConfig";
+
+const normalizeJobStatus = (s) => {
+  if (!s) return 'Pending';
+  const str = String(s).toUpperCase().replace(/[-\s]/g, '_');
+  if (['IN_CUTTING', 'CUTTING'].includes(str)) return 'In Cutting';
+  if (['IN_STITCHING', 'STITCHING', 'IN_PROGRESS', 'ASSIGNED'].includes(str)) return 'In Stitching';
+  if (['IN_TRIAL', 'TRIAL', 'READY_FOR_TRIAL'].includes(str)) return 'In Trial';
+  if (['RE_ALTERATION', 'REALTERATION', 'REWORK'].includes(str)) return 'Re-Alteration';
+  if (['QUALITY_CHECK', 'QC', 'QA'].includes(str)) return 'Quality Check';
+  if (['READY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION', 'COMPLETED'].includes(str)) return 'Ready';
+  if (['COLLECTED', 'DELIVERED', 'CLOSED'].includes(str)) return 'Delivered';
+  if (['CANCELLED'].includes(str)) return 'Cancelled';
+  return s;
+};
 
 export const ArticulationView = ({
   customers = [],
@@ -140,7 +156,6 @@ export const ArticulationView = ({
       priority: "Urgent",
       status: "Ready",
       deliveryDate: new Date().toISOString().split('T')[0],
-      trialDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
       alterationDetails: ["Sleeve Shortening", "Waist Fitting"],
       measurements: { Chest: "42", Waist: "36", Shoulder: "18.5", Sleeve: "24.5" },
       createdBy: "Cashier",
@@ -159,7 +174,6 @@ export const ArticulationView = ({
       priority: "Normal",
       status: "In Stitching",
       deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-      trialDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
       alterationDetails: ["Shoulder Padding", "Length Adjustment"],
       measurements: { Chest: "40", Waist: "34", Shoulder: "17.5", Sleeve: "25" },
       createdBy: "Admin",
@@ -178,7 +192,6 @@ export const ArticulationView = ({
       priority: "Express",
       status: "In Cutting",
       deliveryDate: new Date().toISOString().split('T')[0],
-      trialDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
       alterationDetails: ["Side Slit Fitting", "Collar Adjustment"],
       measurements: { Chest: "38", Waist: "32", Shoulder: "17", Sleeve: "24" },
       createdBy: "Cashier",
@@ -197,7 +210,6 @@ export const ArticulationView = ({
       priority: "Normal",
       status: "Pending",
       deliveryDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
-      trialDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
       alterationDetails: ["Bottom Hemming", "Thigh Fitting"],
       measurements: { Waist: "32", Length: "40", Thigh: "23", Bottom: "15" },
       createdBy: "Cashier",
@@ -216,7 +228,11 @@ export const ArticulationView = ({
       priority: "Urgent",
       status: "In Trial",
       deliveryDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      trialRequired: true,
       trialDate: new Date().toISOString().split('T')[0],
+      fittingResult: "Waist needs 0.5 inch loosening",
+      requiredChanges: "Adjust waist seam",
+      reAlterationRequired: false,
       alterationDetails: ["Bust Fitting", "Drape Stitching"],
       measurements: { Bust: "36", Waist: "30", Length: "52" },
       createdBy: "Admin",
@@ -235,7 +251,6 @@ export const ArticulationView = ({
       priority: "Normal",
       status: "Delivered",
       deliveryDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-      trialDate: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
       alterationDetails: ["Lapel Ironing", "Waistcoat Fitting"],
       measurements: { Chest: "42", Waist: "36", Shoulder: "18.5" },
       createdBy: "Cashier",
@@ -253,10 +268,13 @@ export const ArticulationView = ({
       tailorName: "Master Ramesh Kumar",
       priority: "Urgent",
       status: "Re-Alteration",
+      reAlterationRequired: true,
+      fittingResult: "Tight around chest and armhole",
+      requiredChanges: "Loosen 0.5 inch on armhole and chest seam",
+      remarks: "Handle velvet fabric gently with silk thread",
       deliveryDate: new Date().toISOString().split('T')[0],
-      trialDate: new Date().toISOString().split('T')[0],
       alterationDetails: ["Armhole Loosening", "Chest Reshaping"],
-      measurements: { Chest: "40", Waist: "35", Shoulder: "18" },
+      measurements: { Chest: "40.5", Waist: "35", Shoulder: "18" },
       createdBy: "Cashier",
       createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
     },
@@ -273,7 +291,6 @@ export const ArticulationView = ({
       priority: "Normal",
       status: "Quality Check",
       deliveryDate: new Date().toISOString().split('T')[0],
-      trialDate: new Date().toISOString().split('T')[0],
       alterationDetails: ["Side Seam Tapering", "Neckline Finishing"],
       measurements: { Bust: "34", Waist: "28", Hip: "36" },
       createdBy: "Admin",
@@ -502,6 +519,7 @@ export const ArticulationView = ({
   const [altTailorName, setAltTailorName] = useState("");
   const [altPriority, setAltPriority] = useState("Normal");
   const [altDeliveryDate, setAltDeliveryDate] = useState("");
+  const [altTrialRequired, setAltTrialRequired] = useState(false);
   const [altTrialDate, setAltTrialDate] = useState("");
   const [altDetails, setAltDetails] = useState([]);
   const [altCustomText, setAltCustomText] = useState("");
@@ -687,9 +705,104 @@ export const ArticulationView = ({
   // --- DELIVERY DATE & PRIORITY EDIT MODAL STATE FOR EXISTING TICKETS ---
   const [editingDeliveryAlt, setEditingDeliveryAlt] = useState(null);
   const [selectedNewDeliveryDate, setSelectedNewDeliveryDate] = useState("");
+  const [selectedNewTrialRequired, setSelectedNewTrialRequired] = useState(false);
+  const [selectedNewTrialDate, setSelectedNewTrialDate] = useState("");
   const [selectedNewPriority, setSelectedNewPriority] = useState("Normal");
   const [deliveryChangeReason, setDeliveryChangeReason] = useState("");
   const [savingDeliveryChange, setSavingDeliveryChange] = useState(false);
+
+  // --- TRIAL ASSESSMENT MODAL STATE FOR IN TRIAL STAGE ---
+  const [trialModalTicket, setTrialModalTicket] = useState(null);
+  const [trialFittingResult, setTrialFittingResult] = useState("");
+  const [trialRequiredChanges, setTrialRequiredChanges] = useState("");
+  const [trialReAlteration, setTrialReAlteration] = useState(false);
+  const [trialMeasurements, setTrialMeasurements] = useState({});
+  const [trialRemarks, setTrialRemarks] = useState("");
+  const [savingTrialAssessment, setSavingTrialAssessment] = useState(false);
+
+  const handleOpenTrialModal = (ticket) => {
+    if (!ticket) return;
+    const freshTicket = (alterationRecords || []).find(a => a._id === ticket._id) || ticket;
+    setTrialModalTicket(freshTicket);
+    setTrialFittingResult(freshTicket.fittingResult || "");
+    setTrialRequiredChanges(freshTicket.requiredChanges || "");
+    setTrialReAlteration(freshTicket.reAlterationRequired !== undefined ? Boolean(freshTicket.reAlterationRequired) : normalizeJobStatus(freshTicket.status) === 'Re-Alteration');
+    const existingMeas = (freshTicket.measurements && typeof freshTicket.measurements === 'object' && Object.keys(freshTicket.measurements).length > 0)
+      ? { ...freshTicket.measurements }
+      : (freshTicket.items?.[0]?.measurements && typeof freshTicket.items[0].measurements === 'object')
+        ? { ...freshTicket.items[0].measurements }
+        : {};
+    setTrialMeasurements(existingMeas);
+    setTrialRemarks(freshTicket.remarks || freshTicket.specialInstructions || freshTicket.customAlterationText || "");
+  };
+
+  const handleSaveTrialAssessment = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!trialModalTicket) return;
+    if (!trialFittingResult.trim()) {
+      if (onAddNotification) onAddNotification("Fitting Result Required", "Please enter the fitting result details.", "warning");
+      return;
+    }
+
+    const nextStatus = trialReAlteration ? "Re-Alteration" : "Quality Check";
+    const targetId = trialModalTicket._id;
+
+    // Optimistically update the UI immediately
+    setAlterationRecords(prev => prev.map(rec => {
+      if (rec._id === targetId) {
+        return {
+          ...rec,
+          status: nextStatus,
+          measurements: { ...trialMeasurements },
+          fittingResult: trialFittingResult.trim(),
+          requiredChanges: trialRequiredChanges.trim(),
+          remarks: trialRemarks.trim(),
+          specialInstructions: trialRemarks.trim() || rec.specialInstructions,
+          customAlterationText: trialRemarks.trim() || rec.customAlterationText,
+          reAlterationRequired: trialReAlteration
+        };
+      }
+      return rec;
+    }));
+
+    setSavingTrialAssessment(true);
+    try {
+      const res = await api.patch(`/alterations/${targetId}/status`, {
+        status: nextStatus,
+        measurements: trialMeasurements,
+        fittingResult: trialFittingResult.trim(),
+        requiredChanges: trialRequiredChanges.trim(),
+        reAlterationRequired: trialReAlteration,
+        remarks: trialRemarks.trim(),
+        specialInstructions: trialRemarks.trim(),
+        customAlterationText: trialRemarks.trim(),
+        reason: `Trial assessment recorded. Fitting: "${trialFittingResult.trim()}". Changes: "${trialRequiredChanges.trim()}". Re-alteration: ${trialReAlteration ? 'Yes' : 'No'}. Stage advanced to ${nextStatus}.`
+      });
+
+      if (res.data?.success) {
+        if (onAddNotification) {
+          onAddNotification(
+            "Trial Assessment Recorded",
+            `Fitting recorded. Ticket advanced to ${nextStatus}.`,
+            "success"
+          );
+        }
+        setTrialModalTicket(null);
+        await Promise.allSettled([
+          fetchAlterations(),
+          fetchPendingAlterations(),
+          fetchAlterationDashboard()
+        ]);
+      } else {
+        if (onAddNotification) onAddNotification("Error", res.data?.message || "Failed to save trial assessment", "danger");
+      }
+    } catch (err) {
+      console.error("Failed to save trial assessment:", err);
+      if (onAddNotification) onAddNotification("Error", err.response?.data?.message || "Failed to save trial assessment", "danger");
+    } finally {
+      setSavingTrialAssessment(false);
+    }
+  };
 
   const handleOpenDeliveryDateModal = (alt) => {
     if (!alt) return;
@@ -702,6 +815,8 @@ export const ArticulationView = ({
       curDate = new Date().toISOString().split('T')[0];
     }
     setSelectedNewDeliveryDate(curDate);
+    setSelectedNewTrialRequired(alt.trialRequired !== false && Boolean(alt.trialDate || alt.trialRequired));
+    setSelectedNewTrialDate(alt.trialDate || "");
     setSelectedNewPriority(alt.priority || "Normal");
     setDeliveryChangeReason("");
   };
@@ -719,15 +834,17 @@ export const ArticulationView = ({
       const res = await api.patch(`/alterations/${editingDeliveryAlt._id}/status`, {
         deliveryDate: selectedNewDeliveryDate,
         expectedDeliveryDate: selectedNewDeliveryDate,
+        trialRequired: selectedNewTrialRequired,
+        trialDate: selectedNewTrialRequired ? selectedNewTrialDate : "",
         priority: selectedNewPriority,
-        reason: deliveryChangeReason || `Delivery date changed to ${selectedNewDeliveryDate}`
+        reason: deliveryChangeReason || `Delivery & trial date updated`
       });
 
       if (res.data?.success) {
         if (onAddNotification) {
           onAddNotification(
             "Delivery Date Updated",
-            `Delivery date set to ${selectedNewDeliveryDate} (${selectedNewPriority}) (Audit trail logged).`,
+            `Delivery date set to ${selectedNewDeliveryDate} (${selectedNewPriority})${selectedNewTrialRequired && selectedNewTrialDate ? ` | Trial: ${selectedNewTrialDate}` : ''} (Audit trail logged).`,
             "success"
           );
         }
@@ -882,6 +999,7 @@ export const ArticulationView = ({
       size: pendingItem.size || "M",
       color: pendingItem.color || "Standard",
       serviceType: pendingItem.serviceType || "Alteration",
+      tailorInvoiceNo: pendingItem.tailorInvoiceNo,
       gender: pendingItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(pendingItem.productName || '') ? 'Ladies' : 'Gents'),
       isPssm: pendingItem.isPssm,
       pssmItemId: pendingItem.pssmItemId
@@ -889,8 +1007,10 @@ export const ArticulationView = ({
 
     setAltTailorName(tailorOptions[0] || "Master Ramesh Kumar");
     setAltPriority("Normal");
-    setAltDeliveryDate(delivery.toISOString().split('T')[0]);
-    setAltTrialDate(trial.toISOString().split('T')[0]);
+    setAltDeliveryDate(pendingItem.expectedDeliveryDate ? new Date(pendingItem.expectedDeliveryDate).toISOString().split('T')[0] : delivery.toISOString().split('T')[0]);
+    const isTrialReq = pendingItem.trialRequired !== undefined ? Boolean(pendingItem.trialRequired) : Boolean(pendingItem.trialDate);
+    setAltTrialRequired(isTrialReq);
+    setAltTrialDate(pendingItem.trialDate ? new Date(pendingItem.trialDate).toISOString().split('T')[0] : trial.toISOString().split('T')[0]);
     setAltDetails([]);
     setAltCustomText("");
     setAltMeasurements({
@@ -916,6 +1036,7 @@ export const ArticulationView = ({
       const trial = new Date();
       trial.setDate(trial.getDate() + 2);
       setAltTrialDate(trial.toISOString().split('T')[0]);
+      setAltTrialRequired(false);
 
       // Reset other states
       setSelectedAltInvoice(null);
@@ -979,7 +1100,8 @@ export const ArticulationView = ({
         priority: altPriority || 'Normal',
         status: "Pending",
         deliveryDate: altDeliveryDate,
-        trialDate: altTrialDate,
+        trialRequired: altTrialRequired,
+        trialDate: altTrialRequired ? altTrialDate : '',
         serviceType: cogServiceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Custom Tailoring'),
         gender: cogGender || 'Gents',
         alterationDetails: effectiveDetails,
@@ -1005,9 +1127,13 @@ export const ArticulationView = ({
         const data = res.data;
         if (data.success) {
           const createdAlt = data.data?.alteration || data.data || {};
+          const tailoringJobs = data.data?.tailoringJobs || [];
+          const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : (createdAlt.tailorInvoiceNo || null);
+
           const ticketSlipObj = {
             _id: createdAlt._id || `alt-${Date.now()}`,
             alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+            tailorInvoiceNo: tailorInvoiceNo,
             sourceType: 'CUSTOMER_OWN_GARMENT',
             invoiceNumber: 'CUSTOMER-OWN-GARMENT',
             customerName: cogCustomerName.trim(),
@@ -1021,7 +1147,8 @@ export const ArticulationView = ({
             priority: altPriority || 'Normal',
             status: "Pending",
             deliveryDate: altDeliveryDate,
-            trialDate: altTrialDate,
+            trialRequired: altTrialRequired,
+            trialDate: altTrialRequired ? altTrialDate : '',
             alterationDetails: effectiveDetails,
             customAlterationText: altCustomText,
             specialInstructions: altCustomText || effectiveDetails.join(', '),
@@ -1083,7 +1210,8 @@ export const ArticulationView = ({
       priority: altPriority || 'Normal',
       status: "Pending",
       deliveryDate: altDeliveryDate,
-      trialDate: altTrialDate,
+      trialRequired: altTrialRequired,
+      trialDate: altTrialRequired ? altTrialDate : '',
       serviceType: selectedAltItem.serviceType || (effectiveDetails.length > 0 ? effectiveDetails.join(' + ') : 'Alteration'),
       gender: selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents'),
       alterationDetails: effectiveDetails,
@@ -1126,9 +1254,14 @@ export const ArticulationView = ({
       const data = res.data;
       if (data.success) {
         const createdAlt = data.data?.alteration || data.data || {};
+        const tailoringJobs = data.data?.tailoringJobs || [];
+        const matchedJob = (tailoringJobs.find(j => String(j.pssmItemId) === String(selectedAltItem?.pssmItemId)) || tailoringJobs[0]);
+        const tailorInvoiceNo = selectedAltItem?.tailorInvoiceNo || matchedJob?.tailorInvoiceNo || createdAlt.tailorInvoiceNo || null;
+
         const ticketSlipObj = {
           _id: createdAlt._id || `alt-${Date.now()}`,
           alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
+          tailorInvoiceNo: tailorInvoiceNo,
           sourceType: 'SHOWROOM_PURCHASE',
           invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber,
           invoiceId: selectedAltInvoice._id,
@@ -1144,7 +1277,8 @@ export const ArticulationView = ({
           priority: altPriority || 'Normal',
           status: "Pending",
           deliveryDate: altDeliveryDate,
-          trialDate: altTrialDate,
+          trialRequired: altTrialRequired,
+          trialDate: altTrialRequired ? altTrialDate : '',
           alterationDetails: effectiveDetails,
           customAlterationText: altCustomText,
           specialInstructions: altCustomText || effectiveDetails.join(', '),
@@ -1358,6 +1492,7 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
+          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice:</b> ${ticket.tailorInvoiceNo}<br>` : ''}
           <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
           ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
           <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
@@ -1436,6 +1571,7 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
+          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice:</b> ${ticket.tailorInvoiceNo}<br>` : ''}
           <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
           ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
           <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
@@ -1518,6 +1654,8 @@ export const ArticulationView = ({
           return {
             _id: p._id,
             pssmItemId: p._id,
+            alterationId: p.pssmNo,
+            tailorInvoiceNo: p.tailorInvoiceNo,
             isPssm: true,
             saleItemId: p._id,
             invoiceNo: p.billBarcode || p.billNo,
@@ -1533,6 +1671,8 @@ export const ArticulationView = ({
             serviceType: p.serviceType || 'Alteration',
             gender: p.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(p.productName || '') ? 'Ladies' : 'Gents'),
             status: p.status || 'PENDING_ASSIGNMENT',
+            trialRequired: p.trialRequired,
+            trialDate: p.trialDate,
             expectedDeliveryDate: p.expectedDeliveryDate,
             priority: p.priority || 'Normal'
           };
@@ -2433,11 +2573,10 @@ export const ArticulationView = ({
                           key={gf}
                           type="button"
                           onClick={() => setAltGenderFilter(gf)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                            isAct
+                          className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${isAct
                               ? gf === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : gf === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs'
                               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           {gf === 'Gents' && <span>👨</span>}
                           {gf === 'Ladies' && <span>👩</span>}
@@ -2473,7 +2612,26 @@ export const ArticulationView = ({
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
                   {pendingAlterations
-                    .filter(item => altGenderFilter === "All" || (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.productName || '') ? 'Ladies' : 'Gents')) === altGenderFilter)
+                    .filter(item => {
+                      if (altGenderFilter !== "All" && (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.productName || '') ? 'Ladies' : 'Gents')) !== altGenderFilter) {
+                        return false;
+                      }
+                      if (alterationSearchQuery.trim()) {
+                        const q = alterationSearchQuery.toLowerCase().trim();
+                        return (
+                          (item.customerName || "").toLowerCase().includes(q) ||
+                          (item.customerPhone || "").toLowerCase().includes(q) ||
+                          (item.invoiceNo || item.billBarcode || "").toLowerCase().includes(q) ||
+                          (item.alterationId || "").toLowerCase().includes(q) ||
+                          (item.tailorInvoiceNo || "").toLowerCase().includes(q) ||
+                          (item.productName || "").toLowerCase().includes(q) ||
+                          (item.sku || "").toLowerCase().includes(q) ||
+                          (item.uniqueCode || "").toLowerCase().includes(q) ||
+                          (item.barcode || "").toLowerCase().includes(q)
+                        );
+                      }
+                      return true;
+                    })
                     .map((item, idx) => {
                       const itemGender = item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.productName || '') ? 'Ladies' : 'Gents');
                       return (
@@ -2484,18 +2642,25 @@ export const ArticulationView = ({
                         >
                           <div>
                             <div className="flex justify-between items-start gap-2">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenInvoicePreview(item.invoiceNo, item.saleBillId);
-                                }}
-                                className="text-[10px] font-mono font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-lg border border-indigo-200 uppercase transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
-                                title="Click to view full Invoice Receipt"
-                              >
-                                <FileText className="w-3 h-3 text-indigo-600" />
-                                <span>Invoice: {item.invoiceNo}</span>
-                              </button>
+                              <div className="flex flex-col items-start gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenInvoicePreview(item.invoiceNo, item.saleBillId);
+                                  }}
+                                  className="text-[10px] font-mono font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-lg border border-indigo-200 uppercase transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                                  title="Click to view full Invoice Receipt"
+                                >
+                                  <FileText className="w-3 h-3 text-indigo-600" />
+                                  <span>Invoice: {item.invoiceNo}</span>
+                                </button>
+                                {item.tailorInvoiceNo && (
+                                  <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                                    TI: {item.tailorInvoiceNo}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
                                 Pending Assignment
                               </span>
@@ -2506,11 +2671,10 @@ export const ArticulationView = ({
                                 <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors">
                                   {item.productName}
                                 </h4>
-                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                  itemGender === 'Ladies'
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${itemGender === 'Ladies'
                                     ? 'bg-pink-100 text-pink-700 border-pink-300'
                                     : 'bg-blue-100 text-blue-700 border-blue-300'
-                                }`}>
+                                  }`}>
                                   {itemGender}
                                 </span>
                               </div>
@@ -2518,11 +2682,10 @@ export const ArticulationView = ({
                                 <span className="text-[10px] font-black uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
                                   {item.serviceType || 'Alteration'}
                                 </span>
-                                <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
-                                  itemGender === 'Ladies'
+                                <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${itemGender === 'Ladies'
                                     ? 'bg-pink-50 text-pink-700 border-pink-200'
                                     : 'bg-blue-50 text-blue-700 border-blue-200'
-                                }`}>
+                                  }`}>
                                   {itemGender}
                                 </span>
                               </div>
@@ -2578,11 +2741,10 @@ export const ArticulationView = ({
                   <button
                     type="button"
                     onClick={() => setAlterationsFilterStatus("All")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                      alterationsFilterStatus === "All"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${alterationsFilterStatus === "All"
                         ? "bg-slate-900 text-white shadow-xs ring-1 ring-slate-800"
                         : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                    }`}
+                      }`}
                     title="View All Tickets"
                   >
                     <span>All Tickets ({alterationRecords.length})</span>
@@ -2741,11 +2903,10 @@ export const ArticulationView = ({
                     <div
                       key={card.id}
                       onClick={() => setAlterationsFilterStatus(prev => prev === card.id ? "All" : card.id)}
-                      className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none relative group ${
-                        isActive
+                      className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none relative group ${isActive
                           ? `${card.activeBg} shadow-md -translate-y-0.5 scale-[1.02]`
                           : `${card.bg} ${card.border} hover:shadow-sm hover:-translate-y-0.5`
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-1 mb-1">
                         <div className={`p-1 rounded-md shrink-0 ${isActive ? "bg-white/20 text-white" : `${card.iconColor} bg-white shadow-2xs`}`}>
@@ -2777,7 +2938,7 @@ export const ArticulationView = ({
                   type="text"
                   value={alterationSearchQuery}
                   onChange={(e) => setAlterationSearchQuery(e.target.value)}
-                  placeholder="Search customer name, phone, invoice #, ticket #, unique code, barcode..."
+                  placeholder="Search customer name, phone, invoice #, tailor invoice #, ticket #, unique code, barcode..."
                   className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all shadow-2xs"
                 />
                 {alterationSearchQuery && (
@@ -2857,15 +3018,14 @@ export const ArticulationView = ({
                       <button
                         key={src.id}
                         onClick={() => setAltSourceFilter(src.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                          isAct
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${isAct
                             ? (src.id === 'CUSTOMER_OWN_GARMENT'
-                                ? 'bg-emerald-700 text-white shadow-xs'
-                                : src.id === 'SHOWROOM_PURCHASE'
-                                  ? 'bg-indigo-700 text-white shadow-xs'
-                                  : 'bg-slate-900 text-white shadow-xs')
+                              ? 'bg-emerald-700 text-white shadow-xs'
+                              : src.id === 'SHOWROOM_PURCHASE'
+                                ? 'bg-indigo-700 text-white shadow-xs'
+                                : 'bg-slate-900 text-white shadow-xs')
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
-                        }`}
+                          }`}
                       >
                         <span>{src.label} ({count})</span>
                       </button>
@@ -2885,11 +3045,10 @@ export const ArticulationView = ({
                       <button
                         key={g}
                         onClick={() => setAltGenderFilter(g)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                          isAct
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${isAct
                             ? (g === 'Ladies' ? 'bg-rose-600 text-white shadow-xs' : g === 'Gents' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-900 text-white shadow-xs')
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
-                        }`}
+                          }`}
                       >
                         {g === 'Gents' && <span>👨</span>}
                         {g === 'Ladies' && <span>👩</span>}
@@ -2908,6 +3067,7 @@ export const ArticulationView = ({
                   <thead>
                     <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
                       <th className="p-3.5 w-24">Ticket #</th>
+                      <th className="p-3.5 w-28 text-indigo-300 font-extrabold">Tailor Invoice No</th>
                       <th className="p-3.5 w-16">Alt Seq</th>
                       <th className="p-3.5 w-28">Invoice No / Source</th>
                       <th className="p-3.5">Customer</th>
@@ -3000,6 +3160,7 @@ export const ArticulationView = ({
                           (a.customerPhone || "").toLowerCase().includes(q) ||
                           (a.invoiceNumber || a.invoiceId || "").toLowerCase().includes(q) ||
                           (a.alterationId || "").toLowerCase().includes(q) ||
+                          (a.tailorInvoiceNo || "").toLowerCase().includes(q) ||
                           (a.productName || "").toLowerCase().includes(q) ||
                           (a.sku || "").toLowerCase().includes(q) ||
                           (a.uniqueCode || "").toLowerCase().includes(q) ||
@@ -3032,6 +3193,15 @@ export const ArticulationView = ({
                                   <Copy className="w-3 h-3" />
                                 </button>
                               </div>
+                            </td>
+                            <td className="p-2 whitespace-nowrap font-mono font-bold text-xs text-indigo-700 bg-indigo-50/40 border-r border-indigo-100">
+                              {alt.tailorInvoiceNo ? (
+                                <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 px-2 py-0.5 rounded font-black text-[11px]">
+                                  {alt.tailorInvoiceNo}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic text-[10px]">N/A</span>
+                              )}
                             </td>
                             <td className="p-2 whitespace-nowrap text-center font-mono font-bold text-slate-600 bg-slate-50 border-r border-l border-slate-100 text-[10px]">
                               {alt.alterationSequence}
@@ -3070,11 +3240,10 @@ export const ArticulationView = ({
                                   <>
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <p className="font-bold text-slate-800">{alt.productName}</p>
-                                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                                        altGender === 'Ladies'
+                                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${altGender === 'Ladies'
                                           ? 'bg-pink-100 text-pink-700 border-pink-300'
                                           : 'bg-blue-100 text-blue-700 border-blue-300'
-                                      }`}>
+                                        }`}>
                                         {altGender}
                                       </span>
                                       {alt.sourceType === 'CUSTOMER_OWN_GARMENT' && (
@@ -3115,16 +3284,15 @@ export const ArticulationView = ({
                                       <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded text-[10px] font-black border border-rose-200 uppercase">
                                         {alt.serviceType || 'Alteration'}
                                       </span>
-                                      <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1 py-0.2 rounded border ${
-                                        altGender === 'Ladies' ? 'bg-pink-50 text-pink-700 border-pink-200' : 'bg-blue-50 text-blue-700 border-blue-200'
-                                      }`}>
+                                      <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1 py-0.2 rounded border ${altGender === 'Ladies' ? 'bg-pink-50 text-pink-700 border-pink-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                        }`}>
                                         {altGender}
                                       </span>
                                     </div>
                                   );
                                 })()}
-                                {alt.alterationDetails && alt.alterationDetails.length > 0 && alt.alterationDetails.some(d => d && d !== 'Custom Fit' && d !== 'Standard Service') && (
-                                  alt.alterationDetails.filter(d => d && d !== 'Custom Fit' && d !== 'Standard Service').map((d, i) => (
+                                {alt.alterationDetails && alt.alterationDetails.length > 0 && alt.alterationDetails.some(d => d && !['Custom Fit', 'Standard Service', 'Alteration', 'alteration'].includes(d)) && (
+                                  alt.alterationDetails.filter(d => d && !['Custom Fit', 'Standard Service', 'Alteration', 'alteration'].includes(d)).map((d, i) => (
                                     <span key={i} className="bg-rose-50 text-rose-700 px-1 py-[1px] rounded text-[10px] font-bold">
                                       {d}
                                     </span>
@@ -3173,7 +3341,7 @@ export const ArticulationView = ({
                                     </button>
                                   </div>
                                 )}
-                                {alt.specialInstructions && alt.specialInstructions !== 'Custom Fitting' && alt.specialInstructions !== 'Standard Service' && (
+                                {alt.specialInstructions && !['Custom Fitting', 'Standard Service', 'Alteration', 'alteration'].includes(alt.specialInstructions) && (
                                   <span className="text-[10px] text-slate-400 italic" title={alt.specialInstructions}>
                                     "{alt.specialInstructions}"
                                   </span>
@@ -3181,7 +3349,23 @@ export const ArticulationView = ({
                               </div>
                             </td>
                             <td className="p-3.5 whitespace-nowrap">
-                              <p className="font-mono font-bold">{alt.deliveryDate || (alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate).toISOString().split('T')[0] : 'N/A')}</p>
+                              {Boolean(alt.trialRequired && alt.trialDate) && (
+                                <div className="mb-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenTrialModal(alt)}
+                                    className="text-[9px] font-black uppercase text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+                                    title="Click to view/edit Trial Details"
+                                  >
+                                    <Shirt className="w-2.5 h-2.5 text-purple-600 shrink-0" />
+                                    <span>Trial: {alt.trialDate}</span>
+                                  </button>
+                                </div>
+                              )}
+                              <p className="font-mono font-bold text-xs text-slate-900">
+                                <span className="text-[9px] text-slate-400 font-sans block uppercase leading-tight font-semibold">Delivery:</span>
+                                {alt.deliveryDate || (alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate).toISOString().split('T')[0] : 'N/A')}
+                              </p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className={`inline-block text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${alt.priority === 'Express' ? 'bg-red-100 text-red-700' : alt.priority === 'Urgent' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                                   {alt.priority || 'Normal'}
@@ -3190,7 +3374,7 @@ export const ArticulationView = ({
                                   type="button"
                                   onClick={() => handleOpenDeliveryDateModal(alt)}
                                   className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
-                                  title="Change Delivery Date & Priority"
+                                  title="Change Delivery Date & Trial Details"
                                 >
                                   Edit
                                 </button>
@@ -3198,11 +3382,19 @@ export const ArticulationView = ({
                             </td>
                             <td className="p-3.5">
                               <select
-                                value={alt.status || 'Pending'}
-                                onChange={(e) => handleUpdateAlterationStatus(alt._id, e.target.value)}
-                                className={`text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500 border ${mKeys.length === 0 && alt.status !== 'Ready for Delivery' && alt.status !== 'Ready' && alt.status !== 'Delivered'
-                                    ? 'bg-amber-50/70 border-amber-200 text-amber-900'
-                                    : 'bg-slate-50 border-slate-200 text-slate-800'
+                                value={normalizeJobStatus(alt.status)}
+                                onChange={(e) => {
+                                  const newStatus = e.target.value;
+                                  handleUpdateAlterationStatus(alt._id, newStatus);
+                                  if (newStatus === 'In Trial') {
+                                    handleOpenTrialModal({ ...alt, status: 'In Trial' });
+                                  }
+                                }}
+                                className={`text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-rose-500 border ${normalizeJobStatus(alt.status) === 'In Trial'
+                                    ? 'bg-purple-50 border-purple-300 text-purple-950 ring-1 ring-purple-400'
+                                    : mKeys.length === 0 && normalizeJobStatus(alt.status) !== 'Ready for Delivery' && normalizeJobStatus(alt.status) !== 'Ready' && normalizeJobStatus(alt.status) !== 'Delivered'
+                                      ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                                      : 'bg-slate-50 border-slate-200 text-slate-800'
                                   }`}
                               >
                                 <option value="Pending">Pending {mKeys.length === 0 ? '(Needs Meas)' : ''}</option>
@@ -3216,6 +3408,105 @@ export const ArticulationView = ({
                                 <option value="Delivered">Delivered</option>
                                 <option value="Cancelled">Cancelled</option>
                               </select>
+
+                              {/* Action Tab when in Trial or Re-Alteration stage */}
+                              {['In Trial', 'Ready for Trial', 'Re-Alteration'].includes(normalizeJobStatus(alt.status)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenTrialModal(alt)}
+                                  className={`mt-1.5 w-full inline-flex items-center justify-center gap-1 px-2 py-1 text-white rounded-lg text-[10px] font-black uppercase tracking-wider shadow-xs hover:shadow transition-all cursor-pointer transform active:scale-95 ${normalizeJobStatus(alt.status) === 'Re-Alteration'
+                                      ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
+                                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
+                                    }`}
+                                  title="View / Edit Trial Assessment, Measurements & Changes"
+                                >
+                                  <Edit3 className="w-2.5 h-2.5" />
+                                  <span>{normalizeJobStatus(alt.status) === 'Re-Alteration' ? 'Re-Alter Trial ✎' : 'Trial Action ✎'}</span>
+                                </button>
+                              )}
+
+                              {/* Details under status workflow when showing Re-Alteration */}
+                              {normalizeJobStatus(alt.status) === 'Re-Alteration' && (() => {
+                                const activeMeas = (alt.measurements && typeof alt.measurements === 'object' && Object.keys(alt.measurements).length > 0)
+                                  ? alt.measurements
+                                  : (alt.items?.[0]?.measurements && typeof alt.items[0].measurements === 'object' && Object.keys(alt.items[0].measurements).length > 0)
+                                    ? alt.items[0].measurements
+                                    : {};
+                                const measEntries = Object.entries(activeMeas).filter(([_, v]) => v !== null && v !== '' && v !== undefined && String(v).trim() !== '');
+                                const hasRemarks = Boolean(alt.remarks || alt.specialInstructions || alt.customAlterationText);
+                                const hasFitting = Boolean(alt.fittingResult);
+                                const hasChanges = Boolean(alt.requiredChanges);
+                                const hasAnyInfo = hasFitting || hasChanges || hasRemarks || measEntries.length > 0;
+
+                                return (
+                                  <div
+                                    onClick={() => handleOpenTrialModal(alt)}
+                                    className="mt-1.5 p-2.5 bg-red-50/95 hover:bg-red-100/90 border border-red-200 hover:border-red-300 rounded-xl space-y-1.5 text-left cursor-pointer transition-all shadow-2xs group"
+                                    title="Click to view / edit re-alteration trial details & measurements"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-extrabold text-red-900 uppercase text-[9px] flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse inline-block" />
+                                        <span>Re-Alter Details</span>
+                                      </span>
+                                      <span className="text-[9px] text-red-600 font-bold group-hover:underline flex items-center gap-0.5">
+                                        <span>Edit</span> ✎
+                                      </span>
+                                    </div>
+
+                                    {/* Fitting & Changes Remarks */}
+                                    {(hasFitting || hasChanges || hasRemarks) && (
+                                      <div className="text-[10px] leading-snug space-y-0.5 bg-white/70 p-1.5 rounded-lg border border-red-100">
+                                        {alt.fittingResult && (
+                                          <p className="font-medium text-slate-800 text-[10px] break-words">
+                                            <strong className="text-slate-600 font-bold">Fit:</strong> {alt.fittingResult}
+                                          </p>
+                                        )}
+                                        {alt.requiredChanges && (
+                                          <p className="font-bold text-red-700 text-[10px] break-words">
+                                            <strong className="text-red-900">Changes:</strong> {alt.requiredChanges}
+                                          </p>
+                                        )}
+                                        {hasRemarks && (
+                                          <p className="font-medium text-slate-800 text-[10px] break-words">
+                                            <strong className="text-red-950 font-bold">Remarks:</strong> {alt.remarks || (!['Custom Fitting', 'Standard Service', 'Alteration', 'alteration'].includes(alt.specialInstructions) ? alt.specialInstructions : null) || alt.customAlterationText}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* After-Trial Measurements */}
+                                    {measEntries.length > 0 && (
+                                      <div className="pt-1 border-t border-red-200/80">
+                                        <span className="font-extrabold text-red-900 uppercase text-[9px] block mb-1 flex items-center gap-1">
+                                          <span>📏</span>
+                                          <span>After-Trial Measurements:</span>
+                                        </span>
+                                        <div className="flex flex-wrap gap-1">
+                                          {measEntries.map(([k, v]) => (
+                                            <span key={k} className="text-[9px] font-mono font-bold bg-white text-slate-900 border border-red-200 px-1.5 py-0.5 rounded shadow-2xs inline-flex items-center gap-0.5">
+                                              <span className="text-red-700 font-sans">{k}:</span>
+                                              <span>{String(v).endsWith('"') ? v : `${v}"`}</span>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {!hasAnyInfo && (
+                                      <p className="text-[9px] text-red-600/80 italic">
+                                        + Click to enter trial measurements & remarks
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
+                              {normalizeJobStatus(alt.status) !== 'Re-Alteration' && alt.fittingResult && (
+                                <p className="text-[9px] text-purple-700 font-medium mt-1 truncate max-w-[120px]" title={`Fitting: ${alt.fittingResult}${alt.requiredChanges ? ` | Changes: ${alt.requiredChanges}` : ''}`}>
+                                  ✓ {alt.fittingResult}
+                                </p>
+                              )}
                             </td>
                             {/* FEATURE 1: WHATSAPP NOTIFY CUSTOMER BUTTON */}
                             <td className="p-3.5">
@@ -3455,6 +3746,7 @@ export const ArticulationView = ({
                   <thead>
                     <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                       <th className="p-3">Ticket #</th>
+                      <th className="p-3 text-indigo-700 font-extrabold">Tailor Invoice No</th>
                       <th className="p-3">Customer</th>
                       <th className="p-3">Garment</th>
                       <th className="p-3">Master Tailor</th>
@@ -3471,7 +3763,18 @@ export const ArticulationView = ({
                         const daysOverdue = Math.max(1, Math.floor((new Date() - targetDate) / (1000 * 60 * 60 * 24)));
                         return (
                           <tr key={alt._id} className="hover:bg-rose-50/40">
-                            <td className="p-3 font-mono font-bold text-rose-600">{alt.alterationId}</td>
+                            <td className="p-3 font-mono font-bold text-rose-600">
+                              <span>{alt.alterationId}</span>
+                            </td>
+                            <td className="p-3 font-mono font-bold text-indigo-700">
+                              {alt.tailorInvoiceNo ? (
+                                <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-black">
+                                  {alt.tailorInvoiceNo}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic text-[10px]">N/A</span>
+                              )}
+                            </td>
                             <td className="p-3 font-bold">{alt.customerName} ({alt.customerPhone})</td>
                             <td className="p-3">{alt.productName}</td>
                             <td className="p-3 font-bold">{alt.tailorName || 'Unassigned'}</td>
@@ -3769,6 +4072,11 @@ export const ArticulationView = ({
                 <span>Ticket #: <strong className="text-rose-600">{selectedJobTicket.alterationId}</strong></span>
                 <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
               </div>
+              {selectedJobTicket.tailorInvoiceNo && (
+                <div className="flex justify-between">
+                  <span className="text-indigo-700 font-bold">Tailor Invoice: <strong>{selectedJobTicket.tailorInvoiceNo}</strong></span>
+                </div>
+              )}
               <div>
                 <span>Source: <strong className={selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'text-emerald-700' : 'text-indigo-700'}>{selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? '🧵 Customer Own Garment / Fabric' : '🏪 Showroom Purchase (Billing)'}</strong></span>
               </div>
@@ -3850,7 +4158,7 @@ export const ArticulationView = ({
                 </div>
               </div>
 
-              {selectedJobTicket.specialInstructions && (
+              {selectedJobTicket.specialInstructions && !['Custom Fitting', 'Standard Service', 'Alteration', 'alteration'].includes(selectedJobTicket.specialInstructions) && (
                 <div>
                   <p className="font-bold text-slate-900 uppercase">Special Instructions:</p>
                   <p className="text-[10px] italic text-slate-600">"{selectedJobTicket.specialInstructions}"</p>
@@ -4039,22 +4347,20 @@ export const ArticulationView = ({
               <button
                 type="button"
                 onClick={() => setAltCreationMode("SHOWROOM_PURCHASE")}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  altCreationMode === "SHOWROOM_PURCHASE"
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${altCreationMode === "SHOWROOM_PURCHASE"
                     ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <span>🏪 Showroom Purchase (Existing Bill)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setAltCreationMode("CUSTOMER_OWN_GARMENT")}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  altCreationMode === "CUSTOMER_OWN_GARMENT"
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${altCreationMode === "CUSTOMER_OWN_GARMENT"
                     ? "bg-rose-600 text-white shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <span>🧵 Customer Own Garment / Fabric (Custom Tailoring)</span>
               </button>
@@ -4141,18 +4447,16 @@ export const ArticulationView = ({
                       <button
                         type="button"
                         onClick={() => setCogGender("Gents")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                          cogGender === "Gents" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
-                        }`}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${cogGender === "Gents" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                          }`}
                       >
                         <span>👨 Gents</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setCogGender("Ladies")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                          cogGender === "Ladies" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
-                        }`}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${cogGender === "Ladies" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                          }`}
                       >
                         <span>👩 Ladies</span>
                       </button>
@@ -4267,15 +4571,39 @@ export const ArticulationView = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Expected Trial Date</label>
-                    <input
-                      type="date"
-                      value={altTrialDate}
-                      onChange={(e) => setAltTrialDate(e.target.value)}
-                      required
-                      className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
-                    />
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Trial Required?</label>
+                    <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setAltTrialRequired(false)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!altTrialRequired ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                        No
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAltTrialRequired(true)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${altTrialRequired ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                        Yes
+                      </button>
+                    </div>
                   </div>
+
+                  {altTrialRequired ? (
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-purple-700 uppercase">Expected Trial Date *</label>
+                      <input
+                        type="date"
+                        value={altTrialDate}
+                        onChange={(e) => setAltTrialDate(e.target.value)}
+                        required={altTrialRequired}
+                        className="w-full border border-purple-300 bg-purple-50/50 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-xs font-semibold text-purple-900"
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase">Expected Delivery Date</label>
@@ -4432,11 +4760,10 @@ export const ArticulationView = ({
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="font-bold text-slate-800">{item.name}</p>
-                                <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${
-                                  (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                                <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${(item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')) === 'Ladies'
                                     ? 'bg-pink-100 text-pink-700 border-pink-300'
                                     : 'bg-blue-100 text-blue-700 border-blue-300'
-                                }`}>
+                                  }`}>
                                   {item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.name || '') ? 'Ladies' : 'Gents')}
                                 </span>
                               </div>
@@ -4464,29 +4791,27 @@ export const ArticulationView = ({
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-extrabold text-slate-800 text-sm">{selectedAltItem.productName || selectedAltItem.name}</p>
-                          
+
                           {/* Option of Gents / Ladies in front of product for Alteration / Garment */}
                           <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 gap-1 shadow-2xs">
                             <span className="text-[10px] font-black uppercase text-slate-400 px-1">Gender:</span>
                             <button
                               type="button"
                               onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Gents' }))}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                                (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Gents'
+                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Gents'
                                   ? 'bg-blue-600 text-white shadow-xs'
                                   : 'text-slate-600 hover:text-slate-900'
-                              }`}
+                                }`}
                             >
                               <span>👨 Gents</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setSelectedAltItem(prev => ({ ...prev, gender: 'Ladies' }))}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                                (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                              className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
                                   ? 'bg-rose-600 text-white shadow-xs'
                                   : 'text-slate-600 hover:text-slate-900'
-                              }`}
+                                }`}
                             >
                               <span>👩 Ladies</span>
                             </button>
@@ -4497,11 +4822,10 @@ export const ArticulationView = ({
                             <span className="text-[10px] font-black uppercase font-mono px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
                               {selectedAltItem.serviceType || 'Alteration'}
                             </span>
-                            <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
-                              (selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
+                            <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${(selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')) === 'Ladies'
                                 ? 'bg-pink-50 text-pink-700 border-pink-200'
                                 : 'bg-blue-50 text-blue-700 border-blue-200'
-                            }`}>
+                              }`}>
                               {selectedAltItem.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(selectedAltItem.name || selectedAltItem.productName || '') ? 'Ladies' : 'Gents')}
                             </span>
                           </div>
@@ -4607,15 +4931,39 @@ export const ArticulationView = ({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="block text-xs font-bold text-slate-500 uppercase">Expected Trial Date</label>
-                        <input
-                          type="date"
-                          value={altTrialDate}
-                          onChange={(e) => setAltTrialDate(e.target.value)}
-                          required
-                          className="w-full border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-rose-500 outline-none text-xs font-semibold"
-                        />
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Trial Required?</label>
+                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setAltTrialRequired(false)}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!altTrialRequired ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                          >
+                            No
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAltTrialRequired(true)}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${altTrialRequired ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                          >
+                            Yes
+                          </button>
+                        </div>
                       </div>
+
+                      {altTrialRequired ? (
+                        <div className="space-y-1">
+                          <label className="block text-xs font-bold text-purple-700 uppercase">Expected Trial Date *</label>
+                          <input
+                            type="date"
+                            value={altTrialDate}
+                            onChange={(e) => setAltTrialDate(e.target.value)}
+                            required={altTrialRequired}
+                            className="w-full border border-purple-300 bg-purple-50/50 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-xs font-semibold text-purple-900"
+                          />
+                        </div>
+                      ) : null}
 
                       <div className="space-y-1">
                         <label className="block text-xs font-bold text-slate-500 uppercase">Expected Delivery Date</label>
@@ -4842,9 +5190,9 @@ export const ArticulationView = ({
                           Bill: {collectionData.pssm?.billBarcode || collectionData.pssm?.billNo}
                         </span>
                         <span className={`text-[10px] font-extrabold uppercase font-mono px-2.5 py-1 rounded-lg border ${collectionData.pssm?.status === 'CLOSED' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                            collectionData.pssm?.status === 'READY_FOR_DELIVERY' ? 'bg-emerald-500 text-white border-emerald-600' :
-                              collectionData.pssm?.status === 'PARTIALLY_READY' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
-                                'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                          collectionData.pssm?.status === 'READY_FOR_DELIVERY' ? 'bg-emerald-500 text-white border-emerald-600' :
+                            collectionData.pssm?.status === 'PARTIALLY_READY' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+                              'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                           }`}>
                           {collectionData.pssm?.status}
                         </span>
@@ -4876,10 +5224,10 @@ export const ArticulationView = ({
                         <div
                           key={item._id}
                           className={`p-4 rounded-2xl border-2 transition-all flex flex-wrap items-center justify-between gap-3 ${isCollected
-                              ? 'bg-slate-100 border-slate-200 opacity-60'
-                              : isReady
-                                ? 'bg-emerald-50 border-emerald-400'
-                                : 'bg-white border-slate-200'
+                            ? 'bg-slate-100 border-slate-200 opacity-60'
+                            : isReady
+                              ? 'bg-emerald-50 border-emerald-400'
+                              : 'bg-white border-slate-200'
                             }`}
                         >
                           <div className="flex items-center gap-3">
@@ -4915,9 +5263,9 @@ export const ArticulationView = ({
 
                           <div>
                             <span className={`text-[10px] font-extrabold uppercase font-mono px-3 py-1.5 rounded-xl border ${isCollected ? 'bg-slate-200 text-slate-600 border-slate-300' :
-                                isReady ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' :
-                                  item.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
-                                    'bg-amber-100 text-amber-800 border-amber-200'
+                              isReady ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' :
+                                item.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                  'bg-amber-100 text-amber-800 border-amber-200'
                               }`}>
                               {item.status}
                             </span>
@@ -5308,6 +5656,51 @@ export const ArticulationView = ({
                 </div>
               </div>
 
+              {/* Trial Date & Trial Required */}
+              <div className="bg-purple-50/70 p-3.5 rounded-2xl border border-purple-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>👔</span> Trial Required?
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="editDeliveryTrialReq"
+                        checked={selectedNewTrialRequired}
+                        onChange={() => setSelectedNewTrialRequired(true)}
+                        className="accent-purple-600 cursor-pointer"
+                      />
+                      Yes
+                    </label>
+                    <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="editDeliveryTrialReq"
+                        checked={!selectedNewTrialRequired}
+                        onChange={() => setSelectedNewTrialRequired(false)}
+                        className="accent-purple-600 cursor-pointer"
+                      />
+                      No
+                    </label>
+                  </div>
+                </div>
+
+                {selectedNewTrialRequired && (
+                  <div>
+                    <label className="text-[10px] font-bold text-purple-800 uppercase block mb-1">
+                      Promised Trial Date
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedNewTrialDate}
+                      onChange={(e) => setSelectedNewTrialDate(e.target.value)}
+                      className="w-full bg-white border border-purple-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-purple-950 outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Priority Selection */}
               <div>
                 <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1.5">
@@ -5320,12 +5713,12 @@ export const ArticulationView = ({
                       type="button"
                       onClick={() => setSelectedNewPriority(p)}
                       className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${selectedNewPriority === p
-                          ? p === 'Express'
-                            ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                            : p === 'Urgent'
-                              ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
-                              : 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        ? p === 'Express'
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                          : p === 'Urgent'
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                            : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                         }`}
                     >
                       {p}
@@ -5385,6 +5778,236 @@ export const ArticulationView = ({
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* ─── TRIAL ASSESSMENT & FITTING RESULT MODAL ─── */}
+      {trialModalTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden flex flex-col animate-scale-up">
+
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-900 to-indigo-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/10 rounded-xl border border-white/20 text-purple-300">
+                  <Shirt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black uppercase tracking-wider font-mono text-white">
+                    FITTING TRIAL ASSESSMENT
+                  </h4>
+                  <p className="text-xs text-purple-200 font-medium mt-0.5">
+                    Ticket #{trialModalTicket.alterationId || trialModalTicket.alterationNo || 'TICKET'} · {trialModalTicket.customerName || 'Customer'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTrialModalTicket(null)}
+                className="p-1.5 text-purple-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSaveTrialAssessment} className="p-6 space-y-4">
+
+              {/* Garment Summary Strip */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-400 font-bold block text-[10px] uppercase">Garment Item:</span>
+                  <span className="font-bold text-slate-900">{trialModalTicket.productName || 'Altered Garment'}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 font-bold block text-[10px] uppercase">Current Status:</span>
+                  <span className="font-bold text-indigo-700 uppercase font-mono">{normalizeJobStatus(trialModalTicket.status)}</span>
+                </div>
+              </div>
+
+              {/* After-Trial & Re-Alter Measurements */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>📏</span>
+                    <span>Trial / Re-Alter Measurements</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-semibold font-mono">Adjust dimensions for Re-Alteration</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {["Length", "Waist", "Chest", "Hip", "Shoulder", "Sleeve"].map((k) => (
+                    <div key={k} className="space-y-0.5">
+                      <label className="text-[10px] font-bold text-slate-600 block uppercase truncate">{k}</label>
+                      <input
+                        type="text"
+                        value={trialMeasurements[k] || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTrialMeasurements(prev => ({ ...prev, [k]: val }));
+                        }}
+                        placeholder='e.g. 38"'
+                        className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500 text-center shadow-2xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* Additional / Custom Measurements if existing */}
+                {Object.keys(trialMeasurements || {}).filter(k => !["Length", "Waist", "Chest", "Hip", "Shoulder", "Sleeve"].includes(k)).length > 0 && (
+                  <div className="pt-2 border-t border-slate-200/60 grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {Object.keys(trialMeasurements).filter(k => !["Length", "Waist", "Chest", "Hip", "Shoulder", "Sleeve"].includes(k)).map((k) => (
+                      <div key={k} className="space-y-0.5">
+                        <label className="text-[10px] font-bold text-slate-600 block uppercase truncate">{k}</label>
+                        <input
+                          type="text"
+                          value={trialMeasurements[k] || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTrialMeasurements(prev => ({ ...prev, [k]: val }));
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500 text-center shadow-2xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 1. Fitting Result (Required) */}
+              <div>
+                <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+                  <span>Fitting Result *</span>
+                  <span className="text-[10px] text-purple-700 font-semibold font-mono">Enter details</span>
+                </label>
+                <textarea
+                  value={trialFittingResult}
+                  onChange={(e) => setTrialFittingResult(e.target.value)}
+                  placeholder="Enter fitting trial assessment (e.g. Waist fits well, shoulders need 0.5 inch loose, trial passed smoothly...)"
+                  rows={2}
+                  required
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all shadow-2xs resize-none"
+                />
+              </div>
+
+              {/* 2. Required Changes (Optional) */}
+              <div>
+                <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+                  <span>Required Changes</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+                </label>
+                <input
+                  type="text"
+                  value={trialRequiredChanges}
+                  onChange={(e) => setTrialRequiredChanges(e.target.value)}
+                  placeholder="Enter any specific changes needed (e.g. shorten hem by 1 inch, adjust sleeve length)"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all shadow-2xs"
+                />
+              </div>
+
+              {/* 3. Re-Alter Remarks / Special Instructions */}
+              <div>
+                <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+                  <span>Re-Alter Remarks / Tailor Instructions</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+                </label>
+                <input
+                  type="text"
+                  value={trialRemarks}
+                  onChange={(e) => setTrialRemarks(e.target.value)}
+                  placeholder="Special instructions for re-alteration (e.g. prioritize waist loosening, keep original lining intact)"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all shadow-2xs"
+                />
+              </div>
+
+              {/* 3. Re-Alteration: Yes or No */}
+              <div className="p-4 rounded-2xl border-2 transition-all space-y-2.5 bg-slate-50 border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                      Re-Alteration Required?
+                    </h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {trialReAlteration
+                        ? 'Selecting "Yes" moves ticket directly to Re-Alteration stage.'
+                        : 'Selecting "No" marks fitting passed and moves directly to Quality Check.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setTrialReAlteration(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${!trialReAlteration
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      No (QC)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTrialReAlteration(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${trialReAlteration
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      Yes (Re-Alt)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Destination Preview Badge */}
+                <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${trialReAlteration
+                    ? 'bg-red-50 border-red-200 text-red-800'
+                    : 'bg-teal-50 border-teal-200 text-teal-800'
+                  }`}>
+                  <span className="flex items-center gap-1.5">
+                    {trialReAlteration ? <RefreshCw className="w-3.5 h-3.5 text-red-600 animate-spin-slow" /> : <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />}
+                    <span>Next Stage:</span>
+                  </span>
+                  <span className={`uppercase font-black px-2 py-0.5 rounded font-mono ${trialReAlteration ? 'bg-red-600 text-white' : 'bg-teal-600 text-white'
+                    }`}>
+                    {trialReAlteration ? 'Re-Alteration' : 'Quality Check'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setTrialModalTicket(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTrialAssessment}
+                  className={`px-5 py-2 font-bold text-white rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer ${trialReAlteration
+                      ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                      : 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/30'
+                    }`}
+                >
+                  {savingTrialAssessment ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Assessment...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>
+                        {trialReAlteration
+                          ? 'Confirm & Move to Re-Alteration'
+                          : 'Mark directly to Quality Check'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

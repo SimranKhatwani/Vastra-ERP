@@ -246,6 +246,15 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
 
   
   const itemsHTML = items.map((item, index) => {
+    const altRec = item.alterationRecord || (item.hasAlteration ? item : null);
+    const hasAlt = Boolean(item.hasAlteration || item.alterationRecord || item.serviceType || item.trialRequired !== undefined || item.trialDate);
+    const itTrialRequired = altRec?.trialRequired !== undefined ? altRec.trialRequired : (item.trialRequired !== undefined ? item.trialRequired : Boolean(altRec?.trialDate || item.trialDate));
+    const itTrialDate = altRec?.trialDate || item.trialDate || '';
+    const itDeliveryDate = altRec?.deliveryDate || item.deliveryDate || '';
+    const itServices = (altRec?.alterationDetails && altRec.alterationDetails.length > 0)
+      ? altRec.alterationDetails.join(', ')
+      : (item.serviceType || (hasAlt ? 'Alteration' : ''));
+
     return `
       <tr class="item-row">
         <td class="col-sn">${index + 1}</td>
@@ -254,7 +263,14 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           <div>U- ${item.uniqueCode || item.barcode || 'N/A'}</div>
           <div>D- ${item.sku || item.designNo || item.itemCode || 'N/A'}</div>
         </td>
-        <td class="col-product">${item.name || item.itemName}</td>
+        <td class="col-product">
+          ${item.name || item.itemName}
+          ${hasAlt ? `
+            <div style="font-size: 6.5px; color: #1e1b4b; font-weight: bold; margin-top: 1px; border-top: 0.5px dotted #999; padding-top: 1px;">
+              ${itServices ? `[${itServices}] ` : '[ALT] '}Trial Req: ${itTrialRequired ? 'YES' : 'NO'}${itTrialRequired && itTrialDate ? ` (Trial: ${itTrialDate})` : ''}${itDeliveryDate ? ` | Del: ${itDeliveryDate}` : ''}
+            </div>
+          ` : ''}
+        </td>
         <td class="col-shade">(NIL)</td>
         <td class="col-qty">${(Number(item.quantity)||1).toFixed(2)}</td>
         <td class="col-mrp">${(Number(item.mrp) || Number(item.price) || 0).toFixed(0)}</td>
@@ -773,12 +789,42 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         ` : ''}
         
         <!-- Alteration Section -->
-        <div class="alteration-box" style="border: 1px dashed #000; border-radius: 4px; padding: 4px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between;">
-          <div style="font-size: 10px; font-weight: 900; margin-bottom: 2px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-            ${svgIcons.sewing} ALTERATION / STITCHING FACILITY AVAILABLE
-          </div>
-          <div style="font-weight: bold; font-size: 7px;">Alteration / Stitching service available on all eligible items. Please show this bill while submitting / collecting your items.</div>
-        </div>
+        ${(() => {
+          const alterationItemsList = (invoice.items || []).filter(it => it.hasAlteration || it.alterationRecord || it.serviceType || it.trialDate || it.trialRequired !== undefined);
+          const hasAnyAlt = alterationItemsList.length > 0 || Boolean(invoice.pssmRecord || invoice.hasPSSM || invoice.hasAlteration);
+
+          if (hasAnyAlt) {
+            return `
+              <div class="alteration-box" style="border: 1px dashed #000; border-radius: 4px; padding: 4px; margin-bottom: 5px;">
+                <div style="font-size: 8.5px; font-weight: 900; margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="display:flex; align-items:center; gap:4px;">${svgIcons.sewing} ALTERATION &amp; TRIAL DETAILS</span>
+                  ${invoice.pssmRecord?.pssmNo || invoice.pssmNo ? `<span style="font-family:monospace; background:#000; color:#fff; padding:1px 4px; font-size:7.5px;">${invoice.pssmRecord?.pssmNo || invoice.pssmNo}</span>` : ''}
+                </div>
+                ${alterationItemsList.length > 0 ? `
+                  <div style="font-size: 7px; border-top: 1px dashed #555; padding-top: 2px; margin-top: 2px; line-height: 1.3;">
+                    ${alterationItemsList.map((ai, i) => {
+                      const rec = ai.alterationRecord || ai;
+                      const req = rec.trialRequired !== undefined ? rec.trialRequired : (ai.trialRequired !== undefined ? ai.trialRequired : Boolean(rec.trialDate || ai.trialDate));
+                      const tDate = rec.trialDate || ai.trialDate || '';
+                      const dDate = rec.deliveryDate || ai.deliveryDate || invoice.pssmRecord?.deliveryDate || '';
+                      return `<div><b>${i + 1}. ${ai.name || ai.itemName}</b>: Trial Req: <b>${req ? 'YES' : 'NO'}</b>${req && tDate ? ` (Trial Date: <b>${tDate}</b>)` : ''}${dDate ? ` | Delivery: <b>${dDate}</b>` : ''}</div>`;
+                    }).join('')}
+                  </div>
+                ` : `
+                  <div style="font-weight: bold; font-size: 7px;">Post-Sales Alteration Service Booked. Present this slip during trial &amp; collection.</div>
+                `}
+              </div>
+            `;
+          }
+          return `
+            <div class="alteration-box" style="border: 1px dashed #000; border-radius: 4px; padding: 4px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between;">
+              <div style="font-size: 10px; font-weight: 900; margin-bottom: 2px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                ${svgIcons.sewing} ALTERATION / STITCHING FACILITY AVAILABLE
+              </div>
+              <div style="font-weight: bold; font-size: 7px;">Alteration / Stitching service available on all eligible items. Please show this bill while submitting / collecting your items.</div>
+            </div>
+          `;
+        })()}
         
         <!-- Promotions Section -->
         <div class="promo-box">

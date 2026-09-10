@@ -703,14 +703,36 @@ class AlterationService {
       .sort({ createdAt: -1 })
       .lean();
 
-    const formattedPssm = pssmItems
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const TailoringJobService = require('./tailoringJob.service');
+
+    const pssmItemIds = pssmItems.map(pi => pi._id);
+    const existingJobs = await TailoringJob.find({ tenantId, pssmItemId: { $in: pssmItemIds } }).lean();
+    const jobsByItemId = new Map(existingJobs.map(j => [j.pssmItemId?.toString(), j]));
+
+    const formattedPssm = (await Promise.all(pssmItems
       .filter(pi => pi.pssmId && !existingTicketNumbers.has(pi.pssmId.pssmNo))
-      .map(pi => {
+      .map(async (pi) => {
         const pssm = pi.pssmId || {};
         const custName = pssm.customerName || (pssm.customerId?.name) || 'Walk-in Customer';
         const custPhone = pssm.customerPhone || (pssm.customerId?.phone) || '';
         const invNo = pssm.billNo || pssm.billBarcode || (pssm.saleBillId ? (pssm.saleBillId.billNo || pssm.saleBillId.invoiceNo) : '');
         const invId = pssm.saleBillId?._id || invNo;
+
+        let tailorInvoiceNo = pi.tailorInvoiceNo || jobsByItemId.get(pi._id.toString())?.tailorInvoiceNo || '';
+
+        // Auto-heal missing Tailor Invoice No for alteration PSSM items
+        if (!tailorInvoiceNo && (pi.serviceType || 'Alteration') === 'Alteration') {
+          try {
+            const newJob = await TailoringJobService.createFromPSSMItem(pssm, pi, pi.createdBy, tenantId);
+            if (newJob) {
+              tailorInvoiceNo = newJob.tailorInvoiceNo;
+              await PSSMItem.updateOne({ _id: pi._id }, { $set: { tailorInvoiceNo: newJob.tailorInvoiceNo } });
+            }
+          } catch (e) {
+            console.warn('[getAlterations] Auto-create TailoringJob failed:', e.message);
+          }
+        }
 
         const hasMeasurements = pi.measurements && typeof pi.measurements === 'object' &&
           Object.keys(pi.measurements).length > 0 &&
@@ -766,6 +788,7 @@ class AlterationService {
           sku: pi.sku || pi.barcode || '',
           size: pi.size || 'FS',
           color: pi.color || 'Standard',
+          tailorInvoiceNo: tailorInvoiceNo || '',
           tailorName: pi.assignedTo || pssm.tailorName || 'Master Tailor',
           priority: pi.priority === 'DELIVERY' || pssm.priority === 'DELIVERY' ? 'Urgent' : (pi.priority || pssm.priority || 'Normal'),
           status: displayStatus,
@@ -799,7 +822,7 @@ class AlterationService {
           createdAt: pi.createdAt,
           createdBy: pi.createdBy
         };
-      })
+      })))
       .filter(record => {
         if (query.status && record.status !== query.status && record.rawStatus !== query.status) return false;
         if (query.tailorName && !new RegExp(query.tailorName, 'i').test(record.tailorName)) return false;
