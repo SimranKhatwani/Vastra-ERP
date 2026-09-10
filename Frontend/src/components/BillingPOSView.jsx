@@ -11781,15 +11781,27 @@ export const BillingPOSView = ({
             {/* Slip Body */}
             <div className="p-5 space-y-4 max-h-[72vh] overflow-y-auto erp-hide-scrollbar">
 
-              {/* Key Reference Numbers */}
+              {/* Key Reference Numbers & Customer Info */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 font-mono text-xs">
                 <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Date</span>
+                  <span className="font-bold text-slate-800">{new Date(pssSlipData.createdAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Customer Name</span>
+                  <span className="font-black text-slate-900">{pssSlipData.customerName || 'Walk-in Customer'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Mobile Number</span>
+                  <span className="font-bold text-slate-800">{pssSlipData.customerPhone || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Original Invoice No</span>
-                  <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg">{pssSlipData.originalInvoiceNo}</span>
+                  <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg">{pssSlipData.originalInvoiceNo}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">PSS Ticket No</span>
-                  <span className="font-black text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">{pssSlipData.pssmNo}</span>
+                  <span className="font-black text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg">{pssSlipData.pssmNo}</span>
                 </div>
                 {(() => {
                   const itemTIs = (pssSlipData.items || []).map(i => i.tailorInvoiceNo).filter(Boolean);
@@ -11798,18 +11810,32 @@ export const BillingPOSView = ({
                   return (
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-semibold uppercase tracking-wider">Tailor Invoice No</span>
-                      <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg font-mono text-[11px]">{allTIs}</span>
+                      <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg font-mono text-[11px]">{allTIs}</span>
                     </div>
                   );
                 })()}
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Bill Barcode</span>
-                  <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-lg font-mono">{pssSlipData.billBarcode}</span>
+                  <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-lg font-mono">{pssSlipData.billBarcode}</span>
                 </div>
                 <div className="border-t border-dashed border-slate-200 my-1" />
+                
+                {/* Financial Summary: Advance / Balance */}
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Advance Paid</span>
+                  <span className="font-bold text-emerald-700">₹{(pssSlipData.advancePaid || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider">Balance Due</span>
+                  <span className={`font-black px-2 py-0.5 rounded ${ (pssSlipData.balanceDue || 0) > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800'}`}>
+                    ₹{(pssSlipData.balanceDue || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div className="border-t border-dashed border-slate-200 my-1" />
+
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Priority</span>
-                  <span className={`font-black px-2.5 py-1 rounded-lg ${
+                  <span className={`font-black px-2.5 py-0.5 rounded-lg ${
                     pssSlipData.priority === 'HIGH' ? 'bg-rose-100 text-rose-700 border border-rose-200'
                     : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
                     : 'bg-slate-100 text-slate-700 border border-slate-200'
@@ -11821,8 +11847,8 @@ export const BillingPOSView = ({
                 </div>
                 {pssSlipData.deliveryDate && (
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-semibold uppercase tracking-wider">Delivery Date</span>
-                    <span className="font-bold text-amber-700">{new Date(pssSlipData.deliveryDate).toLocaleDateString('en-IN')}</span>
+                    <span className="text-slate-500 font-semibold uppercase tracking-wider">Expected Delivery</span>
+                    <span className="font-bold text-amber-700">{new Date(pssSlipData.deliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </div>
                 )}
                 {Boolean(pssSlipData.trialRequired && pssSlipData.trialDate) && (
@@ -11832,7 +11858,7 @@ export const BillingPOSView = ({
                       <span>Trial Date</span>
                     </span>
                     <span className="font-black text-purple-700 bg-white border border-purple-300 px-2 py-0.5 rounded shadow-2xs">
-                      {new Date(pssSlipData.trialDate).toLocaleDateString('en-IN')}
+                      {new Date(pssSlipData.trialDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </span>
                   </div>
                 )}
@@ -11845,7 +11871,7 @@ export const BillingPOSView = ({
                   return (
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
-                      <span className={`font-black uppercase px-2.5 py-1 rounded-lg text-xs border ${
+                      <span className={`font-black uppercase px-2.5 py-0.5 rounded-lg text-xs border ${
                         displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
                         displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
                         displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
@@ -11897,6 +11923,10 @@ export const BillingPOSView = ({
                 {(pssSlipData.items || []).map((itm, idx) => {
                   const isReady = itm.status === 'READY';
                   const isCollected = itm.status === 'COLLECTED';
+                  const isAlterationService = String(itm.serviceType || '').toLowerCase().includes('alteration');
+                  const measurementsObj = itm.measurements || {};
+                  const inseamVal = measurementsObj.inseam || measurementsObj.innerLegLength || measurementsObj.Inseam || measurementsObj['Inner Leg Length'] || '';
+
                   return (
                     <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${
                       isCollected ? 'bg-slate-50/80 border-slate-200' :
@@ -11917,14 +11947,19 @@ export const BillingPOSView = ({
                             <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded uppercase inline-block">
                               {itm.serviceType}
                             </span>
-                            {itm.tailorInvoiceNo && (
+                            {isAlterationService && itm.tailorInvoiceNo && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-300 font-black px-2 py-0.5 rounded font-mono inline-block">
-                                TI: {itm.tailorInvoiceNo}
+                                Tailor Invoice No: {itm.tailorInvoiceNo}
+                              </span>
+                            )}
+                            {isAlterationService && (itm.charge > 0 || pssSlipData.totalCharges > 0) && (
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded inline-block">
+                                Tailoring Charge: ₹{itm.charge || pssSlipData.totalCharges || 0}
                               </span>
                             )}
                             {Boolean((itm.trialRequired !== undefined ? itm.trialRequired : pssSlipData.trialRequired) && (itm.trialDate || pssSlipData.trialDate)) && (
                               <span className="text-[10px] bg-purple-50 text-purple-800 border border-purple-300 font-black px-2 py-0.5 rounded uppercase inline-flex items-center gap-1">
-                                <span>👔 Trial: {new Date(itm.trialDate || pssSlipData.trialDate).toLocaleDateString('en-IN')}</span>
+                                <span>👔 Trial: {new Date(itm.trialDate || pssSlipData.trialDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                               </span>
                             )}
                           </div>
@@ -11959,7 +11994,29 @@ export const BillingPOSView = ({
                           )}
                         </div>
                       </div>
-                      <p className="text-slate-500 font-mono text-[11px]">Size: {itm.size} | Color: {itm.color} | Code: {itm.barcode || 'N/A'}</p>
+                      <p className="text-slate-600 font-mono text-[11px]">
+                        Bill No: <strong className="text-slate-900">{pssSlipData.originalInvoiceNo}</strong> | Code: <strong className="text-slate-900">{itm.uniqueCode || itm.barcode || 'N/A'}</strong> | Size: {itm.size} | Color: {itm.color}
+                      </p>
+
+                      {/* Measurements & Inseam if Alteration */}
+                      {isAlterationService && Object.keys(measurementsObj).length > 0 && (
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-[11px] space-y-1 mt-1">
+                          <span className="font-bold text-slate-700 uppercase block text-[10px]">Measurements:</span>
+                          <div className="flex flex-wrap gap-2 text-slate-800 font-mono">
+                            {Object.entries(measurementsObj).map(([mk, mv]) => (
+                              <span key={mk} className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                <strong>{mk}:</strong> {mv}"
+                              </span>
+                            ))}
+                          </div>
+                          {inseamVal && (
+                            <div className="text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded text-[11px] font-bold mt-1 inline-block">
+                              Inseam / Inner Leg Length: {inseamVal}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <p className="text-slate-600 font-semibold text-[11px]">Assigned to: <span className="text-slate-900 font-black">{itm.assignedTo}</span></p>
                       {itm.alterationDetails?.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
@@ -11971,6 +12028,18 @@ export const BillingPOSView = ({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Barcode & QR Code Graphic Box */}
+              <div className="bg-slate-900 text-white rounded-xl p-3.5 text-center space-y-2 font-mono">
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scannable Verification Barcode / QR Code</p>
+                <div className="bg-white p-2.5 rounded-lg inline-block text-slate-900 shadow-inner">
+                  <div className="font-mono text-xl font-black tracking-widest border-b-2 border-slate-900 pb-1" style={{ letterSpacing: '4px' }}>
+                    ||||||||||||||||||||||||||||||||||||
+                  </div>
+                  <div className="text-[11px] font-black mt-1 font-mono">{pssSlipData.billBarcode || pssSlipData.pssmNo}</div>
+                </div>
+                <p className="text-[9px] text-slate-400 italic">Present this barcode slip upon garment pickup or trial</p>
               </div>
             </div>
 
@@ -11987,7 +12056,7 @@ export const BillingPOSView = ({
                   const d = pssSlipData;
                   const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
                   const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:18px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #ccc;padding-bottom:8px;margin-bottom:8px;font-size:12px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Original Invoice: <b>${d.originalInvoiceNo}</b></p><div class="badge">${d.pssmNo}</div>${d.tailorInvoiceNo ? `<p style="margin:2px 0;font-size:11px;color:#4f46e5;font-weight:bold">Tailor Invoice: ${d.tailorInvoiceNo}</p>` : ''}<p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer:</b> ${d.customerName} ${d.customerPhone ? '(' + d.customerPhone + ')' : ''}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}${d.deliveryDate ? '<b>Delivery:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.specialInstructions ? '<b>Notes:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => `<div class="section"><b>${i + 1}. ${it.name}</b> (${it.size}/${it.color}) [<b>${it.gender || 'Gents'}</b>]<br/><b>Barcode:</b> ${it.barcode || 'N/A'}<br/><b>Service:</b> ${it.serviceType}<br/>${it.tailorInvoiceNo ? '<b>Tailor Invoice:</b> <span style="color:#4f46e5;font-weight:bold">' + it.tailorInvoiceNo + '</span><br/>' : ''}<b>Category:</b> <b>${it.gender || 'Gents'}</b><br/>${it.trialRequired !== undefined ? '<b>Trial Req:</b> ' + (it.trialRequired ? 'YES' : 'NO') + (it.trialDate ? ' (Trial Date: ' + (new Date(it.trialDate).toLocaleDateString('en-IN') || it.trialDate) + ')' : '') + '<br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}<br/>${it.alterationDetails?.length > 0 ? '<b>Work:</b> ' + it.alterationDetails.join(', ') : ''}</div>`).join('')}<div style="text-align:center;font-size:10px;margin-top:14px">*** Please present this slip during collection ***</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.barcode{font-family:monospace;letter-spacing:3px;font-size:18px;font-weight:bold;border:1px solid #000;padding:6px;display:inline-block;margin:8px 0}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}<p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}</div>`; }).join('')}<div style="text-align:center;margin-top:10px"><div class="barcode">||||||||||||||||||||||||</div><p style="margin:2px 0;font-size:10px;font-weight:bold">${d.billBarcode || d.pssmNo}</p><p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

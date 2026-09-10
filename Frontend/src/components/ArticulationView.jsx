@@ -1469,21 +1469,21 @@ export const ArticulationView = ({
   };
 
   const handlePrintJobTicketHTML = (ticket) => {
+    const mObj = ticket.measurements || {};
+    const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Job Ticket ${ticket.alterationId}</title>
         <style>
-          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 400px; margin: 0 auto; }
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 16px; max-width: 380px; margin: 0 auto; line-height: 1.4; }
           .text-center { text-align: center; }
           .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
-          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-          table { width: 100%; font-size: 11px; }
-          th { text-align: left; }
-          .text-right { text-align: right; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
+          .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
+          .barcode { font-family: monospace; letter-spacing: 3px; font-size: 18px; font-weight: bold; border: 1px solid #000; padding: 6px; display: inline-block; margin: 6px 0; }
         </style>
       </head>
       <body>
@@ -1492,24 +1492,25 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
-          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice:</b> ${ticket.tailorInvoiceNo}<br>` : ''}
-          <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
-          ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
-          <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
-          <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone})
+          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice No:</b> <b>${ticket.tailorInvoiceNo}</b><br>` : ''}
+          <b>Date:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
+          <b>Source / Bill No:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment (Custom Tailoring)' : (ticket.invoiceNumber || ticket.invoiceId || 'Showroom Billing')}<br>
+          <b>Customer Name:</b> ${ticket.customerName}<br>
+          <b>Mobile Number:</b> ${ticket.customerPhone || 'N/A'}
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>Garment Item:</b> ${ticket.productName} [<b>${ticket.gender || 'Gents'}</b>]<br>
-          <b>Category:</b> <b>${ticket.gender || 'Gents'}</b><br>
-          <b>SKU / Barcode:</b> ${ticket.sku || '-'} / ${ticket.barcode || '-'}<br>
-          <b>Size & Color:</b> ${ticket.size} / ${ticket.color}<br>
+          <b>Garment:</b> ${ticket.productName}<br>
+          <b>Category (Gents/Ladies):</b> <b>${ticket.gender || 'Gents'}</b><br>
+          <b>Bill No & Code:</b> ${ticket.invoiceNumber || 'N/A'} / ${ticket.barcode || ticket.sku || ticket.uniqueCode || 'N/A'}<br>
+          <b>Size & Color:</b> ${ticket.size || 'M'} / ${ticket.color || 'Standard'}<br>
           <b>Master Tailor:</b> ${ticket.tailorName || 'Unassigned'}
         </div>
         <div class="divider"></div>
         <div class="details">
           <b>MEASUREMENTS (INCHES):</b><br>
-          ${Object.entries(ticket.measurements || {}).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+          ${Object.entries(mObj).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+          ${ins ? `<br><b>Inseam / Inner Leg Length:</b> <b>${ins}"</b>` : ''}
         </div>
         <div class="divider"></div>
         <div class="details">
@@ -1520,11 +1521,13 @@ export const ArticulationView = ({
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>DELIVERY SCHEDULE:</b><br>
-          <b>Delivery Date:</b> ${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}<br>
+          <b>FINANCIAL & SCHEDULE:</b><br>
+          <b>Tailoring Charge:</b> ₹${ticket.totalCharges || ticket.charge || 0}<br>
+          <b>Advance Paid:</b> ₹${ticket.advancePaid || 0}<br>
+          <b>Balance Due:</b> ₹${ticket.balanceDue || 0}<br>
+          <b>Expected Delivery Date:</b> <b>${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}</b><br>
           <b>Trial Date:</b> ${ticket.trialDate || 'N/A'}<br>
-          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span><br>
-          <b>Current Status:</b> <span class="badge">${ticket.status || 'Pending'}</span>
+          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span>
         </div>
         ${ticket.specialInstructions ? `
           <div class="divider"></div>
@@ -1534,8 +1537,10 @@ export const ArticulationView = ({
           </div>
         ` : ''}
         <div class="divider"></div>
-        <div class="details text-center">
-          Powered by Vastra ERP Tailoring Module
+        <div class="text-center">
+          <div class="barcode">||||||||||||||||||||||||</div>
+          <p style="margin:2px 0;font-size:10px;font-weight:bold">${ticket.barcode || ticket.alterationId}</p>
+          <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
         </div>
       </body>
       </html>
@@ -1548,21 +1553,21 @@ export const ArticulationView = ({
 
   const handleDownloadJobTicketHTML = (ticket) => {
     if (!ticket) return;
+    const mObj = ticket.measurements || {};
+    const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Job Ticket ${ticket.alterationId}</title>
         <style>
-          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 20px; max-width: 400px; margin: 0 auto; }
+          body { font-family: 'Courier New', Courier, monospace; color: #000; padding: 16px; max-width: 380px; margin: 0 auto; line-height: 1.4; }
           .text-center { text-align: center; }
           .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-          .details { font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
-          .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-          table { width: 100%; font-size: 11px; }
-          th { text-align: left; }
-          .text-right { text-align: right; }
+          .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
+          .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
+          .barcode { font-family: monospace; letter-spacing: 3px; font-size: 18px; font-weight: bold; border: 1px solid #000; padding: 6px; display: inline-block; margin: 6px 0; }
         </style>
       </head>
       <body>
@@ -1571,24 +1576,25 @@ export const ArticulationView = ({
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
-          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice:</b> ${ticket.tailorInvoiceNo}<br>` : ''}
-          <b>Source:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment / Fabric (Custom Tailoring)' : 'Showroom Purchase (Billing)'}<br>
-          ${ticket.sourceType !== 'CUSTOMER_OWN_GARMENT' && ticket.invoiceNumber && ticket.invoiceNumber !== 'CUSTOMER-OWN-GARMENT' ? `<b>Target Invoice:</b> ${ticket.invoiceNumber || ticket.invoiceId}<br>` : ''}
-          <b>Date Created:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
-          <b>Customer:</b> ${ticket.customerName} (${ticket.customerPhone || 'N/A'})
+          ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice No:</b> <b>${ticket.tailorInvoiceNo}</b><br>` : ''}
+          <b>Date:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
+          <b>Source / Bill No:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment (Custom Tailoring)' : (ticket.invoiceNumber || ticket.invoiceId || 'Showroom Billing')}<br>
+          <b>Customer Name:</b> ${ticket.customerName}<br>
+          <b>Mobile Number:</b> ${ticket.customerPhone || 'N/A'}
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>Garment Item:</b> ${ticket.productName} [<b>${ticket.gender || 'Gents'}</b>]<br>
-          <b>Category:</b> <b>${ticket.gender || 'Gents'}</b><br>
-          <b>Barcode:</b> ${ticket.barcode || ticket.sku || '-'}<br>
+          <b>Garment:</b> ${ticket.productName}<br>
+          <b>Category (Gents/Ladies):</b> <b>${ticket.gender || 'Gents'}</b><br>
+          <b>Bill No & Code:</b> ${ticket.invoiceNumber || 'N/A'} / ${ticket.barcode || ticket.sku || ticket.uniqueCode || 'N/A'}<br>
           <b>Size & Color:</b> ${ticket.size || 'M'} / ${ticket.color || 'Standard'}<br>
           <b>Master Tailor:</b> ${ticket.tailorName || 'Unassigned'}
         </div>
         <div class="divider"></div>
         <div class="details">
           <b>MEASUREMENTS (INCHES):</b><br>
-          ${Object.entries(ticket.measurements || {}).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+          ${Object.entries(mObj).map(([k, v]) => `- ${k}: ${v}"`).join('<br>') || 'Default measurements'}
+          ${ins ? `<br><b>Inseam / Inner Leg Length:</b> <b>${ins}"</b>` : ''}
         </div>
         <div class="divider"></div>
         <div class="details">
@@ -1599,11 +1605,13 @@ export const ArticulationView = ({
         </div>
         <div class="divider"></div>
         <div class="details">
-          <b>DELIVERY SCHEDULE:</b><br>
-          <b>Delivery Date:</b> ${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}<br>
+          <b>FINANCIAL & SCHEDULE:</b><br>
+          <b>Tailoring Charge:</b> ₹${ticket.totalCharges || ticket.charge || 0}<br>
+          <b>Advance Paid:</b> ₹${ticket.advancePaid || 0}<br>
+          <b>Balance Due:</b> ₹${ticket.balanceDue || 0}<br>
+          <b>Expected Delivery Date:</b> <b>${ticket.deliveryDate || 'Scheduled'} ${ticket.deliveryTime || ''}</b><br>
           <b>Trial Date:</b> ${ticket.trialDate || 'N/A'}<br>
-          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span><br>
-          <b>Current Status:</b> <span class="badge">${ticket.status || 'Pending'}</span>
+          <b>Priority:</b> <span class="badge">${ticket.priority || 'Normal'}</span>
         </div>
         ${ticket.specialInstructions ? `
           <div class="divider"></div>
@@ -1613,8 +1621,10 @@ export const ArticulationView = ({
           </div>
         ` : ''}
         <div class="divider"></div>
-        <div class="details text-center">
-          Powered by Vastra ERP Tailoring Module
+        <div class="text-center">
+          <div class="barcode">||||||||||||||||||||||||</div>
+          <p style="margin:2px 0;font-size:10px;font-weight:bold">${ticket.barcode || ticket.alterationId}</p>
+          <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
         </div>
       </body>
       </html>
@@ -3074,6 +3084,7 @@ export const ArticulationView = ({
                       <th className="p-3.5">Product / Garment</th>
                       <th className="p-3.5 w-24">Master Tailor</th>
                       <th className="p-3.5 w-40">Measurements & Details</th>
+                      <th className="p-3.5 w-24 text-right">Tailoring Charges</th>
                       <th className="p-3.5 w-28">Delivery & Priority</th>
                       <th className="p-3.5 w-32">Status Workflow</th>
                       <th className="p-3.5 w-36">Customer Notification</th>
@@ -3347,6 +3358,15 @@ export const ArticulationView = ({
                                   </span>
                                 )}
                               </div>
+                            </td>
+                            <td className="p-3.5 whitespace-nowrap text-right font-mono font-bold text-slate-800">
+                              {(alt.totalCharges || alt.charge) ? (
+                                <span className="text-emerald-700 font-extrabold text-xs">
+                                  ₹{(alt.totalCharges || alt.charge).toLocaleString('en-IN')}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal italic text-[11px]">₹0</span>
+                              )}
                             </td>
                             <td className="p-3.5 whitespace-nowrap">
                               {Boolean(alt.trialRequired && alt.trialDate) && (
@@ -4106,13 +4126,25 @@ export const ArticulationView = ({
               <div>
                 <p className="font-bold text-slate-900 uppercase mb-1">Measurements (Inches):</p>
                 {Object.keys(selectedJobTicket.measurements || {}).length > 0 ? (
-                  <div className="grid grid-cols-2 gap-1 text-[10px] bg-white p-2 rounded border border-slate-200">
-                    {Object.entries(selectedJobTicket.measurements).map(([k, v]) => (
-                      <div key={k} className="flex justify-between">
-                        <span className="text-slate-500">{k}:</span>
-                        <span className="font-bold">{v}"</span>
-                      </div>
-                    ))}
+                  <div className="space-y-1">
+                    <div className="grid grid-cols-2 gap-1 text-[10px] bg-white p-2 rounded border border-slate-200 font-mono">
+                      {Object.entries(selectedJobTicket.measurements).map(([k, v]) => (
+                        <div key={k} className="flex justify-between">
+                          <span className="text-slate-500">{k}:</span>
+                          <span className="font-bold">{v}"</span>
+                        </div>
+                      ))}
+                    </div>
+                    {(() => {
+                      const m = selectedJobTicket.measurements || {};
+                      const ins = m.inseam || m.innerLegLength || m.Inseam || m['Inner Leg Length'];
+                      if (!ins) return null;
+                      return (
+                        <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 p-1.5 rounded font-mono font-bold text-[10px]">
+                          Inseam / Inner Leg Length: {ins}"
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <p className="text-[10px] text-slate-400 italic">No specific inches entered</p>
@@ -4138,7 +4170,7 @@ export const ArticulationView = ({
 
               <div className="border-t border-dashed border-slate-300 my-2" />
 
-              {/* Delivery Details */}
+              {/* Delivery & Financial Details */}
               <div className="space-y-1 bg-rose-50 p-2.5 rounded border border-rose-200 text-rose-900">
                 <div className="flex justify-between font-bold">
                   <span>Delivery Date:</span>
@@ -4148,6 +4180,20 @@ export const ArticulationView = ({
                   <span>Expected Trial:</span>
                   <span>{selectedJobTicket.trialDate || 'N/A'}</span>
                 </div>
+                <div className="border-t border-rose-200/60 my-1" />
+                <div className="flex justify-between font-bold">
+                  <span>Tailoring Charges:</span>
+                  <span>₹{selectedJobTicket.totalCharges || selectedJobTicket.charge || 0}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>Advance Paid:</span>
+                  <span>₹{selectedJobTicket.advancePaid || 0}</span>
+                </div>
+                <div className="flex justify-between font-extrabold text-amber-900">
+                  <span>Balance Due:</span>
+                  <span>₹{selectedJobTicket.balanceDue || 0}</span>
+                </div>
+                <div className="border-t border-rose-200/60 my-1" />
                 <div className="flex justify-between">
                   <span>Job Priority:</span>
                   <span className="uppercase font-extrabold">{selectedJobTicket.priority || 'Normal'}</span>
@@ -4156,6 +4202,15 @@ export const ArticulationView = ({
                   <span>Workflow Status:</span>
                   <span className="uppercase font-extrabold">{selectedJobTicket.status || 'Pending'}</span>
                 </div>
+              </div>
+
+              {/* Barcode Graphic */}
+              <div className="bg-slate-900 text-white rounded-xl p-2.5 text-center font-mono my-2">
+                <p className="text-[9px] text-slate-400 font-bold uppercase">Scannable Barcode / Verification</p>
+                <div className="bg-white p-1.5 rounded text-slate-900 inline-block my-1 font-mono text-base font-black tracking-widest">
+                  ||||||||||||||||||||||||
+                </div>
+                <p className="text-[10px] font-bold">{selectedJobTicket.barcode || selectedJobTicket.alterationId}</p>
               </div>
 
               {selectedJobTicket.specialInstructions && !['Custom Fitting', 'Standard Service', 'Alteration', 'alteration'].includes(selectedJobTicket.specialInstructions) && (
