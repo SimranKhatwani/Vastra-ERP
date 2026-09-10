@@ -29,6 +29,7 @@ import {
   X,
   CreditCard,
   Wallet,
+  MessageCircle,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -69,6 +70,7 @@ export const ReportsView = ({ onAddNotification }) => {
   // Data States
   const [dashboardData, setDashboardData] = useState(null);
   const [reportData, setReportData] = useState(null);
+  const [whatsappEditor, setWhatsappEditor] = useState(null);
 
   // Fetch Business Performance Dashboard Data
   const loadDashboard = async () => {
@@ -137,6 +139,34 @@ export const ReportsView = ({ onAddNotification }) => {
 
   const fmt = (num) => Number(num || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
+
+  const getTailoringWhatsAppMessage = (row) => (
+    `Hello ${row.customerName || "there"},\n\nYour ${row.garmentService || row.productName || "tailoring job"} ` +
+    `for Invoice ${row.invoiceNumber || row.tailorInvoiceNo || ""} is ready for pickup.\n\n` +
+    `Expected delivery date: ${row.expectedDeliveryDate ? fmtDate(row.expectedDeliveryDate) : "Today"}\n\n` +
+    "Please visit the showroom to collect your garment.\n\nThank you,\nVastra ERP"
+  );
+
+  const openTailoringWhatsAppEditor = (row) => {
+    setWhatsappEditor({ row, message: getTailoringWhatsAppMessage(row) });
+  };
+
+  const sendTailoringWhatsApp = () => {
+    if (!whatsappEditor) return;
+    const phone = String(whatsappEditor.row.mobileNumber || whatsappEditor.row.customerPhone || "")
+      .replace(/[^0-9]/g, "");
+    if (!phone) {
+      onAddNotification?.("WhatsApp unavailable", "This customer does not have a mobile number.", "error");
+      return;
+    }
+    const formattedPhone = phone.length === 10 ? `91${phone}` : phone;
+    window.open(
+      `https://wa.me/${formattedPhone}?text=${encodeURIComponent(whatsappEditor.message)}`,
+      "_blank"
+    );
+    onAddNotification?.("WhatsApp message ready", `Opened WhatsApp for ${whatsappEditor.row.customerName}.`, "success");
+    setWhatsappEditor(null);
+  };
 
   // Colors
   const COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
@@ -588,6 +618,9 @@ export const ReportsView = ({ onAddNotification }) => {
                           {formatFieldLabel(h)}
                         </th>
                       ))}
+                      {activeSection === "tailoring" && selectedReport === "daily_tailoring_jobs" && (
+                        <th className="p-3 text-right">Actions</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
@@ -632,6 +665,18 @@ export const ReportsView = ({ onAddNotification }) => {
                               </td>
                             );
                           })}
+                          {activeSection === "tailoring" && selectedReport === "daily_tailoring_jobs" && (
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openTailoringWhatsAppEditor(row)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
+                                title="Edit and send WhatsApp message"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     {!(reportData?.data || []).length && (
@@ -672,6 +717,38 @@ export const ReportsView = ({ onAddNotification }) => {
                 </div>
               )}
             </div>
+        </div>
+      )}
+
+      {whatsappEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Edit WhatsApp message</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  To {whatsappEditor.row.customerName || "customer"} · {whatsappEditor.row.mobileNumber || whatsappEditor.row.customerPhone || "No mobile number"}
+                </p>
+              </div>
+              <button type="button" onClick={() => setWhatsappEditor(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              value={whatsappEditor.message}
+              onChange={(event) => setWhatsappEditor({ ...whatsappEditor, message: event.target.value })}
+              rows={10}
+              className="mt-4 w-full resize-y rounded-xl border border-slate-200 p-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setWhatsappEditor(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                Cancel
+              </button>
+              <button type="button" onClick={sendTailoringWhatsApp} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700">
+                <MessageCircle className="h-4 w-4" /> Send on WhatsApp
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

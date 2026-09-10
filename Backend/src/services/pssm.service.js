@@ -805,6 +805,12 @@ class PSSMService {
 
     const pssm = await PSSM.findOne({ _id: item.pssmId, tenantId });
     const oldStatus = item.status;
+    const normalizedOldStatus = String(oldStatus || '').toUpperCase().replace(/[\s-]+/g, '_');
+    const normalizedNewStatus = String(status || '').toUpperCase().replace(/[\s-]+/g, '_');
+    const isReadyForCollection = ['READY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION'].includes(normalizedOldStatus);
+    if (['COLLECTED', 'DELIVERED'].includes(normalizedNewStatus) && !isReadyForCollection) {
+      throw new ApiError(400, 'A tailoring job must be marked Ready before it can be Delivered. Please complete the workflow in sequence.');
+    }
     const oldTailor = item.assignedTo;
     const oldServiceType = item.serviceType;
     const oldAltDetails = (item.alterationDetails || []).join(', ');

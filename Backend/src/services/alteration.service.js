@@ -338,6 +338,12 @@ class AlterationService {
     let alteration = await Alteration.findOne({ _id: alterationId, tenantId });
     if (alteration) {
       const oldStatus = alteration.status;
+      const normalizedOldStatus = String(oldStatus || '').toUpperCase().replace(/[\s-]+/g, '_');
+      const normalizedNewStatus = String(status || '').toUpperCase().replace(/[\s-]+/g, '_');
+      const isReadyForCollection = ['READY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION'].includes(normalizedOldStatus);
+      if (['COLLECTED', 'DELIVERED'].includes(normalizedNewStatus) && !isReadyForCollection) {
+        throw new ApiError(400, 'A tailoring job must be marked Ready before it can be Delivered. Please complete the workflow in sequence.');
+      }
       const oldTailor = alteration.tailorName;
       const oldVendor = alteration.vendorName;
       const oldCustomerPhone = alteration.customerPhone;

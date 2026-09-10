@@ -264,6 +264,8 @@ export const ArticulationView = ({
   // 'dashboard' | 'reports' | 'tracking'
   const [activeStudioTab, setActiveStudioTab] = useState(initialTab || "dashboard");
   const [alterationRecords, setAlterationRecords] = useState([]);
+  const [alterationsLoading, setAlterationsLoading] = useState(false);
+  const [alterationsLoadError, setAlterationsLoadError] = useState("");
 
   const alterationRecordsWithSequence = useMemo(() => {
     if (!alterationRecords || !Array.isArray(alterationRecords)) return [];
@@ -308,6 +310,9 @@ export const ArticulationView = ({
   const [altTypeSummary, setAltTypeSummary] = useState(null);
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
+  const alterationFetchSequence = useRef(0);
+  const [whatsappMessage, setWhatsappMessage] = useState("");
+  const [whatsappMessageType, setWhatsappMessageType] = useState("ready_collection");
   const [previewBillInvoice, setPreviewBillInvoice] = useState(null);
   const [loadingBillPreview, setLoadingBillPreview] = useState(false);
   const [auditModalData, setAuditModalData] = useState(null);
@@ -1521,37 +1526,45 @@ export const ArticulationView = ({
     return `Hello ${target.customerName},\n\nYour ${headingWord} for Invoice ${target.invoiceNumber || target.invoiceId || ''} is now completed and ready for pickup.\n\nGarment: ${target.productName || target.pieceName || 'Item'}\nService: ${headingWord}\nDelivery Date: ${target.deliveryDate || target.expectedDeliveryDate || 'Today'}\n\nPlease visit the showroom to collect your garment.\n\nThank You,\nVastra ERP Service Dept`;
   };
 
+  const getWhatsAppMessageForType = (target, type) => {
+    const customer = target?.customerName || "Customer";
+    const invoice = target?.invoiceNumber || target?.invoiceId || "your job";
+    const garment = target?.productName || target?.pieceName || "garment";
+    const date = target?.deliveryDate || target?.expectedDeliveryDate || "the revised date";
+    const messages = {
+      received: `Hello ${customer},\n\nWe have received your tailoring job for ${garment}. Your job reference is ${invoice}. We will keep you updated on its progress.\n\nThank you,\nVastra ERP`,
+      measurement_confirmation: `Hello ${customer},\n\nYour measurements and tailoring job for ${garment} have been confirmed under Invoice ${invoice}.\n\nThank you,\nVastra ERP`,
+      trial_reminder: `Hello ${customer},\n\nThis is a reminder for your tailoring trial for ${garment} under Invoice ${invoice}. Please visit the showroom as scheduled.\n\nThank you,\nVastra ERP`,
+      ready_collection: getServiceWhatsAppMessage(target),
+      delay: `Hello ${customer},\n\nThere is a revised delivery date for your ${garment} under Invoice ${invoice}. The updated date is ${date}. We apologize for the delay.\n\nThank you,\nVastra ERP`,
+      collection_reminder: `Hello ${customer},\n\nA reminder from Vastra: your ${garment} under Invoice ${invoice} is ready for collection. Please visit the showroom at your convenience.\n\nThank you,\nVastra ERP`,
+      payment_reminder: `Hello ${customer},\n\nThis is a payment reminder for your ${garment} under Invoice ${invoice}. Please contact or visit the showroom to clear the pending amount.\n\nThank you,\nVastra ERP`
+    };
+    return messages[type] || messages.ready_collection;
+  };
+
+  const openWhatsAppModal = (target) => {
+    setWhatsappModalTarget(target);
+    setWhatsappMessageType("ready_collection");
+    setWhatsappMessage(getWhatsAppMessageForType(target, "ready_collection"));
+  };
+
   const handleConfirmSendWhatsApp = async (target) => {
     if (!target) return;
     try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(`/alteration/send-whatsapp`, { alterationId: target._id || target.alterationId });
-      const data = res.data;
+      const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
+      if (!phoneClean) {
+        throw new Error('Customer mobile number is missing.');
+      }
+      const formattedPhone = phoneClean.length === 10 ? `91${phoneClean}` : phoneClean;
+      window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(whatsappMessage)}`, "_blank");
       setWhatsappModalTarget(null);
-
-      if (data.success) {
-        if (onAddNotification) {
-          onAddNotification("WhatsApp Alert Sent", `Notification logged & sent to ${target.customerName}.`, "success");
-        }
-        if (data.whatsappUrl) {
-          window.open(data.whatsappUrl, "_blank");
-        }
-      } else {
-        if (onAddNotification) {
-          onAddNotification("WhatsApp Web Relay", `Opened pre-filled message for ${target.customerName}.`, "info");
-        }
-        const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
-        const msg = getServiceWhatsAppMessage(target);
-        const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
-        window.open(fallbackUrl, "_blank");
+      if (onAddNotification) {
+        onAddNotification("WhatsApp Message Ready", `Opened WhatsApp for ${target.customerName}.`, "success");
       }
     } catch (err) {
       console.error("WhatsApp notification error:", err);
-      setWhatsappModalTarget(null);
-      const phoneClean = (target.customerPhone || '').replace(/[^0-9]/g, '');
-      const msg = getServiceWhatsAppMessage(target);
-      const fallbackUrl = `https://wa.me/${phoneClean.length === 10 ? '91' + phoneClean : phoneClean}?text=${encodeURIComponent(msg)}`;
-      window.open(fallbackUrl, "_blank");
+      if (onAddNotification) onAddNotification("WhatsApp unavailable", err.message, "error");
     }
   };
 
@@ -1961,11 +1974,16 @@ export const ArticulationView = ({
   };
 
   const fetchAlterations = async () => {
+    const requestSequence = ++alterationFetchSequence.current;
+    setAlterationsLoading(true);
     try {
       const res = await api.get(`/alterations`);
       const data = res.data;
-      if (data.success && data.data && data.data.length > 0) {
-        const sorted = data.data.sort((a, b) => {
+      if (requestSequence !== alterationFetchSequence.current) return;
+      setAlterationsLoadError("");
+      const records = Array.isArray(data.data) ? data.data : (data.data?.alterations || []);
+      if (data.success && records.length > 0) {
+        const sorted = [...records].sort((a, b) => {
           const aNeeds = a.needsMeasurements || (!a.measurements || Object.keys(a.measurements).length === 0 || !Object.values(a.measurements).some(v => v));
           const bNeeds = b.needsMeasurements || (!b.measurements || Object.keys(b.measurements).length === 0 || !Object.values(b.measurements).some(v => v));
           const aPending = a.status === 'Pending' || a.status === 'Pending Measurements';
@@ -1975,11 +1993,22 @@ export const ArticulationView = ({
           return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
         });
         setAlterationRecords(sorted);
-      } else if (data.success && data.data && data.data.length === 0) {
-        setAlterationRecords([]);
+      } else if (data.success && records.length === 0) {
+        setAlterationRecords((previousRecords) => {
+          if (previousRecords.length > 0) return previousRecords;
+          return [];
+        });
       }
     } catch (err) {
-      console.error("Failed to fetch alterations:", err);
+      console.error("Failed to fetch alterations:", err.response?.data || err.message || err);
+      if (requestSequence === alterationFetchSequence.current) {
+        setAlterationsLoadError(err.response?.data?.message || "Could not load alteration data.");
+      }
+      if (onAddNotification) {
+        onAddNotification("Alterations unavailable", err.response?.data?.message || "Could not load alteration data. Please retry.", "danger");
+      }
+    } finally {
+      if (requestSequence === alterationFetchSequence.current) setAlterationsLoading(false);
     }
   };
 
@@ -2004,10 +2033,23 @@ export const ArticulationView = ({
     try {
       const res = await api.patch(`/alterations/${alterationId}/status`, { status: newStatus });
       if (res.data.success) {
+        const updatedStatus = res.data.data?.status || newStatus;
+        setAlterationRecords((records) => records.map((record) => (
+          record._id === alterationId
+            ? { ...record, status: normalizeJobStatus(updatedStatus), rawStatus: updatedStatus }
+            : record
+        )));
         if (onAddNotification) onAddNotification("Status Updated", `Status changed to ${newStatus}`, "success");
-        fetchAlterations();
-        fetchPendingAlterations();
-        fetchAlterationDashboard();
+        await Promise.all([
+          fetchAlterations(),
+          fetchPendingAlterations(),
+          fetchAlterationDashboard()
+        ]);
+        setAlterationRecords((records) => records.map((record) => (
+          record._id === alterationId
+            ? { ...record, status: normalizeJobStatus(updatedStatus), rawStatus: updatedStatus }
+            : record
+        )));
       } else {
         if (onAddNotification) onAddNotification("Error", res.data.message || "Failed to update status", "danger");
       }
@@ -3575,7 +3617,12 @@ export const ArticulationView = ({
                                 <option value="Quality Check">Quality Check</option>
                                 <option value="Ready">Ready</option>
                                 <option value="Ready for Delivery">Ready for Delivery</option>
-                                <option value="Delivered">Delivered</option>
+                                <option
+                                  value="Delivered"
+                                  disabled={!['Ready', 'Ready for Delivery'].includes(normalizeJobStatus(alt.status))}
+                                >
+                                  Delivered
+                                </option>
                                 <option value="Cancelled">Cancelled</option>
                               </select>
 
@@ -3683,7 +3730,7 @@ export const ArticulationView = ({
                               {isReadyForDelivery ? (
                                 <button
                                   type="button"
-                                  onClick={() => setWhatsappModalTarget(alt)}
+                                  onClick={() => openWhatsAppModal(alt)}
                                   className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 shadow-xs cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
                                 >
                                   <MessageSquare className="w-3.5 h-3.5" />
@@ -3710,7 +3757,16 @@ export const ArticulationView = ({
                     {alterationRecords.length === 0 && (
                       <tr>
                         <td colSpan={10} className="p-8 text-center text-slate-400 text-xs font-medium">
-                          No alteration records logged yet. Click "ALTERATION" in POS Billing to add job tickets.
+                          {alterationsLoading ? (
+                            <span className="inline-flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading alteration records...</span>
+                          ) : alterationsLoadError ? (
+                            <span className="inline-flex flex-col items-center gap-2 text-rose-500">
+                              <span>{alterationsLoadError}</span>
+                              <button type="button" onClick={fetchAlterations} className="rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-slate-700">Retry</button>
+                            </span>
+                          ) : (
+                            'No alteration records logged yet. Click "ALTERATION" in POS Billing to add job tickets.'
+                          )}
                         </td>
                       </tr>
                     )}
@@ -4301,7 +4357,7 @@ export const ArticulationView = ({
                                   {/* WhatsApp notification */}
                                   <button
                                     type="button"
-                                    onClick={() => setWhatsappModalTarget(row)}
+                                    onClick={() => openWhatsAppModal(row)}
                                     className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                       isReady && row.mobileNumber
                                         ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
@@ -4656,9 +4712,35 @@ export const ArticulationView = ({
               </div>
             </div>
 
-            {/* MESSAGE PREVIEW BOX */}
-            <div className="p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-[11px] text-emerald-900 leading-relaxed font-mono whitespace-pre-line shadow-2xs">
-              {getServiceWhatsAppMessage(whatsappModalTarget)}
+            <div className="space-y-2">
+              <label className="text-xs font-extrabold text-slate-500">Message type</label>
+              <select
+                value={whatsappMessageType}
+                onChange={(event) => {
+                  const type = event.target.value;
+                  setWhatsappMessageType(type);
+                  setWhatsappMessage(getWhatsAppMessageForType(whatsappModalTarget, type));
+                }}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-emerald-500"
+              >
+                <option value="received">Tailoring job received confirmation</option>
+                <option value="measurement_confirmation">Measurement / job confirmation</option>
+                <option value="trial_reminder">Trial reminder</option>
+                <option value="ready_collection">Ready for collection message</option>
+                <option value="delay">Delay / revised date message</option>
+                <option value="collection_reminder">Delivery / collection reminder</option>
+                <option value="payment_reminder">Payment reminder</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-extrabold text-slate-500">Edit message before sending</label>
+              <textarea
+                value={whatsappMessage}
+                onChange={(event) => setWhatsappMessage(event.target.value)}
+                rows={9}
+                className="w-full resize-y rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5 text-[11px] text-emerald-900 leading-relaxed outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              />
             </div>
 
             {/* CONFIRMATION YES / NO BUTTONS */}
@@ -4887,7 +4969,7 @@ export const ArticulationView = ({
               </button>
               <button
                 type="button"
-                onClick={() => setWhatsappModalTarget(selectedJobTicket)}
+                onClick={() => openWhatsAppModal(selectedJobTicket)}
                 className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer col-span-2 sm:col-span-1"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
