@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 const logger = require('../utils/logger');
+
+dns.setServers([process.env.DNS_SERVER || '192.168.1.254']);
 
 const connectDB = async () => {
   const primaryURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vastra_erp';

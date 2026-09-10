@@ -990,6 +990,8 @@ export default function App() {
         uniqueCode: item.uniqueCode,
         sellingPrice: Number(item.price || item.sellingPrice || 0),
         discountAmount: Number(item.discountAmount || 0),
+        gstPercent: Number(item.gstPercent ?? 0),
+        taxAmount: Number(item.taxAmount || 0),
         cartItemId: item.cartItemId,
         hasAlteration: Boolean(item.hasAlteration || item.alterationRecord)
       }));

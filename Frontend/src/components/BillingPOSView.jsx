@@ -332,6 +332,15 @@ export const BillingPOSView = ({
   const [sgstRateInput, setSgstRateInput] = useState("9");
   const [igstRateInput, setIgstRateInput] = useState("0");
   const [gstTaxType, setGstTaxType] = useState("INTRA");
+  const GST_SLAB_OPTIONS = [0, 5, 12, 18, 28];
+
+  const setCartItemGstRate = (index, value) => {
+    const gstPercent = value === '' ? undefined : Math.max(0, Number(value) || 0);
+    setCart((previousCart) => previousCart.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, gstPercent } : item
+    )));
+    if (gstPercent > 0) setIsGstApplied(true);
+  };
 
   const handleGstRateChange = (val) => {
     setGstRateInput(val);
@@ -1120,7 +1129,9 @@ export const BillingPOSView = ({
         price: sPrice,
         sellingPrice: sPrice,
         discount: Number(item.discountAmount || item.discount || 0),
-        gstPercent: Number(item.gstPercent || (typeof prod === 'object' ? prod.gstPercent : 0) || 0),
+        gstPercent: item.gstPercent !== undefined && item.gstPercent !== null
+          ? Number(item.gstPercent)
+          : (typeof prod === 'object' && prod.gstPercent !== undefined ? Number(prod.gstPercent) : undefined),
         totalPrice: Number(item.finalPrice || item.totalPrice || (sPrice * (item.quantity || 1))),
         quantity: Number(item.quantity || 1),
         uniqueCode: uniqueCodeVal,
@@ -3592,22 +3603,50 @@ export const BillingPOSView = ({
     const sRate = Number(sgstRateInput) || 0;
     const iRate = Number(igstRateInput) || 0;
 
-    // GST is added ON TOP of the net bill amount (exclusive tax model)
-    if (isGstApplied && gRate > 0 && netBillAmount > 0) {
-      computedTaxableAmount = parseFloat(netBillAmount.toFixed(2));
-      computedTotalTax = parseFloat((netBillAmount * gRate / 100).toFixed(2));
-
-      if (iRate > 0) {
-        computedIgstAmount = computedTotalTax;
-        computedCgstAmount = 0;
-        computedSgstAmount = 0;
+    const gstSummaryMap = new Map();
+    const itemNetAmounts = cart.map((item) => {
+      const itemPrice = Number(item.sellingPrice || item.price || 0);
+      const itemDiscount = Number(item.customDiscount || item.discount || 0);
+      return Math.max(0, itemPrice * Number(item.quantity || 1) - Math.floor(itemPrice * Number(item.quantity || 1) * itemDiscount / 100));
+    });
+    const totalItemNet = itemNetAmounts.reduce((sum, amount) => sum + amount, 0);
+    const billAdjustmentAmount = Number(billAdjustment?.amount || 0);
+    cart.forEach((item, index) => {
+      const itemNet = Math.max(0, itemNetAmounts[index] + (
+        billAdjustmentAmount && totalItemNet > 0
+          ? (billAdjustment.operation === 'Charge' ? 1 : -1) * billAdjustmentAmount * (itemNetAmounts[index] / totalItemNet)
+          : 0
+      ));
+      const hasItemSlab = item.gstPercent !== undefined && item.gstPercent !== null && item.gstPercent !== '';
+      const slab = Number(hasItemSlab ? item.gstPercent : (isGstApplied ? gRate : 0)) || 0;
+      if (!isGstApplied || slab <= 0 || itemNet <= 0) return;
+      const tax = parseFloat((itemNet * slab / 100).toFixed(2));
+      const current = gstSummaryMap.get(slab) || { gstPercent: slab, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 };
+      current.taxableAmount += itemNet;
+      current.totalTax += tax;
+      if (gstTaxType === 'INTER') {
+        current.igst += tax;
       } else {
-        const sumRates = (cRate + sRate) || gRate;
-        computedCgstAmount = parseFloat((computedTotalTax * (cRate / sumRates)).toFixed(2));
-        computedSgstAmount = parseFloat((computedTotalTax - computedCgstAmount).toFixed(2));
-        computedIgstAmount = 0;
+        const splitBase = (cRate + sRate) || slab;
+        const cgst = parseFloat((tax * (cRate / splitBase)).toFixed(2));
+        current.cgst += cgst;
+        current.sgst += tax - cgst;
       }
-    }
+      gstSummaryMap.set(slab, current);
+    });
+    const computedTaxBreakdown = Array.from(gstSummaryMap.values()).map((row) => ({
+      ...row,
+      taxableAmount: parseFloat(row.taxableAmount.toFixed(2)),
+      cgst: parseFloat(row.cgst.toFixed(2)),
+      sgst: parseFloat(row.sgst.toFixed(2)),
+      igst: parseFloat(row.igst.toFixed(2)),
+      totalTax: parseFloat(row.totalTax.toFixed(2))
+    })).sort((a, b) => a.gstPercent - b.gstPercent);
+    computedTaxableAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.taxableAmount, 0);
+    computedCgstAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.cgst, 0);
+    computedSgstAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.sgst, 0);
+    computedIgstAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.igst, 0);
+    computedTotalTax = computedTaxBreakdown.reduce((sum, row) => sum + row.totalTax, 0);
 
     // Grand total = net amount + GST tax (if applied)
     const grandTotal = parseFloat((netBillAmount + computedTotalTax).toFixed(2));
@@ -3623,6 +3662,7 @@ export const BillingPOSView = ({
       sgstAmount: isGstApplied ? computedSgstAmount : 0,
       igstAmount: isGstApplied ? computedIgstAmount : 0,
       totalTax: isGstApplied ? computedTotalTax : 0
+      ,taxBreakdown: isGstApplied ? computedTaxBreakdown : []
     };
 
     return {
@@ -3638,6 +3678,7 @@ export const BillingPOSView = ({
       sgstAmount: isGstApplied ? computedSgstAmount : 0,
       igstAmount: isGstApplied ? computedIgstAmount : 0,
       totalTax: isGstApplied ? computedTotalTax : 0,
+      taxBreakdown: isGstApplied ? computedTaxBreakdown : [],
       taxDetails
     };
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, discountRules, products, activeCustomer, billAdjustment, isGstApplied, gstRateInput, cgstRateInput, sgstRateInput, igstRateInput]);
@@ -3943,17 +3984,8 @@ export const BillingPOSView = ({
 
       // Build taxBreakdown for the invoice
       const taxBreakdown = isGstApplied && totalTax > 0
-        ? [
-            {
-              gstPercent: Number(gstRateInput) || 0,
-              taxableAmount,
-              cgst: cgstAmount,
-              sgst: sgstAmount,
-              igst: igstAmount,
-              totalTax
-            }
-          ]
-        : [{ gstPercent: 0, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }];
+        ? (taxDetails.taxBreakdown || [])
+        : [];
 
       const newInvoice = {
         invoiceNo: `INV-${Date.now().toString().substring(5)}-${Math.floor(Math.random() * 1000)}`,
@@ -4065,6 +4097,7 @@ export const BillingPOSView = ({
           const originalItem = newInvoice.items[i] || savedItem;
           return {
             ...savedItem,
+            gstPercent: originalItem.gstPercent ?? savedItem.gstPercent ?? 0,
             hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
             alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
           };
@@ -4456,18 +4489,7 @@ export const BillingPOSView = ({
       igstAmount: isGstApplied ? igstAmount : 0,
       totalTax: isGstApplied ? totalTax : 0,
       taxDetails,
-      taxBreakdown: isGstApplied && totalTax > 0
-        ? [
-            {
-              gstPercent: Number(gstRateInput) || 0,
-              taxableAmount,
-              cgst: cgstAmount,
-              sgst: sgstAmount,
-              igst: igstAmount,
-              totalTax
-            }
-          ]
-        : [{ gstPercent: 0, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }],
+      taxBreakdown: isGstApplied && totalTax > 0 ? (taxDetails.taxBreakdown || []) : [],
       paymentMethod: displayPaymentMode,
       paymentMode: displayPaymentMode,
       transactions: compiledTransactions,
@@ -5441,6 +5463,7 @@ export const BillingPOSView = ({
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Colour (S)</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Size</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-16">HSN</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-center w-24">GST Slab</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-16">MRP</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-16">Discount</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-18">Rate</th>
@@ -5483,6 +5506,7 @@ export const BillingPOSView = ({
                       const secondaryColorDisplay = item.secondaryColor || item.productId?.secondaryColor || '';
                       const sizeDisplay = item.size || item.productId?.size || '';
                       const hsnDisplay = item.hsn || item.hsnCode || item.hsnId?.code || '';
+                      const itemGstRate = item.gstPercent ?? (isGstApplied ? Number(gstRateInput) || 0 : 0);
 
                       return (
                         <tr
@@ -5555,6 +5579,26 @@ export const BillingPOSView = ({
                           <td className="border-r border-slate-300 p-1">{secondaryColorDisplay}</td>
                           <td className="border-r border-slate-300 p-1">{sizeDisplay}</td>
                           <td className="border-r border-slate-300 p-1">{hsnDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              list="gst-slab-options"
+                              value={item.gstPercent ?? ''}
+                              onChange={(event) => setCartItemGstRate(idx, event.target.value)}
+                              className="w-full min-w-[82px] border border-slate-300 rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder={isGstApplied ? `${gstRateInput}%` : 'No GST'}
+                              title="Enter GST slab for this item"
+                            />
+                            <datalist id="gst-slab-options">
+                              {GST_SLAB_OPTIONS.map((slab) => (
+                                <option key={slab} value={slab}>{slab === 0 ? 'No GST' : `${slab}%`}</option>
+                              ))}
+                            </datalist>
+                            <span className="sr-only">Applied GST: {itemGstRate}%</span>
+                          </td>
                           <td className="border-r border-slate-300 p-1 text-right">
                             <input
                               type="number"
@@ -6136,7 +6180,7 @@ export const BillingPOSView = ({
                   </div>
 
                   {/* GST CONFIGURATION PANEL */}
-                  <div className="bg-white border border-slate-400 p-2 shadow-sm rounded-sm text-xs space-y-2 w-[340px]">
+                  <div className="bg-white border border-slate-400 p-2 shadow-sm rounded-sm text-xs space-y-2 w-[440px]">
                     <div className="flex items-center justify-between border-b border-slate-200 pb-1">
                       <span className="font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1">
                         GST CONFIGURATION

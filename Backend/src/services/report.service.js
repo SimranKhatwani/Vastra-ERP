@@ -186,6 +186,32 @@ class ReportService {
     const jobs = await TailoringJob.find(filter).sort({ jobDate: -1 }).lean();
     const jobItemIds = jobs.map(job => job.pssmItemId).filter(Boolean);
     const jobItems = await PSSMItem.find({ tenantId, _id: { $in: jobItemIds } }).populate('pssmId').lean();
+    const jobItemIdSet = new Set(jobItemIds.map(id => id.toString()));
+    const untrackedPssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true } })
+      .populate('pssmId')
+      .lean();
+    const fallbackJobs = untrackedPssmItems
+      .filter(item => !jobItemIdSet.has(item._id.toString()))
+      .filter(item => {
+        const date = item.createdAt || item.pssmId?.createdAt;
+        return !filter.jobDate || (date && (!filter.jobDate.$gte || new Date(date) >= filter.jobDate.$gte) && (!filter.jobDate.$lt || new Date(date) < filter.jobDate.$lt));
+      })
+      .map(item => ({
+        _id: item._id,
+        pssmItemId: item._id,
+        tailorInvoiceNo: item.tailorInvoiceNo || item.pssmId?.pssmNo || String(item._id),
+        jobDate: item.createdAt || item.pssmId?.createdAt,
+        customerName: item.pssmId?.customerName || 'Walk-in Customer',
+        mobileNumber: item.pssmId?.customerPhone || '',
+        tailorName: item.assignedTo || item.pssmId?.tailorName || 'Unassigned',
+        currentStatus: item.status || item.pssmId?.status || 'PENDING',
+        garmentService: item.productName || item.pieceName || item.serviceType || 'Tailoring',
+        tailoringCharges: item.charge || 0,
+        expectedDeliveryDate: item.pssmId?.expectedDeliveryDate || '',
+        barcode: item.barcode || item.uniqueCode || '',
+        priority: item.priority || item.pssmId?.priority || 'Normal'
+      }));
+    const reportJobs = [...jobs, ...fallbackJobs].sort((a, b) => new Date(b.jobDate || 0) - new Date(a.jobDate || 0));
     const itemByJobId = new Map(jobItems.map(item => [item._id.toString(), item]));
     const getTailorName = (job) => {
       const item = itemByJobId.get(job.pssmItemId?.toString());
@@ -223,20 +249,20 @@ class ReportService {
     let data;
     switch (reportType) {
       case 'daily_tailoring_jobs':
-        data = jobs.map(baseRow);
+        data = reportJobs.map(baseRow);
         break;
       case 'pending_tailoring_jobs':
-        data = jobs.filter(isPending).map(baseRow);
+        data = reportJobs.filter(isPending).map(baseRow);
         break;
       case 'overdue_tailoring_jobs':
-        data = jobs.filter(job => isPending(job) && job.expectedDeliveryDate && new Date(job.expectedDeliveryDate) < today).map(baseRow);
+        data = reportJobs.filter(job => isPending(job) && job.expectedDeliveryDate && new Date(job.expectedDeliveryDate) < today).map(baseRow);
         break;
       case 'ready_not_collected':
-        data = jobs.filter(job => normalize(job.currentStatus) === 'ready').map(baseRow);
+        data = reportJobs.filter(job => normalize(job.currentStatus) === 'ready').map(baseRow);
         break;
       case 'tailor_workload': {
         const grouped = new Map();
-        jobs.filter(isPending).forEach(job => {
+        reportJobs.filter(isPending).forEach(job => {
           const name = getTailorName(job);
           const row = grouped.get(name) || { tailorName: name, pendingJobs: 0, totalCharges: 0 };
           row.pendingJobs += 1;
@@ -248,7 +274,7 @@ class ReportService {
       }
       case 'tailor_completed_jobs': {
         const grouped = new Map();
-        jobs.filter(isCompleted).forEach(job => {
+        reportJobs.filter(isCompleted).forEach(job => {
           const name = getTailorName(job);
           const row = grouped.get(name) || { tailorName: name, completedJobs: 0, totalCharges: 0 };
           row.completedJobs += 1;
@@ -276,7 +302,7 @@ class ReportService {
         break;
       }
       case 'tailoring_charges':
-        data = jobs.map(job => ({
+        data = reportJobs.map(job => ({
           tailorInvoiceNo: job.tailorInvoiceNo,
           jobDate: job.jobDate,
           customerName: job.customerName || 'Walk-in Customer',
@@ -289,7 +315,7 @@ class ReportService {
         break;
       case 'customer_tailoring_history': {
         const grouped = new Map();
-        jobs.forEach(job => {
+        reportJobs.forEach(job => {
           const key = job.mobileNumber || job.customerName || 'Walk-in Customer';
           const row = grouped.get(key) || { customerName: job.customerName || 'Walk-in Customer', mobileNumber: job.mobileNumber || '', totalJobs: 0, completedJobs: 0, totalCharges: 0, lastJobDate: job.jobDate };
           row.totalJobs += 1;
@@ -302,15 +328,15 @@ class ReportService {
         break;
       }
       default:
-        data = jobs.map(baseRow);
+        data = reportJobs.map(baseRow);
     }
 
     return {
       summary: {
         totalRecords: data.length,
         totalCharges: data.reduce((sum, row) => sum + Number(row.tailoringCharges || row.totalCharges || 0), 0),
-        pendingJobs: jobs.filter(isPending).length,
-        readyNotCollected: jobs.filter(job => normalize(job.currentStatus) === 'ready').length
+        pendingJobs: reportJobs.filter(isPending).length,
+        readyNotCollected: reportJobs.filter(job => normalize(job.currentStatus) === 'ready').length
       },
       data
     };

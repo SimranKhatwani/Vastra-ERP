@@ -37,6 +37,12 @@ const saleItemSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  gstPercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
   taxAmount: {
     type: Number,
     default: 0

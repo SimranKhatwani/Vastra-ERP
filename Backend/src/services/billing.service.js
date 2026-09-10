@@ -200,6 +200,8 @@ class BillingService {
       const sellingPrice = item.sellingPrice || piece.mrp || 0;
       const discount = item.discountAmount || 0;
       const finalPrice = Math.max(0, sellingPrice - discount);
+      const gstPercent = Number(item.gstPercent || 0);
+      const itemTaxAmount = Number(item.taxAmount || 0);
 
       subTotal += sellingPrice;
       totalDiscount += discount;
@@ -210,6 +212,8 @@ class BillingService {
         cartUniqueCode: (item.uniqueCode && !item.uniqueCode.includes('undefined')) ? item.uniqueCode : null,
         sellingPrice,
         discountAmount: discount,
+        gstPercent,
+        taxAmount: itemTaxAmount,
         finalPrice,
         hasAlteration: Boolean(item.hasAlteration)
       });
@@ -394,6 +398,8 @@ class BillingService {
         mrp: val.piece.mrp,
         sellingPrice: val.sellingPrice,
         discountAmount: val.discountAmount,
+        gstPercent: val.gstPercent,
+        taxAmount: val.taxAmount,
         finalPrice: val.finalPrice,
         hasAlteration: isAltered,
         alterationStatus: isAltered ? 'PENDING' : 'NONE',

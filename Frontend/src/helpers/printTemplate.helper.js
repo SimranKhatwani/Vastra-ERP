@@ -211,7 +211,9 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <tr>
               <td class="text-center font-bold">${tb.gstPercent}% (IGST)</td>
               <td>&#8377;${tb.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td colspan="2" class="text-center">&#8377;${tb.igst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (IGST)</td>
+              <td>&#8377;0.00</td>
+              <td>&#8377;0.00</td>
+              <td>&#8377;${tb.igst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td>&#8377;${tb.totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
           `);
@@ -222,23 +224,22 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
               <td>&#8377;${tb.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td>&#8377;${tb.cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td>&#8377;${tb.sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td>&#8377;0.00</td>
               <td>&#8377;${tb.totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
           `);
         }
       });
-    } else {
-      // GST not applied — show mandatory 0% row
-      taxRows.push(`
-        <tr>
-          <td class="text-center font-bold">0%</td>
-          <td>&#8377;0.00</td>
-          <td>&#8377;0.00</td>
-          <td>&#8377;0.00</td>
-          <td>&#8377;0.00</td>
-        </tr>
-      `);
     }
+    if (!taxRows.length) return '<tr><td colspan="6" class="text-center">No GST applied</td></tr>';
+    const totals = validTaxEntries.reduce((sum, row) => ({
+      taxableAmount: sum.taxableAmount + row.taxableAmount,
+      cgst: sum.cgst + row.cgst,
+      sgst: sum.sgst + row.sgst,
+      igst: sum.igst + row.igst,
+      totalTax: sum.totalTax + row.totalTax
+    }), { taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 });
+    taxRows.push(`<tr class="totals-row"><td class="text-center font-bold">TOTAL</td><td>&#8377;${totals.taxableAmount.toFixed(2)}</td><td>&#8377;${totals.cgst.toFixed(2)}</td><td>&#8377;${totals.sgst.toFixed(2)}</td><td>&#8377;${totals.igst.toFixed(2)}</td><td>&#8377;${totals.totalTax.toFixed(2)}</td></tr>`);
     return taxRows.join('');
   };
 
@@ -685,14 +686,15 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           </div>
           
           <div class="tax-box">
-            <div class="section-black-header">TAX DETAILS</div>
+            <div class="section-black-header">GST SUMMARY</div>
             <table class="tax-table">
               <thead>
                 <tr>
-                  <th>GST %</th>
+                  <th>GST SLAB</th>
                   <th>TAXABLE<br>AMOUNT</th>
                   <th>CGST<br>TAX</th>
                   <th>SGST<br>TAX</th>
+                  <th>IGST<br>TAX</th>
                   <th>TOTAL<br>TAX</th>
                 </tr>
               </thead>
