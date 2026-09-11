@@ -67,6 +67,7 @@ import ManagerReviewPanel from "./components/ManagerReviewPanel";
 import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { PublicBillTrackView } from "./components/PublicBillTrackView";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
@@ -2340,6 +2341,10 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Public Digital Bill & Consolidated Alteration Tracking Routes */}
+        <Route path="/track-bill" element={<PublicBillTrackView />} />
+        <Route path="/track/:billNo" element={<PublicBillTrackView />} />
 
         {/* Standard User App */}
         <Route path="/*" element={

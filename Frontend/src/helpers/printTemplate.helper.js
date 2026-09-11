@@ -13,6 +13,47 @@ const instagramQrSvg = new QRCode({
   container: "svg-viewbox"
 }).svg();
 
+export const generateInvoiceUPIQrSvg = (invoiceOrSlip, options = {}) => {
+  try {
+    const inv = invoiceOrSlip || {};
+    const billNo = inv.originalInvoiceNo || inv.invoiceNo || inv.billNo || inv.invoiceNumber || inv.billBarcode || inv.pssmNo || '';
+
+    // If options explicitly provides content, use it
+    let qrContent = options.content;
+
+    if (!qrContent) {
+      const origin = typeof window !== 'undefined' && window.location?.origin 
+        ? window.location.origin 
+        : 'http://localhost:3000';
+
+      if (billNo) {
+        // Encodes bill tracking and consolidated alteration dashboard URL
+        qrContent = `${origin}/track-bill?bill=${encodeURIComponent(billNo)}`;
+      } else {
+        const upiId = inv.upiId || inv.merchantUpi || inv.storeUpi || '9990397529@upi';
+        const payeeName = inv.storeName || 'NEW FASHION STYLE';
+        qrContent = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&cu=INR`;
+      }
+    }
+
+    const qr = new QRCode({
+      content: qrContent,
+      padding: options.padding !== undefined ? options.padding : 1,
+      width: options.width || 60,
+      height: options.height || 60,
+      color: options.color || "#000000",
+      background: options.background || "#ffffff",
+      ecl: options.ecl || "M",
+      container: "svg-viewbox"
+    });
+
+    return qr.svg();
+  } catch (err) {
+    console.error("Error generating Invoice QR code:", err);
+    return '';
+  }
+};
+
 const svgIcons = {
   qrPlace: `<svg width="55" height="55" viewBox="0 0 25 25" fill="#000"><path d="M2 2h7v7H2zM3 3v5h5V3zM4 4h3v3H4z"/><path d="M16 2h7v7h-7zM17 3v5h5V3zM18 4h3v3h-3z"/><path d="M2 16h7v7H2zM3 17v5h5v-5zM4 18h3v3H4z"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="13" y="4" width="1" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="12" y="5" width="2" height="1"/><rect x="11" y="6" width="1" height="1"/><rect x="13" y="6" width="2" height="1"/><rect x="10" y="7" width="2" height="1"/><rect x="14" y="7" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="13" y="8" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="4" y="10" width="2" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="9" y="10" width="3" height="1"/><rect x="13" y="10" width="1" height="1"/><rect x="15" y="10" width="2" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="20" y="10" width="2" height="1"/><rect x="3" y="11" width="1" height="1"/><rect x="5" y="11" width="1" height="1"/><rect x="8" y="11" width="2" height="1"/><rect x="11" y="11" width="1" height="1"/><rect x="14" y="11" width="2" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="19" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="2" y="12" width="2" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="12" y="12" width="2" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="18" y="12" width="2" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="3" y="13" width="1" height="1"/><rect x="5" y="13" width="2" height="1"/><rect x="8" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="13" y="13" width="1" height="1"/><rect x="15" y="13" width="2" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="7" y="14" width="2" height="1"/><rect x="11" y="14" width="2" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="17" y="14" width="2" height="1"/><rect x="20" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/><rect x="12" y="16" width="2" height="1"/><rect x="15" y="16" width="1" height="1"/><rect x="17" y="16" width="1" height="1"/><rect x="19" y="16" width="2" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/><rect x="13" y="17" width="1" height="1"/><rect x="16" y="17" width="2" height="1"/><rect x="19" y="17" width="1" height="1"/><rect x="21" y="17" width="1" height="1"/><rect x="10" y="18" width="2" height="1"/><rect x="14" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="20" y="18" width="2" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="13" y="19" width="2" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="18" y="19" width="1" height="1"/><rect x="21" y="19" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="15" y="20" width="2" height="1"/><rect x="19" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/><rect x="11" y="21" width="2" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="17" y="21" width="2" height="1"/><rect x="20" y="21" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="13" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="19" y="22" width="2" height="1"/><rect x="22" y="22" width="1" height="1"/></svg>`,
   crownLogo: `<svg width="55" height="55" viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2"><circle cx="50" cy="50" r="47"/><path d="M25 42 L20 25 L35 34 L50 15 L65 34 L80 25 L75 42 Z" fill="#000"/><circle cx="20" cy="22" r="2.5" fill="#000" /><circle cx="35" cy="31" r="2.5" fill="#000" /><circle cx="50" cy="12" r="2.5" fill="#000" /><circle cx="65" cy="31" r="2.5" fill="#000" /><circle cx="80" cy="22" r="2.5" fill="#000" /><rect x="25" y="45" width="50" height="2" fill="#000"/><text x="50" y="70" font-family="Arial, sans-serif" font-size="28" font-weight="900" text-anchor="middle" fill="#000" stroke="none">NFS</text><path d="M50 78 l1 3 l3 0 l-2.5 2 l1 3 l-2.5 -2 l-2.5 2 l1 -3 l-2.5 -2 l3 0 z" fill="#000" stroke="none"/><path d="M37 76 l1 3 l3 0 l-2.5 2 l1 3 l-2.5 -2 l-2.5 2 l1 -3 l-2.5 -2 l3 0 z" fill="#000" stroke="none"/><path d="M63 76 l1 3 l3 0 l-2.5 2 l1 3 l-2.5 -2 l-2.5 2 l1 -3 l-2.5 -2 l3 0 z" fill="#000" stroke="none"/></svg>`,
@@ -67,6 +108,11 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
     // totalPaid reflects the actual GST-inclusive amount charged
     displayGrandTotal = totalPaid;
   }
+
+  const billQrSvg = generateInvoiceUPIQrSvg({
+    ...invoice,
+    grandTotal: displayGrandTotal || invoice.grandTotal
+  }, { width: 55, height: 55, padding: 1 });
 
   // dueAmount must be relative to the correct GST-inclusive grandTotal
   const dueAmount = Math.max(0, Number((displayGrandTotal - totalPaid).toFixed(2)));
@@ -594,11 +640,13 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         <!-- Header -->
         <div class="header-top">
           <div style="width: 55px; display:flex; flex-direction:column; align-items:center;">
-             ${svgIcons.qrPlace}
+             <div style="width: 55px; height: 55px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+               ${billQrSvg || svgIcons.qrPlace}
+             </div>
              <div style="margin-top:2px;">${svgIcons.crownLogo}</div>
           </div>
           <div class="header-title-box">
-            <div style="font-size: 8px; margin-bottom: 2px; font-weight: bold;">Scan & Pay with any UPI App</div>
+            <div style="font-size: 7.5px; margin-bottom: 2px; font-weight: bold; letter-spacing: 0.3px;">Scan to View Bill &amp; Alteration Tracking</div>
             <div class="tax-invoice-label">TAX INVOICE</div>
             <div class="firm-title">NEW FASHION STYLE - NFS</div>
             <div style="margin-top: 2px; display: flex; justify-content: center; align-items: center; gap: 4px;">

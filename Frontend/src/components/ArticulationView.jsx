@@ -51,7 +51,8 @@ import {
   ShieldCheck,
   History,
   Edit3,
-  Loader2
+  Loader2,
+  Barcode
 } from "lucide-react";
 import { GarmentMeasurementSection } from "./GarmentMeasurementSection";
 import { MeasurementHistoryModal } from "./MeasurementHistoryModal";
@@ -1637,12 +1638,13 @@ export const ArticulationView = ({
   };
 
   const handlePrintJobTicketHTML = (ticket) => {
+    if (!ticket) return;
     const mObj = ticket.measurements || {};
     const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
     const barcodeVal = ticket.alterationBarcode || ticket.tailorInvoiceNo || ticket.barcode || ticket.alterationId;
     const barcodeSvg = generateCode128SvgString(barcodeVal, {
-      width: 1.6,
-      height: 44,
+      width: 1.8,
+      height: 48,
       displayValue: false,
       margin: 4,
       background: '#ffffff',
@@ -1660,11 +1662,17 @@ export const ArticulationView = ({
           .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
           .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
+          .barcode-badge-box { background: #f1f5f9; border: 1.5px solid #0f172a; border-radius: 4px; padding: 6px 8px; margin: 8px 0; text-align: center; }
         </style>
       </head>
       <body>
         <div class="text-center header">VASTRA ERP — ALTERATION TICKET</div>
         <div class="text-center details">Boutique Tailoring & Garment Fitting Slip</div>
+        <div class="divider"></div>
+        <div class="barcode-badge-box">
+          <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #334155; text-transform: uppercase;">ITEM ALTERATION BARCODE</div>
+          <div style="font-size: 15px; font-weight: 900; letter-spacing: 1.5px; font-family: monospace; color: #0f172a; margin-top: 2px;">${barcodeVal}</div>
+        </div>
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
@@ -1715,11 +1723,12 @@ export const ArticulationView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="text-center" style="margin-top:10px;">
-          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">
+          <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #334155; text-transform: uppercase; margin-bottom: 4px;">ITEM LEVEL ALTERATION BARCODE</div>
+          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:4px;border:1px solid #cbd5e1;border-radius:4px;">
             ${barcodeSvg}
           </div>
-          <p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${barcodeVal}</p>
-          <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
+          <p style="margin:4px 0 2px;font-size:13px;font-weight:900;letter-spacing:1.5px;font-family:monospace">${barcodeVal}</p>
+          <p style="font-size:9.5px;margin-top:4px;color:#475569;">*** Scan barcode or present slip during fitting / collection ***</p>
         </div>
       </body>
       </html>
@@ -1736,8 +1745,8 @@ export const ArticulationView = ({
     const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
     const barcodeVal = ticket.alterationBarcode || ticket.tailorInvoiceNo || ticket.barcode || ticket.alterationId;
     const barcodeSvg = generateCode128SvgString(barcodeVal, {
-      width: 1.6,
-      height: 44,
+      width: 1.8,
+      height: 48,
       displayValue: false,
       margin: 4,
       background: '#ffffff',
@@ -1755,11 +1764,17 @@ export const ArticulationView = ({
           .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
           .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
+          .barcode-badge-box { background: #f1f5f9; border: 1.5px solid #0f172a; border-radius: 4px; padding: 6px 8px; margin: 8px 0; text-align: center; }
         </style>
       </head>
       <body>
         <div class="text-center header">VASTRA ERP — ALTERATION TICKET</div>
         <div class="text-center details">Boutique Tailoring & Garment Fitting Slip</div>
+        <div class="divider"></div>
+        <div class="barcode-badge-box">
+          <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #334155; text-transform: uppercase;">ITEM ALTERATION BARCODE</div>
+          <div style="font-size: 15px; font-weight: 900; letter-spacing: 1.5px; font-family: monospace; color: #0f172a; margin-top: 2px;">${barcodeVal}</div>
+        </div>
         <div class="divider"></div>
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
@@ -1810,11 +1825,12 @@ export const ArticulationView = ({
         ` : ''}
         <div class="divider"></div>
         <div class="text-center" style="margin-top:10px;">
-          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">
+          <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #334155; text-transform: uppercase; margin-bottom: 4px;">ITEM LEVEL ALTERATION BARCODE</div>
+          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:4px;border:1px solid #cbd5e1;border-radius:4px;">
             ${barcodeSvg}
           </div>
-          <p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${barcodeVal}</p>
-          <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
+          <p style="margin:4px 0 2px;font-size:13px;font-weight:900;letter-spacing:1.5px;font-family:monospace">${barcodeVal}</p>
+          <p style="font-size:9.5px;margin-top:4px;color:#475569;">*** Scan barcode or present slip during fitting / collection ***</p>
         </div>
       </body>
       </html>
@@ -3306,7 +3322,7 @@ export const ArticulationView = ({
                   <thead>
                     <tr className="bg-slate-900 text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-800">
                       <th className="p-3.5 w-24">Ticket #</th>
-                      <th className="p-3.5 w-28 text-indigo-300 font-extrabold">Tailor Invoice No</th>
+                      <th className="p-3.5 w-36 text-indigo-300 font-extrabold">Item Barcode / TI</th>
                       <th className="p-3.5 w-16">Alt Seq</th>
                       <th className="p-3.5 w-28">Invoice No / Source</th>
                       <th className="p-3.5">Customer</th>
@@ -3436,10 +3452,25 @@ export const ArticulationView = ({
                               </div>
                             </td>
                             <td className="p-2 whitespace-nowrap font-mono font-bold text-xs text-indigo-700 bg-indigo-50/40 border-r border-indigo-100">
-                              {alt.tailorInvoiceNo ? (
-                                <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 px-2 py-0.5 rounded font-black text-[11px]">
-                                  {alt.tailorInvoiceNo}
-                                </span>
+                              {alt.alterationBarcode || alt.tailorInvoiceNo ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 px-2 py-0.5 rounded font-black text-[11px] tracking-tight">
+                                    {alt.alterationBarcode || alt.tailorInvoiceNo}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const text = alt.alterationBarcode || alt.tailorInvoiceNo;
+                                      navigator.clipboard.writeText(text);
+                                      if (onAddNotification) onAddNotification("Copied", `Item Barcode ${text} copied to clipboard`, "success");
+                                    }}
+                                    className="text-indigo-400 hover:text-indigo-700 cursor-pointer transition-colors"
+                                    title="Copy Item Barcode"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
                               ) : (
                                 <span className="text-slate-400 italic text-[10px]">N/A</span>
                               )}
@@ -4414,11 +4445,13 @@ export const ArticulationView = ({
                                       setSelectedJobTicket(altMatch || {
                                         ...row,
                                         alterationId: row.tailorInvoiceNo || row.alterationId || row._id,
+                                        alterationBarcode: row.alterationBarcode || row.tailorInvoiceNo || row.barcode,
+                                        tailorInvoiceNo: row.tailorInvoiceNo,
                                         customerPhone: row.mobileNumber || row.customerPhone,
                                         totalCharges: row.tailoringCharges || 0,
                                         serviceType: row.garmentService || 'Alteration',
                                         alterationDetails: row.garmentService ? [row.garmentService] : ['Alteration'],
-                                        barcode: row.tailorInvoiceNo || row._id
+                                        barcode: row.alterationBarcode || row.tailorInvoiceNo || row._id
                                       });
                                     }}
                                     className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-600 transition-colors cursor-pointer"
@@ -4834,15 +4867,35 @@ export const ArticulationView = ({
               </div>
               <div className="border-t border-dashed border-slate-300 my-2" />
 
-              <div className="flex justify-between">
-                <span>Ticket #: <strong className="text-rose-600">{selectedJobTicket.alterationId}</strong></span>
+              <div className="flex justify-between items-center">
+                <span>Ticket #: <strong className="text-rose-600 font-mono">{selectedJobTicket.alterationId}</strong></span>
                 <span>Date: {selectedJobTicket.createdAt ? new Date(selectedJobTicket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
               </div>
-              {selectedJobTicket.tailorInvoiceNo && (
-                <div className="flex justify-between">
-                  <span className="text-indigo-700 font-bold">Tailor Invoice: <strong>{selectedJobTicket.tailorInvoiceNo}</strong></span>
-                </div>
-              )}
+
+              {/* Prominent Item Alteration Barcode Card */}
+              {(() => {
+                const itemBarcode = selectedJobTicket.alterationBarcode || selectedJobTicket.tailorInvoiceNo || selectedJobTicket.barcode || selectedJobTicket.alterationId;
+                return (
+                  <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border border-indigo-200 rounded-xl p-2.5 my-2 flex items-center justify-between shadow-2xs">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[9.5px] font-black uppercase tracking-wider text-indigo-700">
+                        <Barcode className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Item Alteration Barcode</span>
+                      </div>
+                      <div className="font-mono font-black text-sm text-indigo-950 tracking-wider mt-0.5">
+                        {itemBarcode}
+                      </div>
+                    </div>
+                    {selectedJobTicket.tailorInvoiceNo && (
+                      <div className="text-right pl-2 border-l border-indigo-200/80">
+                        <div className="text-[8.5px] text-slate-500 font-bold uppercase tracking-wider">TI Number</div>
+                        <div className="font-mono font-bold text-xs text-indigo-900">{selectedJobTicket.tailorInvoiceNo}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div>
                 <span>Source: <strong className={selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'text-emerald-700' : 'text-indigo-700'}>{selectedJobTicket.sourceType === 'CUSTOMER_OWN_GARMENT' ? '🧵 Customer Own Garment / Fabric' : '🏪 Showroom Purchase (Billing)'}</strong></span>
               </div>
@@ -4861,7 +4914,8 @@ export const ArticulationView = ({
               <div className="space-y-1">
                 <p className="font-bold text-slate-900 uppercase">Garment Specs:</p>
                 <p>{selectedJobTicket.productName}</p>
-                <p className="text-[10px] text-slate-500">SKU: {selectedJobTicket.sku} | Size: {selectedJobTicket.size} | Color: {selectedJobTicket.color}</p>
+                <p className="text-[10px] text-slate-500">SKU: {selectedJobTicket.sku || 'N/A'} | Size: {selectedJobTicket.size || 'M'} | Color: {selectedJobTicket.color || 'Standard'}</p>
+                <p className="text-[10px]">Item Barcode: <strong className="font-mono font-bold text-indigo-700">{selectedJobTicket.alterationBarcode || selectedJobTicket.tailorInvoiceNo || selectedJobTicket.barcode || 'N/A'}</strong></p>
                 <p className="text-[10px]">Master Tailor: <strong>{selectedJobTicket.tailorName || 'Unassigned'}</strong></p>
                 <p className="text-[10px]">Staff: {selectedJobTicket.salespersonName || 'Store Cashier'}</p>
               </div>
@@ -4952,28 +5006,31 @@ export const ArticulationView = ({
 
               {/* Barcode Graphic */}
               {(() => {
-                const barcodeVal = selectedJobTicket.alterationBarcode || selectedJobTicket.tailorInvoiceNo || selectedJobTicket.barcode || selectedJobTicket.alterationId;
-                const barcodeSvg = generateCode128SvgString(barcodeVal, {
-                  width: 1.6,
-                  height: 40,
+                const itemBarcode = selectedJobTicket.alterationBarcode || selectedJobTicket.tailorInvoiceNo || selectedJobTicket.barcode || selectedJobTicket.alterationId;
+                const barcodeSvg = generateCode128SvgString(itemBarcode, {
+                  width: 1.8,
+                  height: 44,
                   displayValue: false,
                   margin: 4,
                   background: '#ffffff',
                   lineColor: '#000000'
                 });
                 return (
-                  <div className="bg-slate-900 text-white rounded-xl p-3 text-center font-mono my-2 space-y-1.5">
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Garment Alteration Barcode / Verification</p>
-                    <div className="bg-white p-2 rounded-lg inline-block text-slate-900 shadow-inner max-w-full">
+                  <div className="bg-slate-900 text-white rounded-xl p-3 text-center font-mono my-2 space-y-1.5 shadow-md">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Barcode className="w-4 h-4 text-indigo-400" />
+                      <p className="text-[10px] text-indigo-300 font-black uppercase tracking-wider">ITEM LEVEL ALTERATION BARCODE</p>
+                    </div>
+                    <div className="bg-white p-2.5 rounded-lg inline-block text-slate-900 shadow-inner max-w-full">
                       <div
                         className="flex items-center justify-center overflow-hidden [&>svg]:max-w-full [&>svg]:h-auto"
                         dangerouslySetInnerHTML={{ __html: barcodeSvg }}
                       />
-                      <div className="text-[11px] font-black mt-1 font-mono tracking-widest text-slate-900">
-                        {barcodeVal}
+                      <div className="text-[12px] font-black mt-1.5 font-mono tracking-widest text-slate-900">
+                        {itemBarcode}
                       </div>
                     </div>
-                    <p className="text-[8px] text-slate-400 italic">Scan directly with barcode scanner in Tailoring &amp; Garments</p>
+                    <p className="text-[8.5px] text-slate-400">Scan this item barcode anywhere in Tailoring &amp; Garments</p>
                   </div>
                 );
               })()}

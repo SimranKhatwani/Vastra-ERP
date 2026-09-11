@@ -1163,6 +1163,290 @@ class BillingService {
     }));
     return formatExportData(exportData, format);
   }
+
+  /**
+   * Public tracking for bill and consolidated alteration items (accessible by QR code scanning)
+   */
+  static async trackBillPublic(billNo) {
+    const trimmed = String(billNo || '').trim();
+    if (!trimmed) throw new ApiError(400, 'Bill number or barcode is required.');
+
+    const mongoose = require('mongoose');
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+
+    const Alteration = require('../models/alteration/Alteration');
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const PSSM = require('../models/PSSM/PSSM');
+    const PSSMItem = require('../models/PSSM/PSSMItem');
+
+    // 1. Try finding SaleBill by billNo, billBarcode, or _id
+    let bill = await SaleBill.findOne({
+      isDeleted: false,
+      $or: [
+        { billNo: regex },
+        { billBarcode: regex },
+        ...(mongoose.Types.ObjectId.isValid(trimmed) && trimmed.length === 24 ? [{ _id: trimmed }] : [])
+      ]
+    }).populate('customerId firmId warehouseId salesmanId').lean();
+
+    // 2. If not found, check if it matches a PSSM record
+    let pssm = null;
+    if (!bill) {
+      pssm = await PSSM.findOne({
+        $or: [
+          { pssmNo: regex },
+          { slipBarcode: regex },
+          { billBarcode: regex },
+          { billNo: regex }
+        ]
+      }).lean();
+
+      if (pssm && pssm.saleBillId) {
+        bill = await SaleBill.findById(pssm.saleBillId).populate('customerId firmId warehouseId salesmanId').lean();
+      } else if (pssm && pssm.billNo) {
+        bill = await SaleBill.findOne({ billNo: pssm.billNo, isDeleted: false }).populate('customerId firmId warehouseId salesmanId').lean();
+      }
+    }
+
+    // 3. If still not found, check if it matches an Alteration record
+    if (!bill) {
+      const alt = await Alteration.findOne({
+        $or: [
+          { alterationId: regex },
+          { alterationBarcode: regex },
+          { tailorInvoiceNo: regex },
+          { barcode: regex }
+        ]
+      }).lean();
+
+      if (alt && alt.saleBillId) {
+        bill = await SaleBill.findById(alt.saleBillId).populate('customerId firmId warehouseId salesmanId').lean();
+      } else if (alt && alt.invoiceNumber) {
+        bill = await SaleBill.findOne({ billNo: alt.invoiceNumber, isDeleted: false }).populate('customerId firmId warehouseId salesmanId').lean();
+      }
+    }
+
+    // 4. If still not found, check PSSMItem (by alterationBarcode, tailorInvoiceNo, barcode, uniqueCode)
+    if (!bill && !pssm) {
+      const pItem = await PSSMItem.findOne({
+        $or: [
+          { alterationBarcode: regex },
+          { tailorInvoiceNo: regex },
+          { barcode: regex },
+          { uniqueCode: regex }
+        ]
+      }).lean();
+
+      if (pItem && pItem.pssmId) {
+        pssm = await PSSM.findById(pItem.pssmId).lean();
+        if (pssm && pssm.saleBillId) {
+          bill = await SaleBill.findById(pssm.saleBillId).populate('customerId firmId warehouseId salesmanId').lean();
+        } else if (pssm && pssm.billNo) {
+          bill = await SaleBill.findOne({ billNo: pssm.billNo, isDeleted: false }).populate('customerId firmId warehouseId salesmanId').lean();
+        }
+      }
+    }
+
+    if (!bill && !pssm) {
+      throw new ApiError(404, `No bill or alteration records found matching "${trimmed}".`);
+    }
+
+    // Fetch sale items if bill exists
+    let saleItems = [];
+    if (bill) {
+      saleItems = await SaleItem.find({ saleBillId: bill._id })
+        .populate({
+          path: 'inventoryPieceId',
+          populate: { path: 'productId' }
+        }).lean();
+    }
+
+    // Fetch PSSM & items if not already fetched
+    if (!pssm && bill) {
+      pssm = await PSSM.findOne({
+        $or: [
+          { saleBillId: bill._id },
+          { billNo: bill.billNo },
+          { billBarcode: bill.billBarcode || bill.billNo }
+        ]
+      }).lean();
+    }
+
+    let pssmItems = [];
+    if (pssm) {
+      pssmItems = await PSSMItem.find({ pssmId: pssm._id }).lean();
+    }
+
+    // Fetch Alterations under this bill
+    const billFilter = [];
+    if (bill) {
+      billFilter.push({ saleBillId: bill._id }, { invoiceNumber: bill.billNo });
+    }
+    if (pssm) {
+      billFilter.push({ pssmId: pssm._id });
+      if (pssm.billNo) billFilter.push({ invoiceNumber: pssm.billNo });
+    }
+
+    let alterations = [];
+    if (billFilter.length > 0) {
+      alterations = await Alteration.find({ $or: billFilter }).lean();
+    }
+
+    // Fetch Tailoring Jobs
+    let tailoringJobs = [];
+    if (billFilter.length > 0) {
+      tailoringJobs = await TailoringJob.find({ $or: billFilter }).lean();
+    }
+
+    // Consolidate alteration items across PSSM items and Alteration records
+    const consolidatedAlterations = [];
+    const seenTIs = new Set();
+
+    (pssmItems || []).forEach((pi, idx) => {
+      const ti = pi.tailorInvoiceNo || (pi.alterationBarcode && String(pi.alterationBarcode).startsWith('TI-') ? pi.alterationBarcode : null) || `TI-${idx + 1}`;
+      seenTIs.add(ti);
+      const matchedAlt = alterations.find(a => a.tailorInvoiceNo === pi.tailorInvoiceNo || a.alterationBarcode === pi.alterationBarcode || String(a.pssmItemId) === String(pi._id));
+      const matchedJob = tailoringJobs.find(tj => tj.tailorInvoiceNo === pi.tailorInvoiceNo || String(tj.pssmItemId) === String(pi._id));
+
+      consolidatedAlterations.push({
+        id: pi._id,
+        garmentName: pi.productName || pi.pieceName || pi.name || 'Altered Garment',
+        size: pi.size || 'M',
+        color: pi.color || 'Standard',
+        gender: pi.gender || 'Gents',
+        barcode: pi.barcode || pi.uniqueCode || '',
+        tailorInvoiceNo: pi.tailorInvoiceNo || matchedAlt?.tailorInvoiceNo || matchedJob?.tailorInvoiceNo || null,
+        alterationBarcode: pi.alterationBarcode || matchedAlt?.alterationBarcode || pi.tailorInvoiceNo || (pssm?.pssmNo ? `${pssm.pssmNo}-${idx + 1}` : null),
+        tailorName: pi.assignedTo || matchedAlt?.tailorName || matchedJob?.assignedToTailorName || 'Master Tailor',
+        status: pi.status || matchedAlt?.status || 'PENDING',
+        measurements: pi.measurements || matchedAlt?.measurements || {},
+        alterationDetails: pi.alterationDetails || matchedAlt?.alterationDetails || [pi.serviceType || 'Alteration'],
+        serviceType: pi.serviceType || 'Alteration',
+        charge: pi.charge || matchedAlt?.charge || matchedAlt?.totalCharges || 0,
+        trialRequired: pi.trialRequired !== undefined ? pi.trialRequired : pssm?.trialRequired,
+        trialDate: pi.trialDate || pssm?.trialDate || matchedAlt?.trialDate || '',
+        deliveryDate: pssm?.expectedDeliveryDate || matchedAlt?.deliveryDate || '',
+        specialInstructions: pi.instructions || pssm?.specialInstructions || matchedAlt?.specialInstructions || ''
+      });
+    });
+
+    // Add any Alteration records that weren't in PSSMItems
+    (alterations || []).forEach((alt, idx) => {
+      if (alt.tailorInvoiceNo && seenTIs.has(alt.tailorInvoiceNo)) return;
+      consolidatedAlterations.push({
+        id: alt._id,
+        garmentName: alt.productName || 'Altered Garment',
+        size: alt.size || 'M',
+        color: alt.color || 'Standard',
+        gender: alt.gender || 'Gents',
+        barcode: alt.barcode || alt.sku || '',
+        tailorInvoiceNo: alt.tailorInvoiceNo || null,
+        alterationBarcode: alt.alterationBarcode || alt.tailorInvoiceNo || alt.alterationId,
+        tailorName: alt.tailorName || 'Master Tailor',
+        status: alt.status || 'Pending',
+        measurements: alt.measurements || {},
+        alterationDetails: alt.alterationDetails || [alt.serviceType || 'Alteration'],
+        serviceType: alt.serviceType || 'Alteration',
+        charge: alt.totalCharges || alt.charge || 0,
+        trialRequired: Boolean(alt.trialDate),
+        trialDate: alt.trialDate || '',
+        deliveryDate: alt.deliveryDate || '',
+        specialInstructions: alt.specialInstructions || ''
+      });
+    });
+
+    // Calculate payment details if available
+    let payments = [];
+    let transactions = [];
+    if (bill) {
+      payments = await Payment.find({ saleBillId: bill._id }).lean();
+      const paymentIds = payments.map(p => p._id);
+      if (paymentIds.length > 0) {
+        transactions = await PaymentTransaction.find({ paymentId: { $in: paymentIds } }).lean();
+      }
+    }
+
+    const advanceApplied = payments.reduce((acc, p) => acc + (p.advanceApplied || 0), 0) || (bill?.advanceApplied || pssm?.advancePaid || 0);
+    const previouslyPaidAmount = transactions
+      .filter(tx => tx.mode !== PAYMENT_MODE.DUE && tx.mode !== PAYMENT_MODE.ADVANCE && tx.mode !== 'Advance')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0) || (bill?.paidAmount || pssm?.advancePaid || 0);
+
+    const grandTotal = bill?.grandTotal || pssm?.totalCharges || 0;
+    const balanceDue = pssm?.balanceDue !== undefined ? pssm.balanceDue : Math.max(0, grandTotal - previouslyPaidAmount);
+
+    const store = bill?.firmId ? {
+      name: bill.firmId.name || 'NEW FASHION STYLE (NFS)',
+      address: bill.firmId.address || 'Station Road, Near Bus Stand',
+      phone: bill.firmId.phone || '9829000000',
+      gstin: bill.firmId.gstin || '08AAAAA0000A1Z5',
+      email: bill.firmId.email || 'support@newfashionstyle.com'
+    } : {
+      name: 'NEW FASHION STYLE (NFS)',
+      address: 'Station Road, Near Bus Stand',
+      phone: '9829000000',
+      gstin: '08AAAAA0000A1Z5',
+      email: 'support@newfashionstyle.com'
+    };
+
+    return {
+      store,
+      bill: bill ? {
+        ...bill,
+        customerName: bill.customerId?.name || bill.customerName || pssm?.customerName || 'Customer',
+        customerPhone: bill.customerId?.phone || bill.customerPhone || pssm?.customerPhone || '',
+        invoiceNo: bill.billNo,
+        billNo: bill.billNo,
+        date: bill.billDate || bill.createdAt,
+        grandTotal,
+        amountPaid: previouslyPaidAmount,
+        advancePaid: advanceApplied,
+        balanceDue,
+        hasAlteration: consolidatedAlterations.length > 0
+      } : {
+        billNo: pssm?.billNo || pssm?.originalInvoiceNo || trimmed,
+        invoiceNo: pssm?.billNo || pssm?.originalInvoiceNo || trimmed,
+        date: pssm?.createdAt,
+        customerName: pssm?.customerName || 'Customer',
+        customerPhone: pssm?.customerPhone || '',
+        grandTotal,
+        amountPaid: previouslyPaidAmount,
+        advancePaid: advanceApplied,
+        balanceDue,
+        hasAlteration: consolidatedAlterations.length > 0
+      },
+      items: (saleItems || []).map(si => {
+        const piece = si.inventoryPieceId || {};
+        const prod = piece.productId || {};
+        const pieceCode = si.uniqueCode || si.barcode || piece.uniqueCode || piece.barcode || '';
+        const matchedAlt = consolidatedAlterations.find(a => (pieceCode && (a.barcode === pieceCode || a.alterationBarcode === pieceCode)));
+        return {
+          name: prod.name || prod.productName || matchedAlt?.garmentName || (si.name && si.name !== 'Garment Item' ? si.name : null) || 'Fabric Suit',
+          code: pieceCode || 'N/A',
+          qty: si.quantity || 1,
+          price: si.sellingPrice || si.finalPrice || si.mrp || 0,
+          mrp: si.mrp || 0,
+          discount: si.discountAmount || 0,
+          tax: si.taxAmount || 0,
+          amount: si.finalPrice || si.sellingPrice || 0,
+          size: piece.size || prod.size || matchedAlt?.size || '-',
+          color: piece.primaryColor || piece.color || prod.color || matchedAlt?.color || '-'
+        };
+      }),
+      alterations: consolidatedAlterations,
+      pssm: pssm ? {
+        pssmNo: pssm.pssmNo,
+        slipBarcode: pssm.slipBarcode,
+        priority: pssm.priority,
+        status: pssm.status,
+        expectedDeliveryDate: pssm.expectedDeliveryDate,
+        trialDate: pssm.trialDate,
+        totalCharges: pssm.totalCharges,
+        advancePaid: pssm.advancePaid,
+        balanceDue: pssm.balanceDue
+      } : null
+    };
+  }
 }
 
 module.exports = BillingService;

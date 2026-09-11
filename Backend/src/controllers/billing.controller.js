@@ -84,6 +84,11 @@ class BillingController {
     await bill.save();
     return res.status(200).json(new ApiResponse(200, bill, 'Payment method updated successfully.'));
   });
+
+  static trackBillPublic = asyncHandler(async (req, res) => {
+    const result = await BillingService.trackBillPublic(req.params.billNo);
+    return res.status(200).json(new ApiResponse(200, result, 'Bill tracking details fetched successfully.'));
+  });
 }
 
 module.exports = BillingController;

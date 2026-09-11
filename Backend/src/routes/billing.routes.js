@@ -10,6 +10,9 @@ const { PERMISSIONS } = require('../constants/permissions');
 
 const router = express.Router();
 
+// Public route for QR code scanning (mobile phone cameras, public bill & alteration tracking)
+router.get('/public/track/:billNo', BillingController.trackBillPublic);
+
 router.use(authenticate, tenantContext);
 
 router.post('/', authorize(PERMISSIONS.BILLING_CREATE), validate(createSaleBillSchema), auditLog('CREATE_SALE_BILL', 'billing'), BillingController.createSaleBill);
