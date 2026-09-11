@@ -207,12 +207,18 @@ class PSSMService {
           if (job) {
             pssmItemDoc.tailoringJob = job; // attach for downstream use
             pssmItemDoc.tailorInvoiceNo = job.tailorInvoiceNo;
+            pssmItemDoc.alterationBarcode = job.tailorInvoiceNo;
             await pssmItemDoc.save();
             createdTailoringJobs.push(job);
           }
         } catch (tjErr) {
           console.error('[PSSMService] TailoringJob creation failed (non-fatal):', tjErr.message);
         }
+      }
+
+      if (!pssmItemDoc.alterationBarcode) {
+        pssmItemDoc.alterationBarcode = pssmItemDoc.tailorInvoiceNo || `ALT-${pssmRecord.pssmNo}-${createdItems.length + 1}`;
+        await pssmItemDoc.save();
       }
 
       createdItems.push(pssmItemDoc);
@@ -1068,14 +1074,22 @@ class PSSMService {
       ]
     }).lean();
 
-    // Fallback: If not found on PSSM header, check if scanned value is a garment item barcode/uniqueCode
+    let matchedItem = null;
+
+    // Fallback: If not found on PSSM header, check if scanned value is a garment item barcode/uniqueCode/alterationBarcode/tailorInvoiceNo
     if (!pssm) {
       const pssmItem = await PSSMItem.findOne({
         tenantId,
-        $or: [{ barcode: regex }, { uniqueCode: regex }]
+        $or: [
+          { alterationBarcode: regex },
+          { tailorInvoiceNo: regex },
+          { barcode: regex },
+          { uniqueCode: regex }
+        ]
       }).lean();
 
       if (pssmItem && pssmItem.pssmId) {
+        matchedItem = pssmItem;
         pssm = await PSSM.findOne({ tenantId, _id: pssmItem.pssmId }).lean();
       }
     }
@@ -1086,7 +1100,8 @@ class PSSMService {
 
     return {
       pssm,
-      items
+      items,
+      matchedItemId: matchedItem ? matchedItem._id : null
     };
   }
 

@@ -1942,6 +1942,7 @@ export const BillingPOSView = ({
           const matchingCreatedItem = createdItems[idx] || createdItems.find(ci => ci.barcode === (itm.barcode || itm.uniqueCode)) || {};
           const matchingJob = tailoringJobs[idx] || tailoringJobs.find(tj => String(tj.pssmItemId) === String(matchingCreatedItem._id)) || {};
           const itemTailorInvoiceNo = matchingCreatedItem.tailorInvoiceNo || matchingJob.tailorInvoiceNo || (hasItmAlt ? tailorInvoiceNo : null);
+          const itemAlterationBarcode = matchingCreatedItem.alterationBarcode || itemTailorInvoiceNo || (issuedPssmNo ? `${issuedPssmNo}-${idx + 1}` : null);
 
           return {
             name: itm.name,
@@ -1949,6 +1950,7 @@ export const BillingPOSView = ({
             color: itm.color,
             gender: itm.gender || 'Gents',
             barcode: itm.barcode || itm.uniqueCode,
+            alterationBarcode: itemAlterationBarcode,
             services: itmServices,
             serviceType: itmServices.join(' + '),
             tailorInvoiceNo: itemTailorInvoiceNo,
@@ -2022,12 +2024,13 @@ export const BillingPOSView = ({
           cashierName: currentUser ? currentUser.name : 'Cashier',
           deliveryDate: pssm.expectedDeliveryDate,
           allowWhatsApp: pssm.allowWhatsApp !== false,
-          items: items.map(it => ({
+          items: items.map((it, idx) => ({
             _id: it._id,
             name: it.productName || it.pieceName,
             size: it.size,
             color: it.color,
             barcode: it.barcode || it.uniqueCode,
+            alterationBarcode: it.alterationBarcode || it.tailorInvoiceNo || (pssm.pssmNo ? `${pssm.pssmNo}-${idx + 1}` : null),
             serviceType: it.serviceType || 'Alteration',
             tailorInvoiceNo: it.tailorInvoiceNo,
             status: it.status || 'PENDING_ASSIGNMENT',
@@ -12086,6 +12089,35 @@ export const BillingPOSView = ({
                           ))}
                         </div>
                       )}
+
+                      {/* Item-Level Alteration Barcode Box */}
+                      {(() => {
+                        const itemAltBarcode = itm.alterationBarcode || itm.tailorInvoiceNo || (itm.barcode && String(itm.barcode).startsWith('TI-') ? itm.barcode : null) || (pssSlipData.pssmNo ? `${pssSlipData.pssmNo}-${idx + 1}` : null);
+                        if (!itemAltBarcode) return null;
+                        const itemBarcodeSvg = generateCode128SvgString(itemAltBarcode, {
+                          width: 1.5,
+                          height: 38,
+                          displayValue: false,
+                          margin: 4,
+                          background: '#ffffff',
+                          lineColor: '#000000'
+                        });
+                        return (
+                          <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl">
+                            <div className="text-[10px] space-y-0.5">
+                              <span className="font-bold text-slate-500 uppercase tracking-wider block text-[9px]">Item Alteration Barcode</span>
+                              <span className="font-mono font-black text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded inline-block">{itemAltBarcode}</span>
+                              <span className="text-[9px] text-slate-400 block italic">Scannable in Tailoring &amp; Garments</span>
+                            </div>
+                            <div className="bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                              <div
+                                className="flex items-center justify-center [&>svg]:max-w-[150px] [&>svg]:h-auto"
+                                dangerouslySetInnerHTML={{ __html: itemBarcodeSvg }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -12093,7 +12125,7 @@ export const BillingPOSView = ({
 
               {/* Barcode & QR Code Graphic Box */}
               <div className="bg-slate-900 text-white rounded-xl p-3.5 text-center space-y-2 font-mono">
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scannable Verification Barcode</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scannable Slip Verification Barcode</p>
                 <div className="bg-white p-2.5 rounded-lg inline-block text-slate-900 shadow-inner">
                   {(() => {
                     const uniqueSlipBarcode = pssSlipData.slipBarcode || pssSlipData.pssmNo || pssSlipData.billBarcode;
@@ -12144,7 +12176,7 @@ export const BillingPOSView = ({
                     background: '#ffffff',
                     lineColor: '#000000'
                   });
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.barcode-wrap{text-align:center;margin-top:12px;padding:6px 0}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}<p style="font-size:11px;margin-top:4px">Slip Barcode: <b>${uniqueSlipBarcode}</b></p></div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}</div>`; }).join('')}<div class="barcode-wrap"><div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">${barcodeSvg}</div><p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${uniqueSlipBarcode}</p><p style="font-size:10px;margin-top:4px;font-style:italic">*** Please present this slip during collection ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.barcode-wrap{text-align:center;margin-top:12px;padding:6px 0}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}<p style="font-size:11px;margin-top:4px">Slip Barcode: <b>${uniqueSlipBarcode}</b></p></div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; const itemAltBarcode = it.alterationBarcode || it.tailorInvoiceNo || (it.barcode && String(it.barcode).startsWith('TI-') ? it.barcode : null) || (d.pssmNo ? `${d.pssmNo}-${i + 1}` : null); const itemBarcodeSvg = itemAltBarcode ? generateCode128SvgString(itemAltBarcode, { width: 1.4, height: 34, displayValue: false, margin: 2, background: '#ffffff', lineColor: '#000000' }) : ''; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}${itemAltBarcode ? `<div style="text-align:center;margin:6px 0;padding:4px;border:1px dashed #000;background:#fafafa"><div style="font-size:8px;font-weight:bold;color:#444;margin-bottom:2px">GARMENT ALTERATION BARCODE</div><div style="display:inline-block;max-width:100%;background:#fff">${itemBarcodeSvg}</div><div style="font-size:10px;font-weight:900;font-family:monospace;letter-spacing:1px;margin-top:2px">${itemAltBarcode}</div></div>` : ''}</div>`; }).join('')}<div class="barcode-wrap"><div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">${barcodeSvg}</div><p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${uniqueSlipBarcode}</p><p style="font-size:10px;margin-top:4px;font-style:italic">*** Please present this slip during collection ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

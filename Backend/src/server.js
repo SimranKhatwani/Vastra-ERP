@@ -1,8 +1,9 @@
 const dns = require('dns');
 require('dotenv').config();
-if (process.env.DNS_SERVER) {
-  dns.setServers([process.env.DNS_SERVER]);
-}
+try {
+  const dnsServers = process.env.DNS_SERVER ? [process.env.DNS_SERVER, '1.1.1.1'] : ['8.8.8.8', '1.1.1.1'];
+  dns.setServers(dnsServers);
+} catch (e) {}
 const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');

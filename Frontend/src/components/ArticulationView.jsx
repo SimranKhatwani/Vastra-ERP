@@ -1093,10 +1093,12 @@ export const ArticulationView = ({
             const createdAlt = data.data?.alteration || data.data || {};
             const tailoringJobs = data.data?.tailoringJobs || [];
             const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : createdAlt.tailorInvoiceNo || null;
+            const alterationBarcode = tailorInvoiceNo || createdAlt.alterationBarcode || createdAlt.alterationNo || null;
             lastTicket = {
               _id: createdAlt._id || `alt-${Date.now()}`,
               alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
               tailorInvoiceNo,
+              alterationBarcode,
               sourceType: 'CUSTOMER_OWN_GARMENT',
               invoiceNumber: 'CUSTOMER-OWN-GARMENT',
               customerName: cogCustomerName.trim(),
@@ -1227,6 +1229,7 @@ export const ArticulationView = ({
           _id: createdAlt._id || `alt-${Date.now()}`,
           alterationId: createdAlt.alterationNo || `ALT-${Date.now().toString(36).toUpperCase()}`,
           tailorInvoiceNo: tailorInvoiceNo,
+          alterationBarcode: selectedAltItem?.alterationBarcode || tailorInvoiceNo || createdAlt.alterationBarcode || null,
           sourceType: 'SHOWROOM_PURCHASE',
           invoiceNumber: selectedAltInvoice.invoiceNo || selectedAltInvoice.invoiceNumber,
           invoiceId: selectedAltInvoice._id,
@@ -1636,6 +1639,15 @@ export const ArticulationView = ({
   const handlePrintJobTicketHTML = (ticket) => {
     const mObj = ticket.measurements || {};
     const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
+    const barcodeVal = ticket.alterationBarcode || ticket.tailorInvoiceNo || ticket.barcode || ticket.alterationId;
+    const barcodeSvg = generateCode128SvgString(barcodeVal, {
+      width: 1.6,
+      height: 44,
+      displayValue: false,
+      margin: 4,
+      background: '#ffffff',
+      lineColor: '#000000'
+    });
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -1648,7 +1660,6 @@ export const ArticulationView = ({
           .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
           .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
-          .barcode { font-family: monospace; letter-spacing: 3px; font-size: 18px; font-weight: bold; border: 1px solid #000; padding: 6px; display: inline-block; margin: 6px 0; }
         </style>
       </head>
       <body>
@@ -1658,6 +1669,7 @@ export const ArticulationView = ({
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
           ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice No:</b> <b>${ticket.tailorInvoiceNo}</b><br>` : ''}
+          ${ticket.alterationBarcode && ticket.alterationBarcode !== ticket.tailorInvoiceNo ? `<b>Alteration Barcode:</b> <b>${ticket.alterationBarcode}</b><br>` : ''}
           <b>Date:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
           <b>Source / Bill No:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment (Custom Tailoring)' : (ticket.invoiceNumber || ticket.invoiceId || 'Showroom Billing')}<br>
           <b>Customer Name:</b> ${ticket.customerName}<br>
@@ -1702,9 +1714,11 @@ export const ArticulationView = ({
           </div>
         ` : ''}
         <div class="divider"></div>
-        <div class="text-center">
-          <div class="barcode">||||||||||||||||||||||||</div>
-          <p style="margin:2px 0;font-size:10px;font-weight:bold">${ticket.barcode || ticket.alterationId}</p>
+        <div class="text-center" style="margin-top:10px;">
+          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">
+            ${barcodeSvg}
+          </div>
+          <p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${barcodeVal}</p>
           <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
         </div>
       </body>
@@ -1720,6 +1734,15 @@ export const ArticulationView = ({
     if (!ticket) return;
     const mObj = ticket.measurements || {};
     const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || '';
+    const barcodeVal = ticket.alterationBarcode || ticket.tailorInvoiceNo || ticket.barcode || ticket.alterationId;
+    const barcodeSvg = generateCode128SvgString(barcodeVal, {
+      width: 1.6,
+      height: 44,
+      displayValue: false,
+      margin: 4,
+      background: '#ffffff',
+      lineColor: '#000000'
+    });
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -1732,7 +1755,6 @@ export const ArticulationView = ({
           .details { font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
           .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
           .badge { font-weight: bold; text-transform: uppercase; }
-          .barcode { font-family: monospace; letter-spacing: 3px; font-size: 18px; font-weight: bold; border: 1px solid #000; padding: 6px; display: inline-block; margin: 6px 0; }
         </style>
       </head>
       <body>
@@ -1742,6 +1764,7 @@ export const ArticulationView = ({
         <div class="details">
           <b>Ticket ID:</b> ${ticket.alterationId}<br>
           ${ticket.tailorInvoiceNo ? `<b>Tailor Invoice No:</b> <b>${ticket.tailorInvoiceNo}</b><br>` : ''}
+          ${ticket.alterationBarcode && ticket.alterationBarcode !== ticket.tailorInvoiceNo ? `<b>Alteration Barcode:</b> <b>${ticket.alterationBarcode}</b><br>` : ''}
           <b>Date:</b> ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}<br>
           <b>Source / Bill No:</b> ${ticket.sourceType === 'CUSTOMER_OWN_GARMENT' ? 'Customer Own Garment (Custom Tailoring)' : (ticket.invoiceNumber || ticket.invoiceId || 'Showroom Billing')}<br>
           <b>Customer Name:</b> ${ticket.customerName}<br>
@@ -1786,9 +1809,11 @@ export const ArticulationView = ({
           </div>
         ` : ''}
         <div class="divider"></div>
-        <div class="text-center">
-          <div class="barcode">||||||||||||||||||||||||</div>
-          <p style="margin:2px 0;font-size:10px;font-weight:bold">${ticket.barcode || ticket.alterationId}</p>
+        <div class="text-center" style="margin-top:10px;">
+          <div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">
+            ${barcodeSvg}
+          </div>
+          <p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${barcodeVal}</p>
           <p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p>
         </div>
       </body>
@@ -1915,8 +1940,12 @@ export const ArticulationView = ({
       const res = await api.get(`/pssm/barcode/${encodeURIComponent(q.trim())}`);
       if (res.data.success && res.data.data) {
         setCollectionData(res.data.data);
-        const readyIds = (res.data.data.items || []).filter(i => i.status === 'READY').map(i => i._id);
-        setSelectedCollectionItemIds(readyIds);
+        if (res.data.data.matchedItemId) {
+          setSelectedCollectionItemIds([res.data.data.matchedItemId]);
+        } else {
+          const readyIds = (res.data.data.items || []).filter(i => i.status === 'READY').map(i => i._id);
+          setSelectedCollectionItemIds(readyIds);
+        }
       } else {
         setCollectionData(null);
         if (onAddNotification) onAddNotification("No PSS Record", `No active PSS order found for barcode ${q}`, "warning");
@@ -2834,6 +2863,7 @@ export const ArticulationView = ({
                           (item.customerPhone || "").toLowerCase().includes(q) ||
                           (item.invoiceNo || item.billBarcode || "").toLowerCase().includes(q) ||
                           (item.alterationId || "").toLowerCase().includes(q) ||
+                          (item.alterationBarcode || "").toLowerCase().includes(q) ||
                           (item.tailorInvoiceNo || "").toLowerCase().includes(q) ||
                           (item.productName || "").toLowerCase().includes(q) ||
                           (item.sku || "").toLowerCase().includes(q) ||
@@ -3370,6 +3400,7 @@ export const ArticulationView = ({
                           (a.customerPhone || "").toLowerCase().includes(q) ||
                           (a.invoiceNumber || a.invoiceId || "").toLowerCase().includes(q) ||
                           (a.alterationId || "").toLowerCase().includes(q) ||
+                          (a.alterationBarcode || "").toLowerCase().includes(q) ||
                           (a.tailorInvoiceNo || "").toLowerCase().includes(q) ||
                           (a.productName || "").toLowerCase().includes(q) ||
                           (a.sku || "").toLowerCase().includes(q) ||
@@ -4920,13 +4951,32 @@ export const ArticulationView = ({
               </div>
 
               {/* Barcode Graphic */}
-              <div className="bg-slate-900 text-white rounded-xl p-2.5 text-center font-mono my-2">
-                <p className="text-[9px] text-slate-400 font-bold uppercase">Scannable Barcode / Verification</p>
-                <div className="bg-white p-1.5 rounded text-slate-900 inline-block my-1 font-mono text-base font-black tracking-widest">
-                  ||||||||||||||||||||||||
-                </div>
-                <p className="text-[10px] font-bold">{selectedJobTicket.barcode || selectedJobTicket.alterationId}</p>
-              </div>
+              {(() => {
+                const barcodeVal = selectedJobTicket.alterationBarcode || selectedJobTicket.tailorInvoiceNo || selectedJobTicket.barcode || selectedJobTicket.alterationId;
+                const barcodeSvg = generateCode128SvgString(barcodeVal, {
+                  width: 1.6,
+                  height: 40,
+                  displayValue: false,
+                  margin: 4,
+                  background: '#ffffff',
+                  lineColor: '#000000'
+                });
+                return (
+                  <div className="bg-slate-900 text-white rounded-xl p-3 text-center font-mono my-2 space-y-1.5">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Garment Alteration Barcode / Verification</p>
+                    <div className="bg-white p-2 rounded-lg inline-block text-slate-900 shadow-inner max-w-full">
+                      <div
+                        className="flex items-center justify-center overflow-hidden [&>svg]:max-w-full [&>svg]:h-auto"
+                        dangerouslySetInnerHTML={{ __html: barcodeSvg }}
+                      />
+                      <div className="text-[11px] font-black mt-1 font-mono tracking-widest text-slate-900">
+                        {barcodeVal}
+                      </div>
+                    </div>
+                    <p className="text-[8px] text-slate-400 italic">Scan directly with barcode scanner in Tailoring &amp; Garments</p>
+                  </div>
+                );
+              })()}
 
               {selectedJobTicket.specialInstructions && !['Custom Fitting', 'Standard Service', 'Alteration', 'alteration'].includes(selectedJobTicket.specialInstructions) && (
                 <div>

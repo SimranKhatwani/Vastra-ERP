@@ -58,7 +58,10 @@ const authenticate = asyncHandler(async (req, res, next) => {
       return next();
     }
 
-    const user = await User.findById(decoded.id).populate('roleId');
+    let user = await User.findById(decoded.id).populate('roleId');
+    if (!user && decoded.email) {
+      user = await User.findOne({ email: decoded.email.toLowerCase(), isDeleted: false }).populate('roleId');
+    }
 
     if (!user || user.isDeleted || user.status !== 'ACTIVE' || user.isLocked) {
       throw new ApiError(401, 'User account is invalid, locked, or deactivated.');

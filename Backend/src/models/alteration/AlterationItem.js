@@ -41,6 +41,10 @@ const alterationItemSchema = new mongoose.Schema({
   tailorInvoiceNo: {
     type: String,
     index: true
+  },
+  alterationBarcode: {
+    type: String,
+    index: true
   }
 });
 

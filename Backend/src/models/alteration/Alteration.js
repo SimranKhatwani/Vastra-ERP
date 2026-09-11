@@ -76,10 +76,14 @@ const alterationSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  remarks: String
+  remarks: String,
+  alterationBarcode: String,
+  tailorInvoiceNo: String
 });
 
 alterationSchema.index({ tenantId: 1, alterationNo: 1 }, { unique: true });
+alterationSchema.index({ tenantId: 1, alterationBarcode: 1 });
+alterationSchema.index({ tenantId: 1, tailorInvoiceNo: 1 });
 alterationSchema.plugin(baseSchemaPlugin);
 
 module.exports = mongoose.model('Alteration', alterationSchema);

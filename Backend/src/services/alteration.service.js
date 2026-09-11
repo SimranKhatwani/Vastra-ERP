@@ -195,9 +195,11 @@ class AlterationService {
           if (job) {
             pssmItemDoc.tailoringJob = job; // attach for downstream use
             pssmItemDoc.tailorInvoiceNo = job.tailorInvoiceNo;
+            pssmItemDoc.alterationBarcode = job.tailorInvoiceNo;
             await pssmItemDoc.save();
             
             altItem.tailorInvoiceNo = job.tailorInvoiceNo;
+            altItem.alterationBarcode = job.tailorInvoiceNo;
             await altItem.save();
             
             createdTailoringJobs.push(job);
@@ -205,6 +207,15 @@ class AlterationService {
         } catch (tjErr) {
           console.error('[AlterationService] TailoringJob creation failed (non-fatal):', tjErr.message);
         }
+      }
+
+      if (!altItem.alterationBarcode) {
+        altItem.alterationBarcode = altItem.tailorInvoiceNo || `ALT-${alteration.alterationNo}-${createdItems.length + 1}`;
+        await altItem.save();
+      }
+      if (!pssmItemDoc.alterationBarcode) {
+        pssmItemDoc.alterationBarcode = altItem.alterationBarcode;
+        await pssmItemDoc.save();
       }
 
       if (resolvedSaleBillId) {
@@ -675,6 +686,7 @@ class AlterationService {
         size,
         color,
         tailorInvoiceNo,
+        alterationBarcode: tailorInvoiceNo || firstItem.alterationBarcode || alt.alterationBarcode || alt.alterationNo,
         tailorName: alt.tailorName || 'Master Tailor',
         priority: alt.priority || 'Normal',
         status: (() => {
@@ -814,6 +826,7 @@ class AlterationService {
           size: pi.size || 'FS',
           color: pi.color || 'Standard',
           tailorInvoiceNo: tailorInvoiceNo || '',
+          alterationBarcode: tailorInvoiceNo || pi.alterationBarcode || pi.barcode || `${pssm.pssmNo}-${pi._id}`,
           tailorName: pi.assignedTo || pssm.tailorName || 'Master Tailor',
           priority: pi.priority === 'DELIVERY' || pssm.priority === 'DELIVERY' ? 'Urgent' : (pi.priority || pssm.priority || 'Normal'),
           status: displayStatus,
