@@ -27,6 +27,7 @@ export const generateCode128SvgString = (text, options = {}) => {
     // Create an off-screen SVG container in browser DOM
     if (typeof document !== 'undefined') {
       const svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svgNode.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       JsBarcode(svgNode, String(text).trim(), {
         format: 'CODE128',
         width,
@@ -41,6 +42,7 @@ export const generateCode128SvgString = (text, options = {}) => {
         background,
         lineColor
       });
+      svgNode.setAttribute('style', 'max-width: 100%; height: auto; display: block; margin: 0 auto;');
       return svgNode.outerHTML;
     }
   } catch (err) {

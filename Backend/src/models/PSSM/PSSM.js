@@ -13,6 +13,7 @@ const pssmSchema = new mongoose.Schema({
   },
   billNo: String,
   billBarcode: String,
+  slipBarcode: String,
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
@@ -90,6 +91,7 @@ const pssmSchema = new mongoose.Schema({
 
 pssmSchema.index({ tenantId: 1, pssmNo: 1 }, { unique: true });
 pssmSchema.index({ tenantId: 1, billBarcode: 1 });
+pssmSchema.index({ tenantId: 1, slipBarcode: 1 });
 pssmSchema.plugin(baseSchemaPlugin);
 
 module.exports = mongoose.model('PSSM', pssmSchema);

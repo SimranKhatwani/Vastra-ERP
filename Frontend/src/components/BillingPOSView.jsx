@@ -1907,13 +1907,15 @@ export const BillingPOSView = ({
       const tailoringJobs = res.data?.data?.tailoringJobs || [];
       const tailorInvoiceNo = tailoringJobs.length > 0 ? tailoringJobs[0].tailorInvoiceNo : null;
 
-      const issuedPssmNo = createdData.pssmNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
+      const issuedPssmNo = createdData.pssmNo || createdData.pssmRecord?.pssmNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
+      const slipBarcode = createdData.slipBarcode || createdData.pssmRecord?.slipBarcode || issuedPssmNo;
       const originalInvoiceNo = pssInvoice.invoiceNo;
       const billBarcode = pssInvoice.billBarcode || originalInvoiceNo;
 
       // Build PSS Slip data
       const slipData = {
         pssmNo: issuedPssmNo,
+        slipBarcode,
         tailorInvoiceNo,
         originalInvoiceNo,
         billBarcode,
@@ -2001,13 +2003,14 @@ export const BillingPOSView = ({
   const handleOpenPSSSlipFromInvoice = async (inv) => {
     if (!inv) return;
     try {
-      const barcodeToSearch = inv.billBarcode || inv.invoiceNo || inv.billNo;
+      const barcodeToSearch = inv.pssmNo || inv.slipBarcode || inv.billBarcode || inv.invoiceNo || inv.billNo;
       const res = await api.get(`/pssm/barcode/${encodeURIComponent(barcodeToSearch)}`);
       if (res.data?.success && res.data.data?.pssm) {
         const pssm = res.data.data.pssm;
         const items = res.data.data.items || [];
         const slip = {
           pssmNo: pssm.pssmNo,
+          slipBarcode: pssm.slipBarcode || pssm.pssmNo || barcodeToSearch,
           originalInvoiceNo: pssm.billNo || inv.invoiceNo,
           billBarcode: pssm.billBarcode || barcodeToSearch,
           customerName: pssm.customerName || inv.customerName,
@@ -12090,12 +12093,30 @@ export const BillingPOSView = ({
 
               {/* Barcode & QR Code Graphic Box */}
               <div className="bg-slate-900 text-white rounded-xl p-3.5 text-center space-y-2 font-mono">
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scannable Verification Barcode / QR Code</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scannable Verification Barcode</p>
                 <div className="bg-white p-2.5 rounded-lg inline-block text-slate-900 shadow-inner">
-                  <div className="font-mono text-xl font-black tracking-widest border-b-2 border-slate-900 pb-1" style={{ letterSpacing: '4px' }}>
-                    ||||||||||||||||||||||||||||||||||||
-                  </div>
-                  <div className="text-[11px] font-black mt-1 font-mono">{pssSlipData.billBarcode || pssSlipData.pssmNo}</div>
+                  {(() => {
+                    const uniqueSlipBarcode = pssSlipData.slipBarcode || pssSlipData.pssmNo || pssSlipData.billBarcode;
+                    const svgBarcode = generateCode128SvgString(uniqueSlipBarcode, {
+                      width: 1.8,
+                      height: 52,
+                      displayValue: false,
+                      margin: 6,
+                      background: '#ffffff',
+                      lineColor: '#000000'
+                    });
+                    return (
+                      <div className="flex flex-col items-center justify-center">
+                        <div
+                          className="flex items-center justify-center overflow-hidden [&>svg]:max-w-full [&>svg]:h-auto"
+                          dangerouslySetInnerHTML={{ __html: svgBarcode }}
+                        />
+                        <div className="text-[12px] font-black mt-1 font-mono tracking-widest text-slate-900">
+                          {uniqueSlipBarcode}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <p className="text-[9px] text-slate-400 italic">Present this barcode slip upon garment pickup or trial</p>
               </div>
@@ -12112,9 +12133,18 @@ export const BillingPOSView = ({
               <button
                 onClick={() => {
                   const d = pssSlipData;
+                  const uniqueSlipBarcode = d.slipBarcode || d.pssmNo || d.billBarcode;
                   const allCollected = (d.items || []).length > 0 && (d.items || []).every(it => it.status === 'COLLECTED' || it.status === 'CLOSED');
                   const printOverallStatus = (allCollected || d.status === 'CLOSED' || d.status === 'COLLECTED') ? 'CLOSED' : (d.status || 'PENDING');
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.barcode{font-family:monospace;letter-spacing:3px;font-size:18px;font-weight:bold;border:1px solid #000;padding:6px;display:inline-block;margin:8px 0}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}<p style="font-size:11px;margin-top:4px">Bill Barcode: <b>${d.billBarcode}</b></p></div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}</div>`; }).join('')}<div style="text-align:center;margin-top:10px"><div class="barcode">||||||||||||||||||||||||</div><p style="margin:2px 0;font-size:10px;font-weight:bold">${d.billBarcode || d.pssmNo}</p><p style="font-size:10px;margin-top:6px">*** Please present this slip during collection ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const barcodeSvg = generateCode128SvgString(uniqueSlipBarcode, {
+                    width: 1.8,
+                    height: 48,
+                    displayValue: false,
+                    margin: 4,
+                    background: '#ffffff',
+                    lineColor: '#000000'
+                  });
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.barcode-wrap{text-align:center;margin-top:12px;padding:6px 0}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}<p style="font-size:11px;margin-top:4px">Slip Barcode: <b>${uniqueSlipBarcode}</b></p></div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}</div>`; }).join('')}<div class="barcode-wrap"><div style="display:inline-block;max-width:100%;margin:0 auto;background:#fff;padding:2px">${barcodeSvg}</div><p style="margin:4px 0 2px;font-size:12px;font-weight:bold;letter-spacing:1px;font-family:monospace">${uniqueSlipBarcode}</p><p style="font-size:10px;margin-top:4px;font-style:italic">*** Please present this slip during collection ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}
@@ -12130,8 +12160,9 @@ export const BillingPOSView = ({
                     return;
                   }
                   const d = pssSlipData;
+                  const uniqueSlipBarcode = d.slipBarcode || d.pssmNo || d.billBarcode;
                   const itemLines = (d.items || []).map((it, i) => `${i + 1}. ${it.name} (${it.size} · ${it.gender || 'Gents'}) — *${it.serviceType}*`).join('\n');
-                  const msg = `🧵 *PSS Service Booking Confirmed!*\n\n📋 *Invoice No:* ${d.originalInvoiceNo}\n🎫 *PSS Ticket:* ${d.pssmNo}\n🔖 *Barcode:* ${d.billBarcode}\n⚡ *Priority:* ${d.priority}\n\n👔 *Garments:*\n${itemLines}\n\n${d.deliveryDate ? '📅 *Expected Delivery:* ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '\n' : ''}${d.specialInstructions ? '📝 *Notes:* ' + d.specialInstructions + '\n\n' : ''}Thank you for choosing our store! 🙏`;
+                  const msg = `🧵 *PSS Service Booking Confirmed!*\n\n📋 *Invoice No:* ${d.originalInvoiceNo}\n🎫 *PSS Ticket:* ${d.pssmNo}\n🔖 *Slip Barcode:* ${uniqueSlipBarcode}\n⚡ *Priority:* ${d.priority}\n\n👔 *Garments:*\n${itemLines}\n\n${d.deliveryDate ? '📅 *Expected Delivery:* ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '\n' : ''}${d.specialInstructions ? '📝 *Notes:* ' + d.specialInstructions + '\n\n' : ''}Thank you for choosing our store! 🙏`;
                   const phone = (d.whatsappNumber || d.customerPhone || '').replace(/\D/g, '');
                   const waUrl = phone
                     ? `https://wa.me/91${phone.replace(/^91/, '')}?text=${encodeURIComponent(msg)}`

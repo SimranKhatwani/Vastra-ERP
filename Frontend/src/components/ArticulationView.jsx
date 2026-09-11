@@ -311,6 +311,8 @@ export const ArticulationView = ({
   const [selectedJobTicket, setSelectedJobTicket] = useState(null);
   const [whatsappModalTarget, setWhatsappModalTarget] = useState(null);
   const alterationFetchSequence = useRef(0);
+  const latestAppliedAlterationSequence = useRef(0);
+  const isFetchingAlterations = useRef(false);
   const [whatsappMessage, setWhatsappMessage] = useState("");
   const [whatsappMessageType, setWhatsappMessageType] = useState("ready_collection");
   const [previewBillInvoice, setPreviewBillInvoice] = useState(null);
@@ -1973,13 +1975,20 @@ export const ArticulationView = ({
     }
   };
 
-  const fetchAlterations = async () => {
+  const fetchAlterations = async (isBackground = false) => {
+    if (isFetchingAlterations.current && isBackground) {
+      return;
+    }
+    isFetchingAlterations.current = true;
     const requestSequence = ++alterationFetchSequence.current;
-    setAlterationsLoading(true);
+    if (!isBackground || alterationRecords.length === 0) {
+      setAlterationsLoading(true);
+    }
     try {
       const res = await api.get(`/alterations`);
       const data = res.data;
-      if (requestSequence !== alterationFetchSequence.current) return;
+      if (requestSequence < latestAppliedAlterationSequence.current) return;
+      latestAppliedAlterationSequence.current = requestSequence;
       setAlterationsLoadError("");
       const records = Array.isArray(data.data) ? data.data : (data.data?.alterations || []);
       if (data.success && records.length > 0) {
@@ -1994,21 +2003,19 @@ export const ArticulationView = ({
         });
         setAlterationRecords(sorted);
       } else if (data.success && records.length === 0) {
-        setAlterationRecords((previousRecords) => {
-          if (previousRecords.length > 0) return previousRecords;
-          return [];
-        });
+        setAlterationRecords([]);
       }
     } catch (err) {
       console.error("Failed to fetch alterations:", err.response?.data || err.message || err);
-      if (requestSequence === alterationFetchSequence.current) {
+      if (requestSequence >= latestAppliedAlterationSequence.current) {
         setAlterationsLoadError(err.response?.data?.message || "Could not load alteration data.");
       }
-      if (onAddNotification) {
+      if (onAddNotification && !isBackground) {
         onAddNotification("Alterations unavailable", err.response?.data?.message || "Could not load alteration data. Please retry.", "danger");
       }
     } finally {
-      if (requestSequence === alterationFetchSequence.current) setAlterationsLoading(false);
+      isFetchingAlterations.current = false;
+      setAlterationsLoading(false);
     }
   };
 
@@ -2064,14 +2071,14 @@ export const ArticulationView = ({
   };
 
   useEffect(() => {
-    fetchAlterations();
+    fetchAlterations(false);
     fetchPendingAlterations(true);
     fetchAlterationDashboard();
     const interval = setInterval(() => {
-      fetchAlterations();
+      fetchAlterations(true);
       fetchPendingAlterations(false);
       fetchAlterationDashboard();
-    }, 6000);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -3192,7 +3199,7 @@ export const ArticulationView = ({
                   <span>New Alteration Ticket</span>
                 </button>
                 <button
-                  onClick={fetchAlterations}
+                  onClick={() => fetchAlterations(false)}
                   className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />

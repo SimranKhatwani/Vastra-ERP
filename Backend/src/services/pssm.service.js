@@ -80,12 +80,15 @@ class PSSMService {
     const allAssigned = rawItems.every(i => Boolean(i.assignedTo || i.tailorName || data.tailorName));
     const initialMasterStatus = allAssigned ? 'ASSIGNED' : 'PENDING_ASSIGNMENT';
 
-    const pssmNo = data.pssmNo || data.alterationNo || `PSSM-${Date.now().toString(36).toUpperCase()}`;
+    const uniqueSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const pssmNo = data.pssmNo || data.alterationNo || `PSSM-${Date.now().toString(36).toUpperCase()}-${uniqueSuffix}`;
+    const slipBarcode = data.slipBarcode || pssmNo;
 
     // Create Master PSSM document
     const pssmRecord = await PSSM.create({
       tenantId,
       pssmNo,
+      slipBarcode,
       saleBillId: resolvedSaleBillId,
       billNo,
       billBarcode,
@@ -1057,6 +1060,7 @@ class PSSMService {
     let pssm = await PSSM.findOne({
       tenantId,
       $or: [
+        { slipBarcode: regex },
         { billBarcode: regex },
         { billNo: regex },
         { pssmNo: regex },

@@ -90,8 +90,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
         // Define mapping of module names to fine-grained permission tags
         const moduleToPermissions = {
-          dashboard: ['owner.dashboard', 'search.read', 'barcode.read'],
-          billing: ['billing.create', 'billing.read', 'billing.cancel', 'billing.discount', 'payment.collect', 'payment.read', 'payment.refund'],
+          dashboard: ['owner.dashboard', 'search.read', 'barcode.read', 'alteration.read'],
+          billing: ['billing.create', 'billing.read', 'billing.cancel', 'billing.discount', 'payment.collect', 'payment.read', 'payment.refund', 'alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
           articulation: ['alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
           commissions: ['ledger.read', 'ledger.adjust'],
           products: ['product.create', 'product.read', 'product.update', 'product.delete', 'brand.create', 'brand.read', 'brand.update', 'brand.delete', 'category.create', 'category.read', 'category.update', 'category.delete', 'firm.create', 'firm.read', 'firm.update', 'firm.delete', 'warehouse.create', 'warehouse.read', 'warehouse.update', 'warehouse.delete', 'vendor.create', 'vendor.read', 'vendor.update', 'vendor.delete'],

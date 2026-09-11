@@ -5,6 +5,10 @@ const PSSM = require('../models/PSSM/PSSM');
 const PSSMItem = require('../models/PSSM/PSSMItem');
 const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
+const Customer = require('../models/crm/Customer');
+const SaleBill = require('../models/billing/SaleBill');
+const SaleItem = require('../models/billing/SaleItem');
+const Product = require('../models/Product');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT, ALTERATION_STATUS } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
 const NotificationService = require('./notification.service');
@@ -609,20 +613,23 @@ class AlterationService {
     const limit = parseInt(query.limit) || 100;
     const skip = (page - 1) * limit;
 
-    const alterations = await Alteration.find(filter)
-      .populate('customerId saleBillId')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const [alterations, total] = await Promise.all([
+      Alteration.find(filter)
+        .populate('customerId saleBillId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Alteration.countDocuments(filter)
+    ]);
 
-    const total = await Alteration.countDocuments(filter);
     const altIds = alterations.map(a => a._id);
 
     // Batch fetch all items in ONE query
     const allItems = await AlterationItem.find({ alterationId: { $in: altIds } }).populate({
       path: 'inventoryPieceId',
       populate: { path: 'productId' }
-    });
+    }).lean();
 
     const itemsByAltId = new Map();
     for (const item of allItems) {
@@ -682,7 +689,7 @@ class AlterationService {
           if (s === 'CANCELLED') return 'Cancelled';
           return alt.status || 'Pending';
         })(),
-        deliveryDate: alt.expectedDeliveryDate ? alt.expectedDeliveryDate.toISOString().split('T')[0] : '',
+        deliveryDate: alt.expectedDeliveryDate ? (new Date(alt.expectedDeliveryDate).toISOString().split('T')[0]) : '',
         trialRequired: Boolean(alt.trialRequired),
         trialDate: alt.trialRequired && alt.trialDate ? (new Date(alt.trialDate).toISOString().split('T')[0]) : '',
         fittingResult: alt.fittingResult || '',
@@ -714,6 +721,7 @@ class AlterationService {
         populate: { path: 'productId' }
       })
       .sort({ createdAt: -1 })
+      .limit(100)
       .lean();
 
     const TailoringJob = require('../models/tailoring/TailoringJob');
@@ -723,9 +731,9 @@ class AlterationService {
     const existingJobs = await TailoringJob.find({ tenantId, pssmItemId: { $in: pssmItemIds } }).lean();
     const jobsByItemId = new Map(existingJobs.map(j => [j.pssmItemId?.toString(), j]));
 
-    const formattedPssm = (await Promise.all(pssmItems
+    const formattedPssm = pssmItems
       .filter(pi => pi.pssmId && !existingTicketNumbers.has(pi.pssmId.pssmNo))
-      .map(async (pi) => {
+      .map((pi) => {
         const pssm = pi.pssmId || {};
         const custName = pssm.customerName || (pssm.customerId?.name) || 'Walk-in Customer';
         const custPhone = pssm.customerPhone || (pssm.customerId?.phone) || '';
@@ -734,18 +742,19 @@ class AlterationService {
 
         let tailorInvoiceNo = pi.tailorInvoiceNo || jobsByItemId.get(pi._id.toString())?.tailorInvoiceNo || '';
 
-        // Auto-heal missing Tailor Invoice No for any tailoring PSSM item.
+        // Auto-heal missing Tailor Invoice No for any tailoring PSSM item asynchronously
         const tailoringServiceTypes = ['Alteration', 'Custom Tailoring', 'Full Stitching', 'Fitting & Hemming', 'Repairs / Redesign'];
         if (!tailorInvoiceNo && tailoringServiceTypes.includes(pi.serviceType || pssm.serviceType || 'Alteration')) {
-          try {
-            const newJob = await TailoringJobService.createFromPSSMItem(pssm, pi, pi.createdBy, tenantId);
-            if (newJob) {
-              tailorInvoiceNo = newJob.tailorInvoiceNo;
-              await PSSMItem.updateOne({ _id: pi._id }, { $set: { tailorInvoiceNo: newJob.tailorInvoiceNo } });
+          setImmediate(async () => {
+            try {
+              const newJob = await TailoringJobService.createFromPSSMItem(pssm, pi, pi.createdBy, tenantId);
+              if (newJob?.tailorInvoiceNo) {
+                await PSSMItem.updateOne({ _id: pi._id }, { $set: { tailorInvoiceNo: newJob.tailorInvoiceNo } });
+              }
+            } catch (e) {
+              // Non-fatal background auto-heal
             }
-          } catch (e) {
-            console.warn('[getAlterations] Auto-create TailoringJob failed:', e.message);
-          }
+          });
         }
 
         const hasMeasurements = pi.measurements && typeof pi.measurements === 'object' &&
@@ -838,7 +847,7 @@ class AlterationService {
           createdAt: pi.createdAt,
           createdBy: pi.createdBy
         };
-      })))
+      })
       .filter(record => {
         if (query.status && record.status !== query.status && record.rawStatus !== query.status) return false;
         if (query.tailorName && !new RegExp(query.tailorName, 'i').test(record.tailorName)) return false;
