@@ -690,7 +690,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <table class="tax-table">
               <thead>
                 <tr>
-                  <th>GST SLAB</th>
+                  <th>GST %</th>
                   <th>TAXABLE<br>AMOUNT</th>
                   <th>CGST<br>TAX</th>
                   <th>SGST<br>TAX</th>

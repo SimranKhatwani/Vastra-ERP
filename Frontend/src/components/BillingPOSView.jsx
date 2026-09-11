@@ -327,9 +327,9 @@ export const BillingPOSView = ({
 
   // Optional GST Configuration States
   const [isGstApplied, setIsGstApplied] = useState(false);
-  const [gstRateInput, setGstRateInput] = useState("18");
-  const [cgstRateInput, setCgstRateInput] = useState("9");
-  const [sgstRateInput, setSgstRateInput] = useState("9");
+  const [gstRateInput, setGstRateInput] = useState("0");
+  const [cgstRateInput, setCgstRateInput] = useState("0");
+  const [sgstRateInput, setSgstRateInput] = useState("0");
   const [igstRateInput, setIgstRateInput] = useState("0");
   const [gstTaxType, setGstTaxType] = useState("INTRA");
   const GST_SLAB_OPTIONS = [0, 5, 12, 18, 28];
@@ -345,6 +345,7 @@ export const BillingPOSView = ({
   const handleGstRateChange = (val) => {
     setGstRateInput(val);
     const num = Number(val) || 0;
+    setIsGstApplied(num > 0);
     if (gstTaxType === "INTER") {
       setIgstRateInput(String(num));
       setCgstRateInput("0");
@@ -362,6 +363,7 @@ export const BillingPOSView = ({
     const cNum = Number(val) || 0;
     const sNum = Number(sgstRateInput) || 0;
     setGstRateInput(String(cNum + sNum));
+    setIsGstApplied(cNum + sNum > 0);
     setIgstRateInput("0");
     setGstTaxType("INTRA");
   };
@@ -371,6 +373,7 @@ export const BillingPOSView = ({
     const sNum = Number(val) || 0;
     const cNum = Number(cgstRateInput) || 0;
     setGstRateInput(String(cNum + sNum));
+    setIsGstApplied(cNum + sNum > 0);
     setIgstRateInput("0");
     setGstTaxType("INTRA");
   };
@@ -379,6 +382,7 @@ export const BillingPOSView = ({
     setIgstRateInput(val);
     const iNum = Number(val) || 0;
     setGstRateInput(String(iNum));
+    setIsGstApplied(iNum > 0);
     setCgstRateInput("0");
     setSgstRateInput("0");
     setGstTaxType("INTER");
@@ -931,6 +935,11 @@ export const BillingPOSView = ({
   // Auto-reset payment states only when the cart is emptied
   useEffect(() => {
     if (cart.length === 0) {
+      setIsGstApplied(false);
+      setGstRateInput("0");
+      setCgstRateInput("0");
+      setSgstRateInput("0");
+      setIgstRateInput("0");
       setPaymentType('Full Payment');
       setCashDenominations({ 500: '', 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '' });
       setPartPaymentAmounts({
@@ -3627,10 +3636,12 @@ export const BillingPOSView = ({
       if (gstTaxType === 'INTER') {
         current.igst += tax;
       } else {
-        const splitBase = (cRate + sRate) || slab;
-        const cgst = parseFloat((tax * (cRate / splitBase)).toFixed(2));
-        current.cgst += cgst;
-        current.sgst += tax - cgst;
+        const configuredSplit = cRate + sRate;
+        const cgstShare = configuredSplit > 0 ? cRate / configuredSplit : 0.5;
+        const taxCents = Math.round(tax * 100);
+        const cgstCents = Math.ceil(taxCents * cgstShare);
+        current.cgst += cgstCents / 100;
+        current.sgst += (taxCents - cgstCents) / 100;
       }
       gstSummaryMap.set(slab, current);
     });
@@ -6189,6 +6200,9 @@ export const BillingPOSView = ({
                         {isGstApplied ? 'GST Applied ✓' : 'GST Inactive'}
                       </span>
                     </div>
+                    <p className="text-[9px] text-slate-500 font-medium">
+                      Bill GST applies to all items. An item GST slab overrides it for that product only.
+                    </p>
 
                     <div className="grid grid-cols-4 gap-1.5 items-center font-mono">
                       <div>
