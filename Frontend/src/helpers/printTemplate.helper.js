@@ -13,22 +13,64 @@ const instagramQrSvg = new QRCode({
   container: "svg-viewbox"
 }).svg();
 
-export const generateInvoiceUPIQrSvg = (invoiceOrSlip, options = {}) => {
+let cachedTrackingUrl = typeof window !== 'undefined' ? (localStorage.getItem('vastra_tracking_url') || '') : '';
+let cachedLanIp = typeof window !== 'undefined' ? (localStorage.getItem('vastra_lan_ip') || '192.168.1.18') : '192.168.1.18';
+
+if (typeof window !== 'undefined' && !window._lanIpFetched) {
+  window._lanIpFetched = true;
+  fetch('/api/v1/billing/public/network-info')
+    .then(r => r.json())
+    .then(d => {
+      if (d?.data?.trackingBaseUrl) {
+        cachedTrackingUrl = d.data.trackingBaseUrl;
+        localStorage.setItem('vastra_tracking_url', d.data.trackingBaseUrl);
+      }
+      if (d?.data?.lanIp) {
+        cachedLanIp = d.data.lanIp;
+        localStorage.setItem('vastra_lan_ip', d.data.lanIp);
+      }
+    })
+    .catch(() => {});
+}
+
+export const getBaseTrackingOrigin = () => {
+  const envTrackingUrl = import.meta.env?.VITE_TRACKING_BASE_URL;
+  if (envTrackingUrl && String(envTrackingUrl).trim()) {
+    return String(envTrackingUrl).trim().replace(/\/$/, '');
+  }
+
+  const savedPublicUrl = typeof window !== 'undefined' ? (localStorage.getItem('vastra_tracking_url') || cachedTrackingUrl) : '';
+  if (savedPublicUrl && savedPublicUrl.startsWith('http')) {
+    return savedPublicUrl.replace(/\/$/, '');
+  }
+
+  let origin = typeof window !== 'undefined' && window.location?.origin 
+    ? window.location.origin 
+    : 'http://localhost:3000';
+
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    const port = window.location.port ? `:${window.location.port}` : ':3000';
+    const lanIp = localStorage.getItem('vastra_lan_ip') || cachedLanIp || '192.168.1.18';
+    origin = `http://${lanIp}${port}`;
+  }
+  return origin;
+};
+
+/**
+ * 1. MAIN BILL QR GENERATOR
+ * Linked strictly to the Invoice Number.
+ * Displays the complete main sales invoice details and all purchased items.
+ */
+export const generateMainInvoiceQrSvg = (invoice, options = {}) => {
   try {
-    const inv = invoiceOrSlip || {};
-    const billNo = inv.originalInvoiceNo || inv.invoiceNo || inv.billNo || inv.invoiceNumber || inv.billBarcode || inv.pssmNo || '';
+    const inv = invoice || {};
+    const invoiceNo = inv.originalInvoiceNo || inv.invoiceNo || inv.billNo || inv.invoiceNumber || inv.billBarcode || '';
+    const origin = getBaseTrackingOrigin();
 
-    // If options explicitly provides content, use it
     let qrContent = options.content;
-
     if (!qrContent) {
-      const origin = typeof window !== 'undefined' && window.location?.origin 
-        ? window.location.origin 
-        : 'http://localhost:3000';
-
-      if (billNo) {
-        // Encodes bill tracking and consolidated alteration dashboard URL
-        qrContent = `${origin}/track-bill?bill=${encodeURIComponent(billNo)}`;
+      if (invoiceNo) {
+        qrContent = `${origin}/invoice/track/${encodeURIComponent(invoiceNo)}`;
       } else {
         const upiId = inv.upiId || inv.merchantUpi || inv.storeUpi || '9990397529@upi';
         const payeeName = inv.storeName || 'NEW FASHION STYLE';
@@ -49,9 +91,60 @@ export const generateInvoiceUPIQrSvg = (invoiceOrSlip, options = {}) => {
 
     return qr.svg();
   } catch (err) {
-    console.error("Error generating Invoice QR code:", err);
+    console.error("Error generating Main Invoice QR code:", err);
     return '';
   }
+};
+
+/**
+ * 2. ALTERATION SLIP (PSSM) QR GENERATOR
+ * Linked strictly to the PSSM Number.
+ * Displays live PSSM alteration items and product statuses.
+ */
+export const generatePSSMTrackingQrSvg = (pssmOrSlip, options = {}) => {
+  try {
+    const slip = pssmOrSlip || {};
+    const pssmNo = slip.pssmNo || slip.slipBarcode || slip.pssmRecord?.pssmNo || '';
+    const origin = getBaseTrackingOrigin();
+
+    let qrContent = options.content;
+    if (!qrContent) {
+      if (pssmNo) {
+        qrContent = `${origin}/pssm/track/${encodeURIComponent(pssmNo)}`;
+      } else {
+        // Fallback to invoice tracking if no pssmNo exists
+        const fallbackNo = slip.originalInvoiceNo || slip.billNo || slip.invoiceNo || '';
+        qrContent = fallbackNo ? `${origin}/invoice/track/${encodeURIComponent(fallbackNo)}` : `${origin}/track-pssm`;
+      }
+    }
+
+    const qr = new QRCode({
+      content: qrContent,
+      padding: options.padding !== undefined ? options.padding : 1,
+      width: options.width || 60,
+      height: options.height || 60,
+      color: options.color || "#000000",
+      background: options.background || "#ffffff",
+      ecl: options.ecl || "M",
+      container: "svg-viewbox"
+    });
+
+    return qr.svg();
+  } catch (err) {
+    console.error("Error generating PSSM QR code:", err);
+    return '';
+  }
+};
+
+/**
+ * Universal router: chooses PSSM QR if slip has pssmNo, else Main Invoice QR
+ */
+export const generateInvoiceUPIQrSvg = (invoiceOrSlip, options = {}) => {
+  const obj = invoiceOrSlip || {};
+  if (obj.pssmNo && (!obj.grandTotal || obj.totalCharges !== undefined)) {
+    return generatePSSMTrackingQrSvg(obj, options);
+  }
+  return generateMainInvoiceQrSvg(obj, options);
 };
 
 const svgIcons = {

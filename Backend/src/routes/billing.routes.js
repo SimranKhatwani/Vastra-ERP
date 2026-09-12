@@ -10,8 +10,12 @@ const { PERMISSIONS } = require('../constants/permissions');
 
 const router = express.Router();
 
-// Public route for QR code scanning (mobile phone cameras, public bill & alteration tracking)
+// Public routes for QR code scanning (mobile phone cameras, network detection, public tracking & PDF streaming)
+router.get('/public/network-info', BillingController.getNetworkInfo);
 router.get('/public/track/:billNo', BillingController.trackBillPublic);
+router.get('/public/invoice-pdf/:billNo', BillingController.streamInvoicePDFPublic);
+router.get('/public/pdf/:billNo', BillingController.streamInvoicePDFPublic);
+router.get('/invoice-pdf/:billNo', BillingController.streamInvoicePDFPublic);
 
 router.use(authenticate, tenantContext);
 

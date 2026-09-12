@@ -1,40 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
-import { Printer, Download, ExternalLink, RefreshCw, FileText, Search } from 'lucide-react';
+import { Printer, Download, ExternalLink, RefreshCw, Scissors, Search } from 'lucide-react';
 
-export const PublicBillTrackView = () => {
+export const PublicPSSMTrackView = () => {
   const params = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const paramCode = params.invoiceNo || params.billNo || params.id || params.code || '';
-  const queryCode = searchParams.get('bill') || searchParams.get('billNo') || searchParams.get('invoiceNo') || searchParams.get('id') || searchParams.get('q') || searchParams.get('code') || '';
-  const initialQuery = paramCode || queryCode || 'INV-16600159-891';
+  const paramCode = params.pssmNo || params.id || params.code || '';
+  const queryCode = searchParams.get('pssm') || searchParams.get('pssmNo') || searchParams.get('ticket') || searchParams.get('q') || searchParams.get('code') || '';
+  const initialQuery = paramCode || queryCode || '';
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [activeBillNo, setActiveBillNo] = useState(initialQuery);
-  const [loading, setLoading] = useState(false);
+  const [activePssmNo, setActivePssmNo] = useState(initialQuery);
 
   useEffect(() => {
-    const q = params.invoiceNo || params.billNo || params.id || params.code || searchParams.get('bill') || searchParams.get('billNo') || searchParams.get('invoiceNo') || searchParams.get('id') || searchParams.get('q') || searchParams.get('code') || '';
-    if (q && q !== activeBillNo) {
-      setActiveBillNo(q);
+    const q = params.pssmNo || params.id || params.code || searchParams.get('pssm') || searchParams.get('pssmNo') || searchParams.get('ticket') || searchParams.get('q') || searchParams.get('code') || '';
+    if (q && q !== activePssmNo) {
+      setActivePssmNo(q);
       setSearchQuery(q);
     }
-  }, [params.invoiceNo, params.billNo, params.id, params.code, searchParams]);
+  }, [params.pssmNo, params.id, params.code, searchParams]);
 
-  const pdfUrl = activeBillNo ? `/api/v1/billing/public/invoice-pdf/${encodeURIComponent(activeBillNo.trim())}` : '';
+  const pdfUrl = activePssmNo ? `/api/v1/pssm/public/pssm-pdf/${encodeURIComponent(activePssmNo.trim())}` : '';
 
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
     const clean = searchQuery.trim();
     if (!clean) return;
-    setActiveBillNo(clean);
-    navigate(`/invoice/track/${encodeURIComponent(clean)}`);
+    setActivePssmNo(clean);
+    navigate(`/pssm/track/${encodeURIComponent(clean)}`);
   };
 
   const handlePrint = () => {
-    const iframe = document.getElementById('invoice-pdf-frame');
+    const iframe = document.getElementById('pssm-pdf-frame');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -47,7 +46,7 @@ export const PublicBillTrackView = () => {
     if (pdfUrl) {
       const link = document.createElement('a');
       link.href = pdfUrl;
-      link.download = `Invoice-${activeBillNo}.pdf`;
+      link.download = `PSSM-${activePssmNo}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -59,13 +58,13 @@ export const PublicBillTrackView = () => {
       {/* Minimal Top Control Bar */}
       <header className="w-full max-w-4xl bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-amber-400" />
+          <Scissors className="w-5 h-5 text-amber-400" />
           <span className="text-xs sm:text-sm font-black tracking-wide text-white uppercase">
-            Tax Invoice PDF &bull; <span className="font-mono text-amber-300">{activeBillNo}</span>
+            PSSM Live Alteration Slip PDF &bull; <span className="font-mono text-amber-300">{activePssmNo || 'Enter PSSM #'}</span>
           </span>
         </div>
 
-        {/* Quick Search */}
+        {/* Quick Search / Scan Bar */}
         <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5 flex-1 max-w-xs justify-end">
           <div className="relative w-full">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -73,7 +72,7 @@ export const PublicBillTrackView = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Invoice / Bill #"
+              placeholder="PSSM Slip #"
               className="w-full pl-8 pr-2.5 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
             />
           </div>
@@ -81,7 +80,7 @@ export const PublicBillTrackView = () => {
             type="submit"
             className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
           >
-            Load
+            Track
           </button>
         </form>
 
@@ -89,7 +88,7 @@ export const PublicBillTrackView = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handlePrint}
-            title="Print Invoice"
+            title="Print PSSM Slip"
             className="p-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-amber-400" />
@@ -116,19 +115,19 @@ export const PublicBillTrackView = () => {
         </div>
       </header>
 
-      {/* Embedded Single-Page PDF Viewer */}
+      {/* Embedded Single-Page PSSM PDF Viewer */}
       <main className="w-full max-w-4xl flex-1 flex flex-col bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 min-h-[85vh]">
         {pdfUrl ? (
           <iframe
-            id="invoice-pdf-frame"
+            id="pssm-pdf-frame"
             src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-            title={`Invoice-${activeBillNo}`}
+            title={`PSSM-${activePssmNo}`}
             className="w-full flex-1 border-0 min-h-[85vh]"
           />
         ) : (
           <div className="flex flex-col items-center justify-center p-12 text-slate-500 gap-2">
-            <FileText className="w-12 h-12 text-slate-400" />
-            <p className="text-sm font-bold">Please enter or scan an invoice number.</p>
+            <Scissors className="w-12 h-12 text-slate-400" />
+            <p className="text-sm font-bold">Please enter or scan a PSSM slip number.</p>
           </div>
         )}
       </main>
@@ -136,4 +135,4 @@ export const PublicBillTrackView = () => {
   );
 };
 
-export default PublicBillTrackView;
+export default PublicPSSMTrackView;

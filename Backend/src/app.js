@@ -13,9 +13,15 @@ const ApiError = require('./helpers/ApiError');
 const app = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false
+}));
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow all origins in local/LAN network or when scanned via phone
+    callback(null, true);
+  },
   credentials: true
 }));
 
@@ -48,6 +54,16 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/v1', routes);
 app.use('/api', routes); // Alias for convenience
+
+// Direct Public PDF Document Routes (Root domain QR scans directly stream Single-Page PDF)
+const BillingController = require('./controllers/billing.controller');
+const PSSMController = require('./controllers/pssm.controller');
+
+app.get('/invoice/track/:invoiceNo', BillingController.streamInvoicePDFPublic);
+app.get('/bill/track/:invoiceNo', BillingController.streamInvoicePDFPublic);
+app.get('/track/:billNo', BillingController.streamInvoicePDFPublic);
+app.get('/pssm/track/:pssmNo', PSSMController.streamPSSMPDFPublic);
+app.get('/track-pssm/:pssmNo', PSSMController.streamPSSMPDFPublic);
 
 // 404 Route Handler
 app.use('*', (req, res, next) => {

@@ -89,6 +89,47 @@ class BillingController {
     const result = await BillingService.trackBillPublic(req.params.billNo);
     return res.status(200).json(new ApiResponse(200, result, 'Bill tracking details fetched successfully.'));
   });
+
+  static streamInvoicePDFPublic = asyncHandler(async (req, res) => {
+    const billNo = req.params.billNo || req.params.invoiceNo;
+    const result = await BillingService.trackBillPublic(billNo);
+    const PDFService = require('../services/pdf.service');
+
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const baseUrl = process.env.PUBLIC_TRACKING_URL || global.publicTrackingBaseUrl || `${protocol}://${host}`;
+
+    const pdfBuffer = await PDFService.generateInvoicePDFBuffer(result, baseUrl);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Invoice-${(result.bill?.billNo || billNo || 'NFS').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.end(pdfBuffer);
+  });
+
+  static getNetworkInfo = asyncHandler(async (req, res) => {
+    const os = require('os');
+    let lanIp = '127.0.0.1';
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.')) {
+          lanIp = net.address;
+          break;
+        }
+      }
+      if (lanIp !== '127.0.0.1') break;
+    }
+
+    const publicUrl = process.env.PUBLIC_TRACKING_URL || global.publicTrackingBaseUrl || `http://${lanIp}:3000`;
+
+    return res.status(200).json(new ApiResponse(200, {
+      lanIp,
+      port: 3000,
+      trackingBaseUrl: publicUrl
+    }, 'Network info retrieved successfully.'));
+  });
 }
 
 module.exports = BillingController;

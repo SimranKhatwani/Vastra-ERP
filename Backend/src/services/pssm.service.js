@@ -1304,6 +1304,148 @@ class PSSMService {
       }
     };
   }
+
+  static async trackPSSMPublic(pssmNo) {
+    const trimmed = String(pssmNo || '').trim();
+    if (!trimmed) throw new ApiError(400, 'PSSM number or barcode is required.');
+
+    const mongoose = require('mongoose');
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+
+    const Alteration = require('../models/alteration/Alteration');
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const SaleBill = require('../models/billing/SaleBill');
+
+    // 1. Try finding PSSM by pssmNo, slipBarcode, billBarcode, billNo, or _id
+    let pssm = await PSSM.findOne({
+      $or: [
+        { pssmNo: regex },
+        { slipBarcode: regex },
+        { billBarcode: regex },
+        { billNo: regex },
+        ...(mongoose.Types.ObjectId.isValid(trimmed) && trimmed.length === 24 ? [{ _id: trimmed }] : [])
+      ]
+    }).lean();
+
+    // 2. If not found directly, check if it matches an item's tailorInvoiceNo or alterationBarcode
+    let matchedItem = null;
+    if (!pssm) {
+      matchedItem = await PSSMItem.findOne({
+        $or: [
+          { alterationBarcode: regex },
+          { tailorInvoiceNo: regex },
+          { barcode: regex },
+          { uniqueCode: regex }
+        ]
+      }).lean();
+
+      if (matchedItem && matchedItem.pssmId) {
+        pssm = await PSSM.findById(matchedItem.pssmId).lean();
+      }
+    }
+
+    if (!pssm) {
+      throw new ApiError(404, `No alteration records found matching "${trimmed}".`);
+    }
+
+    // Retrieve all PSSMItems for this PSSM
+    const pssmItems = await PSSMItem.find({ pssmId: pssm._id }).lean();
+
+    // Cross-reference Alteration and TailoringJob records
+    const billFilter = [
+      { pssmId: pssm._id }
+    ];
+    if (pssm.saleBillId) billFilter.push({ saleBillId: pssm.saleBillId });
+    if (pssm.billNo) billFilter.push({ invoiceNumber: pssm.billNo });
+
+    let alterations = [];
+    let tailoringJobs = [];
+    if (billFilter.length > 0) {
+      alterations = await Alteration.find({ $or: billFilter }).lean();
+      tailoringJobs = await TailoringJob.find({ $or: billFilter }).lean();
+    }
+
+    // Fetch SaleBill info if linked
+    let bill = null;
+    if (pssm.saleBillId) {
+      bill = await SaleBill.findById(pssm.saleBillId).populate('firmId customerId').lean();
+    } else if (pssm.billNo) {
+      bill = await SaleBill.findOne({ billNo: pssm.billNo, isDeleted: false }).populate('firmId customerId').lean();
+    }
+
+    // Consolidate alteration items
+    const consolidatedItems = [];
+    const seenTIs = new Set();
+
+    (pssmItems || []).forEach((pi, idx) => {
+      const ti = pi.tailorInvoiceNo || (pi.alterationBarcode && String(pi.alterationBarcode).startsWith('TI-') ? pi.alterationBarcode : null) || `TI-${idx + 1}`;
+      seenTIs.add(ti);
+      const matchedAlt = alterations.find(a => a.tailorInvoiceNo === pi.tailorInvoiceNo || a.alterationBarcode === pi.alterationBarcode || String(a.pssmItemId) === String(pi._id));
+      const matchedJob = tailoringJobs.find(tj => tj.tailorInvoiceNo === pi.tailorInvoiceNo || String(tj.pssmItemId) === String(pi._id));
+
+      const rawStatus = pi.status || matchedAlt?.status || matchedJob?.status || 'PENDING';
+      const formattedStatus = String(rawStatus).toUpperCase().replace(/-/g, '_');
+
+      consolidatedItems.push({
+        id: pi._id,
+        itemIndex: idx + 1,
+        garmentName: pi.productName || pi.pieceName || pi.name || 'Altered Garment',
+        size: pi.size || 'Free',
+        color: pi.color || 'Standard',
+        gender: pi.gender || 'Gents',
+        barcode: pi.barcode || pi.uniqueCode || '',
+        tailorInvoiceNo: pi.tailorInvoiceNo || matchedAlt?.tailorInvoiceNo || matchedJob?.tailorInvoiceNo || ti,
+        alterationBarcode: pi.alterationBarcode || matchedAlt?.alterationBarcode || pi.tailorInvoiceNo || `${pssm.pssmNo}-${idx + 1}`,
+        tailorName: pi.assignedTo || matchedAlt?.tailorName || matchedJob?.assignedToTailorName || 'Master Tailor',
+        status: formattedStatus,
+        serviceType: pi.serviceType || matchedAlt?.serviceType || 'Alteration',
+        alterationDetails: pi.alterationDetails || matchedAlt?.alterationDetails || [pi.serviceType || 'Alteration'],
+        measurements: pi.measurements || matchedAlt?.measurements || {},
+        fittingResult: pi.fittingResult || matchedAlt?.fittingResult || null,
+        requiredChanges: pi.requiredChanges || matchedAlt?.requiredChanges || null,
+        isReAlteration: Boolean(pi.isReAlteration || matchedAlt?.isReAlteration),
+        trialRequired: pi.trialRequired !== undefined ? pi.trialRequired : pssm.trialRequired,
+        trialDate: pi.trialDate || pssm.trialDate || matchedAlt?.trialDate || '',
+        deliveryDate: pssm.expectedDeliveryDate || matchedAlt?.deliveryDate || '',
+        specialInstructions: pi.instructions || pssm.specialInstructions || matchedAlt?.specialInstructions || ''
+      });
+    });
+
+    const store = bill?.firmId ? {
+      name: bill.firmId.name || 'NEW FASHION STYLE (NFS)',
+      address: bill.firmId.address || 'Station Road, Near Bus Stand',
+      phone: bill.firmId.phone || '9829000000',
+      gstin: bill.firmId.gstin || '08AAAAA0000A1Z5'
+    } : {
+      name: 'NEW FASHION STYLE (NFS)',
+      address: 'Ram Chowk, Sadh Nagar, Palam',
+      phone: '9829000000',
+      gstin: '08AAAAA0000A1Z5'
+    };
+
+    return {
+      store,
+      pssm: {
+        pssmNo: pssm.pssmNo,
+        slipBarcode: pssm.slipBarcode,
+        originalInvoiceNo: pssm.originalInvoiceNo || pssm.billNo || bill?.billNo || 'N/A',
+        customerName: pssm.customerName || bill?.customerId?.name || 'Valued Customer',
+        customerPhone: pssm.customerPhone || bill?.customerId?.phone || '',
+        priority: pssm.priority || 'NORMAL',
+        overallStatus: pssm.status || 'IN_PROGRESS',
+        expectedDeliveryDate: pssm.expectedDeliveryDate || '',
+        trialDate: pssm.trialDate || '',
+        trialRequired: pssm.trialRequired !== undefined ? pssm.trialRequired : false,
+        totalCharges: pssm.totalCharges || 0,
+        advancePaid: pssm.advancePaid || 0,
+        balanceDue: pssm.balanceDue || 0,
+        specialInstructions: pssm.specialInstructions || '',
+        createdAt: pssm.createdAt
+      },
+      alterationItems: consolidatedItems
+    };
+  }
 }
 
 module.exports = PSSMService;

@@ -35,7 +35,10 @@
     "mongoose": "^8.5.1",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.20.2",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.3",
+    "untun": "^0.2.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

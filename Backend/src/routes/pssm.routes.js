@@ -8,6 +8,13 @@ const { PERMISSIONS } = require('../constants/permissions');
 
 const router = express.Router();
 
+// Public routes for PSSM Alteration Slip QR Code scanning (mobile phone cameras, public tracking & PDF streaming)
+router.get('/public/track/:pssmNo', PSSMController.trackPSSMPublic);
+router.get('/track/:pssmNo', PSSMController.trackPSSMPublic);
+router.get('/public/pssm-pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
+router.get('/public/pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
+router.get('/pssm-pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
+
 router.use(authenticate, tenantContext);
 
 router.post('/', authorize(PERMISSIONS.ALTERATION_CREATE), auditLog('CREATE_PSSM', 'pssm'), PSSMController.createPSSM);

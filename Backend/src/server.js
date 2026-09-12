@@ -85,6 +85,19 @@ connectDB().then(async () => {
         logger.error(`[PSS Deadline Monitor Error]: ${err.message}`);
       });
     }, 15 * 60 * 1000);
+
+    // Auto-launch secure Cloudflare public tunnel for mobile phone QR code scans (works on 4G/5G mobile data)
+    if (process.env.NODE_ENV !== 'production' && !process.env.DISABLE_PUBLIC_TUNNEL) {
+      setTimeout(() => {
+        import('untun').then(m => m.startTunnel({ port: 3000 })).then(async tunnel => {
+          const tunnelUrl = await tunnel.getURL();
+          global.publicTrackingBaseUrl = tunnelUrl;
+          logger.info(`[Public QR Tracking Tunnel] Ready at: ${tunnelUrl}`);
+        }).catch(err => {
+          logger.warn(`[Public QR Tracking Tunnel] Notice: ${err.message}`);
+        });
+      }, 1000);
+    }
   });
 
   // Handle Unhandled Rejections

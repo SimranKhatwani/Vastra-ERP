@@ -94,6 +94,29 @@ class PSSMController {
     const { records, pagination } = await PSSMService.getAllPSSMRecords(req.query, req.tenantId);
     return res.status(200).json(new ApiResponse(200, records, 'PSSM list retrieved.', pagination));
   });
+
+  static trackPSSMPublic = asyncHandler(async (req, res) => {
+    const result = await PSSMService.trackPSSMPublic(req.params.pssmNo);
+    return res.status(200).json(new ApiResponse(200, result, 'PSSM alteration tracking data retrieved successfully.'));
+  });
+
+  static streamPSSMPDFPublic = asyncHandler(async (req, res) => {
+    const pssmNo = req.params.pssmNo || req.params.id;
+    const result = await PSSMService.trackPSSMPublic(pssmNo);
+    const PDFService = require('../services/pdf.service');
+
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const baseUrl = process.env.PUBLIC_TRACKING_URL || global.publicTrackingBaseUrl || `${protocol}://${host}`;
+
+    const pdfBuffer = await PDFService.generatePSSMPDFBuffer(result, baseUrl);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="PSSM-${(result.pssm?.pssmNo || pssmNo || 'NFS').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.end(pdfBuffer);
+  });
 }
 
 module.exports = PSSMController;

@@ -68,6 +68,7 @@ import { AdminLogin } from "./components/AdminLogin";
 import { UserLogin } from "./components/UserLogin";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PublicBillTrackView } from "./components/PublicBillTrackView";
+import { PublicPSSMTrackView } from "./components/PublicPSSMTrackView";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
@@ -2342,9 +2343,17 @@ export default function App() {
           }
         />
 
-        {/* Public Digital Bill & Consolidated Alteration Tracking Routes */}
+        {/* Public Digital Bill & Invoice Tracking Routes (Main Sales Bill QR) */}
+        <Route path="/invoice/track/:invoiceNo" element={<PublicBillTrackView />} />
+        <Route path="/bill/track/:invoiceNo" element={<PublicBillTrackView />} />
+        <Route path="/track-bill/:invoiceNo" element={<PublicBillTrackView />} />
         <Route path="/track-bill" element={<PublicBillTrackView />} />
         <Route path="/track/:billNo" element={<PublicBillTrackView />} />
+
+        {/* Public PSSM Alteration Tracking Routes (Alteration Slip QR) */}
+        <Route path="/pssm/track/:pssmNo" element={<PublicPSSMTrackView />} />
+        <Route path="/track-pssm" element={<PublicPSSMTrackView />} />
+        <Route path="/track-pssm/:pssmNo" element={<PublicPSSMTrackView />} />
 
         {/* Standard User App */}
         <Route path="/*" element={
