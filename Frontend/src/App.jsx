@@ -69,6 +69,8 @@ import { UserLogin } from "./components/UserLogin";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PublicBillTrackView } from "./components/PublicBillTrackView";
 import { PublicPSSMTrackView } from "./components/PublicPSSMTrackView";
+import { ItemAlterationTrackView } from "./components/ItemAlterationTrackView";
+import { PublicProductInfoModal } from "./components/PublicProductInfoModal";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
@@ -2354,6 +2356,23 @@ export default function App() {
         <Route path="/pssm/track/:pssmNo" element={<PublicPSSMTrackView />} />
         <Route path="/track-pssm" element={<PublicPSSMTrackView />} />
         <Route path="/track-pssm/:pssmNo" element={<PublicPSSMTrackView />} />
+
+        {/* Public Item-Level Garment Barcode Tracking & Completion Routes */}
+        <Route path="/item/track/:barcode" element={<ItemAlterationTrackView />} />
+        <Route path="/track-item/:barcode" element={<ItemAlterationTrackView />} />
+        <Route path="/track-item" element={<ItemAlterationTrackView />} />
+        <Route path="/alteration/track/:barcode" element={<ItemAlterationTrackView />} />
+        <Route path="/alteration/item/:barcode" element={<ItemAlterationTrackView />} />
+
+        {/* Public Product Info Barcode Scanning Routes (Code 128 Product Modal) */}
+        <Route path="/product-info/:barcode" element={<PublicProductInfoModal />} />
+        <Route path="/product-info" element={<PublicProductInfoModal />} />
+        <Route path="/product/info/:barcode" element={<PublicProductInfoModal />} />
+        <Route path="/product/info" element={<PublicProductInfoModal />} />
+        <Route path="/p/:barcode" element={<PublicProductInfoModal />} />
+        <Route path="/p" element={<PublicProductInfoModal />} />
+        <Route path="/product-track/:barcode" element={<PublicProductInfoModal />} />
+        <Route path="/track-product/:barcode" element={<PublicProductInfoModal />} />
 
         {/* Standard User App */}
         <Route path="/*" element={

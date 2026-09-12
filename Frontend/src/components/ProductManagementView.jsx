@@ -12,8 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingCart,
-  Loader2
+  Loader2,
+  Barcode,
+  Printer,
+  Tag,
+  Copy,
+  Check
 } from "lucide-react";
+import { generateCode128SvgString } from "../helpers/barcode128.helper";
 import { getFirmStyle } from "./BillingPOSView";
 
 export const ProductManagementView = ({
@@ -1096,6 +1102,96 @@ export const ProductManagementView = ({
             </div>
 
             <form onSubmit={handleFormSubmit} className="space-y-4 text-xs">
+              {/* CODE 128 SCANNABLE BARCODE PREVIEW CARD */}
+              {(() => {
+                const activeBarcodeValue = (formBarcode && formBarcode.trim())
+                  ? formBarcode.trim()
+                  : (formSKU?.trim() || formItemCode?.trim() || formUniqueCode?.trim() || formDesignNo?.trim() || `PROD-${editingProductId || '1'}`);
+                const hasExplicitBarcode = Boolean(formBarcode && formBarcode.trim());
+                const barcodeSvgHtml = generateCode128SvgString(activeBarcodeValue, {
+                  width: 1.5,
+                  height: 38,
+                  displayValue: hasExplicitBarcode, // if barcode no. present thn display it under it, if not leave it
+                  fontSize: 11,
+                  font: 'monospace',
+                  background: '#ffffff',
+                  lineColor: '#000000',
+                  margin: 4
+                });
+
+                return (
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/90 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Barcode className="w-4 h-4 text-indigo-600" />
+                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                          Code 128 Scannable Barcode
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${hasExplicitBarcode ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                          {hasExplicitBarcode ? `EAN: ${formBarcode.trim()}` : `Key: ${activeBarcodeValue}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const printWin = window.open('', '_blank', 'width=400,height=400');
+                            if (!printWin) return;
+                            printWin.document.write(`
+                              <!DOCTYPE html>
+                              <html>
+                                <head>
+                                  <title>Barcode - ${formName || 'Garment'}</title>
+                                  <style>
+                                    @page { size: auto; margin: 4mm; }
+                                    body { font-family: monospace; text-align: center; margin: 0; padding: 10px; color: #000; }
+                                    .tag { border: 1px dashed #000; padding: 10px 8px; border-radius: 6px; max-width: 250px; margin: 0 auto; }
+                                    .firm { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+                                    .name { font-size: 10.5px; font-weight: bold; margin-bottom: 4px; }
+                                    .meta { font-size: 9.5px; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 600; }
+                                    .mrp { font-size: 13px; font-weight: 900; margin-top: 6px; }
+                                  </style>
+                                </head>
+                                <body>
+                                  <div class="tag">
+                                    <div class="firm">${formCompany || 'New Fashion Style'}</div>
+                                    <div class="name">${formName || 'Garment Style'}</div>
+                                    <div class="meta">
+                                      <span>Size: <b>${formSize || 'FREE'}</b></span>
+                                      <span>Design: <b>${formDesignNo || '-'}</b></span>
+                                    </div>
+                                    <div style="margin: 4px 0;">${barcodeSvgHtml}</div>
+                                    <div class="mrp">MRP: ₹${formMRP || 0}</div>
+                                  </div>
+                                  <script>
+                                    window.onload = function() {
+                                      setTimeout(function() { window.print(); }, 250);
+                                    };
+                                  </script>
+                                </body>
+                              </html>
+                            `);
+                            printWin.document.close();
+                          }}
+                          title="Print Barcode Tag"
+                          className="p-1 px-2 text-[10px] font-bold bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+                        >
+                          <Printer className="w-3 h-3 text-slate-600" />
+                          Print Tag
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col items-center justify-center">
+                      <div 
+                        className="max-w-full overflow-hidden flex items-center justify-center"
+                        dangerouslySetInnerHTML={{ __html: barcodeSvgHtml }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-slate-500 mb-1 font-semibold">

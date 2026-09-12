@@ -15,6 +15,12 @@ router.get('/public/pssm-pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
 router.get('/public/pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
 router.get('/pssm-pdf/:pssmNo', PSSMController.streamPSSMPDFPublic);
 
+// Public routes for Item-Level Barcode Tracking & Completion
+router.get('/public/item-track/:barcode', PSSMController.trackItemBarcodePublic);
+router.get('/item-track/:barcode', PSSMController.trackItemBarcodePublic);
+router.post('/public/item-complete/:barcode', PSSMController.updateItemStatusByBarcodePublic);
+router.post('/item-complete/:barcode', PSSMController.updateItemStatusByBarcodePublic);
+
 router.use(authenticate, tenantContext);
 
 router.post('/', authorize(PERMISSIONS.ALTERATION_CREATE), auditLog('CREATE_PSSM', 'pssm'), PSSMController.createPSSM);

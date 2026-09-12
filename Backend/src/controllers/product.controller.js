@@ -67,6 +67,12 @@ class ProductController {
     const products = await ProductService.searchBilling(q, req.tenantId);
     return res.status(200).json(new ApiResponse(200, products, 'Billing search completed.'));
   });
+
+  static getProductInfoPublic = asyncHandler(async (req, res) => {
+    const code = req.params.code || req.query.code || req.params.barcode;
+    const product = await ProductService.getProductInfoPublic(code);
+    return res.status(200).json(new ApiResponse(200, product, 'Product information retrieved successfully.'));
+  });
 }
 
 module.exports = ProductController;

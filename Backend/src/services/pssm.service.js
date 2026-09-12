@@ -1446,6 +1446,300 @@ class PSSMService {
       alterationItems: consolidatedItems
     };
   }
+
+  /**
+   * Item-Level Barcode Tracking
+   * Identifies exact item, original bill, product, live status, and all sibling items under the same bill.
+   */
+  static async trackItemBarcodePublic(rawBarcode) {
+    const cleanCode = String(rawBarcode || '').trim();
+    if (!cleanCode) throw new ApiError(400, 'Item barcode or identifier is required.');
+
+    const mongoose = require('mongoose');
+    const escaped = cleanCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+
+    const Alteration = require('../models/alteration/Alteration');
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const SaleBill = require('../models/billing/SaleBill');
+
+    // 1. Try finding in PSSMItem
+    let targetPSSMItem = await PSSMItem.findOne({
+      $or: [
+        { alterationBarcode: regex },
+        { tailorInvoiceNo: regex },
+        { barcode: regex },
+        { uniqueCode: regex },
+        ...(mongoose.Types.ObjectId.isValid(cleanCode) && cleanCode.length === 24 ? [{ _id: cleanCode }] : [])
+      ]
+    }).populate('pssmId').lean();
+
+    let targetAlteration = null;
+    let targetJob = null;
+
+    // 2. If not found in PSSMItem, check Alteration table
+    if (!targetPSSMItem) {
+      targetAlteration = await Alteration.findOne({
+        $or: [
+          { alterationBarcode: regex },
+          { tailorInvoiceNo: regex },
+          { alterationId: regex },
+          { barcode: regex },
+          ...(mongoose.Types.ObjectId.isValid(cleanCode) && cleanCode.length === 24 ? [{ _id: cleanCode }] : [])
+        ]
+      }).populate('customerId saleBillId').lean();
+
+      if (targetAlteration && targetAlteration.pssmItemId) {
+        targetPSSMItem = await PSSMItem.findById(targetAlteration.pssmItemId).populate('pssmId').lean();
+      }
+    }
+
+    // 3. If not found, check TailoringJob
+    if (!targetPSSMItem && !targetAlteration) {
+      targetJob = await TailoringJob.findOne({
+        $or: [
+          { tailorInvoiceNo: regex },
+          { barcode: regex },
+          ...(mongoose.Types.ObjectId.isValid(cleanCode) && cleanCode.length === 24 ? [{ _id: cleanCode }] : [])
+        ]
+      }).lean();
+
+      if (targetJob && targetJob.pssmItemId) {
+        targetPSSMItem = await PSSMItem.findById(targetJob.pssmItemId).populate('pssmId').lean();
+      }
+    }
+
+    // 4. Fallback: If cleanCode is a PSSM No or Bill No, pick first alteration item
+    if (!targetPSSMItem && !targetAlteration && !targetJob) {
+      const parentPSSM = await PSSM.findOne({
+        $or: [{ pssmNo: regex }, { slipBarcode: regex }, { billBarcode: regex }, { billNo: regex }]
+      }).lean();
+
+      if (parentPSSM) {
+        targetPSSMItem = await PSSMItem.findOne({ pssmId: parentPSSM._id }).populate('pssmId').lean();
+      }
+    }
+
+    if (!targetPSSMItem && !targetAlteration && !targetJob) {
+      throw new ApiError(404, `No alteration garment found matching barcode "${cleanCode}".`);
+    }
+
+    // Identify Parent PSSM & Original Bill
+    const pssmId = targetPSSMItem?.pssmId?._id || targetPSSMItem?.pssmId || targetAlteration?.pssmId;
+    let pssm = pssmId ? await PSSM.findById(pssmId).lean() : null;
+    if (!pssm && targetPSSMItem?.pssmId && typeof targetPSSMItem.pssmId === 'object') {
+      pssm = targetPSSMItem.pssmId;
+    }
+
+    const billId = pssm?.saleBillId || targetAlteration?.saleBillId?._id || targetAlteration?.saleBillId;
+    let bill = null;
+    if (billId) {
+      bill = await SaleBill.findById(billId).populate('customerId firmId').lean();
+    } else if (pssm?.billNo) {
+      bill = await SaleBill.findOne({ billNo: pssm.billNo, isDeleted: false }).populate('customerId firmId').lean();
+    } else if (targetAlteration?.invoiceNumber) {
+      bill = await SaleBill.findOne({ billNo: targetAlteration.invoiceNumber, isDeleted: false }).populate('customerId firmId').lean();
+    }
+
+    // Fetch ALL sibling items under the same PSSM or Bill
+    const siblingFilter = [];
+    if (pssm?._id) siblingFilter.push({ pssmId: pssm._id });
+    if (bill?._id) {
+      const otherPssms = await PSSM.find({ saleBillId: bill._id }).lean();
+      otherPssms.forEach(p => siblingFilter.push({ pssmId: p._id }));
+    }
+
+    const allPSSMItems = siblingFilter.length > 0 ? await PSSMItem.find({ $or: siblingFilter }).lean() : (targetPSSMItem ? [targetPSSMItem] : []);
+
+    // Also fetch sibling alterations for cross-reference
+    const altFilter = [];
+    if (pssm?._id) altFilter.push({ pssmId: pssm._id });
+    if (bill?._id) altFilter.push({ saleBillId: bill._id });
+    if (bill?.billNo) altFilter.push({ invoiceNumber: bill.billNo });
+
+    const allAlterations = altFilter.length > 0 ? await Alteration.find({ $or: altFilter }).lean() : [];
+    const allTailorJobs = altFilter.length > 0 ? await TailoringJob.find({ $or: altFilter }).lean() : [];
+
+    // Map and consolidate all sibling items
+    const consolidatedSiblingItems = [];
+    const isCompletedStatus = (st) => {
+      const s = String(st || '').toUpperCase();
+      return s === 'READY' || s === 'READY_FOR_DELIVERY' || s === 'COLLECTED' || s === 'CLOSED' || s === 'DELIVERED';
+    };
+
+    allPSSMItems.forEach((pi, idx) => {
+      const ti = pi.tailorInvoiceNo || (pi.alterationBarcode && String(pi.alterationBarcode).startsWith('TI-') ? pi.alterationBarcode : null) || `TI-${idx + 1}`;
+      const matchedAlt = allAlterations.find(a => a.tailorInvoiceNo === pi.tailorInvoiceNo || a.alterationBarcode === pi.alterationBarcode || String(a.pssmItemId) === String(pi._id));
+      const matchedJob = allTailorJobs.find(tj => tj.tailorInvoiceNo === pi.tailorInvoiceNo || String(tj.pssmItemId) === String(pi._id));
+
+      const rawStatus = pi.status || matchedAlt?.status || matchedJob?.status || 'PENDING';
+      const formattedStatus = String(rawStatus).toUpperCase().replace(/-/g, '_');
+
+      const isCurrent = (
+        (targetPSSMItem && String(pi._id) === String(targetPSSMItem._id)) ||
+        (cleanCode && (pi.alterationBarcode === cleanCode || pi.tailorInvoiceNo === cleanCode || pi.barcode === cleanCode || pi.uniqueCode === cleanCode))
+      );
+
+      consolidatedSiblingItems.push({
+        id: pi._id,
+        itemIndex: idx + 1,
+        garmentName: pi.productName || pi.pieceName || pi.name || 'Altered Garment',
+        size: pi.size || 'Free',
+        color: pi.color || 'Standard',
+        gender: pi.gender || 'Gents',
+        barcode: pi.barcode || pi.uniqueCode || '',
+        tailorInvoiceNo: pi.tailorInvoiceNo || matchedAlt?.tailorInvoiceNo || matchedJob?.tailorInvoiceNo || ti,
+        alterationBarcode: pi.alterationBarcode || matchedAlt?.alterationBarcode || pi.tailorInvoiceNo || `${pssm?.pssmNo || 'PSSM'}-${idx + 1}`,
+        tailorName: pi.assignedTo || matchedAlt?.tailorName || matchedJob?.assignedToTailorName || 'Master Tailor',
+        status: formattedStatus,
+        isCompleted: isCompletedStatus(formattedStatus),
+        isCurrentScanned: Boolean(isCurrent),
+        serviceType: pi.serviceType || matchedAlt?.serviceType || 'Alteration',
+        alterationDetails: pi.alterationDetails || matchedAlt?.alterationDetails || [pi.serviceType || 'Alteration'],
+        measurements: pi.measurements || matchedAlt?.measurements || {},
+        specialInstructions: pi.instructions || pssm?.specialInstructions || matchedAlt?.specialInstructions || '',
+        trialRequired: pi.trialRequired !== undefined ? pi.trialRequired : pssm?.trialRequired,
+        trialDate: pi.trialDate || pssm?.trialDate || matchedAlt?.trialDate || '',
+        deliveryDate: pssm?.expectedDeliveryDate || matchedAlt?.deliveryDate || '',
+        completedAt: pi.completedAt || matchedAlt?.completedAt || null
+      });
+    });
+
+    // Ensure at least one item is marked as currentScanned
+    if (!consolidatedSiblingItems.some(i => i.isCurrentScanned) && consolidatedSiblingItems.length > 0) {
+      consolidatedSiblingItems[0].isCurrentScanned = true;
+    }
+
+    const currentItem = consolidatedSiblingItems.find(i => i.isCurrentScanned) || consolidatedSiblingItems[0] || null;
+
+    // Bill-Level Completion Calculation
+    const totalCount = consolidatedSiblingItems.length;
+    const completedCount = consolidatedSiblingItems.filter(i => i.isCompleted).length;
+    const pendingCount = totalCount - completedCount;
+    const isAllCompleted = totalCount > 0 && completedCount === totalCount;
+
+    const store = bill?.firmId ? {
+      name: bill.firmId.name || 'NEW FASHION STYLE (NFS)',
+      address: bill.firmId.address || 'Ram Chowk, Sadh Nagar, Palam',
+      phone: bill.firmId.phone || '9990397529',
+      gstin: bill.firmId.gstin || '07AAAPL1234A1Z5'
+    } : {
+      name: 'NEW FASHION STYLE (NFS)',
+      address: 'Ram Chowk, Sadh Nagar, Palam',
+      phone: '9990397529',
+      gstin: '07AAAPL1234A1Z5'
+    };
+
+    return {
+      store,
+      matchedItem: currentItem,
+      bill: bill ? {
+        id: bill._id,
+        billNo: bill.billNo,
+        date: bill.billDate || bill.createdAt,
+        customerName: bill.customerId?.name || pssm?.customerName || 'Walk-in Customer',
+        customerPhone: bill.customerId?.phone || pssm?.customerPhone || '',
+        grandTotal: bill.grandTotal || 0,
+        amountPaid: bill.paidAmount ?? bill.amountPaid ?? bill.grandTotal,
+        balanceDue: bill.dueAmount ?? bill.balanceDue ?? 0,
+        paymentMethod: bill.paymentMethod || 'Cash'
+      } : {
+        billNo: pssm?.billNo || pssm?.originalInvoiceNo || 'N/A',
+        date: pssm?.createdAt,
+        customerName: pssm?.customerName || 'Walk-in Customer',
+        customerPhone: pssm?.customerPhone || '',
+        grandTotal: pssm?.totalCharges || 0,
+        amountPaid: pssm?.advancePaid || 0,
+        balanceDue: pssm?.balanceDue || 0,
+        paymentMethod: 'Cash'
+      },
+      pssm: pssm ? {
+        id: pssm._id,
+        pssmNo: pssm.pssmNo,
+        slipBarcode: pssm.slipBarcode,
+        priority: pssm.priority || 'NORMAL',
+        overallStatus: pssm.status || 'IN_PROGRESS',
+        trialRequired: pssm.trialRequired,
+        trialDate: pssm.trialDate,
+        expectedDeliveryDate: pssm.expectedDeliveryDate,
+        createdAt: pssm.createdAt
+      } : null,
+      allItems: consolidatedSiblingItems,
+      billStatusSummary: {
+        totalItems: totalCount,
+        completedCount,
+        pendingCount,
+        isAllCompleted,
+        completionPercentage: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+      }
+    };
+  }
+
+  /**
+   * Update Status / Record Completion for a Specific Item via Barcode
+   */
+  static async updateItemStatusByBarcodePublic(rawBarcode, newStatus = 'READY', extra = {}) {
+    const cleanCode = String(rawBarcode || '').trim();
+    if (!cleanCode) throw new ApiError(400, 'Barcode is required.');
+
+    const mongoose = require('mongoose');
+    const escaped = cleanCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+
+    const formattedStatus = String(newStatus || 'READY').toUpperCase().replace(/-/g, '_');
+
+    // 1. Update in PSSMItem
+    let item = await PSSMItem.findOne({
+      $or: [
+        { alterationBarcode: regex },
+        { tailorInvoiceNo: regex },
+        { barcode: regex },
+        { uniqueCode: regex },
+        ...(mongoose.Types.ObjectId.isValid(cleanCode) && cleanCode.length === 24 ? [{ _id: cleanCode }] : [])
+      ]
+    });
+
+    if (item) {
+      item.status = formattedStatus;
+      if (formattedStatus === 'READY' || formattedStatus === 'READY_FOR_DELIVERY' || formattedStatus === 'COLLECTED') {
+        item.completedAt = new Date();
+      }
+      if (extra.tailorName) item.assignedTo = extra.tailorName;
+      if (extra.specialInstructions) item.instructions = extra.specialInstructions;
+      await item.save();
+
+      // Check if all items under this PSSM are complete
+      const allItems = await PSSMItem.find({ pssmId: item.pssmId });
+      const allDone = allItems.every(i => ['READY', 'READY_FOR_DELIVERY', 'COLLECTED', 'CLOSED'].includes(i.status));
+      if (allDone) {
+        await PSSM.findByIdAndUpdate(item.pssmId, { status: formattedStatus === 'COLLECTED' ? 'COLLECTED' : 'READY_FOR_DELIVERY' });
+      } else if (allItems.some(i => ['IN_STITCHING', 'IN_PROGRESS'].includes(i.status))) {
+        await PSSM.findByIdAndUpdate(item.pssmId, { status: 'IN_PROGRESS' });
+      }
+    }
+
+    // 2. Also update corresponding Alteration record if exists
+    const Alteration = require('../models/alteration/Alteration');
+    const alt = await Alteration.findOne({
+      $or: [
+        { alterationBarcode: regex },
+        { tailorInvoiceNo: regex },
+        { barcode: regex },
+        ...(item ? [{ pssmItemId: item._id }] : [])
+      ]
+    });
+
+    if (alt) {
+      alt.status = formattedStatus === 'READY' ? 'Ready for Delivery' : (formattedStatus === 'COLLECTED' ? 'Collected' : 'In Progress');
+      if (formattedStatus === 'READY' || formattedStatus === 'COLLECTED') {
+        alt.completedAt = new Date();
+      }
+      await alt.save();
+    }
+
+    // 3. Return full refreshed tracking payload
+    return await this.trackItemBarcodePublic(cleanCode);
+  }
 }
 
 module.exports = PSSMService;

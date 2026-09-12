@@ -10,6 +10,12 @@ const { PERMISSIONS } = require('../constants/permissions');
 
 const router = express.Router();
 
+// Public routes for Product Barcode Scanning & Product Info Display (Mobile camera, POS scanners)
+router.get('/public/info/:code', ProductController.getProductInfoPublic);
+router.get('/public/barcode/:code', ProductController.getProductInfoPublic);
+router.get('/public/track/:code', ProductController.getProductInfoPublic);
+router.get('/info/:code', ProductController.getProductInfoPublic);
+
 router.use(authenticate, tenantContext);
 
 router.post('/', authorize(PERMISSIONS.PRODUCT_CREATE), validate(createProductSchema), auditLog('CREATE_PRODUCT', 'products'), ProductController.createProduct);

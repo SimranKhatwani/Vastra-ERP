@@ -266,6 +266,153 @@ class ProductService {
     return product;
   }
 
+  static async getProductInfoPublic(rawCode) {
+    if (!rawCode) throw new ApiError(400, 'Product code or barcode is required.');
+    const code = String(rawCode).trim();
+    const mongoose = require('mongoose');
+    const InventoryPiece = require('../models/InventoryPiece');
+
+    // 1. Try to find an InventoryPiece matching barcode, uniqueCode, ipn, or _id
+    let piece = null;
+    if (mongoose.Types.ObjectId.isValid(code)) {
+      piece = await InventoryPiece.findOne({ _id: code, isDeleted: false })
+        .populate('firmId warehouseId')
+        .populate({ path: 'purchaseBillId', populate: { path: 'vendorId' } });
+    }
+    if (!piece) {
+      piece = await InventoryPiece.findOne({
+        $or: [
+          { barcode: code },
+          { uniqueCode: code },
+          { ipn: code }
+        ],
+        isDeleted: false
+      })
+        .populate('firmId warehouseId')
+        .populate({ path: 'purchaseBillId', populate: { path: 'vendorId' } });
+    }
+
+    // 2. Find Product matching _id, itemCode, designNo, barcode, or piece.productId
+    let product = null;
+    if (piece && piece.productId) {
+      product = await Product.findOne({ _id: piece.productId, isDeleted: false })
+        .populate('brandId categoryId subCategoryId hsnId gstId firmId');
+    }
+
+    if (!product && mongoose.Types.ObjectId.isValid(code)) {
+      product = await Product.findOne({ _id: code, isDeleted: false })
+        .populate('brandId categoryId subCategoryId hsnId gstId firmId');
+    }
+
+    if (!product) {
+      const codeRegex = new RegExp(`^${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      product = await Product.findOne({
+        $or: [
+          { barcode: code },
+          { itemCode: codeRegex },
+          { designNo: codeRegex },
+          { itemName: codeRegex }
+        ],
+        isDeleted: false
+      }).populate('brandId categoryId subCategoryId hsnId gstId firmId');
+    }
+
+    if (!product && !piece) {
+      // Partial search fallback
+      const partialRegex = new RegExp(code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      product = await Product.findOne({
+        $or: [
+          { barcode: partialRegex },
+          { itemCode: partialRegex },
+          { designNo: partialRegex },
+          { itemName: partialRegex }
+        ],
+        isDeleted: false
+      }).populate('brandId categoryId subCategoryId hsnId gstId firmId');
+    }
+
+    if (!product && !piece) {
+      throw new ApiError(404, `No garment product or inventory piece found for barcode/code '${code}'.`);
+    }
+
+    // If product exists, fetch all associated pieces to calculate real stock
+    let allPieces = [];
+    if (product) {
+      allPieces = await InventoryPiece.find({ productId: product._id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .populate('firmId warehouseId')
+        .populate({ path: 'purchaseBillId', populate: { path: 'vendorId' } });
+    } else if (piece) {
+      allPieces = [piece];
+    }
+
+    const availablePieces = allPieces.filter(pc => pc.status === 'AVAILABLE');
+    const sizes = Array.from(new Set(allPieces.map(pc => pc.size).filter(Boolean))).join(', ');
+    const colors = Array.from(new Set(allPieces.map(pc => pc.primaryColor).filter(Boolean))).join(', ');
+    const secondaryColors = Array.from(new Set(allPieces.map(pc => pc.secondaryColor).filter(Boolean))).join(', ');
+
+    const pObj = product ? product.toObject() : {};
+    const pricePiece = allPieces.find(pc => pc.wspAfterGST > 0) || piece || allPieces[0];
+
+    const calculatedStock = allPieces.length > 0
+      ? availablePieces.length
+      : Math.max(0, Number(pObj.availableStock ?? pObj.stock ?? 0));
+
+    const resolvedFirmName = pObj.firmName || piece?.firmId?.name || allPieces[0]?.firmId?.name || pObj.firmId?.name || 'New Fashion Style';
+
+    const pName = pObj.itemName || (piece?.primaryColor ? `${pObj.itemName || 'Garment'} (${piece.primaryColor})` : 'Garment Style');
+    const barcodeVal = piece?.barcode || pObj.barcode || '';
+    const uniqueCodeVal = piece?.uniqueCode || allPieces[0]?.uniqueCode || '';
+    const ipnVal = piece?.ipn || allPieces[0]?.ipn || '';
+    const batchVal = piece?.batch || allPieces[0]?.batch || pObj.batch || '';
+
+    return {
+      id: pObj._id || piece?._id,
+      _id: pObj._id || piece?._id,
+      name: pName,
+      itemName: pObj.itemName || 'Garment Style',
+      designNo: pObj.designNo || 'N/A',
+      itemCode: pObj.itemCode || piece?.barcode || 'N/A',
+      sku: pObj.itemCode || piece?.barcode || 'N/A',
+      subItem: pObj.subItem || '',
+      company: resolvedFirmName,
+      firmName: resolvedFirmName,
+      uniqueCode: uniqueCodeVal,
+      ipn: ipnVal,
+      batch: batchVal,
+      category: pObj.categoryId?.name || pObj.category || 'FABRIC SUIT',
+      brand: pObj.brandId?.name || pObj.brand || 'Generic',
+      barcode: barcodeVal,
+      primaryColor: piece?.primaryColor || pObj.primaryColor || pObj.color || colors || '-',
+      color: piece?.primaryColor || pObj.primaryColor || pObj.color || colors || '-',
+      secondaryColor: piece?.secondaryColor || pObj.secondaryColor || secondaryColors || '-',
+      rackLocation: piece?.rack || allPieces[0]?.rack || 'SHOWROOM',
+      hsn: pObj.hsnId?.hsnCode || pObj.hsn || '520851',
+      size: piece?.size || pObj.size || (sizes || 'FREE'),
+      description: pObj.description || (batchVal ? `Batch: ${batchVal}` : ''),
+      purchaseRate: piece?.purchaseRate || pObj.purchaseRate || pricePiece?.purchaseRate || 0,
+      purchasePrice: piece?.purchaseRate || pObj.purchaseRate || pricePiece?.purchaseRate || 0,
+      wspAfterGST: piece?.wspAfterGST || pricePiece?.wspAfterGST || pObj.wspAfterGST || piece?.purchaseRate || pObj.purchaseRate || 0,
+      mrp: piece?.mrp || pObj.defaultMRP || pricePiece?.mrp || 0,
+      defaultMRP: piece?.mrp || pObj.defaultMRP || pricePiece?.mrp || 0,
+      stock: calculatedStock,
+      availableStock: calculatedStock,
+      minStockAlert: pObj.minStockAlert || 5,
+      totalPieces: allPieces.length,
+      pieceDetails: piece ? {
+        id: piece._id,
+        barcode: piece.barcode,
+        uniqueCode: piece.uniqueCode,
+        ipn: piece.ipn,
+        batch: piece.batch,
+        size: piece.size,
+        color: piece.primaryColor,
+        status: piece.status,
+        rack: piece.rack
+      } : null
+    };
+  }
+
   static async exportProducts(query = {}, tenantId, format = 'csv') {
     const { products } = await this.getProducts({ ...query, limit: 10000 }, tenantId);
     const exportData = products.map(p => ({

@@ -117,6 +117,20 @@ class PSSMController {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.end(pdfBuffer);
   });
+
+  static trackItemBarcodePublic = asyncHandler(async (req, res) => {
+    const barcode = req.params.barcode || req.query.barcode || req.params.id;
+    const result = await PSSMService.trackItemBarcodePublic(barcode);
+    return res.status(200).json(new ApiResponse(200, result, 'Item-level alteration details identified successfully.'));
+  });
+
+  static updateItemStatusByBarcodePublic = asyncHandler(async (req, res) => {
+    const barcode = req.params.barcode || req.body.barcode;
+    const { status, tailorName, specialInstructions } = req.body;
+    const extra = { tailorName, specialInstructions, io: req.app.get('io') };
+    const result = await PSSMService.updateItemStatusByBarcodePublic(barcode, status || 'READY', extra);
+    return res.status(200).json(new ApiResponse(200, result, `Item status updated to ${status || 'READY'} successfully.`));
+  });
 }
 
 module.exports = PSSMController;
