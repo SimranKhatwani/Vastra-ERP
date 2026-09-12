@@ -1498,7 +1498,7 @@ export const BillingPOSView = ({
       return;
     }
 
-    const targetTailor = altSelectedTailor || tailorEmployeesList[0] || { id: "t-default", name: "Master Tailor Ramesh" };
+    const targetTailor = altSelectedTailor || (Array.isArray(tailorEmployeesList) ? tailorEmployeesList[0] : null) || { id: "t-default", name: "Ajay" };
     const invNo = loadedOriginalInvoice?.invoiceNo || loadedOriginalInvoice?.billNo || `INV-${Date.now().toString().slice(-6)}`;
     const invId = loadedOriginalInvoice?._id || loadedOriginalInvoice?.id || undefined;
 

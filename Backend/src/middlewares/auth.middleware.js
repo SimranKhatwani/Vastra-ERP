@@ -12,19 +12,22 @@ const normalizeRoleName = (role, designation) => {
   if (r === 'staff' && d) {
     r = d;
   }
-  if (r === 'staff') return 'salesperson';
 
   if (r.includes('admin') || r.includes('owner') || r === 'businessadmin' || r === 'tenantadmin' || r === 'tenantowner') return 'admin';
-  if (r === 'salesperson' || r === 'sales' || r === 'salesexecutive' || r === 'salespersonnel' || r === 'salesman') return 'salesperson';
-  if (r === 'worker' || r === 'floorworker' || r === 'productionworker' || r === 'stitcher' || r === 'fitter') return 'worker';
-  if (r === 'cashier' || r === 'poscashier') return 'cashier';
-  if (r === 'tailor' || r === 'mastertailor' || r === 'alterationmaster') return 'tailor';
-  if (r === 'accountant' || r === 'accounts') return 'accountant';
-  if (r === 'manager') return 'manager';
+  if (r.includes('manager')) return 'manager';
+  if (r.includes('accountant') || r.includes('accounts')) return 'accountant';
+  if (r.includes('cashier') || r.includes('poscashier')) return 'cashier';
+  if (r.includes('tailor') || r.includes('darzi') || r.includes('karigar')) return 'tailor';
+  if (r.includes('worker') || r.includes('stitcher') || r.includes('fitter')) return 'worker';
+  if (r.includes('salesperson') || r.includes('sales') || r.includes('salesman')) return 'salesperson';
 
-  if (d && ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].includes(d)) return 'worker';
-  if (d && ['salesperson', 'sales', 'salesman'].includes(d)) return 'salesperson';
-  if (d && ['cashier'].includes(d)) return 'cashier';
+  if (d.includes('manager')) return 'manager';
+  if (d.includes('tailor') || d.includes('darzi') || d.includes('karigar')) return 'tailor';
+  if (d.includes('worker') || d.includes('stitcher') || d.includes('fitter') || d.includes('floor') || d.includes('production')) return 'worker';
+  if (d.includes('cashier')) return 'cashier';
+  if (d.includes('accountant') || d.includes('accounts')) return 'accountant';
+  if (d.includes('sales') || d.includes('salesperson') || d.includes('salesman')) return 'salesperson';
+  if (d.includes('admin') || d.includes('owner')) return 'admin';
 
   return 'salesperson';
 };
@@ -111,9 +114,13 @@ const authenticate = asyncHandler(async (req, res, next) => {
           staff: ['user.read', 'user.create', 'user.update', 'user.delete'],
           accounting: ['ledger.read', 'payment.read'],
           reports: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst'],
+          'goods-return': ['goods_return.read', 'goods_return.create', 'goods_return.update', 'goods_return.cancel'],
           permissions: ['role.create', 'role.read', 'role.update', 'role.delete'],
           'staff-activity': ['audit.read'],
           'audit-log': ['audit.read'],
+          'attendance-dashboard': ['attendance.read', 'attendance.punch'],
+          'manager-review': ['attendance.approve', 'attendance.review'],
+          'attendance-settings': ['attendance.policy'],
           settings: ['settings.update']
         };
 

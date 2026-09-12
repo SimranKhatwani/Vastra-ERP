@@ -231,7 +231,7 @@ export const ArticulationView = ({
       }));
     }
     return [
-      { id: "t-default", name: "In-House Master Tailor", jobs: 0, availability: "Available" }
+      { id: "t-default", name: "Ajay", jobs: 0, availability: "Available" }
     ];
   }, [employees]);
 
@@ -250,14 +250,14 @@ export const ArticulationView = ({
   const [activeCustomerIndex, setActiveCustomerIndex] = useState(0);
 
   const [orderNo, setOrderNo] = useState(() => `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [salesperson, setSalesperson] = useState("Vijay Shekhar");
+  const [salesperson, setSalesperson] = useState(() => (employees[0]?.name || "Store Salesperson"));
   const [deliveryDate, setDeliveryDate] = useState(() => {
     const today = new Date();
     today.setDate(today.getDate() + 10); // Default 10 days delivery
     return today.toISOString().split('T')[0];
   });
   const [orderPriority, setOrderPriority] = useState("Medium");
-  const [branch, setBranch] = useState("Bandra Boutique");
+  const [branch, setBranch] = useState("Main Store");
   const [orderStatus, setOrderStatus] = useState("Draft");
   const [isFabricReserved, setIsFabricReserved] = useState(false);
 
@@ -2227,7 +2227,7 @@ export const ArticulationView = ({
   };
 
   // Section 8: Tailors
-  const [selectedTailor, setSelectedTailor] = useState(() => defaultTailors[0] || { id: "t-default", name: "In-House Master Tailor", jobs: 0, availability: "Available" });
+  const [selectedTailor, setSelectedTailor] = useState(() => defaultTailors[0] || { id: "t-default", name: "Ajay", jobs: 0, availability: "Available" });
   const [activeTailorIndex, setActiveTailorIndex] = useState(0);
 
   // ─── REFS FOR KEYBOARD FOCUSING ───
@@ -2592,7 +2592,7 @@ export const ArticulationView = ({
 
   const handleSendToProduction = () => {
     setOrderStatus("In Production");
-    const tailorName = selectedTailor?.name || 'In-House Master Tailor';
+    const tailorName = selectedTailor?.name || 'Ajay';
     onAddNotification("Production Stage Loaded", `Garment sent to workflow line. Assigned: ${tailorName}.`, "success");
 
     if (selectedFabric && selectedFabric.id) {
@@ -2625,7 +2625,7 @@ export const ArticulationView = ({
         customerPhone: selectedCustomer.phone,
         fabric: selectedFabric?.name || 'Standard Fabric',
         color: selectedColor?.name || 'Standard Color',
-        tailor: selectedTailor?.name || 'In-House Master Tailor',
+        tailor: selectedTailor?.name || 'Ajay',
         measurements: measurements,
         customizations: customizations,
         orderNo: orderNo,
@@ -4624,7 +4624,7 @@ export const ArticulationView = ({
 
                 return {
                   employeeId: `EMP-TR-${101 + idx}`,
-                  employeeName: t?.name || 'Master Tailor',
+                  employeeName: t?.name || 'Ajay',
                   designation: 'Master Tailor',
                   assignedCount,
                   completedCount,

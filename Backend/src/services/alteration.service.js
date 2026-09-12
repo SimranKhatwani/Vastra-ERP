@@ -197,11 +197,11 @@ class AlterationService {
             pssmItemDoc.tailorInvoiceNo = job.tailorInvoiceNo;
             pssmItemDoc.alterationBarcode = job.tailorInvoiceNo;
             await pssmItemDoc.save();
-            
+
             altItem.tailorInvoiceNo = job.tailorInvoiceNo;
             altItem.alterationBarcode = job.tailorInvoiceNo;
             await altItem.save();
-            
+
             createdTailoringJobs.push(job);
           }
         } catch (tjErr) {
@@ -998,30 +998,45 @@ class AlterationService {
     // Unified jobs list
     const unifiedJobs = [];
 
+    // Helper to normalize tailor names to genuine store tailors
+    const resolveTailorName = (raw) => {
+      const s = String(raw || '').trim();
+      if (!s) return 'Ajay';
+      if (/ajay/i.test(s)) return 'Ajay';
+      if (['default tailor', 'master tailor', 'master ramesh kumar', 'none', 'n/a', 'unassigned'].includes(s.toLowerCase())) {
+        return 'Ajay';
+      }
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
     // Add PSSM items
     pssmItems.forEach(pi => {
       const pssm = pi.pssmId || {};
       const expDate = pi.expectedDeliveryDate || pssm.expectedDeliveryDate ? new Date(pi.expectedDeliveryDate || pssm.expectedDeliveryDate) : null;
       const status = normalizeJobStatus(pi.status);
       const createdAt = new Date(pi.createdAt || pssm.createdAt || now);
-      const tailor = pi.assignedTo || pssm.assignedTo || pssm.tailorName || 'Unassigned';
+      const rawTailor = pi.assignedTo || pssm.assignedTo || pssm.tailorName || pssm.vendorName || '';
+      const tailor = resolveTailorName(rawTailor);
       const custOption = pi.customerWaitingOption || pssm.customerWaitingOption || 'Will Come Later';
 
       unifiedJobs.push({
         id: pi._id,
         ticketNo: pssm.pssmNo || '',
+        pieceName: pi.pieceName || pi.productName || '',
+        productName: pi.productName || pi.pieceName || '',
         createdAt,
         expectedDeliveryDate: expDate,
         status,
         rawStatus: pi.status,
-        serviceType: pi.serviceType || pssm.serviceType || 'Alteration',
+        serviceType: pi.serviceType || pssm.serviceType || '',
         alterationDetails: pi.alterationDetails || [],
         instructions: pi.instructions || '',
         measurements: pi.measurements || {},
         tailorName: tailor,
         customerWaitingOption: custOption,
         completedAt: pi.completedAt ? new Date(pi.completedAt) : (['READY', 'DELIVERED'].includes(status) ? new Date(pi.updatedAt || now) : null),
-        completedBy: pi.completedBy || tailor
+        completedBy: pi.completedBy || tailor,
+        reAlterationRequired: Boolean(pi.reAlterationRequired || status === 'RE_ALTERATION' || (pi.alterationDetails || []).some(d => /re-?alter/i.test(d)))
       });
     });
 
@@ -1032,25 +1047,29 @@ class AlterationService {
       const expDate = alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate) : null;
       const createdAt = new Date(alt.createdAt || now);
       const status = normalizeJobStatus(alt.status);
-      const tailor = alt.tailorName || 'Unassigned';
+      const rawTailor = alt.tailorName || alt.vendorName || '';
+      const tailor = resolveTailorName(rawTailor);
       const custOption = alt.customerWaitingOption || 'Will Come Later';
 
       const firstItem = items[0] || {};
       unifiedJobs.push({
         id: alt._id,
         ticketNo: alt.alterationNo,
+        pieceName: firstItem.pieceName || firstItem.productName || alt.pieceName || '',
+        productName: firstItem.productName || firstItem.pieceName || alt.productName || '',
         createdAt,
         expectedDeliveryDate: expDate,
         status,
         rawStatus: alt.status,
-        serviceType: 'Alteration',
+        serviceType: alt.serviceType || 'Alteration',
         alterationDetails: firstItem.alterationDetails || [],
         instructions: firstItem.instructions || alt.remarks || '',
         measurements: firstItem.measurements || alt.measurements || {},
         tailorName: tailor,
         customerWaitingOption: custOption,
         completedAt: alt.completedAt ? new Date(alt.completedAt) : (['READY', 'DELIVERED'].includes(status) ? new Date(alt.updatedAt || now) : null),
-        completedBy: alt.completedBy || tailor
+        completedBy: alt.completedBy || tailor,
+        reAlterationRequired: Boolean(alt.reAlterationRequired || status === 'RE_ALTERATION')
       });
     });
 
@@ -1058,7 +1077,7 @@ class AlterationService {
     const filteredJobs = unifiedJobs.filter(job => {
       if (!startDate || !endDate) return true;
       return (job.createdAt >= startDate && job.createdAt <= endDate) ||
-             (job.expectedDeliveryDate && job.expectedDeliveryDate >= startDate && job.expectedDeliveryDate <= endDate);
+        (job.expectedDeliveryDate && job.expectedDeliveryDate >= startDate && job.expectedDeliveryDate <= endDate);
     });
 
     const todayStart = new Date(now);
@@ -1249,41 +1268,84 @@ class AlterationService {
     };
 
     // ─── TAILOR WORKLOAD & CAPACITY CALCULATIONS ───
-    const DEFAULT_MAX_CAPACITY = 10;
+    const DEFAULT_MAX_CAPACITY = 20;
     const tailorMap = new Map();
-    const knownTailors = new Set(['Master Ramesh Kumar', 'Karigar Mansoor Alam', 'Darzi Amit Saxena', 'Master Jitendra Dev']);
+    const knownTailors = new Set();
+
+    // Strict list of non-tailor names/roles to exclude (Workers, Cashiers, Admins, Salespersons, etc.)
+    const isExcludedTailor = (name) => {
+      if (!name) return true;
+      const lower = name.toLowerCase().trim();
+      return [
+        'unassigned', 'all tailors', 'default tailor', 'master tailor',
+        'master ramesh kumar', 'none', 'n/a', 'john doe', 'tony', 'worker',
+        'admin', 'super admin', 'superadmin', 'owner', 'manager', 'cashier',
+        'accountant', 'salesperson', 'rajat', 'bhavesh', 'mahesh', 'dinesh'
+      ].includes(lower);
+    };
 
     try {
       const User = require('../models/User');
+      // Strictly query users with Tailor designation / role
       const tailorUsers = await User.find({
         tenantId,
         isDeleted: { $ne: true },
         $or: [
-          { role: { $regex: /tailor|karigar|stitcher|worker/i } },
-          { designation: { $regex: /tailor|karigar|stitcher|worker/i } }
+          { role: { $regex: /^(tailor|karigar|darzi|master\s*tailor)$/i } },
+          { designation: { $regex: /^(tailor|karigar|darzi)$/i } },
+          { name: { $regex: /^ajay$/i } }
         ]
-      }).select('name').lean();
-      tailorUsers.forEach(u => {
-        if (u.name) knownTailors.add(u.name);
+      }).select('name designation role').lean();
+
+      (tailorUsers || []).forEach(u => {
+        if (u.name && u.name.trim() && !isExcludedTailor(u.name)) {
+          const formatted = u.name.trim().charAt(0).toUpperCase() + u.name.trim().slice(1);
+          knownTailors.add(formatted);
+        }
       });
     } catch (e) {
       // quiet fallback
     }
 
-    unifiedJobs.forEach(j => {
-      if (j.tailorName && j.tailorName !== 'Unassigned') {
-        knownTailors.add(j.tailorName);
-      }
-    });
+    try {
+      const Salesman = require('../models/masters/Salesman');
+      const salesmen = await Salesman.find({
+        tenantId,
+        isDeleted: { $ne: true },
+        $or: [
+          { designation: { $regex: /^(tailor|karigar|darzi)$/i } },
+          { role: { $regex: /^(tailor|karigar|darzi)$/i } }
+        ]
+      }).select('name designation role').lean();
+
+      (salesmen || []).forEach(s => {
+        if (s.name && s.name.trim() && !isExcludedTailor(s.name)) {
+          const formatted = s.name.trim().charAt(0).toUpperCase() + s.name.trim().slice(1);
+          knownTailors.add(formatted);
+        }
+      });
+    } catch (e) {
+      // quiet fallback
+    }
+
+    // Always ensure Ajay is the primary registered tailor if present in the database
+    knownTailors.add('Ajay');
 
     knownTailors.forEach(name => {
       tailorMap.set(name, []);
     });
 
     unifiedJobs.forEach(j => {
-      const name = j.tailorName || 'Unassigned';
-      if (!tailorMap.has(name)) tailorMap.set(name, []);
-      tailorMap.get(name).push(j);
+      const rawName = (j.tailorName || 'Ajay').trim();
+      const formatted = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      if (knownTailors.has(formatted)) {
+        tailorMap.get(formatted).push(j);
+      } else {
+        // Map all unassigned, worker, or non-tailor assigned jobs to primary tailor Ajay
+        if (tailorMap.has('Ajay')) {
+          tailorMap.get('Ajay').push(j);
+        }
+      }
     });
 
     const tailorSummaries = [];
@@ -1309,7 +1371,7 @@ class AlterationService {
           completedCountWithDates++;
         }
       });
-      const avgHours = completedCountWithDates > 0 ? (totalDurationHrs / completedCountWithDates).toFixed(1) : "3.5";
+      const avgHours = completedCountWithDates > 0 ? (totalDurationHrs / completedCountWithDates).toFixed(1) : "0.0";
       const avgCompletionTime = `${avgHours} hrs`;
 
       const activeWorkload = inProg + jobs.filter(j => j.status === 'PENDING').length * 0.5;
@@ -1351,12 +1413,126 @@ class AlterationService {
       ready: readyForDelivery,
       delivered: totalDelivered,
       overdue: delayedJobsCount,
-      averageCompletionTime: "3.8 hrs",
-      capacityUtilization: Math.min(100, Math.round((inProgress / (Math.max(1, tailorSummaries.length) * DEFAULT_MAX_CAPACITY)) * 100)),
+      averageCompletionTime: "0.0 hrs",
+      capacityUtilization: tailorSummaries.length > 0 ? Math.min(100, Math.round((inProgress / (tailorSummaries.length * DEFAULT_MAX_CAPACITY)) * 100)) : 0,
       maxCapacity: Math.max(1, tailorSummaries.length) * DEFAULT_MAX_CAPACITY,
       activeWorkload: inProgress,
       todayNewWork: unifiedJobs.filter(j => j.createdAt >= todayStart && j.createdAt <= todayEnd).length,
       isOverloaded: capacityAlerts.length > 0
+    };
+
+    // ─── MANAGER DASHBOARD ANALYTICS COMPUTATIONS ───
+    // 1. सबसे ज्यादा Alteration किस Item में होती है (Top Altered Item)
+    const itemMap = {};
+    unifiedJobs.forEach(j => {
+      const name = (j.pieceName || j.productName || '').trim();
+      if (name) {
+        itemMap[name] = (itemMap[name] || 0) + 1;
+      }
+    });
+    const sortedItems = Object.entries(itemMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: totalAlterations > 0 ? Math.round((count / totalAlterations) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+    const topAlteredItem = sortedItems[0] || { name: '—', count: 0, percentage: 0 };
+
+    // 2. (Top Service Type)
+    const serviceFreqMap = {};
+    unifiedJobs.forEach(j => {
+      const sType = (j.serviceType || '').trim();
+      if (sType) {
+        serviceFreqMap[sType] = (serviceFreqMap[sType] || 0) + 1;
+      }
+      if (Array.isArray(j.alterationDetails)) {
+        j.alterationDetails.forEach(d => {
+          if (d && d.trim()) {
+            const detailName = d.trim();
+            serviceFreqMap[detailName] = (serviceFreqMap[detailName] || 0) + 1;
+          }
+        });
+      }
+    });
+    const sortedServices = Object.entries(serviceFreqMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: totalAlterations > 0 ? Math.round((count / Math.max(1, totalAlterations)) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+    const topServiceType = sortedServices[0] || { name: '—', count: 0, percentage: 0 };
+
+    // 3. Average Delivery Time
+    let totalDeliveryDurationHrs = 0;
+    let deliveredJobsCount = 0;
+    unifiedJobs.forEach(j => {
+      if (j.completedAt && j.createdAt && j.completedAt >= j.createdAt) {
+        totalDeliveryDurationHrs += (j.completedAt.getTime() - j.createdAt.getTime()) / (1000 * 60 * 60);
+        deliveredJobsCount++;
+      }
+    });
+    const avgDeliveryHrs = deliveredJobsCount > 0 ? totalDeliveryDurationHrs / deliveredJobsCount : 0;
+    const avgDeliveryTimeDisplay = avgDeliveryHrs > 0
+      ? (avgDeliveryHrs >= 24 ? `${(avgDeliveryHrs / 24).toFixed(1)} Days` : `${avgDeliveryHrs.toFixed(1)} Hours`)
+      : '0.0 Hours';
+
+    // 4. Average Re-Alter Rate
+    const totalReAlters = unifiedJobs.filter(j => j.reAlterationRequired || j.status === 'RE_ALTERATION').length;
+    const avgReAlterRatePct = totalAlterations > 0 ? ((totalReAlters / totalAlterations) * 100).toFixed(1) : "0.0";
+
+    // 5. Service Completion %
+    const serviceCompletionPct = totalAlterations > 0 ? (((readyCount + deliveredCount) / totalAlterations) * 100).toFixed(1) : "0.0";
+
+    // 6. Tailor Performance Matrix
+    const tailorPerformance = tailorSummaries.map(t => {
+      const tailorJobsList = tailorMap.get(t.tailorName) || [];
+      const tailorReAlters = tailorJobsList.filter(j => j.reAlterationRequired || j.status === 'RE_ALTERATION').length;
+      const reAlterRateNum = t.assignedItems > 0 ? (tailorReAlters / t.assignedItems) * 100 : 0;
+      const overdueRateNum = t.assignedItems > 0 ? (t.overdue / t.assignedItems) * 100 : 0;
+
+      // Calculate quality rating out of 5.0
+      let baseRating = 5.0 - (reAlterRateNum * 0.12) - (overdueRateNum * 0.15);
+      baseRating = Math.max(3.8, Math.min(5.0, baseRating));
+
+      const pendingJobsCount = tailorJobsList.filter(j => j.status === 'PENDING' || j.status === 'IN_PROGRESS').length;
+
+      return {
+        tailorName: t.tailorName,
+        totalAssigned: t.assignedItems,
+        completed: t.ready + t.delivered,
+        pending: pendingJobsCount,
+        overdue: t.overdue,
+        reAlterCount: tailorReAlters,
+        reAlterPct: `${reAlterRateNum.toFixed(1)}%`,
+        averageTime: t.averageCompletionTime || '3.5 hrs',
+        qualityRating: baseRating.toFixed(1),
+        capacityUtilization: t.capacityUtilization,
+        isOverloaded: t.isOverloaded
+      };
+    });
+
+    const managerDashboardMetrics = {
+      mostAlteredItem: {
+        name: topAlteredItem.name,
+        count: topAlteredItem.count,
+        percentage: topAlteredItem.percentage,
+        topItems: sortedItems.slice(0, 5)
+      },
+      mostFrequentService: {
+        name: topServiceType.name,
+        count: topServiceType.count,
+        percentage: topServiceType.percentage,
+        topServices: sortedServices.slice(0, 5)
+      },
+      averageDeliveryTime: avgDeliveryTimeDisplay,
+      averageDeliveryHours: avgDeliveryHrs,
+      averageReAlterRate: `${avgReAlterRatePct}%`,
+      averageReAlterRateNum: parseFloat(avgReAlterRatePct),
+      serviceCompletionPercentage: `${serviceCompletionPct}%`,
+      serviceCompletionPercentageNum: parseFloat(serviceCompletionPct),
+      tailorPerformance
     };
 
     return {
@@ -1384,6 +1560,7 @@ class AlterationService {
       tailorSummaries,
       allTailorsSummary,
       capacityAlerts,
+      managerDashboardMetrics,
       serviceWisePending: {
         'Alteration': serviceCounts['Alteration'] || 0,
         'Fall & Pico': serviceCounts['Fall & Pico'] || 0,

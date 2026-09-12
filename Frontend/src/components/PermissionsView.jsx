@@ -39,9 +39,10 @@ export const PermissionsView = ({
   onAddNotification,
   onPermissionsUpdated
 }) => {
-  // Roles Registry
+  // Roles Registry - Complete 7 Enterprise System Roles
   const rolesList = [
     { id: "admin", label: "Admin", badge: "Full System Access", color: "bg-purple-100 text-purple-800 border-purple-200" },
+    { id: "manager", label: "Manager", badge: "Store & Operations Manager", color: "bg-blue-100 text-blue-800 border-blue-200" },
     { id: "worker", label: "Worker", badge: "Production & Floor Worker", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
     { id: "cashier", label: "Cashier", badge: "POS Front Desk", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
     { id: "salesperson", label: "Salesperson", badge: "Sales Portal", color: "bg-amber-100 text-amber-800 border-amber-200" },
@@ -202,12 +203,68 @@ export const PermissionsView = ({
 
   const currentRoleKey = useMemo(() => selectedRole.toLowerCase(), [selectedRole]);
 
+  // Default configurations matching frontend baseModules by role
+  const defaultRoleConfigs = {
+    admin: {
+      allowedModules: [
+        "dashboard", "billing", "articulation", "commissions", "products",
+        "inventory", "stock-management", "billing-sales", "discount-offers",
+        "purchase", "goods-return", "vendor-communication", "financial-management",
+        "accounts-treasury", "customers", "employees", "staff", "accounting",
+        "reports", "permissions", "staff-activity", "integrations",
+        "developer", "settings", "attendance-dashboard", "manager-review",
+        "attendance-settings"
+      ],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    manager: {
+      allowedModules: [
+        "dashboard", "billing", "articulation", "commissions", "products",
+        "inventory", "stock-management", "billing-sales", "discount-offers",
+        "purchase", "goods-return", "vendor-communication", "financial-management",
+        "accounts-treasury", "customers", "employees", "staff", "reports",
+        "attendance-dashboard", "manager-review"
+      ],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    worker: {
+      allowedModules: ["dashboard", "attendance-dashboard"],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    cashier: {
+      allowedModules: ["dashboard", "billing", "billing-sales", "discount-offers", "customers", "attendance-dashboard"],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    salesperson: {
+      allowedModules: ["dashboard", "billing", "products", "customers", "attendance-dashboard"],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    tailor: {
+      allowedModules: ["dashboard", "articulation", "attendance-dashboard"],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    },
+    accountant: {
+      allowedModules: [
+        "dashboard", "purchase", "goods-return", "financial-management",
+        "accounts-treasury", "accounting", "reports", "attendance-dashboard"
+      ],
+      moduleAccessLevels: {},
+      tabPermissions: {}
+    }
+  };
+
   // Active configuration for selected role
   const activeConfig = useMemo(() => {
     if (permissionMatrix[currentRoleKey]) {
       return permissionMatrix[currentRoleKey];
     }
-    return {
+    return defaultRoleConfigs[currentRoleKey] || {
       allowedModules: ["dashboard", "billing", "articulation", "products", "customers"],
       moduleAccessLevels: {},
       tabPermissions: {}
@@ -458,7 +515,7 @@ export const PermissionsView = ({
         </div>
 
         {/* ROLE SELECTION TABS */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {rolesList.map((r) => {
             const isSelected = selectedRole.toLowerCase() === r.id;
             return (

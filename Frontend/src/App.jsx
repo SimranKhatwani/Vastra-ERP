@@ -764,15 +764,8 @@ export default function App() {
       const levelsMap = config.moduleAccessLevels || {};
       const allowedArr = config.allowedModules;
 
-      // Starting list: if Admin set allowedModules, start with allowedModules; otherwise start with baseModules
+      // Strictly respect Admin saved allowedModules list from database
       let finalModules = Array.isArray(allowedArr) ? [...allowedArr] : [...baseModules];
-
-      // Ensure newly introduced baseModules (e.g. goods-return) are preserved unless explicitly set to NO_ACCESS
-      baseModules.forEach((baseMod) => {
-        if (!finalModules.includes(baseMod) && levelsMap[baseMod] !== 'NO_ACCESS') {
-          finalModules.push(baseMod);
-        }
-      });
 
       // Enforce 3-Level explicit overrides (NO_ACCESS vs FULL_CONTROL/VIEW_ONLY)
       Object.keys(levelsMap).forEach((modId) => {
@@ -783,16 +776,6 @@ export default function App() {
           finalModules.push(modId);
         }
       });
-
-      if (['admin', 'businessadmin', 'superadmin', 'manager', 'accountant'].includes(roleKey)) {
-        if (!finalModules.includes('staff-activity')) finalModules.push('staff-activity');
-        if (!finalModules.includes('vendor-communication') && levelsMap['vendor-communication'] !== 'NO_ACCESS') {
-          finalModules.push('vendor-communication');
-        }
-        if (!finalModules.includes('goods-return') && levelsMap['goods-return'] !== 'NO_ACCESS') {
-          finalModules.push('goods-return');
-        }
-      }
 
       return finalModules;
     }
