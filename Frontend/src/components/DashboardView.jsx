@@ -2072,9 +2072,14 @@ export const DashboardView = ({
 
                           {/* 4. Item Name */}
                           <td className="px-5 py-3.5">
-                            <div className="font-semibold text-slate-800 text-xs">
-                              {item.itemName || 'Garment Item'}
+                            <div className="font-bold text-slate-800 text-xs">
+                              {item.itemName || item.productName || item.pieceName || item.name || 'Garment Item'}
                             </div>
+                            {item.alterationDetails && item.alterationDetails.length > 0 && (
+                              <div className="text-[10px] text-indigo-700 font-medium mt-0.5">
+                                {item.alterationDetails.join(', ')}
+                              </div>
+                            )}
                             {item.priority && item.priority !== 'NORMAL' && (
                               <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200 inline-block mt-0.5">
                                 {item.priority}

@@ -296,50 +296,8 @@ class PSSMService {
   }
 
   static async getSalesmanPendingList(query = {}, tenantId) {
-    const filter = {
-      tenantId,
-      status: { $nin: ['COLLECTED', 'CLOSED'] }
-    };
-
-    if (query.salesmanId) {
-      filter.salesmanId = query.salesmanId;
-    }
-    if (query.salesmanName) {
-      filter.salesmanName = new RegExp(query.salesmanName, 'i');
-    }
-
-    const items = await PSSMItem.find(filter)
-      .populate('pssmId')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return items.map(item => ({
-      _id: item._id,
-      pssmId: item.pssmId?._id,
-      pssmNo: item.pssmId?.pssmNo,
-      billNo: item.pssmId?.billNo,
-      billBarcode: item.pssmId?.billBarcode,
-      customerName: item.pssmId?.customerName || 'Walk-in Customer',
-      customerPhone: item.pssmId?.customerPhone || '',
-      salesmanId: item.salesmanId || item.pssmId?.salesmanId,
-      salesmanName: item.salesmanName || item.pssmId?.salesmanName || 'Sales Staff',
-      customerWaitingOption: item.customerWaitingOption || item.pssmId?.customerWaitingOption || 'Will Come Later',
-      productName: item.productName,
-      barcode: item.barcode,
-      uniqueCode: item.uniqueCode,
-      size: item.size,
-      color: item.color,
-      serviceType: item.serviceType,
-      assignedTo: item.assignedTo || 'Pending Assignment',
-      priority: item.priority || item.pssmId?.priority || 'NORMAL',
-      status: item.status,
-      trialRequired: item.trialRequired !== undefined ? item.trialRequired : item.pssmId?.trialRequired,
-      trialDate: item.trialDate || item.pssmId?.trialDate,
-      expectedDeliveryDate: item.pssmId?.expectedDeliveryDate,
-      createdAt: item.createdAt,
-      reassignedFromSalesmanName: item.reassignedFromSalesmanName,
-      reassignedReason: item.reassignedReason
-    }));
+    const dash = await this.getSalesmanCompleteDashboard(query, null, tenantId);
+    return dash.pendingList;
   }
 
   static async markItemCompleteByScan(barcode, userId, tenantId, extra = {}) {
@@ -557,7 +515,15 @@ class PSSMService {
     await this.checkAndReassignAbsentSalesmen(tenantId).catch(() => {});
 
     const User = require('../models/User');
-    const userDoc = await User.findById(userId).lean();
+    const Role = require('../models/Role');
+    const userDoc = await User.findById(userId).lean().catch(() => null);
+
+    let userRoleName = '';
+    if (userDoc?.roleId) {
+      const roleDoc = await Role.findById(userDoc.roleId).lean().catch(() => null);
+      userRoleName = (roleDoc?.name || '').toLowerCase();
+    }
+    const userDesig = (userDoc?.designation || '').toLowerCase();
 
     let targetSalesmanDoc = null;
     if (query.salesmanId) {
@@ -581,119 +547,279 @@ class PSSMService {
     const effectiveSalesmanName = query.salesmanName || targetSalesmanDoc?.name || userDoc?.name || '';
     const effectiveSalesmanId = targetSalesmanDoc?._id || query.salesmanId;
 
+    const isAdminUser = Boolean(userDoc?.isTenantOwner || userDoc?.isSuperAdmin || ['admin', 'superadmin', 'businessadmin', 'tenantadmin', 'owner', 'tenantowner'].some(r => userRoleName.includes(r)));
+    const isSalespersonScoped = Boolean(query.salesmanId || query.salesmanName || (!isAdminUser && (userRoleName.includes('sales') || userDesig.includes('sales') || Boolean(targetSalesmanDoc))));
+
+    // Resolve all matching Salesman documents and aliases
+    const matchedSalesmanDocs = await Salesman.find({
+      tenantId,
+      $or: [
+        ...(effectiveSalesmanName ? [{ name: new RegExp(`^${effectiveSalesmanName.trim()}$`, 'i') }] : []),
+        ...(userDoc?.phone ? [{ phone: userDoc.phone }] : []),
+        ...(userDoc?.email ? [{ email: userDoc.email }] : [])
+      ]
+    }).lean().catch(() => []);
+
+    const allowedSalesmanIds = new Set([
+      ...(userId ? [userId.toString()] : []),
+      ...(effectiveSalesmanId ? [effectiveSalesmanId.toString()] : []),
+      ...matchedSalesmanDocs.map(s => s._id.toString())
+    ]);
+
+    const allowedSalesmanNames = new Set([
+      ...(effectiveSalesmanName ? [effectiveSalesmanName.toLowerCase().trim()] : []),
+      ...(userDoc?.name ? [userDoc.name.toLowerCase().trim()] : []),
+      ...matchedSalesmanDocs.map(s => (s.name || '').toLowerCase().trim())
+    ].filter(Boolean));
+
+    // Fetch all PSSM Items with deep population of PSSM record and sale bills
     const pssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true } })
-      .populate('pssmId')
+      .populate({
+        path: 'pssmId',
+        populate: [
+          { path: 'customerId', select: 'name phone' },
+          { path: 'saleBillId', select: 'billNo invoiceNo customerName customerPhone salesmanName salesmanId createdBy' }
+        ]
+      })
+      .populate('saleBillId', 'billNo invoiceNo customerName customerPhone salesmanName salesmanId createdBy')
+      .populate('inventoryPieceId', 'barcode uniqueCode pieceName productName size color primaryColor rack')
       .sort({ createdAt: -1 })
       .lean();
 
     const Alteration = require('../models/alteration/Alteration');
     const alterations = await Alteration.find({ tenantId, isDeleted: false })
-      .populate('customerId saleBillId')
+      .populate('customerId', 'name phone')
+      .populate('saleBillId', 'billNo invoiceNo customerName customerPhone salesmanName salesmanId createdBy items')
       .sort({ createdAt: -1 })
       .lean();
 
-    const existingPssmNos = new Set(pssmItems.map(pi => pi.pssmId?.pssmNo).filter(Boolean));
+    const TailoringJob = require('../models/tailoring/TailoringJob');
+    const tailoringJobs = await TailoringJob.find({ tenantId, isDeleted: false })
+      .populate('customerId', 'name phone')
+      .populate('saleBillId', 'billNo invoiceNo customerName customerPhone salesmanName salesmanId createdBy')
+      .sort({ createdAt: -1 })
+      .lean().catch(() => []);
 
+    const existingItemKeys = new Set();
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
+    const isDeliveredStatus = (s) => {
+      if (!s) return false;
+      const str = String(s).toUpperCase().trim();
+      return ['COLLECTED', 'CLOSED', 'DELIVERED', 'COMPLETED', 'HANDED_OVER'].includes(str);
+    };
+
+    const isReadyStatus = (s) => {
+      if (!s) return false;
+      const str = String(s).toUpperCase().trim();
+      return ['READY', 'READY_FOR_DELIVERY', 'READY_FOR_TRIAL', 'READY FOR DELIVERY', 'READY FOR TRIAL', 'TRIAL_READY'].includes(str);
+    };
+
+    const normalizeDisplayStatus = (s) => {
+      if (!s) return 'Pending Assignment';
+      const str = String(s).toUpperCase().trim();
+      if (str === 'PENDING_ASSIGNMENT') return 'Pending Assignment';
+      if (str === 'ASSIGNED') return 'Assigned to Tailor';
+      if (str === 'IN_PROGRESS' || str === 'STITCHING' || str === 'CUTTING') return 'In Progress';
+      if (str === 'ACTIVE' || str === 'PENDING') return 'Pending';
+      if (str === 'RECEIVED') return 'Received';
+      if (str === 'READY' || str === 'READY_FOR_DELIVERY' || str === 'READY FOR DELIVERY') return 'Ready for Delivery';
+      if (str === 'READY_FOR_TRIAL' || str === 'READY FOR TRIAL') return 'Ready for Trial';
+      if (str === 'COLLECTED' || str === 'CLOSED' || str === 'DELIVERED') return 'Delivered';
+      return s;
+    };
+
     const allUnifiedItems = [];
 
-    // Map PSSM items
+    // 1. Map PSSM Items
     for (const item of pssmItems) {
       const pssm = item.pssmId || {};
-      const expDate = item.expectedDeliveryDate || pssm.expectedDeliveryDate ? new Date(item.expectedDeliveryDate || pssm.expectedDeliveryDate) : null;
-      const sId = item.salesmanId || pssm.salesmanId;
-      const sName = item.salesmanName || pssm.salesmanName || '';
-      const createdBy = (item.createdBy || pssm.createdBy)?.toString();
+      const saleBill = item.saleBillId || pssm.saleBillId || {};
+      const invPiece = item.inventoryPieceId || {};
+
+      const expDate = item.expectedDeliveryDate || pssm.expectedDeliveryDate || pssm.deliveryDate
+        ? new Date(item.expectedDeliveryDate || pssm.expectedDeliveryDate || pssm.deliveryDate)
+        : null;
+
+      const sId = item.salesmanId || pssm.salesmanId || saleBill.salesmanId;
+      const sName = item.salesmanName || pssm.salesmanName || saleBill.salesmanName || '';
+      const createdBy = (item.createdBy || pssm.createdBy || saleBill.createdBy)?.toString();
+
+      const resolvedBillNo = pssm.billNo || pssm.billBarcode || saleBill.billNo || saleBill.invoiceNo || pssm.originalInvoiceNo || 'N/A';
+      const resolvedCustomerName = pssm.customerName || pssm.customerId?.name || saleBill.customerName || item.customerName || 'Walk-in Customer';
+      const resolvedCustomerPhone = pssm.customerPhone || pssm.customerId?.phone || pssm.whatsappNumber || pssm.alternatePhone || saleBill.customerPhone || item.customerPhone || '';
+      const resolvedItemName = item.pieceName || item.productName || item.itemName || invPiece.pieceName || invPiece.productName || pssm.garmentName || item.serviceType || 'Garment Item';
+      const resolvedBarcode = item.alterationBarcode || item.tailorInvoiceNo || item.barcode || item.uniqueCode || item.sku || invPiece.barcode || (pssm.pssmNo ? `${pssm.pssmNo}-${item._id.toString().slice(-4)}` : '');
+      const resolvedTailor = item.assignedTo || pssm.tailorName || 'In-House Karigar';
+      const rawStatus = item.status || pssm.status || 'PENDING_ASSIGNMENT';
+
+      const key = `${resolvedBillNo}_${resolvedBarcode}_${item._id}`;
+      existingItemKeys.add(key);
+      if (pssm.pssmNo) existingItemKeys.add(pssm.pssmNo);
+      if (resolvedBarcode) existingItemKeys.add(resolvedBarcode);
 
       allUnifiedItems.push({
+        id: item._id,
         _id: item._id,
         source: 'PSSM',
         ticketNo: pssm.pssmNo || 'N/A',
-        billNo: pssm.billNo || pssm.billBarcode || 'N/A',
-        customerName: pssm.customerName || 'Walk-in Customer',
-        customerPhone: pssm.customerPhone || '',
+        billNo: resolvedBillNo,
+        customerName: resolvedCustomerName,
+        customerPhone: resolvedCustomerPhone,
         salesmanId: sId,
         salesmanName: sName,
         createdBy,
-        productName: item.pieceName || item.productName || 'Garment Item',
+        itemName: resolvedItemName,
+        productName: resolvedItemName,
+        name: resolvedItemName,
         serviceType: item.serviceType || pssm.serviceType || 'Alteration',
-        alterationDetails: item.alterationDetails || [],
-        assignedTailor: item.assignedTo || pssm.tailorName || 'Pending Assignment',
+        alterationDetails: item.alterationDetails || (item.instructions ? [item.instructions] : []),
+        assignedTailor: resolvedTailor,
+        assignedTo: resolvedTailor,
         deliveryDate: expDate ? expDate.toISOString().split('T')[0] : '',
         deliveryDateObj: expDate,
-        status: item.status || 'PENDING_ASSIGNMENT',
+        status: normalizeDisplayStatus(rawStatus),
+        rawStatus: rawStatus,
         priority: item.priority || pssm.priority || 'NORMAL',
-        barcode: item.barcode || item.uniqueCode || item.sku || '',
+        barcode: resolvedBarcode,
+        measurements: item.measurements || {},
+        instructions: item.instructions || pssm.specialInstructions || '',
         createdAt: item.createdAt,
         reassignedFromSalesmanName: item.reassignedFromSalesmanName,
+        reassignedFromSalesmanId: item.reassignedFromSalesmanId,
         reassignedReason: item.reassignedReason
       });
     }
 
-    // Map Alterations
+    // 2. Map Alterations (Legacy / Direct)
     for (const alt of alterations) {
-      if (existingPssmNos.has(alt.alterationNo)) continue;
-      const expDate = alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate) : null;
+      if (existingItemKeys.has(alt.alterationNo)) continue;
       const saleBill = alt.saleBillId || {};
-      const sId = saleBill.salesmanId;
-      const sName = saleBill.salesmanName || '';
-      const createdBy = alt.createdBy?.toString();
+      const expDate = alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate) : null;
+      const sId = alt.salesmanId || saleBill.salesmanId;
+      const sName = alt.salesmanName || saleBill.salesmanName || '';
+      const createdBy = (alt.createdBy || saleBill.createdBy)?.toString();
+
+      const resolvedBillNo = saleBill.billNo || alt.invoiceNumber || 'N/A';
+      const resolvedCustomerName = alt.customerName || alt.customerId?.name || saleBill.customerName || 'Walk-in Customer';
+      const resolvedCustomerPhone = alt.customerPhone || alt.customerId?.phone || saleBill.customerPhone || '';
+      const resolvedItemName = alt.itemName || alt.productName || alt.garmentType || alt.serviceType || (alt.alterationDetails && alt.alterationDetails[0]) || 'Altered Garment';
+      const resolvedBarcode = alt.alterationNo || alt.barcode || '';
+      const resolvedTailor = alt.tailorName || 'In-House Karigar';
+      const rawStatus = alt.status || 'Pending';
 
       allUnifiedItems.push({
+        id: alt._id,
         _id: alt._id,
         source: 'ALTERATION',
         ticketNo: alt.alterationNo || 'N/A',
-        billNo: saleBill.billNo || alt.invoiceNumber || 'N/A',
-        customerName: alt.customerName || alt.customerId?.name || 'Walk-in Customer',
-        customerPhone: alt.customerPhone || alt.customerId?.phone || '',
+        billNo: resolvedBillNo,
+        customerName: resolvedCustomerName,
+        customerPhone: resolvedCustomerPhone,
         salesmanId: sId,
         salesmanName: sName,
         createdBy,
-        productName: 'Altered Garment',
-        serviceType: 'Alteration',
+        itemName: resolvedItemName,
+        productName: resolvedItemName,
+        name: resolvedItemName,
+        serviceType: alt.serviceType || 'Alteration',
         alterationDetails: alt.alterationDetails || [],
-        assignedTailor: alt.tailorName || 'Pending Assignment',
+        assignedTailor: resolvedTailor,
+        assignedTo: resolvedTailor,
         deliveryDate: expDate ? expDate.toISOString().split('T')[0] : '',
         deliveryDateObj: expDate,
-        status: alt.status || 'Pending',
+        status: normalizeDisplayStatus(rawStatus),
+        rawStatus: rawStatus,
         priority: alt.priority || 'NORMAL',
-        barcode: alt.alterationNo || '',
+        barcode: resolvedBarcode,
         createdAt: alt.createdAt
       });
     }
 
-    const cleanEffectiveName = effectiveSalesmanName.trim().toLowerCase();
-    const isSpecialOverview = cleanEffectiveName === 'all' || cleanEffectiveName === 'overview';
+    // 3. Map Tailoring Jobs
+    for (const tj of tailoringJobs) {
+      if (existingItemKeys.has(tj.tailorInvoiceNo)) continue;
+      const saleBill = tj.saleBillId || {};
+      const expDate = tj.expectedDeliveryDate ? new Date(tj.expectedDeliveryDate) : null;
+      const sId = tj.salesmanId || saleBill.salesmanId;
+      const sName = tj.salesmanName || saleBill.salesmanName || '';
+      const createdBy = (tj.createdBy || saleBill.createdBy)?.toString();
 
-    const myItems = isSpecialOverview ? allUnifiedItems : allUnifiedItems.filter(item => {
-      if (effectiveSalesmanId && item.salesmanId && String(item.salesmanId) === String(effectiveSalesmanId)) return true;
-      if (cleanEffectiveName) {
-        const iName = (item.salesmanName || '').trim().toLowerCase();
-        if (iName === cleanEffectiveName || iName.includes(cleanEffectiveName) || cleanEffectiveName.includes(iName)) return true;
-      }
-      if (userId && item.createdBy && String(item.createdBy) === String(userId)) return true;
+      const resolvedBillNo = tj.billNo || saleBill.billNo || 'N/A';
+      const resolvedCustomerName = tj.customerName || tj.customerId?.name || saleBill.customerName || 'Walk-in Customer';
+      const resolvedCustomerPhone = tj.mobileNumber || tj.customerId?.phone || saleBill.customerPhone || '';
+      const resolvedItemName = tj.garmentService || 'Tailoring Work';
+      const rawStatus = tj.currentStatus || 'PENDING';
+
+      allUnifiedItems.push({
+        id: tj._id,
+        _id: tj._id,
+        source: 'TAILORING',
+        ticketNo: tj.tailorInvoiceNo,
+        billNo: resolvedBillNo,
+        customerName: resolvedCustomerName,
+        customerPhone: resolvedCustomerPhone,
+        salesmanId: sId,
+        salesmanName: sName,
+        createdBy,
+        itemName: resolvedItemName,
+        productName: resolvedItemName,
+        name: resolvedItemName,
+        serviceType: tj.garmentService || 'Tailoring',
+        alterationDetails: tj.specialInstructions ? [tj.specialInstructions] : [],
+        assignedTailor: 'In-House Karigar',
+        assignedTo: 'In-House Karigar',
+        deliveryDate: expDate ? expDate.toISOString().split('T')[0] : '',
+        deliveryDateObj: expDate,
+        status: normalizeDisplayStatus(rawStatus),
+        rawStatus: rawStatus,
+        priority: 'NORMAL',
+        barcode: tj.tailorInvoiceNo,
+        measurements: tj.measurement || {},
+        instructions: tj.specialInstructions || '',
+        createdAt: tj.createdAt
+      });
+    }
+
+    // Helper: Verify if item was assigned by, created by, sold by, or assigned to this salesperson
+    const isItemOwnedBySalesperson = (item) => {
+      if (!isSalespersonScoped) return true;
+
+      // 1. Candidate ID matches
+      const candidateIds = [
+        item.salesmanId?.toString(),
+        item.createdBy?.toString(),
+        item.reassignedFromSalesmanId?.toString()
+      ].filter(Boolean);
+
+      if (candidateIds.some(id => allowedSalesmanIds.has(id))) return true;
+
+      // 2. Candidate Name matches
+      const candidateNames = [
+        item.salesmanName,
+        item.reassignedFromSalesmanName
+      ].filter(Boolean).map(n => String(n).toLowerCase().trim());
+
+      if (candidateNames.some(name => allowedSalesmanNames.has(name))) return true;
+
       return false;
-    });
+    };
 
-    const activeDataset = (myItems.length > 0) ? myItems : allUnifiedItems;
-
-    const isDelivered = (s) => ['COLLECTED', 'CLOSED', 'DELIVERED', 'Delivered'].includes(s);
-    const isReady = (s) => ['READY', 'READY_FOR_DELIVERY', 'Ready for Delivery', 'Ready for Trial'].includes(s);
-    const isPending = (s) => !isDelivered(s) && !isReady(s);
+    // Filter active dataset strictly by salesperson ownership
+    const activeDataset = isSalespersonScoped ? allUnifiedItems.filter(isItemOwnedBySalesperson) : allUnifiedItems;
 
     const totalAssignedServices = activeDataset.length;
-    const pendingCount = activeDataset.filter(i => isPending(i.status)).length;
-    const readyCount = activeDataset.filter(i => isReady(i.status)).length;
-    const deliveredCount = activeDataset.filter(i => isDelivered(i.status)).length;
+    const pendingCount = activeDataset.filter(i => !isDeliveredStatus(i.rawStatus) && !isReadyStatus(i.rawStatus)).length;
+    const readyCount = activeDataset.filter(i => isReadyStatus(i.rawStatus)).length;
+    const deliveredCount = activeDataset.filter(i => isDeliveredStatus(i.rawStatus)).length;
 
     const overdueCount = activeDataset.filter(i => {
       if (!i.deliveryDateObj) return false;
-      return !isDelivered(i.status) && i.deliveryDateObj < todayStart;
+      return !isDeliveredStatus(i.rawStatus) && i.deliveryDateObj < todayStart;
     }).length;
 
     const reAlterCount = activeDataset.filter(i => {
@@ -701,34 +827,30 @@ class PSSMService {
       return /re-alter|realter|trial|repair|urgent|high/i.test((i.priority || '') + ' ' + (i.serviceType || '') + ' ' + details);
     }).length;
 
-    // Pending List: जब तक Item Complete Scan नहीं होगा, ये List हटेगी नहीं।
-    const pendingList = activeDataset.filter(i => !isDelivered(i.status)).map(i => ({
+    // Filter Pending List: Stays in list UNTIL marked DELIVERED / COLLECTED
+    const pendingList = activeDataset.filter(i => !isDeliveredStatus(i.rawStatus)).map(i => ({
       ...i,
       isOverdue: Boolean(i.deliveryDateObj && i.deliveryDateObj < todayStart),
       isDueToday: Boolean(i.deliveryDateObj && i.deliveryDateObj >= todayStart && i.deliveryDateObj <= todayEnd),
-      isReady: isReady(i.status)
+      isReady: isReadyStatus(i.rawStatus)
     }));
 
-    // Daily Follow-up List:
-    // 1. आज किस Customer को Call करना है (Scheduled for delivery today or became ready today)
+    // Follow-up Lists:
     const callTodayList = activeDataset.filter(i => {
-      if (isDelivered(i.status)) return false;
+      if (isDeliveredStatus(i.rawStatus)) return false;
       if (i.deliveryDateObj && i.deliveryDateObj >= todayStart && i.deliveryDateObj <= todayEnd) return true;
       return false;
     });
 
-    // 2. कौन Ready है (Ready for pickup)
-    const readyPickupList = activeDataset.filter(i => isReady(i.status));
+    const readyPickupList = activeDataset.filter(i => isReadyStatus(i.rawStatus));
 
-    // 3. कौन Overdue है (Overdue delivery date)
     const overdueFollowupList = activeDataset.filter(i => {
       if (!i.deliveryDateObj) return false;
-      return !isDelivered(i.status) && !isReady(i.status) && i.deliveryDateObj < todayStart;
+      return !isDeliveredStatus(i.rawStatus) && !isReadyStatus(i.rawStatus) && i.deliveryDateObj < todayStart;
     });
 
-    // 4. कौन Delivery लेने नहीं आया (Ready past delivery date)
     const didNotPickUpList = activeDataset.filter(i => {
-      if (!isReady(i.status)) return false;
+      if (!isReadyStatus(i.rawStatus)) return false;
       if (!i.deliveryDateObj) return false;
       return i.deliveryDateObj < todayStart;
     });
@@ -745,7 +867,7 @@ class PSSMService {
       salesmanInfo: {
         id: effectiveSalesmanId || userId,
         name: effectiveSalesmanName || 'Sales Staff',
-        isOwnItems: myItems.length > 0
+        isOwnItems: isSalespersonScoped
       },
       pendingList,
       followUp: {
