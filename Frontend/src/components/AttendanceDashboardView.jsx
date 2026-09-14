@@ -33,26 +33,32 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
   const fetchStats = async () => {
     try {
       const res = await api.get(`/attendance/dashboard-stats`);
-      if (res.ok) {
-        const data = res.data;
-        setStats(data);
+      if (res.status === 200 && res.data) {
+        const data = res.data.data !== undefined ? res.data.data : res.data;
+        setStats(data || {
+          present: 0, absent: 0, halfDays: 0, expectedHalfDays: 0,
+          perfectArrivals: 0, normalArrivals: 0, veryLates: 0,
+          earlyExits: 0, minorEarlyExits: 0, redFlags: 0,
+          pendingReviews: 0, overtimeAmount: 0, totalWorkingHours: 0,
+          averageWorkingHours: 0
+        });
       } else {
         setStats({
-          present: 42, absent: 3, halfDays: 2, expectedHalfDays: 1,
-          perfectArrivals: 20, normalArrivals: 15, veryLates: 7,
-          earlyExits: 1, minorEarlyExits: 2, redFlags: 2,
-          pendingReviews: 3, overtimeAmount: 1450, totalWorkingHours: 350,
-          averageWorkingHours: 8.2
+          present: 0, absent: 0, halfDays: 0, expectedHalfDays: 0,
+          perfectArrivals: 0, normalArrivals: 0, veryLates: 0,
+          earlyExits: 0, minorEarlyExits: 0, redFlags: 0,
+          pendingReviews: 0, overtimeAmount: 0, totalWorkingHours: 0,
+          averageWorkingHours: 0
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error('fetchStats error:', err);
       setStats({
-          present: 42, absent: 3, halfDays: 2, expectedHalfDays: 1,
-          perfectArrivals: 20, normalArrivals: 15, veryLates: 7,
-          earlyExits: 1, minorEarlyExits: 2, redFlags: 2,
-          pendingReviews: 3, overtimeAmount: 1450, totalWorkingHours: 350,
-          averageWorkingHours: 8.2
+        present: 0, absent: 0, halfDays: 0, expectedHalfDays: 0,
+        perfectArrivals: 0, normalArrivals: 0, veryLates: 0,
+        earlyExits: 0, minorEarlyExits: 0, redFlags: 0,
+        pendingReviews: 0, overtimeAmount: 0, totalWorkingHours: 0,
+        averageWorkingHours: 0
       });
     }
   };
@@ -60,9 +66,9 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
   const fetchMyPunchStatus = async () => {
     try {
       const res = await api.get(`/attendance/status?employeeId=${activeEmployeeId}`);
-      if (res.ok) {
-        const data = res.data;
-        setMyPunch(data);
+      if (res.status === 200 && res.data) {
+        const data = res.data.data !== undefined ? res.data.data : res.data;
+        setMyPunch(data || { status: 'Not Punched In' });
       } else {
         setMyPunch({ status: 'Not Punched In' });
       }
@@ -82,15 +88,16 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
           ip: '192.168.1.1'
         });
       const data = res.data;
-      if (res.ok) {
+      if (res.status === 200 || data?.success) {
         onAddNotification("Success", "Punched In Successfully!", "success");
         fetchMyPunchStatus();
         fetchStats();
       } else {
-        onAddNotification("Error", data.message, "danger");
+        onAddNotification("Error", data?.message || "Punch In failed", "danger");
       }
     } catch (err) {
       console.error(err);
+      onAddNotification("Error", err.response?.data?.message || "Failed to punch in", "danger");
     }
   };
 
@@ -103,8 +110,8 @@ export default function AttendanceDashboardView({ employees, token, onAddNotific
           device: 'Web Terminal'
         });
       const data = res.data;
-      if (res.ok) {
-        onAddNotification("Success", `Punched Out! Status: ${data.attendanceStatus}`, "success");
+      if (res.status === 200 || data?.success) {
+        onAddNotification("Success", `Punched Out! Status: ${data.attendanceStatus || 'Recorded'}`, "success");
         fetchMyPunchStatus();
         fetchStats();
       } else {

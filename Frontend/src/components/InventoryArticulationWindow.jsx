@@ -132,35 +132,25 @@ export const InventoryArticulationWindow = ({
     selectedQuickFilter,
   ]);
 
-  // --- DERIVED DEMO METADATA FOR PRODUCTS ---
+  // --- REAL METADATA FOR PRODUCTS ---
   const productExtraMeta = useMemo(() => {
     const meta = {};
 
-    const warehousesList = [
-      "Bandra Central Warehouse",
-      "Colaba Retail Godown",
-      "Thane Logistics Depot",
-      "Andheri Distribution Hub",
-      "Dharavi Bulk Depot",
-    ];
+    (products || []).forEach((p) => {
+      const pid = p.id || p._id;
+      const warehouse = p.warehouseId?.name || p.warehouseName || p.warehouse || "—";
+      const supplier = p.vendorId?.name || p.supplierName || p.supplier || (p.vendorId ? "Vendor Assigned" : "—");
+      const reserved = Number(p.reservedStock || p.reservedQty || 0);
+      const stock = Number(p.stock || p.quantity || 0);
+      const available = Math.max(0, stock - reserved);
+      const soldQty = Number(p.soldQty || p.salesCount || 0);
+      const purchaseQty = Number(p.purchaseQty || p.totalPurchased || stock);
+      const orderedQty = Number(p.orderedQty || 0);
+      const lastPurchaseDate = p.lastPurchaseDate ? new Date(p.lastPurchaseDate).toISOString().slice(0, 10) : (p.createdAt ? new Date(p.createdAt).toISOString().slice(0, 10) : "—");
+      const lastSoldDate = p.lastSoldDate ? new Date(p.lastSoldDate).toISOString().slice(0, 10) : "—";
 
-    products.forEach((p, idx) => {
-      // Deterministic extra data based on product ID seed
-      const seed = p.id
-        .split("")
-        .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const warehouse = warehousesList[seed % warehousesList.length];
-      const supplier =
-        suppliers[seed % suppliers.length]?.name || "Pratibha Syntex Ltd";
-      const reserved = Math.round(p.stock * 0.15);
-      const available = Math.max(0, p.stock - reserved);
-      const soldQty = ((seed * 11) % 450) + 50;
-      const purchaseQty = p.stock + soldQty + ((seed * 7) % 100);
-      const orderedQty = Math.round(p.stock * 0.25);
-      const lastPurDay = 1 + (seed % 28);
-      const lastSoldDay = 1 + ((seed + 12) % 28);
-      meta[p.id] = {
-        rack: `Rack ${String.fromCharCode(65 + (seed % 6))}-${(seed % 15) + 1}`,
+      meta[pid] = {
+        rack: p.rack || p.rackLocation || "—",
         reserved,
         available,
         purchaseQty,
@@ -168,66 +158,43 @@ export const InventoryArticulationWindow = ({
         soldQty,
         warehouse,
         supplier,
-        lastPurchaseDate: `2026-05-${lastPurDay < 10 ? "0" + lastPurDay : lastPurDay}`,
-        lastSoldDate: `2026-06-${lastSoldDay < 10 ? "0" + lastSoldDay : lastSoldDay}`,
-        pendingPO: seed % 5 === 0 ? 50 : 0,
-        damaged: seed % 13 === 0 ? 3 : 0,
-        returned: seed % 9 === 0 ? 4 : 0,
-        maxStock: p.minStockAlert * 5,
-        reorderQty: p.minStockAlert * 2,
-        discontinued: seed % 29 === 0,
+        lastPurchaseDate,
+        lastSoldDate,
+        pendingPO: Number(p.pendingPO || 0),
+        damaged: Number(p.damaged || p.damagedQty || 0),
+        returned: Number(p.returned || p.returnedQty || 0),
+        maxStock: p.maxStock || (p.minStockAlert ? p.minStockAlert * 5 : 50),
+        reorderQty: p.reorderQty || (p.minStockAlert ? p.minStockAlert * 2 : 20),
+        discontinued: !!p.discontinued,
       };
     });
     return meta;
-  }, [products, suppliers]);
+  }, [products]);
 
-  // Size details & Color-wise stock generator for individual rows
+  // Size details & Color-wise stock from real product variants
   const getProductMatrix = (prod) => {
-    const seed = prod.id
-      .split("")
-      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const primaryColor = prod.color;
-    const secondaryColors = [
-      "Charcoal Gray",
-      "Navy Blue",
-      "Classic White",
-      "Crimson Red",
-    ].filter((c) => c !== primaryColor);
-    // Size distribution generator
-    const generateSizeDist = (total, sVal) => {
-      const sizes = [...SIZES_LIST];
-      const weights = [5, 10, 15, 25, 20, 15, 8, 2]; // XXS to 3XL
-      let remaining = total;
-      const breakdown = {};
-      sizes.forEach((sz, i) => {
-        if (i === sizes.length - 1) {
-          breakdown[sz] = remaining;
-        } else {
-          const rand = (((sVal * (i + 1) * 23) % 100) / 100) * 0.4 + 0.8;
-          const portion = Math.min(
-            remaining,
-            Math.round(total * (weights[i] / 100) * rand),
-          );
-          breakdown[sz] = portion;
-          remaining -= portion;
+    const primaryColor = prod.color || "Default";
+    const mainColorMatrix = {};
+    SIZES_LIST.forEach((sz) => {
+      mainColorMatrix[sz] = 0;
+    });
+
+    if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+      prod.variants.forEach((v) => {
+        if (v && v.size && mainColorMatrix[v.size] !== undefined) {
+          mainColorMatrix[v.size] += Number(v.stock || 0);
         }
       });
-      return breakdown;
-    };
-
-    const mainColorMatrix = generateSizeDist(prod.stock, seed);
-    const extraColorsMatrix = secondaryColors.map((color, cIdx) => ({
-      color,
-      matrix: generateSizeDist(
-        Math.round(prod.stock * (0.4 - cIdx * 0.1)),
-        seed + cIdx + 5,
-      ),
-    }));
+    } else if (prod.size && mainColorMatrix[prod.size] !== undefined) {
+      mainColorMatrix[prod.size] = Number(prod.stock || 0);
+    } else {
+      mainColorMatrix["M"] = Number(prod.stock || 0);
+    }
 
     return {
       primaryColor,
       mainColorMatrix,
-      extraColorsMatrix,
+      extraColorsMatrix: [],
     };
   };
 

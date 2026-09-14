@@ -220,14 +220,6 @@ export const ItemAlterationTrackView = () => {
           <AlertCircle className="w-10 h-10 text-red-400" />
           <h3 className="text-base font-bold text-red-200">Garment Not Found</h3>
           <p className="text-xs text-red-300 max-w-md">{error}</p>
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => { setSearchQuery('TI-1'); setActiveBarcode('TI-1'); }}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
-            >
-              Try Demo Barcode (TI-1)
-            </button>
-          </div>
         </div>
       )}
 

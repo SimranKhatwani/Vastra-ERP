@@ -117,14 +117,12 @@ export function SuperAdminDashboard({ tenants: propTenants = [] }) {
     return s + (map[t.plan] || 0);
   }, 0);
   const totalUsers = stats?.totalUsers ?? propTenants.reduce((s, t) => s + (t.activeUsers || 0), 0);
-  const grossVolume = stats?.grossVolume ?? 485000;
-  const totalProducts = stats?.totalProducts ?? 340;
+  const grossVolume = stats?.grossVolume ?? 0;
+  const totalProducts = stats?.totalProducts ?? 0;
   const healthData = stats?.healthData ?? [
-    { service: "API Gateway (Express)", status: "Operational", latency: "12 ms", uptime: "99.99%" },
-    { service: "MongoDB Cluster (Atlas)", status: "Operational", latency: "8 ms", uptime: "100%" },
-    { service: "Auth JWT Service", status: "Operational", latency: "5 ms", uptime: "100%" },
-    { service: "Realtime Socket.io Engine", status: "Operational", latency: "14 ms", uptime: "99.98%" },
-    { service: "WhatsApp Alert Gateway", status: "Operational", latency: "85 ms", uptime: "99.90%" }
+    { service: "API Gateway (Express)", status: "Operational", latency: "Connected", uptime: "Live" },
+    { service: "MongoDB Database", status: "Operational", latency: "Connected", uptime: "Live" },
+    { service: "Authentication Service", status: "Operational", latency: "Active", uptime: "Live" },
   ];
   const recentTenants = stats?.recentTenants ?? propTenants.slice(0, 6);
   const planCounts = stats?.planCounts ?? {

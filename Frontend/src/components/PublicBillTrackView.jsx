@@ -9,7 +9,7 @@ export const PublicBillTrackView = () => {
 
   const paramCode = params.invoiceNo || params.billNo || params.id || params.code || '';
   const queryCode = searchParams.get('bill') || searchParams.get('billNo') || searchParams.get('invoiceNo') || searchParams.get('id') || searchParams.get('q') || searchParams.get('code') || '';
-  const initialQuery = paramCode || queryCode || 'INV-16600159-891';
+  const initialQuery = paramCode || queryCode || '';
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [activeBillNo, setActiveBillNo] = useState(initialQuery);
@@ -71,7 +71,7 @@ export const PublicBillTrackView = () => {
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
           <span className="text-xs font-black tracking-wide text-white uppercase truncate">
-            TAX INVOICE &bull; <span className="font-mono text-amber-300">{activeBillNo}</span>
+            TAX INVOICE &bull; <span className="font-mono text-amber-300">{activeBillNo || 'ENTER INVOICE #'}</span>
           </span>
         </div>
 

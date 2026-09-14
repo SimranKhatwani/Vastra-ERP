@@ -39,6 +39,9 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
       if (res.data.success) {
         const invoice = res.data.data;
         const receiptDate = invoice.date ? new Date(invoice.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-';
+        const storeName = invoice.firmId?.name || invoice.firmName || invoice.storeName || 'Official Store';
+        const storeAddress = invoice.firmId?.address || invoice.firmAddress || invoice.storeAddress || '';
+        const storeGstin = invoice.firmId?.gstin || invoice.gstin ? `GSTIN: ${invoice.firmId?.gstin || invoice.gstin}` : '';
         const htmlContent = `
           <!DOCTYPE html>
           <html>
@@ -58,8 +61,8 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
             </style>
           </head>
           <body>
-            <div class="text-center header">ZIVA FASHION BOUTIQUE</div>
-            <div class="text-center details">104, Galleria Mall, Hiranandani Estate,<br>Bandra West, Mumbai - 400050<br>GSTIN: 27AABCV1942A1ZX</div>
+            <div class="text-center header">${storeName}</div>
+            ${storeAddress || storeGstin ? `<div class="text-center details">${storeAddress}${storeAddress && storeGstin ? '<br>' : ''}${storeGstin}</div>` : ''}
             <div class="divider"></div>
             <div class="details">
               <b>Receipt No:</b> ${invoice.invoiceNo}<br>

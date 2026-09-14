@@ -180,38 +180,27 @@ export const ArticulationView = ({
   autoStartAlteration = false,
   clearAutoStartAlteration = () => { }
 }) => {
-  // ─── CORE SYSTEM DATA FALLBACKS ───
+  // ─── CORE SYSTEM DATA SOURCES ───
   const defaultCustomers = useMemo(() => {
     if (customers && customers.length > 0) return customers;
-    return [
-      { id: "c-101", _id: "c-101", name: "Aditya", phone: "9823456789", email: "aditya@example.com", code: "C-1001", loyaltyPoints: 150 },
-      { id: "c-102", _id: "c-102", name: "Yash", phone: "9812345678", email: "yash@example.com", code: "C-1002", loyaltyPoints: 120 },
-      { id: "c-103", _id: "c-103", name: "Vikas", phone: "9834567890", email: "vikas@example.com", code: "C-1003", loyaltyPoints: 80 }
-    ];
+    return [];
   }, [customers]);
 
   const defaultFabrics = useMemo(() => {
-    // Filter fabric category from inventory if exists, else provide rich garment database
+    // Filter fabric category from inventory if exists
     const dbFabrics = (products || []).filter(p => (p.category || "").toLowerCase() === "fabric" || (p.type || "").toLowerCase() === "fabric");
     if (dbFabrics.length > 0) {
       return dbFabrics.map((f, idx) => ({
         id: f._id || f.id || `f-${idx}`,
         name: f.name,
-        brand: f.brand || "Indian Mills",
-        color: f.color || "Indigo Blue",
-        stock: f.stock || f.quantity || 45,
-        price: f.price || f.sellingPrice || 850,
+        brand: f.brand || "",
+        color: f.color || "",
+        stock: f.stock || f.quantity || 0,
+        price: f.price || f.sellingPrice || 0,
         lotNo: f.sku || `L-90${idx}`
       }));
     }
-    return [
-      { id: "fb-1", name: "Giza Premium Cotton", brand: "Egyptian Weave", color: "Classic White", stock: 35.5, price: 1450, lotNo: "LOT-EGY-402" },
-      { id: "fb-2", name: "Pure Irish Linen Weft", brand: "Linen Club", color: "Natural Beige", stock: 18.0, price: 1850, lotNo: "LOT-LIN-801" },
-      { id: "fb-3", name: "Mulberry Silk Brocade", brand: "Banaras Weaves", color: "Royal Crimson", stock: 12.2, price: 2900, lotNo: "LOT-SLK-990" },
-      { id: "fb-4", name: "Merino Tweed Worsted", brand: "Raymonds Classic", color: "Charcoal Gray", stock: 24.0, price: 2200, lotNo: "LOT-WOO-711" },
-      { id: "fb-5", name: "Super 120s Wool Cashmere", brand: "Loro Piana", color: "Navy Blue", stock: 8.5, price: 3800, lotNo: "LOT-CSH-555" },
-      { id: "fb-6", name: "Viscose Twill Indigo", brand: "Birla Century", color: "Indigo Wash", stock: 52.0, price: 950, lotNo: "LOT-VIS-108" }
-    ];
+    return [];
   }, [products]);
 
   const defaultTailors = useMemo(() => {
@@ -230,9 +219,7 @@ export const ArticulationView = ({
         availability: (t.currentWorkload || 0) > 6 ? "Unavailable" : (t.currentWorkload || 0) > 3 ? "Busy" : "Available"
       }));
     }
-    return [
-      { id: "t-default", name: "Ajay", jobs: 0, availability: "Available" }
-    ];
+    return [];
   }, [employees]);
 
   // ─── ACTIVE PANEL FOCUS STATE ───
@@ -246,7 +233,7 @@ export const ArticulationView = ({
 
   // ─── LEFT PANEL (CUSTOMER & ORDER) ───
   const [customerSearch, setCustomerSearch] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState(defaultCustomers[0]);
+  const [selectedCustomer, setSelectedCustomer] = useState(() => defaultCustomers[0] || null);
   const [activeCustomerIndex, setActiveCustomerIndex] = useState(0);
 
   const [orderNo, setOrderNo] = useState(() => `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`);
@@ -2156,7 +2143,7 @@ export const ArticulationView = ({
 
   // Section 4: Fabric Selection
   const [fabricSearch, setFabricSearch] = useState("");
-  const [selectedFabric, setSelectedFabric] = useState(defaultFabrics[0]);
+  const [selectedFabric, setSelectedFabric] = useState(() => defaultFabrics[0] || null);
   const [activeFabricIndex, setActiveFabricIndex] = useState(0);
 
   // Filtered fabrics based on search
@@ -2227,7 +2214,8 @@ export const ArticulationView = ({
   };
 
   // Section 8: Tailors
-  const [selectedTailor, setSelectedTailor] = useState(() => defaultTailors[0] || { id: "t-default", name: "Ajay", jobs: 0, availability: "Available" });
+  // ─── SELECTION STATES: TAILOR & APPOINTMENT ───
+  const [selectedTailor, setSelectedTailor] = useState(() => defaultTailors[0] || null);
   const [activeTailorIndex, setActiveTailorIndex] = useState(0);
 
   // ─── REFS FOR KEYBOARD FOCUSING ───
@@ -2278,27 +2266,24 @@ export const ArticulationView = ({
 
   // ─── DATABASE LOAD SYNC EFFECTS ───
   useEffect(() => {
-    if (customers && customers.length > 0) {
-      const isMock = !selectedCustomer || selectedCustomer.id === "c-101" || selectedCustomer.id === "c-102" || selectedCustomer.id === "c-103" || selectedCustomer.id === "c-104" || selectedCustomer.id === "c-105";
-      if (isMock) {
+    if (defaultCustomers && defaultCustomers.length > 0) {
+      if (!selectedCustomer || !defaultCustomers.some(c => (c.id || c._id) === (selectedCustomer.id || selectedCustomer._id))) {
         setSelectedCustomer(defaultCustomers[0]);
       }
     }
-  }, [customers, defaultCustomers]);
+  }, [defaultCustomers]);
 
   useEffect(() => {
-    const dbFabrics = (products || []).filter(p => (p.category || "").toLowerCase() === "fabric" || (p.type || "").toLowerCase() === "fabric");
-    if (dbFabrics.length > 0) {
-      const isMock = !selectedFabric || selectedFabric.id === "fb-1" || selectedFabric.id === "fb-2" || selectedFabric.id === "fb-3" || selectedFabric.id === "fb-4" || selectedFabric.id === "fb-5" || selectedFabric.id === "fb-6";
-      if (isMock) {
+    if (defaultFabrics && defaultFabrics.length > 0) {
+      if (!selectedFabric || !defaultFabrics.some(f => (f.id || f._id) === (selectedFabric.id || selectedFabric._id))) {
         setSelectedFabric(defaultFabrics[0]);
       }
     }
-  }, [products, defaultFabrics]);
+  }, [defaultFabrics]);
 
   useEffect(() => {
     if (defaultTailors && defaultTailors.length > 0) {
-      if (!selectedTailor || !defaultTailors.some(t => t.id === selectedTailor.id)) {
+      if (!selectedTailor || !defaultTailors.some(t => (t.id || t._id) === (selectedTailor.id || selectedTailor._id))) {
         setSelectedTailor(defaultTailors[0]);
       }
     }

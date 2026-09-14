@@ -24,32 +24,7 @@ export const AccountingView = ({
   const [expensePayMethod, setExpensePayMethod] = useState("UPI");
 
   // Journal Vouchers state
-  const [journalVouchers, setJournalVouchers] = useState([
-    {
-      id: "JV-2026-001",
-      date: "2026-06-28",
-      debitAccount: "Salaries Account",
-      creditAccount: "HDFC Bank Main",
-      amount: 85000,
-      narration: "Monthly factory staff salary payout",
-    },
-    {
-      id: "JV-2026-002",
-      date: "2026-06-27",
-      debitAccount: "Inventory Stock Room",
-      creditAccount: "Accounts Payable - Raymond Group",
-      amount: 154000,
-      narration: "Purchase of premium linen rolls",
-    },
-    {
-      id: "JV-2026-003",
-      date: "2026-06-26",
-      debitAccount: "Cash-in-hand",
-      creditAccount: "Sales Revenue",
-      amount: 18500,
-      narration: "Counter cash sales invoice INV-0498",
-    },
-  ]);
+  const [journalVouchers, setJournalVouchers] = useState([]);
   const [showJournalModal, setShowJournalModal] = useState(false);
   const [jvDebitAcc, setJvDebitAcc] = useState("Salaries Account");
   const [jvCreditAcc, setJvCreditAcc] = useState("HDFC Bank Main");
@@ -57,19 +32,29 @@ export const AccountingView = ({
   const [jvNarration, setJvNarration] = useState("");
 
   // GST filing dates
-  const [gstr1Filed, setGstr1Filed] = useState(true);
+  const [gstr1Filed, setGstr1Filed] = useState(false);
   const [gstr3bFiled, setGstr3bFiled] = useState(false);
 
-  // Compute stats dynamically
-  const totalSalesRevenue = invoices.reduce(
-    (sum, inv) => sum + inv.grandTotal,
+  // Compute stats dynamically from real invoices and expenses
+  const totalSalesRevenue = (invoices || []).reduce(
+    (sum, inv) => sum + (inv.grandTotal || 0),
     0,
   );
-  // Cost of Goods Sold (approximate 40% of sales base)
-  const estimatedCOGS = totalSalesRevenue * 0.4;
-  const totalExpensesPaid = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  
+  // Real Cost of Goods Sold from database item purchase rates
+  const realCOGS = (invoices || []).reduce((sum, inv) => {
+    if (inv.purchaseCostTotal !== undefined && inv.purchaseCostTotal !== null) {
+      return sum + Number(inv.purchaseCostTotal || 0);
+    }
+    const itemCost = (inv.items || []).reduce((isum, it) => isum + (Number(it.purchasePrice || it.purchaseRate || 0) * Number(it.quantity || 1)), 0);
+    return sum + itemCost;
+  }, 0);
+  
+  const isCostAvailable = realCOGS > 0;
+  const cogsValue = realCOGS;
+  const totalExpensesPaid = (expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
-  const grossProfit = totalSalesRevenue - estimatedCOGS;
+  const grossProfit = isCostAvailable ? totalSalesRevenue - cogsValue : totalSalesRevenue;
   const netProfit = grossProfit - totalExpensesPaid;
 
   const handleCreateExpenseSubmit = (e) => {
@@ -282,9 +267,9 @@ export const AccountingView = ({
                 </span>
               </div>
               <div className="py-3 flex justify-between pl-4 text-slate-500">
-                <span>Cost of Goods Sold (COGS Estimate)</span>
+                <span>Cost of Goods Sold (COGS)</span>
                 <span className="font-mono">
-                  -₹{estimatedCOGS.toLocaleString()}
+                  {isCostAvailable ? `-₹${cogsValue.toLocaleString()}` : "Cost data unavailable"}
                 </span>
               </div>
               <div className="py-3 flex justify-between font-bold bg-slate-50 px-2.5 rounded-lg text-slate-800">
@@ -534,7 +519,7 @@ export const AccountingView = ({
                   <td className="p-3.5 text-right font-mono text-slate-800">
                     ₹
                     {Math.max(
-                      100000,
+                      0,
                       totalSalesRevenue - totalExpensesPaid,
                     ).toLocaleString()}
                   </td>
@@ -545,10 +530,10 @@ export const AccountingView = ({
                 <tr>
                   <td className="p-3.5 font-mono text-slate-400">1200-STOCK</td>
                   <td className="p-3.5 font-bold text-slate-800">
-                    Apparel Raw Inventory
+                    Apparel Inventory Cost (COGS)
                   </td>
                   <td className="p-3.5 text-right font-mono text-slate-800">
-                    ₹{estimatedCOGS.toLocaleString()}
+                    {isCostAvailable ? `₹${cogsValue.toLocaleString()}` : "—"}
                   </td>
                   <td className="p-3.5 text-right font-mono text-slate-400">
                     -
@@ -585,8 +570,8 @@ export const AccountingView = ({
                   <td className="p-3.5 text-right font-mono text-emerald-400">
                     ₹
                     {(
-                      Math.max(100000, totalSalesRevenue - totalExpensesPaid) +
-                      estimatedCOGS +
+                      Math.max(0, totalSalesRevenue - totalExpensesPaid) +
+                      (isCostAvailable ? cogsValue : 0) +
                       totalExpensesPaid
                     ).toLocaleString()}
                   </td>

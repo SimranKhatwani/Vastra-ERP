@@ -44,154 +44,25 @@ export const EmployeeView = ({
   const [formTarget, setFormTarget] = useState(100000);
 
   // Attendance states
-  const [attendanceLogs, setAttendanceLogs] = useState([
-    {
-      id: "att-1",
-      date: "2026-06-28",
-      empName: "Ramesh Kumar",
-      status: "Present",
-      checkInTime: "09:15 AM",
-    },
-    {
-      id: "att-2",
-      date: "2026-06-28",
-      empName: "Aman Deep",
-      status: "Present",
-      checkInTime: "09:02 AM",
-    },
-    {
-      id: "att-3",
-      date: "2026-06-28",
-      empName: "Sushma Swaraj",
-      status: "On Leave",
-      checkInTime: "-",
-    },
-    {
-      id: "att-4",
-      date: "2026-06-27",
-      empName: "Ramesh Kumar",
-      status: "Present",
-      checkInTime: "09:30 AM",
-    },
-  ]);
-  const [attDate, setAttDate] = useState("2026-06-28");
+  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  const [attDate, setAttDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [attEmpName, setAttEmpName] = useState("");
   const [attStatus, setAttStatus] = useState("Present");
   const [attTime, setAttTime] = useState("09:00 AM");
 
   // Salary Advances & Deductions states
-  const [advances, setAdvances] = useState([
-    {
-      id: "adv-1",
-      empName: "Aman Deep",
-      type: "Advance",
-      amount: 3500,
-      reason: "Festival advance request",
-      date: "2026-06-24",
-      status: "Approved",
-    },
-    {
-      id: "adv-2",
-      empName: "Ramesh Kumar",
-      type: "Deduction",
-      amount: 800,
-      reason: "Damaged premium fabric spool",
-      date: "2026-06-26",
-      status: "Processed",
-    },
-  ]);
-  const [advEmpId, setAdvEmpId] = useState("e-3");
+  const [advances, setAdvances] = useState([]);
+  const [advEmpId, setAdvEmpId] = useState("");
   const [advType, setAdvType] = useState("Advance");
   const [advAmt, setAdvAmt] = useState(1000);
   const [advReason, setAdvReason] = useState("Personal loan advance");
 
   // MODULE 2.4 STAFF ATTENDANCE & MANAGEMENT STATES
-  const [punchLogs, setPunchLogs] = useState([
-    {
-      id: "p-1",
-      empId: "e-3",
-      empName: "Rajesh Malhotra",
-      date: "2026-06-28",
-      punchIn: "09:02 AM",
-      punchOut: "06:15 PM",
-      hours: 9.2,
-    },
-    {
-      id: "p-2",
-      empId: "e-4",
-      empName: "Simran Walia",
-      date: "2026-06-28",
-      punchIn: "09:15 AM",
-      punchOut: "06:00 PM",
-      hours: 8.75,
-    },
-    {
-      id: "p-3",
-      empId: "e-5",
-      empName: "Arjun Mehra",
-      date: "2026-06-28",
-      punchIn: "08:58 AM",
-      punchOut: "05:30 PM",
-      hours: 8.53,
-    },
-  ]);
+  const [punchLogs, setPunchLogs] = useState([]);
+  const [punchedInEmps, setPunchedInEmps] = useState({});
 
-  const [punchedInEmps, setPunchedInEmps] = useState({
-    "e-3": "09:05 AM",
-  });
-
-  const [leaveRequests, setLeaveRequests] = useState([
-    {
-      id: "lr-1",
-      empId: "e-4",
-      empName: "Simran Walia",
-      leaveType: "Casual Leave",
-      startDate: "2026-07-02",
-      endDate: "2026-07-04",
-      days: 3,
-      reason: "Family function at hometown",
-      status: "Pending",
-    },
-    {
-      id: "lr-2",
-      empId: "e-5",
-      empName: "Arjun Mehra",
-      leaveType: "Sick Leave",
-      startDate: "2026-06-20",
-      endDate: "2026-06-21",
-      days: 2,
-      reason: "Viral fever, doctor advised rest",
-      status: "Approved",
-    },
-  ]);
-
-  const [employeeDocs, setEmployeeDocs] = useState({
-    "e-3": [
-      {
-        id: "d-1",
-        name: "Aadhaar_Card_Verified.pdf",
-        size: "1.4 MB",
-        type: "Identification",
-        date: "2026-04-12",
-      },
-      {
-        id: "d-2",
-        name: "PAN_Card_Copy.pdf",
-        size: "890 KB",
-        type: "Tax Document",
-        date: "2026-04-12",
-      },
-    ],
-    "e-4": [
-      {
-        id: "d-3",
-        name: "Simran_Walia_Resume.pdf",
-        size: "2.1 MB",
-        type: "Resume",
-        date: "2026-05-18",
-      },
-    ],
-  });
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [employeeDocs, setEmployeeDocs] = useState({});
 
   const [departments, setDepartments] = useState([
     {
@@ -495,8 +366,31 @@ export const EmployeeView = ({
         "success",
       );
     } else {
-      const punchInTime = punchedInEmps[empId] || "09:00 AM";
-      const mockHours = parseFloat((7.5 + Math.random() * 2).toFixed(2));
+      const punchInTime = punchedInEmps[empId] || timeStr;
+      let calculatedHours = 0;
+      try {
+        const parseTimeString = (tStr) => {
+          const match = (tStr || "").match(/(\d+):(\d+)(?::\d+)?\s*(AM|PM)?/i);
+          if (!match) return null;
+          let h = parseInt(match[1], 10);
+          const m = parseInt(match[2], 10);
+          const mer = match[3] ? match[3].toUpperCase() : null;
+          if (mer === 'PM' && h < 12) h += 12;
+          if (mer === 'AM' && h === 12) h = 0;
+          return h * 60 + m;
+        };
+        const inMins = parseTimeString(punchInTime);
+        const outMins = parseTimeString(timeStr);
+        if (inMins !== null && outMins !== null && outMins >= inMins) {
+          calculatedHours = parseFloat(((outMins - inMins) / 60).toFixed(2));
+        } else if (inMins !== null && outMins !== null && outMins < inMins) {
+          calculatedHours = parseFloat(((outMins + 1440 - inMins) / 60).toFixed(2));
+        } else {
+          calculatedHours = 0;
+        }
+      } catch (err) {
+        calculatedHours = 0;
+      }
       const newPunch = {
         id: `p-${Date.now()}`,
         empId,
@@ -504,7 +398,7 @@ export const EmployeeView = ({
         date: dateStr,
         punchIn: punchInTime,
         punchOut: timeStr,
-        hours: mockHours,
+        hours: calculatedHours,
       };
       setPunchLogs((prev) => [newPunch, ...prev]);
       setPunchedInEmps((prev) => {
@@ -514,7 +408,7 @@ export const EmployeeView = ({
       });
       onAddNotification(
         "Workforce Clock",
-        `PUNCH OUT recorded for ${emp.name} at ${timeStr}. Work hours tracked: ${mockHours} hrs.`,
+        `PUNCH OUT recorded for ${emp.name} at ${timeStr}. Work hours tracked: ${calculatedHours} hrs.`,
         "success",
       );
     }

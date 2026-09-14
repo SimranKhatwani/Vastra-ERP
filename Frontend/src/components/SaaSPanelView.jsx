@@ -2,12 +2,15 @@ import React, { useState } from "react";
 import { Building2, Coins, LifeBuoy, Users, CheckCircle } from "lucide-react";
 
 export const SaaSPanelView = ({
-  tenants,
-  supportTickets,
+  tenants = [],
+  supportTickets = [],
   onResolveTicket,
   onAddNotification,
 }) => {
   const [activeTab, setActiveTab] = useState("companies");
+
+  const planPriceMap = { "Free Trial": 0, "Trial": 0, Starter: 2499, Professional: 5999, Enterprise: 14999 };
+  const platformMRR = (tenants || []).reduce((sum, t) => sum + (planPriceMap[t.plan] || 0), 0);
 
   const handleResolveTicketSubmit = (ticketId) => {
     onResolveTicket(ticketId);
@@ -40,7 +43,7 @@ export const SaaSPanelView = ({
               Active Users
             </span>
             <span className="text-xl font-bold">
-              {tenants.reduce((sum, t) => sum + t.activeUsers, 0)} users
+              {tenants.reduce((sum, t) => sum + (t.activeUsers || 0), 0)} users
             </span>
           </div>
           <Users className="w-5 h-5 text-emerald-400" />
@@ -49,9 +52,9 @@ export const SaaSPanelView = ({
         <div className="bg-slate-900 text-white p-4 rounded-xl flex justify-between items-center border border-slate-800">
           <div>
             <span className="text-slate-400 uppercase block mb-1">
-              Platform MRR (June)
+              Platform MRR
             </span>
-            <span className="text-xl font-bold">₹12,45,000</span>
+            <span className="text-xl font-bold">₹{platformMRR.toLocaleString("en-IN")}</span>
           </div>
           <Coins className="w-5 h-5 text-amber-400" />
         </div>

@@ -3143,62 +3143,9 @@ export const BillingPOSView = ({
     });
   }, [products, selectedCategoryFilter, debouncedProductSearch]);
 
-  // Inject 50 demo products if the user's DB doesn't have enough to show off the UI feature
-  const [demoProducts, setDemoProducts] = useState([]);
-  useEffect(() => {
-    if (products.length < 15 && demoProducts.length === 0) {
-      const categories = ['Shirts', 'T-Shirts', 'Trousers', 'Jeans', 'Jackets', 'Suits', 'Ethnic Wear'];
-      const colors = ['Red', 'Blue', 'Black', 'White', 'Grey', 'Navy', 'Olive', 'Maroon'];
-      const brands = ['Raymond', 'Peter England', 'Levis', 'Allen Solly', 'Van Heusen', 'Arrow'];
-
-      let mocks = [];
-      for (let i = 1; i <= 50; i++) {
-        const cat = categories[Math.floor(Math.random() * categories.length)];
-        const brand = brands[Math.floor(Math.random() * brands.length)];
-        mocks.push({
-          id: `demo-${i}`,
-          name: `Premium ${brand} ${colors[Math.floor(Math.random() * colors.length)]} ${cat}`,
-          sku: `SKU-99${i}`,
-          barcode: `BCODE99${i}`,
-          category: cat,
-          brand: brand,
-          color: colors[Math.floor(Math.random() * colors.length)],
-          size: 'M',
-          purchasePrice: 500,
-          sellingPrice: Math.floor(Math.random() * 1500) + 1500,
-          mrp: Math.floor(Math.random() * 2000) + 2000,
-          stock: Math.floor(Math.random() * 50) + 10,
-          minStockAlert: 15,
-          gstPercent: 12,
-          status: 'In Stock'
-        });
-      }
-      setDemoProducts(mocks);
-    }
-  }, [products]);
-
   const filteredProducts = React.useMemo(() => {
-    const filteredDemos = demoProducts.filter((p) => {
-      const matchesCat = selectedCategoryFilter === "All" || p.category?.toLowerCase() === selectedCategoryFilter.toLowerCase();
-      const q = debouncedProductSearch.toLowerCase();
-      const prdIdStr = p._id || p.id || "";
-      const prdCode = `prd-${prdIdStr.toString().substring(Math.max(0, prdIdStr.toString().length - 6)).toLowerCase()}`;
-      const matchesSearch =
-        !q ||
-        p.name?.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q) ||
-        p.sku?.toLowerCase().includes(q) ||
-        prdCode.includes(q) ||
-        p.brand?.toLowerCase().includes(q) ||
-        p.category?.toLowerCase().includes(q) ||
-        p.color?.toLowerCase().includes(q) ||
-        p.size?.toLowerCase().includes(q);
-      return matchesCat && matchesSearch;
-    });
-
-    const combined = [...baseFilteredProducts, ...filteredDemos];
     const groups = {};
-    combined.forEach(p => {
+    (baseFilteredProducts || []).forEach(p => {
       const baseName = p.name ? p.name.split('-')[0].trim().toLowerCase() : '';
       const key = `${baseName}-${p.brand?.trim().toLowerCase()}`;
       if (!groups[key]) {
@@ -3221,15 +3168,15 @@ export const BillingPOSView = ({
       size: g.sizesAvailable.size > 0 ? Array.from(g.sizesAvailable).join(", ") : "-",
       color: g.colorsAvailable.size > 0 ? Array.from(g.colorsAvailable).join(", ") : "-"
     })).slice(0, 50); // Virtual slicing for performance
-  }, [baseFilteredProducts, demoProducts, selectedCategoryFilter, debouncedProductSearch]);
+  }, [baseFilteredProducts, selectedCategoryFilter, debouncedProductSearch]);
 
-  // Unique categories list
+  // Unique categories list from real DB products
   const uniqueCategories = React.useMemo(() => {
     return [
       "All",
-      ...Array.from(new Set([...(products || []), ...demoProducts].map((p) => p.category).filter(Boolean))),
+      ...Array.from(new Set((products || []).map((p) => p.category).filter(Boolean))),
     ];
-  }, [products, demoProducts]);
+  }, [products]);
 
   const RenderedProductsTable = React.useMemo(() => {
     return filteredProducts.map((p, idx) => {
