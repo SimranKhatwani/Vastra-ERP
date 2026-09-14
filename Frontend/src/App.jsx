@@ -60,6 +60,7 @@ import { SettingsView } from "./components/SettingsView";
 import { CommissionView } from "./components/CommissionView";
 import { StaffManagementView } from "./components/StaffManagementView";
 import GoodsReturnView from "./components/GoodsReturnView";
+import SummaryDashboardView from "./components/SummaryDashboardView";
 import { AuditLogView } from "./components/AuditLogView";
 import AttendanceDashboardView from "./components/AttendanceDashboardView";
 import AttendancePolicySettings from "./components/AttendancePolicySettings";
@@ -642,6 +643,7 @@ export default function App() {
       case "superadmin":
         baseModules = [
           "saas",
+          "summary-dashboard",
           "developer",
           "integrations",
           "settings",
@@ -652,15 +654,13 @@ export default function App() {
           "vendor-communication",
           "financial-management",
           "accounts-treasury",
-          "attendance-dashboard",
-          "manager-review",
-          "attendance-settings",
         ];
         break;
       case "businessadmin":
       case "admin":
         baseModules = [
           "dashboard",
+          "summary-dashboard",
           "billing",
           "articulation",
           "commissions",
@@ -675,7 +675,6 @@ export default function App() {
           "financial-management",
           "accounts-treasury",
           "customers",
-          "employees",
           "staff",
           "accounting",
           "reports",
@@ -684,14 +683,12 @@ export default function App() {
           "integrations",
           "developer",
           "settings",
-          "attendance-dashboard",
-          "manager-review",
-          "attendance-settings",
         ];
         break;
       case "manager":
         baseModules = [
           "dashboard",
+          "summary-dashboard",
           "billing",
           "articulation",
           "commissions",
@@ -706,11 +703,8 @@ export default function App() {
           "financial-management",
           "accounts-treasury",
           "customers",
-          "employees",
           "staff",
           "reports",
-          "attendance-dashboard",
-          "manager-review",
         ];
         break;
       case "cashier":
@@ -720,34 +714,33 @@ export default function App() {
           "billing-sales",
           "discount-offers",
           "customers",
-          "attendance-dashboard",
         ];
         break;
       case "salesperson":
         baseModules = [
           "dashboard",
+          "summary-dashboard",
           "billing",
           "products",
           "customers",
-          "attendance-dashboard",
         ];
         break;
       case "tailor":
-        baseModules = ["dashboard", "articulation", "attendance-dashboard"];
+        baseModules = ["dashboard", "articulation"];
         break;
       case "worker":
-        baseModules = ["dashboard", "attendance-dashboard"];
+        baseModules = ["dashboard"];
         break;
       case "accountant":
         baseModules = [
           "dashboard",
+          "summary-dashboard",
           "purchase",
           "goods-return",
           "financial-management",
           "accounts-treasury",
           "accounting",
           "reports",
-          "attendance-dashboard",
         ];
         break;
       default:
@@ -764,8 +757,14 @@ export default function App() {
       const levelsMap = config.moduleAccessLevels || {};
       const allowedArr = config.allowedModules;
 
-      // Strictly respect Admin saved allowedModules list from database
+      // Start with saved allowedModules, and ensure default baseModules for this role aren't dropped unless explicitly set to NO_ACCESS
       let finalModules = Array.isArray(allowedArr) ? [...allowedArr] : [...baseModules];
+
+      baseModules.forEach((modId) => {
+        if (!finalModules.includes(modId) && levelsMap[modId] !== 'NO_ACCESS') {
+          finalModules.push(modId);
+        }
+      });
 
       // Enforce 3-Level explicit overrides (NO_ACCESS vs FULL_CONTROL/VIEW_ONLY)
       Object.keys(levelsMap).forEach((modId) => {
@@ -1478,6 +1477,7 @@ export default function App() {
   // Sidebar item profiles
   const modulesList = [
     { id: "dashboard", label: "Overview Dashboard", icon: LayoutDashboard },
+    { id: "summary-dashboard", label: "Summary Dashboard", icon: LayoutDashboard },
     { id: "billing", label: "Boutique POS Billing", icon: ShoppingCart },
     { id: "articulation", label: "Tailoring & Garments", icon: Scissors },
     { id: "commissions", label: "Channel & Staff Commissions", icon: Percent },
@@ -1492,7 +1492,7 @@ export default function App() {
     { id: "financial-management", label: "Financial Management", icon: BarChart3 },
     { id: "accounts-treasury", label: "Accounts & Treasury", icon: Wallet },
     { id: "customers", label: "CRM & Customer Loyalty", icon: Users },
-    { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
+    // { id: "employees", label: currentUser?.role?.toLowerCase() === 'salesperson' ? "Employee Portal" : "HR Payroll & rosters", icon: Users2 },
     { id: "staff", label: "Staff Management", icon: User },
     { id: "accounting", label: "General Ledger Profit", icon: Receipt },
     { id: "reports", label: "Reports & Business Analytics", icon: TrendingUp },
@@ -1502,9 +1502,9 @@ export default function App() {
     { id: "settings", label: "System Configurations", icon: Settings },
     { id: "permissions", label: "Permissions & Role Access", icon: ShieldCheck },
     { id: "staff-activity", label: "Staff Activity Audit", icon: ShieldAlert },
-    { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
-    { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
-    { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
+    // { id: "attendance-dashboard", label: "Attendance Record", icon: Clock },
+    // { id: "manager-review", label: "Manager Review", icon: ShieldAlert },
+    // { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
   ];
 
   // Toast Overlay Renderer - Smooth premium notifications
@@ -1991,6 +1991,13 @@ export default function App() {
             />
           )}
 
+          {activeModule === "summary-dashboard" && (
+            <SummaryDashboardView
+              currentUser={currentUser}
+              onAddNotification={addToastNotification}
+            />
+          )}
+
           <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
             <BillingPOSView
               posInitialMode={posInitialMode}
@@ -2160,7 +2167,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "employees" && (
+          {/* {activeModule === "employees" && (
             <EmployeeView
               currentUser={currentUser}
               employees={employees}
@@ -2168,7 +2175,7 @@ export default function App() {
               onDisburseCommission={handleDisburseCommission}
               onAddNotification={addToastNotification}
             />
-          )}
+          )} */}
 
           {activeModule === "staff" && (
             <StaffManagementView />
@@ -2231,7 +2238,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "attendance-dashboard" && (
+          {/* {activeModule === "attendance-dashboard" && (
             <AttendanceDashboardView employees={employees} token={localStorage.getItem('token')} onAddNotification={addToastNotification} currentUser={currentUser} />
           )}
 
@@ -2241,7 +2248,7 @@ export default function App() {
 
           {activeModule === "attendance-settings" && (
             <AttendancePolicySettings token={localStorage.getItem('token')} onAddNotification={addToastNotification} />
-          )}
+          )} */}
           </ErrorBoundary>
         </main>
       </div>

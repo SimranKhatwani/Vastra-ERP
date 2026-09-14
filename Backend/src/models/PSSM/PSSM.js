@@ -73,6 +73,7 @@ const pssmSchema = new mongoose.Schema({
     ref: 'Salesman'
   },
   reassignedFromSalesmanName: String,
+  delegatedTo: { type: String, default: null },
   reassignedReason: String,
   reassignedAt: Date,
   trialRequired: {

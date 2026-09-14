@@ -113,7 +113,9 @@ const PERMISSIONS = {
   // Goods Return (Vendor Return)
   GOODS_RETURN_CREATE: 'goods_return.create',
   GOODS_RETURN_READ: 'goods_return.read',
+  GOODS_RETURN_UPDATE: 'goods_return.update',
   GOODS_RETURN_APPROVE: 'goods_return.approve',
+  GOODS_RETURN_DELETE: 'goods_return.delete',
 
   // Dashboard & Reports
   SEARCH_READ: 'search.read',
@@ -124,6 +126,7 @@ const PERMISSIONS = {
   PT_IMPORT_READ: 'pt_import.read',
   PT_IMPORT_ROLLBACK: 'pt_import.rollback',
   OWNER_DASHBOARD: 'owner.dashboard',
+  SUMMARY_DASHBOARD_READ: 'summary_dashboard.read',
   REPORTS_SALES: 'reports.sales',
   REPORTS_PURCHASE: 'reports.purchase',
   REPORTS_INVENTORY: 'reports.inventory',

@@ -25,42 +25,9 @@ export const InventoryView = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterWarehouse, setFilterWarehouse] = useState("All");
 
-  // Warehouses List State (Full CRUD)
-  const [warehouses, setWarehouses] = useState([
-    {
-      id: "w-1",
-      name: "Bandra Central Warehouse",
-      code: "WH-BND-01",
-      location: "Bandra Kurla Complex, Mumbai",
-      manager: "Sachin Pilot",
-      phone: "9876543210",
-      email: "bandra@vastraerp.com",
-      capacity: "78%",
-      totalGarments: 4500,
-    },
-    {
-      id: "w-2",
-      name: "Colaba Retail Godown",
-      code: "WH-COL-02",
-      location: "Colaba Causeway, Mumbai",
-      manager: "Suniel Shetty",
-      phone: "9812345678",
-      email: "colaba@vastraerp.com",
-      capacity: "42%",
-      totalGarments: 1200,
-    },
-    {
-      id: "w-3",
-      name: "Thane Logistics Depot",
-      code: "WH-THA-03",
-      location: "Wagle Estate, Thane",
-      manager: "Bobby Deol",
-      phone: "9834567890",
-      email: "thane@vastraerp.com",
-      capacity: "91%",
-      totalGarments: 8900,
-    },
-  ]);
+  // Warehouses List State (Full CRUD backed by MongoDB)
+  const [warehouses, setWarehouses] = useState([]);
+  const [warehousesLoading, setWarehousesLoading] = useState(false);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
   const [whName, setWhName] = useState("");
@@ -69,7 +36,7 @@ export const InventoryView = ({
   const [whManager, setWhManager] = useState("");
   const [whPhone, setWhPhone] = useState("");
   const [whEmail, setWhEmail] = useState("");
-  const [whCapacity, setWhCapacity] = useState("50%");
+  const [whCapacity, setWhCapacity] = useState("100%");
 
   // Warehouse detailed dashboard drilldown states
   const [selectedWarehouseDetail, setSelectedWarehouseDetail] = useState(null);
@@ -78,48 +45,14 @@ export const InventoryView = ({
   const [selectedReportTab, setSelectedReportTab] = useState("summary");
 
   // Batch Tracking State
-  const [batches, setBatches] = useState([
-    {
-      id: "b-1",
-      batchNo: "BAT-2026-001",
-      productId: "p-1",
-      productName: "Raymond Executive Linen Shirt - White",
-      quantity: 150,
-      manufacturingDate: "2026-01-10",
-      expiryDate: "2028-01-10",
-      warehouseId: "w-1",
-      warehouseName: "Bandra Central Warehouse",
-    },
-    {
-      id: "b-2",
-      batchNo: "BAT-2026-002",
-      productId: "p-4",
-      productName: "Zara Slim Fit Denim Jeans - Midnight Black",
-      quantity: 200,
-      manufacturingDate: "2026-02-15",
-      expiryDate: "2029-02-15",
-      warehouseId: "w-3",
-      warehouseName: "Thane Logistics Depot",
-    },
-    {
-      id: "b-3",
-      batchNo: "BAT-2026-003",
-      productId: "p-7",
-      productName: "Biba Festive Floral Saree - Red Silk",
-      quantity: 80,
-      manufacturingDate: "2026-03-01",
-      expiryDate: "2031-03-01",
-      warehouseId: "w-2",
-      warehouseName: "Colaba Retail Godown",
-    },
-  ]);
+  const [batches, setBatches] = useState([]);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchNo, setBatchNo] = useState("");
   const [batchProductId, setBatchProductId] = useState("");
   const [batchQty, setBatchQty] = useState(50);
   const [batchMfgDate, setBatchMfgDate] = useState("2026-06-01");
   const [batchExpDate, setBatchExpDate] = useState("2028-06-01");
-  const [batchWhId, setBatchWhId] = useState("w-1");
+  const [batchWhId, setBatchWhId] = useState("");
 
   // Manual Adjustments Form State
   const [adjustingId, setAdjustingId] = useState("");
@@ -128,63 +61,15 @@ export const InventoryView = ({
   const [adjustReason, setAdjustReason] = useState("Stock replenishment");
 
   // Stock Transfers State
-  const [transfers, setTransfers] = useState([
-    {
-      id: "t-1",
-      timestamp: "2026-06-28 14:15:30",
-      productId: "p-1",
-      productName: "Raymond Executive Linen Shirt - White",
-      quantity: 30,
-      sourceWarehouseId: "w-3",
-      sourceWarehouseName: "Thane Logistics Depot",
-      destWarehouseId: "w-1",
-      destWarehouseName: "Bandra Central Warehouse",
-      status: "Completed",
-      referenceNo: "TO-20260601",
-    },
-    {
-      id: "t-2",
-      timestamp: "2026-06-29 10:30:00",
-      productId: "p-4",
-      productName: "Zara Slim Fit Denim Jeans - Midnight Black",
-      quantity: 50,
-      sourceWarehouseId: "w-1",
-      sourceWarehouseName: "Bandra Central Warehouse",
-      destWarehouseId: "w-2",
-      destWarehouseName: "Colaba Retail Godown",
-      status: "In Transit",
-      referenceNo: "TO-20260602",
-    },
-  ]);
+  const [transfers, setTransfers] = useState([]);
   const [xferProductId, setXferProductId] = useState("");
   const [xferQty, setXferQty] = useState(20);
-  const [xferSourceWhId, setXferSourceWhId] = useState("w-3");
-  const [xferDestWhId, setXferDestWhId] = useState("w-1");
+  const [xferSourceWhId, setXferSourceWhId] = useState("");
+  const [xferDestWhId, setXferDestWhId] = useState("");
   const [xferRef, setXferRef] = useState("");
 
   // Stock Returns State
-  const [returns, setReturns] = useState([
-    {
-      id: "ret-1",
-      timestamp: "2026-06-27 16:45:00",
-      productId: "p-7",
-      productName: "Biba Festive Floral Saree - Red Silk",
-      quantity: 3,
-      partnerName: "Pratibha Syntex Ltd",
-      type: "Vendor Return",
-      reason: "Micro-tears in silk border (QC Failed)",
-      status: "Completed",
-    },
-    {
-      id: "ret-2",
-      timestamp: "2026-06-28 09:12:00",
-      productId: "p-2",
-      productName: "Raymond Custom Fit Chino - Khaki",
-      quantity: 1,
-      partnerName: "Ramesh Kumar",
-      status: "Completed",
-    },
-  ]);
+  const [returns, setReturns] = useState([]);
 
   // Dynamic MongoDB movement logs states
   const [dbMovements, setDbMovements] = useState([]);
@@ -249,8 +134,37 @@ export const InventoryView = ({
     movementsFilterProduct
   ]);
 
+  const fetchWarehouses = React.useCallback(async () => {
+    setWarehousesLoading(true);
+    try {
+      const res = await api.get(`/warehouses`);
+      const items = res.data?.data || res.data?.items || (Array.isArray(res.data) ? res.data : []);
+      const normalized = items.map((w) => ({
+        id: w._id || w.id,
+        _id: w._id || w.id,
+        name: w.name,
+        code: w.code || "",
+        location: w.address || w.location || "Store Premises",
+        manager: w.manager || "Unassigned",
+        phone: w.phone || "",
+        email: w.email || "",
+        capacity: w.capacity ? `${w.capacity}%` : "100%",
+        totalGarments: 0,
+      }));
+      setWarehouses(normalized);
+    } catch (err) {
+      console.error("Failed to load warehouses from MongoDB:", err);
+    } finally {
+      setWarehousesLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
-    if (activeTab === "logs") {
+    fetchWarehouses();
+  }, [fetchWarehouses]);
+
+  React.useEffect(() => {
+    if (activeTab === "logs" || activeTab === "warehouses") {
       fetchMovements();
     }
   }, [activeTab, fetchMovements]);
@@ -409,36 +323,36 @@ export const InventoryView = ({
 
   const locations = React.useMemo(() => {
     return warehouses.map((w) => {
-      let totalProducts = 0;
+      const matching = products.filter(
+        (p) =>
+          p.warehouseId === w.id ||
+          p.warehouseId === w._id ||
+          p.warehouseName === w.name ||
+          warehouses.length === 1
+      );
+      const totalProducts = matching.length;
       let stockValue = 0;
       let availableStock = 0;
       let reservedStock = 0;
       let lowStockCount = 0;
 
-      products.forEach((p, idx) => {
-        let qty = 0;
-        if (w.id === "w-1" || w.id.toString().includes("w-1")) {
-          qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
-        } else if (w.id === "w-2" || w.id.toString().includes("w-2")) {
-          qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
-        } else {
-          qty = Math.floor(p.stock * 0.4);
-        }
-        if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
-        if (qty > 0) {
-          totalProducts++;
-          const reserved = Math.floor(qty * 0.1);
-          const available = qty - reserved;
-          stockValue += qty * (p.price || 500);
-          availableStock += available;
-          reservedStock += reserved;
-          if (available <= 10) lowStockCount++;
-        }
+      matching.forEach((p) => {
+        const qty = Number(p.stock) || 0;
+        const reserved = Number(p.reservedStock) || 0;
+        const available = Math.max(0, qty - reserved);
+        stockValue += qty * (Number(p.price || p.purchasePrice || p.sellingPrice) || 0);
+        availableStock += available;
+        reservedStock += reserved;
+        if (available <= (Number(p.minStockAlert) || 10)) lowStockCount++;
       });
 
       const inTransit = locTransfers
-        .filter(t => (t.destinationLocationId === w.id && t.status === "In Transit") || (t.sourceLocationId === w.id && t.status === "Dispatched"))
-        .reduce((sum, t) => sum + t.quantity, 0);
+        .filter(
+          (t) =>
+            (t.destinationLocationId === w.id && t.status === "In Transit") ||
+            (t.sourceLocationId === w.id && t.status === "Dispatched")
+        )
+        .reduce((sum, t) => sum + (Number(t.quantity) || 0), 0);
 
       return {
         ...w,
@@ -447,55 +361,61 @@ export const InventoryView = ({
         availableStock,
         reservedStock,
         lowStockCount,
-        inTransit
+        inTransit,
       };
     });
   }, [warehouses, products, locTransfers]);
 
   const locationProductStock = React.useMemo(() => {
     if (!selectedLocation) return [];
-    return products.map((p, idx) => {
-      let qty = 0;
-      if (selectedLocation.id === "w-1" || selectedLocation.id.toString().includes("w-1")) {
-        qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
-      } else if (selectedLocation.id === "w-2" || selectedLocation.id.toString().includes("w-2")) {
-        qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
-      } else {
-        qty = Math.floor(p.stock * 0.4);
-      }
-      if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
-      if (qty <= 0) return null;
-      const reserved = Math.floor(qty * 0.1);
-      const available = qty - reserved;
-      const inTransit = locTransfers
-        .filter(t => t.productId?._id === p.id && t.destinationLocationId === selectedLocation.id && t.status === "In Transit")
-        .reduce((sum, t) => sum + t.quantity, 0);
-      return {
-        id: p.id,
-        name: p.name,
-        sku: p.sku || "N/A",
-        batch: `BAT-2026-00${(idx % 3) + 1}`,
-        available,
-        reserved,
-        inTransit,
-        lastUpdated: new Date().toLocaleDateString()
-      };
-    }).filter(Boolean);
-  }, [selectedLocation, products, locTransfers]);
+    const matching = products.filter(
+      (p) =>
+        p.warehouseId === selectedLocation.id ||
+        p.warehouseId === selectedLocation._id ||
+        p.warehouseName === selectedLocation.name ||
+        warehouses.length === 1
+    );
+    return matching
+      .map((p) => {
+        const qty = Number(p.stock) || 0;
+        const reserved = Number(p.reservedStock) || 0;
+        const available = Math.max(0, qty - reserved);
+        const inTransit = locTransfers
+          .filter(
+            (t) =>
+              (t.productId?._id === (p._id || p.id) || t.productId === (p._id || p.id)) &&
+              t.destinationLocationId === selectedLocation.id &&
+              t.status === "In Transit"
+          )
+          .reduce((sum, t) => sum + (Number(t.quantity) || 0), 0);
+        return {
+          id: p._id || p.id,
+          name: p.name || p.itemName,
+          sku: p.sku || p.itemCode || "N/A",
+          batch: p.batchNo || "BATCH-01",
+          available,
+          reserved,
+          inTransit,
+          lastUpdated: p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        };
+      })
+      .filter((item) => item.available > 0 || item.reserved > 0 || item.inTransit > 0);
+  }, [selectedLocation, products, locTransfers, warehouses]);
 
   const locStats = React.useMemo(() => {
     const totalLocations = locations.length;
     const totalStock = locations.reduce((s, l) => s + l.availableStock + l.reservedStock, 0);
-    const stockInTransit = locTransfers.filter(t => ["Dispatched", "In Transit"].includes(t.status)).reduce((s, t) => s + t.quantity, 0);
-    const pendingTransfers = locTransfers.filter(t => t.status === "Requested" || t.status === "Approved").length;
-    const lowStockLocations = locations.filter(l => l.lowStockCount > 0).length;
+    const stockInTransit = locTransfers
+      .filter((t) => ["Dispatched", "In Transit"].includes(t.status))
+      .reduce((s, t) => sum + (Number(t.quantity) || 0), 0);
+    const pendingTransfers = locTransfers.filter((t) => t.status === "Requested" || t.status === "Approved").length;
+    const lowStockLocations = locations.filter((l) => l.lowStockCount > 0).length;
     return { totalLocations, totalStock, stockInTransit, pendingTransfers, lowStockLocations };
   }, [locations, locTransfers]);
 
   const fetchLocTransfers = React.useCallback(async () => {
     setLocTransfersLoading(true);
     try {
-      const token = localStorage.getItem("token");
       const res = await api.get(`/location-transfers`);
       const json = res.data;
       if (json.success) setLocTransfers(json.data || []);
@@ -518,19 +438,18 @@ export const InventoryView = ({
       alert("Please select a product to transfer.");
       return;
     }
-    const srcW = warehouses.find(w => w.id === tfSourceId);
-    const dstW = warehouses.find(w => w.id === tfDestId);
+    const srcW = warehouses.find((w) => w.id === tfSourceId || w._id === tfSourceId);
+    const dstW = warehouses.find((w) => w.id === tfDestId || w._id === tfDestId);
     try {
-      const token = localStorage.getItem("token");
       const res = await api.post(`/location-transfers`, {
-          sourceLocationId: tfSourceId,
-          sourceLocationName: srcW?.name || tfSourceId,
-          destinationLocationId: tfDestId,
-          destinationLocationName: dstW?.name || tfDestId,
-          productId: tfProductId,
-          quantity: tfQty,
-          remarks: tfRemarks
-        });
+        sourceLocationId: tfSourceId,
+        sourceLocationName: srcW?.name || tfSourceId,
+        destinationLocationId: tfDestId,
+        destinationLocationName: dstW?.name || tfDestId,
+        productId: tfProductId,
+        quantity: tfQty,
+        remarks: tfRemarks,
+      });
       const json = res.data;
       if (json.success) {
         onAddNotification("Transfer Created", `Transfer ${json.data.transferNo} has been requested.`, "success");
@@ -547,7 +466,6 @@ export const InventoryView = ({
 
   const handleUpdateTransferStatus = async (transferId, newStatus) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.put(`/location-transfers/${transferId}/status`, { status: newStatus });
       const json = res.data;
       if (json.success) {
@@ -563,24 +481,30 @@ export const InventoryView = ({
 
   const locLowStockAlerts = React.useMemo(() => {
     const alerts = [];
-    locations.forEach(loc => {
-      products.forEach((p, idx) => {
-        let qty = 0;
-        if (loc.id === "w-1" || loc.id.toString().includes("w-1")) {
-          qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
-        } else if (loc.id === "w-2" || loc.id.toString().includes("w-2")) {
-          qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
-        } else {
-          qty = Math.floor(p.stock * 0.4);
-        }
-        if (qty === 0 && p.stock > 0) qty = Math.floor(p.stock * 0.2) || 1;
-        if (qty > 0 && qty <= 10) {
-          alerts.push({ locationName: loc.name, locationId: loc.id, productName: p.name, productId: p.id, available: qty });
+    locations.forEach((loc) => {
+      const matching = products.filter(
+        (p) =>
+          p.warehouseId === loc.id ||
+          p.warehouseId === loc._id ||
+          p.warehouseName === loc.name ||
+          warehouses.length === 1
+      );
+      matching.forEach((p) => {
+        const qty = Number(p.stock) || 0;
+        const threshold = Number(p.minStockAlert) || 10;
+        if (qty > 0 && qty <= threshold) {
+          alerts.push({
+            locationName: loc.name,
+            locationId: loc.id || loc._id,
+            productName: p.name || p.itemName,
+            productId: p._id || p.id,
+            available: qty,
+          });
         }
       });
     });
     return alerts;
-  }, [locations, products]);
+  }, [locations, products, warehouses]);
 
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [retProductId, setRetProductId] = useState("");
@@ -590,58 +514,29 @@ export const InventoryView = ({
   const [retReason, setRetReason] = useState("Defective weave sizing");
 
   // Stock Audits State
-  const [audits, setAudits] = useState([
-    {
-      id: "aud-1",
-      timestamp: "2026-06-26 15:00:00",
-      productId: "p-1",
-      productName: "Raymond Executive Linen Shirt - White",
-      warehouseId: "w-1",
-      warehouseName: "Bandra Central Warehouse",
-      systemStock: 45,
-      physicalStock: 45,
-      variance: 0,
-      auditor: "Vijay Shekhar",
-      notes: "Perfect barcode match.",
-      status: "Adjusted",
-    },
-    {
-      id: "aud-2",
-      timestamp: "2026-06-28 11:00:00",
-      productId: "p-4",
-      productName: "Zara Slim Fit Denim Jeans - Midnight Black",
-      warehouseId: "w-3",
-      warehouseName: "Thane Logistics Depot",
-      systemStock: 72,
-      physicalStock: 70,
-      variance: -2,
-      auditor: "Sachin Pilot",
-      notes: "2 units missing in pack box. Writing off.",
-      status: "Pending Review",
-    },
-  ]);
+  const [audits, setAudits] = useState([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [auditProductId, setAuditProductId] = useState("");
-  const [auditWhId, setAuditWhId] = useState("w-1");
+  const [auditWhId, setAuditWhId] = useState("");
   const [auditPhysicalStock, setAuditPhysicalStock] = useState(0);
   const [auditNotes, setAuditNotes] = useState("");
-  const [auditorName, setAuditorName] = useState("Vijay Shekhar");
+  const [auditorName, setAuditorName] = useState("Store Manager");
 
   // Pagination for tables
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  // Warehouses CRUD functions
+  // Warehouses CRUD functions with MongoDB API
   const handleOpenWarehouseModal = (wh) => {
     if (wh) {
       setEditingWarehouse(wh);
       setWhName(wh.name);
       setWhCode(wh.code || "");
-      setWhLocation(wh.location);
-      setWhManager(wh.manager);
+      setWhLocation(wh.location || wh.address || "");
+      setWhManager(wh.manager || "");
       setWhPhone(wh.phone || "");
       setWhEmail(wh.email || "");
-      setWhCapacity(wh.capacity);
+      setWhCapacity(wh.capacity || "100%");
     } else {
       setEditingWarehouse(null);
       setWhName("");
@@ -650,82 +545,62 @@ export const InventoryView = ({
       setWhManager("");
       setWhPhone("");
       setWhEmail("");
-      setWhCapacity("60%");
+      setWhCapacity("100%");
     }
     setShowWarehouseModal(true);
   };
 
-  const handleWarehouseSubmit = (e) => {
+  const handleWarehouseSubmit = async (e) => {
     e.preventDefault();
-    if (!whName || !whLocation || !whManager) return;
+    if (!whName) return;
 
-    if (editingWarehouse) {
-      // Edit
-      setWarehouses((prev) =>
-        prev.map((w) =>
-          w.id === editingWarehouse.id
-            ? {
-              ...w,
-              name: whName,
-              code: whCode,
-              location: whLocation,
-              manager: whManager,
-              phone: whPhone,
-              email: whEmail,
-              capacity: whCapacity,
-            }
-            : w,
-        ),
-      );
-      // Also update selectedWarehouseDetail if active to sync updates
-      if (selectedWarehouseDetail && selectedWarehouseDetail.id === editingWarehouse.id) {
-        setSelectedWarehouseDetail({
-          ...selectedWarehouseDetail,
+    try {
+      if (editingWarehouse) {
+        const whId = editingWarehouse._id || editingWarehouse.id;
+        const res = await api.put(`/warehouses/${whId}`, {
           name: whName,
           code: whCode,
-          location: whLocation,
+          address: whLocation,
           manager: whManager,
           phone: whPhone,
           email: whEmail,
-          capacity: whCapacity,
+          capacity: parseInt(whCapacity) || 100,
         });
+        if (res.data?.success || res.status === 200) {
+          onAddNotification("Warehouse Modified", `Updated depot specifications for ${whName}.`, "success");
+          setShowWarehouseModal(false);
+          fetchWarehouses();
+        }
+      } else {
+        const res = await api.post(`/warehouses`, {
+          name: whName,
+          code: whCode || `WH-${whName.substring(0, 3).toUpperCase()}-${Math.floor(Math.random() * 90) + 10}`,
+          address: whLocation,
+          manager: whManager,
+          phone: whPhone || "",
+          email: whEmail || "",
+          capacity: parseInt(whCapacity) || 100,
+        });
+        if (res.data?.success || res.status === 201 || res.status === 200) {
+          onAddNotification("Warehouse Created", `Established secure logistics depot: ${whName}.`, "success");
+          setShowWarehouseModal(false);
+          fetchWarehouses();
+        }
       }
-      onAddNotification(
-        "Warehouse Modified",
-        `Updated depot specifications for ${whName}.`,
-        "success",
-      );
-    } else {
-      // Create
-      const newWh = {
-        id: `wh-${Date.now()}`,
-        name: whName,
-        code: whCode || `WH-${whName.substring(0, 3).toUpperCase()}-${Math.floor(Math.random() * 90) + 10}`,
-        location: whLocation,
-        manager: whManager,
-        phone: whPhone || "9876543210",
-        email: whEmail || `${whName.toLowerCase().replace(/\s+/g, '')}@vastraerp.com`,
-        capacity: whCapacity,
-        totalGarments: 0,
-      };
-      setWarehouses((prev) => [...prev, newWh]);
-      onAddNotification(
-        "Warehouse Created",
-        `Established secure logistics depot: ${whName}.`,
-        "success",
-      );
+    } catch (err) {
+      onAddNotification("Warehouse Error", err.response?.data?.message || err.message, "danger");
     }
-    setShowWarehouseModal(false);
   };
 
-  const handleDeleteWarehouse = (id, name) => {
+  const handleDeleteWarehouse = async (id, name) => {
     if (confirm(`Are you sure you want to delete warehouse depot: ${name}?`)) {
-      setWarehouses((prev) => prev.filter((w) => w.id !== id));
-      onAddNotification(
-        "Warehouse Deleted",
-        `Logistics depot ${name} decommissioned from database.`,
-        "danger",
-      );
+      try {
+        await api.delete(`/warehouses/${id}`);
+        onAddNotification("Warehouse Deleted", `Logistics depot ${name} decommissioned from database.`, "danger");
+        fetchWarehouses();
+      } catch (err) {
+        onAddNotification("Delete Failed", err.response?.data?.message || err.message, "danger");
+      }
     }
   };
 
@@ -955,83 +830,61 @@ export const InventoryView = ({
     );
   };
 
-  // Stock movement timeline logs compiled
+  // Stock movement timeline logs compiled from live MongoDB movements
   const getCompiledMovementLogs = () => {
-    const rawLogs = [
-      {
-        timestamp: "2026-06-28 14:15:30",
-        productName: "Raymond Executive Linen Shirt - White",
-        type: "IN",
-        quantity: 150,
-        source: "Thane Logistics Depot",
-        dest: "Bandra Central Warehouse",
-        reference: "TO-20261101",
-      },
-      {
-        timestamp: "2026-06-28 11:30:12",
-        productName: "Zara Slim Fit Denim Jeans - Midnight Black",
-        type: "OUT",
-        quantity: 24,
-        source: "Bandra Central Warehouse",
-        dest: "POS Sale Line",
-        reference: "INV-20260499",
-      },
-      {
-        timestamp: "2026-06-27 16:45:00",
-        productName: "Biba Festive Floral Saree - Red Silk",
-        type: "ADJUST",
-        quantity: -3,
-        source: "Colaba Retail Godown",
-        dest: "Damaged Stock Writeoff",
-        reference: "ADJ-10294",
-      },
-    ];
+    if (dbMovements && dbMovements.length > 0) {
+      return dbMovements.map((m) => ({
+        timestamp: m.createdAt ? new Date(m.createdAt).toLocaleString() : "N/A",
+        productName: m.productId?.name || m.productName || "Garment Item",
+        type: m.movementType === "INBOUND" ? "IN" : m.movementType === "OUTBOUND" ? "OUT" : "ADJUST",
+        quantity: m.quantity || 0,
+        source: m.sourceLocation || m.warehouseName || "Main Depot",
+        dest: m.destinationLocation || "Counter",
+        reference: m.referenceNumber || m.referenceType || "LOG",
+      }));
+    }
 
-    // Map state variables into logs
     const transferLogs = transfers.map((t) => ({
-      timestamp: t.timestamp,
-      productName: t.productName,
+      timestamp: t.timestamp || "N/A",
+      productName: t.productName || "Product",
       type: "XFER",
-      quantity: t.quantity,
-      source: t.sourceWarehouseName,
-      dest: t.destWarehouseName,
-      reference: t.referenceNo,
+      quantity: t.quantity || 0,
+      source: t.sourceWarehouseName || "Depot",
+      dest: t.destWarehouseName || "Depot",
+      reference: t.referenceNo || "TO",
     }));
 
     const returnLogs = returns.map((r) => ({
-      timestamp: r.timestamp,
-      productName: r.productName,
+      timestamp: r.timestamp || "N/A",
+      productName: r.productName || "Product",
       type: r.type === "Vendor Return" ? "V-RET" : "C-RET",
       quantity: r.type === "Vendor Return" ? -r.quantity : r.quantity,
-      source:
-        r.type === "Vendor Return" ? "Bandra Central Warehouse" : r.partnerName,
-      dest:
-        r.type === "Vendor Return" ? r.partnerName : "Bandra Central Warehouse",
-      reference: "RET-" + r.id.slice(-5),
+      source: r.type === "Vendor Return" ? "Warehouse" : r.partnerName,
+      dest: r.type === "Vendor Return" ? r.partnerName : "Warehouse",
+      reference: "RET-" + (r.id ? r.id.slice(-5) : "001"),
     }));
 
-    const dynamicLogs = [...rawLogs, ...transferLogs, ...returnLogs];
-    return dynamicLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    return [...transferLogs, ...returnLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   };
 
   const handleApplyAdjustment = (e) => {
     e.preventDefault();
     if (!adjustingId) return;
 
-    const matchedProd = products.find((p) => p.id === adjustingId);
+    const matchedProd = products.find((p) => (p._id || p.id) === adjustingId);
     if (!matchedProd) return;
 
     const delta = adjustType === "Add" ? adjustAmount : -adjustAmount;
-    if (adjustType === "Remove" && matchedProd.stock < adjustAmount) {
+    if (adjustType === "Remove" && (matchedProd.stock || 0) < adjustAmount) {
       onAddNotification(
         "Adjustment Denied",
-        `Cannot withdraw ${adjustAmount} units. Only ${matchedProd.stock} currently in stock.`,
+        `Cannot withdraw ${adjustAmount} units. Only ${matchedProd.stock || 0} currently in stock.`,
         "danger",
       );
       return;
     }
 
-    onAdjustStock(adjustingId, delta, "ADJUSTMENT", "Stock Adjustment", `ADJ-${Date.now().toString().slice(-6)}`, adjustReason);
+    onAdjustStock(matchedProd._id || matchedProd.id, delta, "ADJUSTMENT", "Stock Adjustment", `ADJ-${Date.now().toString().slice(-6)}`, adjustReason);
     onAddNotification(
       "Stock Ledger Adjusted",
       `Manually ${adjustType === "Add" ? "added" : "subtracted"} ${adjustAmount} units of ${matchedProd.name}. Reason: ${adjustReason}`,
@@ -1041,13 +894,13 @@ export const InventoryView = ({
     setAdjustAmount(10);
   };
 
-  const lowStockAlerts = (products || []).filter((p) => p && (Number(p.stock || 0) <= Number(p.minStockAlert || 0)));
+  const lowStockAlerts = (products || []).filter((p) => p && (Number(p.stock || 0) <= Number(p.minStockAlert || 10)));
 
   // Search & Filter
   const filteredProducts = (products || []).filter((p) => {
     if (!p) return false;
     const query = String(searchQuery || "").toLowerCase();
-    const nameStr = String(p.name || p.productName || "").toLowerCase();
+    const nameStr = String(p.name || p.itemName || "").toLowerCase();
     const skuStr = String(p.sku || p.productCode || p.itemCode || "").toLowerCase();
     const categoryStr = String(p.category || "").toLowerCase();
     return (
@@ -1071,144 +924,159 @@ export const InventoryView = ({
     );
   };
 
-  // Dynamic warehouse stock distribution
+  // Real warehouse stock calculation
   const warehouseStock = React.useMemo(() => {
     if (!selectedWarehouseDetail) return [];
-    return products.map((p, idx) => {
-      let qty = 0;
-      if (selectedWarehouseDetail.id === "w-1" || selectedWarehouseDetail.id.toString().includes("w-1")) {
-        qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
-      } else if (selectedWarehouseDetail.id === "w-2" || selectedWarehouseDetail.id.toString().includes("w-2")) {
-        qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
-      } else {
-        qty = Math.floor(p.stock * 0.4);
-      }
-      if (qty === 0 && p.stock > 0) {
-        qty = Math.floor(p.stock * 0.2) || 1;
-      }
-      const reserved = Math.floor(qty * 0.1);
-      const available = qty - reserved;
-      return {
-        productName: p.name,
-        sku: p.sku || "N/A",
-        batch: `BAT-2026-00${(idx % 3) + 1}`,
-        qty,
-        reserved,
-        available,
-        rack: `RCK-${String.fromCharCode(65 + (idx % 4))}`,
-        shelf: `SHLF-${(idx % 3) + 1}`
-      };
-    }).filter(item => item.qty > 0);
-  }, [selectedWarehouseDetail, products]);
+    const whId = selectedWarehouseDetail.id || selectedWarehouseDetail._id;
+    const whName = selectedWarehouseDetail.name;
+    const matching = products.filter(
+      (p) =>
+        p.warehouseId === whId ||
+        p.warehouseId === selectedWarehouseDetail._id ||
+        p.warehouseName === whName ||
+        warehouses.length === 1
+    );
+    return matching
+      .map((p, idx) => {
+        const qty = Number(p.stock) || 0;
+        const reserved = Number(p.reservedStock) || 0;
+        const available = Math.max(0, qty - reserved);
+        return {
+          productName: p.name || p.itemName,
+          sku: p.sku || p.itemCode || "N/A",
+          batch: p.batchNo || "BATCH-01",
+          qty,
+          reserved,
+          available,
+          rack: p.rack || `RCK-${String.fromCharCode(65 + (idx % 4))}`,
+          shelf: p.shelf || `SHLF-${(idx % 3) + 1}`,
+        };
+      })
+      .filter((item) => item.qty > 0);
+  }, [selectedWarehouseDetail, products, warehouses]);
 
-  // Dynamic warehouses stock sums
+  // Real warehouses stock totals
   const computedWarehouses = React.useMemo(() => {
     return warehouses.map((w) => {
-      let sum = 0;
-      products.forEach((p, idx) => {
-        let qty = 0;
-        if (w.id === "w-1" || w.id.toString().includes("w-1")) {
-          qty = idx % 2 === 0 ? Math.floor(p.stock * 0.6) : 0;
-        } else if (w.id === "w-2" || w.id.toString().includes("w-2")) {
-          qty = idx % 2 === 1 ? Math.floor(p.stock * 0.3) : 0;
-        } else {
-          qty = Math.floor(p.stock * 0.4);
-        }
-        if (qty === 0 && p.stock > 0) {
-          qty = Math.floor(p.stock * 0.2) || 1;
-        }
-        sum += qty;
-      });
+      const whId = w.id || w._id;
+      const matching = products.filter(
+        (p) =>
+          p.warehouseId === whId ||
+          p.warehouseId === w._id ||
+          p.warehouseName === w.name ||
+          warehouses.length === 1
+      );
+      const sum = matching.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
       return {
         ...w,
         totalGarments: sum,
-        capacity: Math.min(99, Math.max(10, Math.round((sum / 12000) * 100))) + "%"
+        capacity: w.capacity || "100%",
       };
     });
   }, [warehouses, products]);
 
   const selectedWarehouseTotalGarments = React.useMemo(() => {
     if (!selectedWarehouseDetail) return 0;
-    const match = computedWarehouses.find(w => w.id === selectedWarehouseDetail.id);
-    return match ? match.totalGarments : selectedWarehouseDetail.totalGarments;
+    const match = computedWarehouses.find(
+      (w) => w.id === selectedWarehouseDetail.id || w._id === selectedWarehouseDetail._id
+    );
+    return match ? match.totalGarments : selectedWarehouseDetail.totalGarments || 0;
   }, [selectedWarehouseDetail, computedWarehouses]);
 
   const selectedWarehouseCapacity = React.useMemo(() => {
-    if (!selectedWarehouseDetail) return "50%";
-    const match = computedWarehouses.find(w => w.id === selectedWarehouseDetail.id);
-    return match ? match.capacity : selectedWarehouseDetail.capacity;
+    if (!selectedWarehouseDetail) return "100%";
+    const match = computedWarehouses.find(
+      (w) => w.id === selectedWarehouseDetail.id || w._id === selectedWarehouseDetail._id
+    );
+    return match ? match.capacity : selectedWarehouseDetail.capacity || "100%";
   }, [selectedWarehouseDetail, computedWarehouses]);
 
   const batchStats = React.useMemo(() => {
     let total = dbBatches.length;
-    let active = dbBatches.filter(b => b.status !== "Closed").length;
-    let closed = dbBatches.filter(b => b.status === "Closed").length;
-    let totalValue = dbBatches.reduce((acc, b) => acc + (b.availableQty * b.costPrice), 0);
-    let reserved = dbBatches.reduce((acc, b) => acc + (b.reservedQty || 0), 0);
-    let lowStock = dbBatches.filter(b => b.availableQty <= 10 && b.status !== "Closed").length;
+    let active = dbBatches.filter((b) => b.status !== "Closed").length;
+    let closed = dbBatches.filter((b) => b.status === "Closed").length;
+    let totalValue = dbBatches.reduce((acc, b) => acc + (Number(b.availableQty || 0) * Number(b.costPrice || 0)), 0);
+    let reserved = dbBatches.reduce((acc, b) => acc + (Number(b.reservedQty) || 0), 0);
+    let lowStock = dbBatches.filter((b) => Number(b.availableQty || 0) <= 10 && b.status !== "Closed").length;
     return { total, active, closed, totalValue, reserved, lowStock };
   }, [dbBatches]);
 
-  // Mock activities filtered by selected warehouse
+  // Live activities filtered by selected warehouse from dbMovements
   const warehouseActivities = React.useMemo(() => {
     if (!selectedWarehouseDetail) return { received: [], issued: [], transfers: [], adjustments: [], audits: [] };
 
-    // Inbound Stock Received
-    const received = [
-      { date: "2026-07-15 10:30", product: "Raymond Executive Linen Shirt", sku: "RAY-SHIRT-W", batch: "BAT-2026-001", qty: 100, supplier: "Pratibha Syntex Ltd", status: "Completed" },
-      { date: "2026-07-18 14:20", product: "Biba Festive Floral Saree", sku: "BIBA-SAREE-R", batch: "BAT-2026-003", qty: 50, supplier: "Bahl Garments", status: "Completed" },
-      { date: "2026-07-20 09:15", product: "Zara Slim Fit Denim Jeans", sku: "ZARA-JEANS-B", batch: "BAT-2026-002", qty: 80, supplier: "Reliance Retail Hub", status: "In Transit" }
-    ];
-
-    // Outbound Stock Issued
-    const issued = [
-      { date: "2026-07-16 11:45", product: "Raymond Executive Linen Shirt", sku: "RAY-SHIRT-W", qty: 12, invoice: "INV-2026-1024", customer: "Aditya", status: "Shipped" },
-      { date: "2026-07-19 16:30", product: "Zara Slim Fit Denim Jeans", sku: "ZARA-JEANS-B", qty: 25, invoice: "INV-2026-1025", customer: "Yash", status: "Completed" },
-      { date: "2026-07-20 10:10", product: "Raymond Custom Fit Chino", sku: "RAY-CHINO-K", qty: 8, invoice: "INV-2026-1026", customer: "Vikas", status: "Processing" }
-    ];
-
-    // Transfers
-    const activeTransfers = transfers.filter(t =>
-      t.sourceWarehouseId === selectedWarehouseDetail.id || t.destWarehouseId === selectedWarehouseDetail.id
+    const whId = selectedWarehouseDetail.id || selectedWarehouseDetail._id;
+    const whName = selectedWarehouseDetail.name;
+    const whMovements = dbMovements.filter(
+      (m) =>
+        m.warehouseId === whId ||
+        m.warehouseName === whName ||
+        m.sourceLocation === whName ||
+        m.destinationLocation === whName
     );
 
-    // Adjustments
-    const activeAdjustments = [
-      { date: "2026-07-14 15:00", product: "Raymond Custom Fit Chino", qty: -2, type: "Wastage", reason: "Fabric color bleeding", user: "Vijay Shekhar" },
-      { date: "2026-07-17 11:30", product: "Zara Slim Fit Denim Jeans", qty: 15, type: "Replenishment", reason: "Direct purchase order", user: "Bobby Deol" }
-    ];
+    const received = whMovements
+      .filter((m) => m.movementType === "INBOUND")
+      .map((m) => ({
+        date: m.createdAt ? new Date(m.createdAt).toLocaleString() : "N/A",
+        product: m.productId?.name || m.productName || "Garment Item",
+        batch: m.batchNo || m.referenceNumber || "N/A",
+        qty: m.quantity || 0,
+        supplier: m.sourceLocation || "Vendor Inward",
+        status: "Completed",
+      }));
 
-    // Audits
-    const activeAudits = audits.filter(a => a.warehouseId === selectedWarehouseDetail.id);
+    const issued = whMovements
+      .filter((m) => m.movementType === "OUTBOUND")
+      .map((m) => ({
+        date: m.createdAt ? new Date(m.createdAt).toLocaleString() : "N/A",
+        product: m.productId?.name || m.productName || "Garment Item",
+        qty: m.quantity || 0,
+        invoice: m.referenceNumber || "INV-POS",
+        customer: m.destinationLocation || "Customer / Sales",
+        status: "Completed",
+      }));
+
+    const activeTransfers = locTransfers.filter(
+      (t) => t.sourceLocationId === whId || t.destinationLocationId === whId
+    );
+
+    const activeAdjustments = whMovements
+      .filter((m) => m.activity === "INVENTORY_ADJUSTMENT" || m.activity === "STOCK_AUDIT")
+      .map((m) => ({
+        date: m.createdAt ? new Date(m.createdAt).toLocaleString() : "N/A",
+        product: m.productId?.name || m.productName || "Garment Item",
+        qty: m.quantity || 0,
+        type: m.activity || "Adjustment",
+        reason: m.remarks || "Discrepancy Correction",
+        user: m.performedBy?.name || "Manager",
+      }));
+
+    const activeAudits = audits.filter((a) => a.warehouseId === whId);
 
     return { received, issued, transfers: activeTransfers, adjustments: activeAdjustments, audits: activeAudits };
-  }, [selectedWarehouseDetail, transfers, audits]);
+  }, [selectedWarehouseDetail, dbMovements, locTransfers, audits]);
 
   // Analytics Reports for selected warehouse
   const warehouseReports = React.useMemo(() => {
-    if (!selectedWarehouseDetail || warehouseStock.length === 0) return { valuation: 0, deadStock: [], fastMoving: [], slowMoving: [] };
+    if (!selectedWarehouseDetail || warehouseStock.length === 0)
+      return { valuation: 0, deadStock: [], fastMoving: [], slowMoving: [] };
 
-    // Inventory Valuation
-    const valDetails = warehouseStock.map((item, idx) => {
-      const prd = products.find(p => p.name === item.productName) || { purchasePrice: 450 };
-      const val = item.qty * prd.purchasePrice;
+    const valDetails = warehouseStock.map((item) => {
+      const prd = products.find((p) => (p.name || p.itemName) === item.productName) || {};
+      const cost = Number(prd.purchasePrice || prd.costPrice || 0);
+      const val = item.qty * cost;
       return {
         ...item,
-        cost: prd.purchasePrice,
-        valuation: val
+        cost,
+        valuation: val,
       };
     });
 
     const totalValuation = valDetails.reduce((sum, item) => sum + item.valuation, 0);
-
-    // Fast Moving (top 3 highest qty)
-    const fastMoving = [...valDetails].sort((a, b) => b.qty - a.qty).slice(0, 3);
-
-    // Slow Moving (items with qty > 30)
-    const slowMoving = [...valDetails].filter(item => item.qty > 30).slice(0, 3);
-
-    // Dead Stock
-    const deadStock = valDetails.filter((item, idx) => idx % 3 === 0);
+    const fastMoving = [...valDetails].sort((a, b) => b.qty - a.qty).slice(0, 5);
+    const slowMoving = [...valDetails].filter((item) => item.qty > 0).slice(0, 5);
+    const deadStock = valDetails.filter((item) => item.qty === 0);
 
     return { valuation: totalValuation, valDetails, deadStock, fastMoving, slowMoving };
   }, [selectedWarehouseDetail, warehouseStock, products]);
@@ -1346,13 +1214,15 @@ export const InventoryView = ({
                   <h3 className="text-base font-extrabold text-slate-800 uppercase tracking-wide">
                     {selectedWarehouseDetail.name}
                   </h3>
-                  <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border border-indigo-200">
-                    {selectedWarehouseDetail.code || "WH-BND-01"}
-                  </span>
+                  {selectedWarehouseDetail.code && (
+                    <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border border-indigo-200">
+                      {selectedWarehouseDetail.code}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
                   <span>Location:</span>
-                  <span className="text-slate-600 font-bold">{selectedWarehouseDetail.location}</span>
+                  <span className="text-slate-600 font-bold">{selectedWarehouseDetail.location || selectedWarehouseDetail.address || "Store Premises"}</span>
                 </p>
               </div>
 
@@ -1420,27 +1290,27 @@ export const InventoryView = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
                     <div className="space-y-1">
                       <span className="text-slate-400 block">Warehouse Name</span>
-                      <span className="text-slate-800 text-sm font-bold block">{selectedWarehouseDetail.name}</span>
+                      <span className="text-slate-800 text-sm font-bold block">{selectedWarehouseDetail.name || "N/A"}</span>
                     </div>
                     <div className="space-y-1">
                       <span className="text-slate-400 block">Warehouse Code</span>
-                      <span className="text-slate-800 font-mono text-sm font-bold block">{selectedWarehouseDetail.code || "WH-BND-01"}</span>
+                      <span className="text-slate-800 font-mono text-sm font-bold block">{selectedWarehouseDetail.code || "N/A"}</span>
                     </div>
                     <div className="space-y-1 sm:col-span-2">
                       <span className="text-slate-400 block">Physical Address</span>
-                      <span className="text-slate-800 font-bold block">{selectedWarehouseDetail.location}</span>
+                      <span className="text-slate-800 font-bold block">{selectedWarehouseDetail.location || selectedWarehouseDetail.address || "N/A"}</span>
                     </div>
                     <div className="space-y-1">
                       <span className="text-slate-400 block">Contact Person (Manager)</span>
-                      <span className="text-indigo-600 font-bold block">{selectedWarehouseDetail.manager}</span>
+                      <span className="text-indigo-600 font-bold block">{selectedWarehouseDetail.manager || "Unassigned"}</span>
                     </div>
                     <div className="space-y-1">
                       <span className="text-slate-400 block">Contact Phone</span>
-                      <span className="text-slate-800 font-mono font-bold block">{selectedWarehouseDetail.phone || "9876543210"}</span>
+                      <span className="text-slate-800 font-mono font-bold block">{selectedWarehouseDetail.phone || "Not Specified"}</span>
                     </div>
                     <div className="space-y-1 sm:col-span-2">
                       <span className="text-slate-400 block">Contact Email Address</span>
-                      <span className="text-slate-800 font-mono font-bold block">{selectedWarehouseDetail.email || "bandra@vastraerp.com"}</span>
+                      <span className="text-slate-800 font-mono font-bold block">{selectedWarehouseDetail.email || "Not Specified"}</span>
                     </div>
                   </div>
                 </div>
@@ -3281,7 +3151,7 @@ export const InventoryView = ({
                   required
                   value={whName}
                   onChange={(e) => setWhName(e.target.value)}
-                  placeholder="e.g. Bandra Central Warehouse"
+                  placeholder="e.g. Main Store Warehouse"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                 />
               </div>
@@ -3293,7 +3163,7 @@ export const InventoryView = ({
                   type="text"
                   value={whCode}
                   onChange={(e) => setWhCode(e.target.value)}
-                  placeholder="e.g. WH-BND-01"
+                  placeholder="e.g. WH-MAIN-01"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none font-mono uppercase"
                 />
               </div>
@@ -3306,7 +3176,7 @@ export const InventoryView = ({
                   required
                   value={whLocation}
                   onChange={(e) => setWhLocation(e.target.value)}
-                  placeholder="e.g. BKC, Mumbai"
+                  placeholder="e.g. Main Market Premises"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                 />
               </div>
@@ -3331,7 +3201,7 @@ export const InventoryView = ({
                     type="email"
                     value={whEmail}
                     onChange={(e) => setWhEmail(e.target.value)}
-                    placeholder="e.g. bandra@vastraerp.com"
+                    placeholder="e.g. store@vastraerp.com"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                   />
                 </div>
@@ -3346,7 +3216,7 @@ export const InventoryView = ({
                     required
                     value={whManager}
                     onChange={(e) => setWhManager(e.target.value)}
-                    placeholder="e.g. Sachin Pilot"
+                    placeholder="e.g. Store Manager"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                   />
                 </div>

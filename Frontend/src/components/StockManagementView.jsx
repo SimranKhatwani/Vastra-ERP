@@ -28,11 +28,7 @@ export const StockManagementView = ({
   const [activeTab, setActiveTab] = useState("opening");
   
   // Lookup states from standard API routes
-  const [warehouses, setWarehouses] = useState([
-    { id: "w-1", name: "Bandra Central Warehouse", code: "WH-BND-01", location: "Bandra Kurla Complex, Mumbai", manager: "Sachin Pilot" },
-    { id: "w-2", name: "Colaba Retail Godown", code: "WH-COL-02", location: "Colaba Causeway, Mumbai", manager: "Suniel Shetty" },
-    { id: "w-3", name: "Thane Logistics Depot", code: "WH-THA-03", location: "Wagle Estate, Thane", manager: "Bobby Deol" }
-  ]);
+  const [warehouses, setWarehouses] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
 
   // Common UI States
@@ -54,7 +50,7 @@ export const StockManagementView = ({
   const [editOpeningProd, setEditOpeningProd] = useState(null);
   const [opProductId, setOpProductId] = useState("");
   const [opQty, setOpQty] = useState(100);
-  const [opWhId, setOpWhId] = useState("w-1");
+  const [opWhId, setOpWhId] = useState("");
   const [opBatchNo, setOpBatchNo] = useState("");
   const [opRemarks, setOpRemarks] = useState("");
 
@@ -251,7 +247,6 @@ export const StockManagementView = ({
   // Fetch Suppliers
   const fetchSuppliers = async () => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.get(`/suppliers`);
       const json = res.data;
       if (json.success) setSuppliers(json.data || []);
@@ -260,8 +255,36 @@ export const StockManagementView = ({
     }
   };
 
+  // Fetch Warehouses
+  const fetchWarehouses = async () => {
+    try {
+      const res = await api.get(`/warehouses`);
+      const items = res.data?.data || res.data?.items || (Array.isArray(res.data) ? res.data : []);
+      const normalized = items.map((w) => ({
+        id: w._id || w.id,
+        _id: w._id || w.id,
+        name: w.name,
+        code: w.code || `WH-${w.name?.substring(0, 3).toUpperCase()}`,
+        location: w.address || w.location || "Store Premises",
+        manager: w.manager || "Store Manager",
+      }));
+      setWarehouses(normalized);
+      if (normalized.length > 0) {
+        setOpWhId((prev) => prev || normalized[0].id);
+        setTfSourceId((prev) => prev || normalized[0].id);
+        setTfDestId((prev) => prev || (normalized[1]?.id || normalized[0].id));
+        setPeWhId((prev) => prev || normalized[0].id);
+        setAdjWhId((prev) => prev || normalized[0].id);
+        setRetWhId((prev) => prev || normalized[0].id);
+      }
+    } catch (err) {
+      console.error("Failed to load warehouses:", err);
+    }
+  };
+
   useEffect(() => {
     fetchSuppliers();
+    fetchWarehouses();
   }, []);
 
   // Reload active tab contents
@@ -777,7 +800,7 @@ export const StockManagementView = ({
               <label className="block text-slate-400 font-bold mb-1">Supplier Name (Fallback)</label>
               <input
                 type="text"
-                placeholder="e.g. Pratibha Syntex Ltd"
+                placeholder="e.g. Supplier / Mill Name"
                 value={peSupplierName}
                 onChange={(e) => setPeSupplierName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
@@ -1065,7 +1088,7 @@ export const StockManagementView = ({
               <input
                 type="text"
                 required
-                placeholder="e.g. Sachin Pilot"
+                placeholder="e.g. Authorized Manager"
                 value={adjApprovedBy}
                 onChange={(e) => setAdjApprovedBy(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"

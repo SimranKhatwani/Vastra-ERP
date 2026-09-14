@@ -106,7 +106,7 @@ class PSSMService {
       serviceType: data.serviceType || 'Alteration',
       gender: data.gender || rawItems[0]?.gender || 'Gents',
       expectedDeliveryDate: data.expectedDeliveryDate || data.deliveryDate,
-      tailorName: data.tailorName || 'Default Tailor',
+      tailorName: data.tailorName || data.assignedTo || '',
       vendorName: data.vendorName || data.tailorName || '',
       totalCharges,
       status: initialMasterStatus,
