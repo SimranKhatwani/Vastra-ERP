@@ -233,7 +233,8 @@ export const PremiumBarChart = ({
   const padding = 15;
   const chartHeight = height - padding * 2;
   const chartWidth = 500;
-  const barWidth = 12;
+  const isDouble = data.some((d) => d.value2 !== undefined);
+  const barWidth = isDouble ? 12 : 26;
   const gap = 4;
   const groupStep = chartWidth / data.length;
 
@@ -302,7 +303,9 @@ export const PremiumBarChart = ({
 
           {/* Bars */}
           {data.map((d, i) => {
-            const groupX = i * groupStep + (groupStep - barWidth * 2 - gap) / 2;
+            const groupX = isDouble
+              ? i * groupStep + (groupStep - barWidth * 2 - gap) / 2
+              : i * groupStep + (groupStep - barWidth) / 2;
             const y1 = chartHeight - (d.value / maxVal) * chartHeight;
             const h1 = (d.value / maxVal) * chartHeight;
 
@@ -326,9 +329,9 @@ export const PremiumBarChart = ({
                   y={y1}
                   width={barWidth}
                   height={Math.max(2, h1)}
-                  rx="3"
+                  rx="4"
                   fill={color1}
-                  className="transition-all duration-300 hover:brightness-105"
+                  className="transition-all duration-300 hover:brightness-110"
                 />
 
                 {/* Bar 2 */}
@@ -338,9 +341,9 @@ export const PremiumBarChart = ({
                     y={y2}
                     width={barWidth}
                     height={Math.max(2, h2)}
-                    rx="3"
+                    rx="4"
                     fill={color2}
-                    className="transition-all duration-300 hover:brightness-105"
+                    className="transition-all duration-300 hover:brightness-110"
                   />
                 )}
 
@@ -348,10 +351,10 @@ export const PremiumBarChart = ({
                 {hoveredIndex === i && (
                   <g className="z-50">
                     <rect
-                      x={Math.max(10, Math.min(chartWidth - 140, groupX - 50))}
-                      y={Math.max(5, Math.min(y1, y2) - 50)}
+                      x={Math.max(10, Math.min(chartWidth - 140, groupX - 45))}
+                      y={Math.max(5, Math.min(y1, y2) - (isDouble ? 50 : 42))}
                       width="130"
-                      height="42"
+                      height={isDouble ? 42 : 32}
                       rx="6"
                       fill="#1e293b"
                       className="shadow-lg animate-scale-up"
@@ -359,9 +362,9 @@ export const PremiumBarChart = ({
                     <text
                       x={Math.max(
                         75,
-                        Math.min(chartWidth - 75, groupX + barWidth),
+                        Math.min(chartWidth - 75, groupX + (isDouble ? barWidth : barWidth / 2)),
                       )}
-                      y={Math.max(17, Math.min(y1, y2) - 38)}
+                      y={Math.max(17, Math.min(y1, y2) - (isDouble ? 38 : 30))}
                       fill="#ffffff"
                       fontSize="9"
                       fontWeight="bold"
@@ -372,15 +375,15 @@ export const PremiumBarChart = ({
                     <text
                       x={Math.max(
                         75,
-                        Math.min(chartWidth - 75, groupX + barWidth),
+                        Math.min(chartWidth - 75, groupX + (isDouble ? barWidth : barWidth / 2)),
                       )}
-                      y={Math.max(29, Math.min(y1, y2) - 26)}
+                      y={Math.max(29, Math.min(y1, y2) - (isDouble ? 26 : 18))}
                       fill={color1}
                       fontSize="9"
                       fontFamily="monospace"
                       textAnchor="middle"
                     >
-                      S1: {formatVal(d.value)}
+                      {isDouble ? `Revenue: ${formatVal(d.value)}` : `Sales: ${formatVal(d.value)}`}
                     </text>
                     {d.value2 !== undefined && (
                       <text
@@ -394,7 +397,7 @@ export const PremiumBarChart = ({
                         fontFamily="monospace"
                         textAnchor="middle"
                       >
-                        S2: {formatVal(d.value2)}
+                        Expenses: {formatVal(d.value2)}
                       </text>
                     )}
                   </g>
@@ -428,13 +431,13 @@ export const DonutChart = ({ data, size = 140 }) => {
   const [activeIndex, setActiveIndex] = useState(null);
 
   const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
-  const strokeWidth = 12;
+  const strokeWidth = 14;
   const center = size / 2;
   // Calculate dynamic radius to guarantee it always fits completely in the SVG viewbox without clipping
   const radius = (size - strokeWidth - 8) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  let currentAngle = 0;
+  let accumulatedLength = 0;
 
   return (
     <div
@@ -457,7 +460,7 @@ export const DonutChart = ({ data, size = 140 }) => {
             cy={center}
             r={radius}
             fill="none"
-            stroke="#f8fafc"
+            stroke="#f1f5f9"
             strokeWidth={strokeWidth}
           />
 
@@ -465,8 +468,8 @@ export const DonutChart = ({ data, size = 140 }) => {
           {data.map((item, index) => {
             const percentage = item.value / total;
             const strokeLength = percentage * circumference;
-            const strokeOffset = circumference - currentAngle;
-            currentAngle += strokeLength;
+            const strokeOffset = -accumulatedLength;
+            accumulatedLength += strokeLength;
 
             const isHovered = activeIndex === index;
 
@@ -479,9 +482,8 @@ export const DonutChart = ({ data, size = 140 }) => {
                 fill="none"
                 stroke={item.color}
                 strokeWidth={isHovered ? strokeWidth + 3 : strokeWidth}
-                strokeDasharray={circumference}
+                strokeDasharray={`${strokeLength} ${Math.max(0, circumference - strokeLength)}`}
                 strokeDashoffset={strokeOffset}
-                strokeLinecap="round"
                 className="transition-all duration-300 cursor-pointer origin-center"
                 onMouseEnter={() => setActiveIndex(index)}
                 onMouseLeave={() => setActiveIndex(null)}

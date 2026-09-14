@@ -282,7 +282,7 @@ class PTImportService {
 
         const firmName = String(getVal(row, 'Firm', 'firm', 'Firm Name', 'Company') || '').trim();
         const brandName = String(getVal(row, 'Brand', 'brand', 'Brand Name') || 'GENERIC BRAND').trim();
-        const categoryName = String(getVal(row, 'Category', 'category', 'Item name', 'ITEM NAME') || 'GENERAL').trim();
+        const categoryName = String(getVal(row, 'Category', 'category', 'Item name', 'ITEM NAME') || 'FABRIC SUIT').trim();
 
         const designNo = String(getVal(row, 'DesignNo', 'Design No', 'designNo', 'Design') || 'DSG-001').trim();
         const itemCode = String(getVal(row, 'ITEM CODE', 'Item Code', 'itemCode') || `ITEM-${designNo}`).trim();

@@ -71,7 +71,7 @@ class PurchaseService {
         const Brand = require('../models/masters/Brand');
         const Category = require('../models/masters/Category');
         const brandName = item.brand || 'GENERIC BRAND';
-        const categoryName = item.category || item.itemName || 'GENERAL';
+        const categoryName = item.category || item.itemName || item.subItem || 'FABRIC SUIT';
 
         let brand = await Brand.findOne({ tenantId, name: new RegExp(`^${brandName}$`, 'i') });
         if (!brand) {

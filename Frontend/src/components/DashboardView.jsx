@@ -766,16 +766,17 @@ export const DashboardView = ({
     );
     const mRevenue = mInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
 
-    // Calculate profit from items
+    // Calculate profit from items (Actual Selling Price - Purchase/Cost Price)
     let mProfit = 0;
     mInvoices.forEach((inv) => {
       (inv.items || []).forEach((item) => {
-        const match = products.find((p) => p.id === item.productId || p._id === item.productId);
-        const buyPrice = match ? (match.purchasePrice || item.price * 0.45) : item.price * 0.45;
-        mProfit += (item.price - buyPrice) * item.quantity;
+        const match = products.find((p) => (p.id && (p.id === item.productId || p._id === item.productId)) || (p.name && p.name.toLowerCase() === (item.name || '').toLowerCase()));
+        const costPrice = match?.purchasePrice !== undefined && match.purchasePrice !== null ? Number(match.purchasePrice) : 0;
+        const itemSellingPrice = Number(item.price || 0);
+        const itemQty = Number(item.quantity || 1);
+        mProfit += (itemSellingPrice - costPrice) * itemQty;
       });
     });
-    if (mProfit === 0 && mRevenue > 0) mProfit = Math.floor(mRevenue * 0.45);
 
     // Expenses for this month
     const mExpenses = expenses.filter(
@@ -783,7 +784,7 @@ export const DashboardView = ({
     ).reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
     monthlyRevenueData.push({ label: monthNames[m], value: mRevenue });
-    monthlyProfitData.push({ label: monthNames[m], value: mProfit });
+    monthlyProfitData.push({ label: monthNames[m], value: Math.max(0, mProfit) });
     monthlyComparisonData.push({ label: monthNames[m], value: mRevenue, value2: mExpenses });
   }
 
@@ -815,7 +816,19 @@ export const DashboardView = ({
   // ─── Inventory Distribution (Donut Chart) ──────────────────
   const categoryCount = {};
   products.forEach((p) => {
-    categoryCount[p.category || "Uncategorized"] = (categoryCount[p.category || "Uncategorized"] || 0) + (p.stock || 0);
+    const currentStock = Number(p.stock || p.availableStock || 0);
+    if (currentStock <= 0) return;
+
+    let catName = (p.category || p.categoryId?.name || p.subItem || p.itemName || p.name || "").trim();
+    if (!catName || ["general", "uncategorized", "other", "others", "n/a", "-", "undefined", "null"].includes(catName.toLowerCase())) {
+      catName = (p.itemName || p.name || p.subItem || "FABRIC SUIT").trim();
+    }
+    // Standardize naming
+    if (catName.toLowerCase() === "fabric suit" || catName.toLowerCase() === "fabric_suit") {
+      catName = "FABRIC SUIT";
+    }
+
+    categoryCount[catName] = (categoryCount[catName] || 0) + currentStock;
   });
   const sortedCategories = Object.entries(categoryCount)
     .map(([key, val]) => ({ label: key, value: val }))
@@ -834,45 +847,149 @@ export const DashboardView = ({
     color: colorsPalette[idx % colorsPalette.length],
   }));
 
-  // ─── Top Customers (real data) ─────────────────────────────
+  // ─── Top Customers (real cumulative data aggregated from all invoices) ─────
+  const customerSpendMap = {};
+  const customerInvoiceCountMap = {};
+
+  invoices.forEach((inv) => {
+    const cId = (
+      (typeof inv.customerId === "object" && inv.customerId !== null ? (inv.customerId._id || inv.customerId.id) : inv.customerId) ||
+      inv.customer?._id ||
+      inv.customer?.id ||
+      inv.customerId ||
+      ""
+    ).toString();
+    const cPhone = (inv.customerPhone || inv.phone || inv.customerId?.phone || "").trim();
+    const cName = (inv.customerName || inv.name || inv.customerId?.name || "").toLowerCase().trim();
+    const amount = Number(inv.grandTotal || inv.totalAmount || inv.subTotal || inv.paidAmount || 0);
+
+    if (cId) {
+      customerSpendMap[cId] = (customerSpendMap[cId] || 0) + amount;
+      customerInvoiceCountMap[cId] = (customerInvoiceCountMap[cId] || 0) + 1;
+    }
+    if (cPhone) {
+      customerSpendMap[cPhone] = (customerSpendMap[cPhone] || 0) + amount;
+      customerInvoiceCountMap[cPhone] = (customerInvoiceCountMap[cPhone] || 0) + 1;
+    }
+    if (cName) {
+      customerSpendMap[cName] = (customerSpendMap[cName] || 0) + amount;
+      customerInvoiceCountMap[cName] = (customerInvoiceCountMap[cName] || 0) + 1;
+    }
+  });
+
   const topCustomersSorted = [...customers]
+    .map((c) => {
+      const cId = (c._id || c.id || "").toString();
+      const cPhone = (c.phone || c.mobile || "").trim();
+      const cName = (c.name || "").toLowerCase().trim();
+
+      const computedSpend =
+        (cId && customerSpendMap[cId] !== undefined ? customerSpendMap[cId] : null) ??
+        (cPhone && customerSpendMap[cPhone] !== undefined ? customerSpendMap[cPhone] : null) ??
+        (cName && customerSpendMap[cName] !== undefined ? customerSpendMap[cName] : null) ??
+        Number(c.totalSpent || c.spent || 0);
+
+      const dynamicTier =
+        computedSpend >= 25000
+          ? "Platinum"
+          : computedSpend >= 10000
+            ? "Gold"
+            : computedSpend >= 5000
+              ? "Silver"
+              : (c.membership || c.membershipTier || c.tier || "Standard");
+
+      return {
+        ...c,
+        totalSpent: computedSpend,
+        membership: c.membership || c.membershipTier || dynamicTier,
+      };
+    })
     .sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0))
     .slice(0, 4);
 
-  // ─── Top Selling Products (computed from all invoices) ─────
+  // ─── Top Selling Products (aggregated from all invoices with unified product normalization) ─────
   const productSalesMap = {};
   invoices.forEach((inv) => {
     (inv.items || []).forEach((item) => {
-      const key = item.productId || item.name;
-      if (!productSalesMap[key]) {
-        productSalesMap[key] = { name: item.name, units: 0, revenue: 0, productId: item.productId };
+      // Find matching product in catalog
+      const matchedProd = products.find(
+        (p) =>
+          (item.productId && (p.id === item.productId || p._id === item.productId)) ||
+          (p.name && item.name && p.name.toLowerCase().trim() === item.name.toLowerCase().trim()) ||
+          (p.itemName && item.name && p.itemName.toLowerCase().trim() === item.name.toLowerCase().trim())
+      );
+
+      // Clean and normalize the product display name
+      let rawName = (matchedProd?.itemName || matchedProd?.name || item.name || item.itemName || item.productName || "").trim();
+      if (!rawName || rawName.toLowerCase() === "garment item" || rawName.toLowerCase() === "item" || rawName.toLowerCase() === "product" || rawName.toLowerCase() === "general") {
+        rawName = (matchedProd?.itemName || matchedProd?.name || "Fabric Suit").trim();
       }
-      productSalesMap[key].units += item.quantity;
-      productSalesMap[key].revenue += item.totalPrice || item.price * item.quantity;
+
+      // Canonical key strictly normalized across casing/hyphens/spaces
+      const normalizedName = rawName.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+      const displayName = normalizedName
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+
+      const canonicalKey = normalizedName;
+
+      if (!productSalesMap[canonicalKey]) {
+        productSalesMap[canonicalKey] = {
+          name: displayName,
+          units: 0,
+          revenue: 0,
+          productId: matchedProd?._id || matchedProd?.id || item.productId,
+          stock: matchedProd && matchedProd.stock !== undefined && matchedProd.stock !== null ? matchedProd.stock : "-",
+        };
+      }
+
+      const qty = Number(item.quantity || 1);
+      const totalRev = Number(item.totalPrice || (Number(item.price || 0) * qty) || 0);
+
+      productSalesMap[canonicalKey].units += qty;
+      productSalesMap[canonicalKey].revenue += totalRev;
     });
   });
+
   const topProducts = Object.values(productSalesMap)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 4)
     .map((tp) => {
-      const prod = products.find((p) => p.id === tp.productId || p._id === tp.productId);
+      const prod = products.find(
+        (p) =>
+          (tp.productId && (p.id === tp.productId || p._id === tp.productId)) ||
+          (p.name && p.name.toLowerCase().trim() === tp.name.toLowerCase().trim()) ||
+          (p.itemName && p.itemName.toLowerCase().trim() === tp.name.toLowerCase().trim())
+      );
+
+      const totalStockForCategory = products
+        .filter((p) => {
+          const pName = (p.itemName || p.name || p.category || "").toLowerCase().trim();
+          return pName === tp.name.toLowerCase().trim() || pName.includes(tp.name.toLowerCase().trim());
+        })
+        .reduce((sum, p) => sum + Number(p.stock || p.availableStock || 0), 0);
+
+      const resolvedStock =
+        totalStockForCategory > 0
+          ? totalStockForCategory
+          : (prod && prod.stock !== undefined && prod.stock !== null ? prod.stock : tp.stock);
+
       return {
         name: tp.name,
         units: tp.units,
         sales: `₹${Number(tp.revenue || 0).toLocaleString("en-IN")}`,
-        stock: prod ? (prod.stock || 0) : "-",
+        stock: resolvedStock !== undefined ? resolvedStock : "-",
       };
     });
 
-  // ─── Store performance (single store, real) ────────────────
+  // ─── Store performance (single store, real sales only) ─────
   const stores = [
     {
-      name: currentUser?.businessName || "Your Store",
+      name: currentUser?.businessName || currentUser?.storeName || "Your Store",
       sales: `₹${Number(monthlyRevenue || 0).toLocaleString("en-IN")}`,
-      target: `₹${Number((monthlyRevenue || 0) * 1.1).toLocaleString("en-IN")}`,
-      ratio: "90%",
-      billsText: todayBillsCount > 0 ? `${todayBillsCount} bills today` : "No bills yet",
-      trend: monthlyRevenue > 0 ? "up" : "down",
+      billsText: todayBillsCount > 0 ? `${todayBillsCount} bills today` : (thisMonthInvoices.length > 0 ? `${thisMonthInvoices.length} bills this month` : (invoices.length > 0 ? `${invoices.length} total bills` : "No bills recorded")),
     },
   ];
 
@@ -4269,73 +4386,58 @@ export const DashboardView = ({
 
       {/* Monthly Comparisons & Multi-store Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Double Bar Chart for Target vs Actual sales comparison */}
+        {/* Bar Chart for Monthly Sales Trend */}
         <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">
-                Sales Comparison (Revenue vs Expenses)
+                Monthly Sales Graph
               </h2>
               <p className="text-xs text-slate-400">
-                Comparing actual sales revenue vs recorded expenses
+                Month-on-month actual sales revenue trends
               </p>
             </div>
-            <div className="flex items-center gap-4 text-xs font-mono">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-                <span className="text-slate-600">Revenue</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
-                <span className="text-slate-600">Expenses</span>
-              </div>
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block" />
+              <span className="text-slate-600 font-medium">Sales Revenue</span>
             </div>
           </div>
           <PremiumBarChart
-            data={monthlyComparisonData}
+            data={monthlyRevenueData}
             color1="#4f46e5"
-            color2="#cbd5e1"
             height={160}
             currency
           />
         </div>
 
-        {/* Store Performance Leaderboard */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
+        {/* Store Performance */}
+        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80 flex flex-col justify-between">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-slate-800">
               Store Performance
             </h2>
             <p className="text-xs text-slate-400">
-              SaaS multi-location target achievements
+              Live store billing & revenue summary
             </p>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4 my-auto">
             {stores.map((store, i) => (
-              <div key={i} className="space-y-1">
-                <div className="flex justify-between text-xs font-medium">
-                  <span className="text-slate-700 truncate max-w-[170px]">
+              <div key={i} className="p-4 rounded-xl bg-slate-50/80 border border-slate-100 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-800 truncate">
                     {store.name}
-                  </span>
-                  <span className="text-slate-900 font-semibold">
-                    {store.sales} / {store.target}
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${store.trend === "up" ? "bg-indigo-600" : "bg-amber-500"}`}
-                    style={{ width: store.ratio }}
-                  />
-                </div>
-                <div className="flex justify-between items-center text-[10px]">
-                  <span className="text-slate-400">
+                  </p>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                     {store.billsText}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block">
+                    Sales Amount
                   </span>
-                  <span
-                    className={`font-medium ${store.trend === "up" ? "text-emerald-600" : "text-amber-600"}`}
-                  >
-                    {store.trend === "up" ? "↑ Outperforming" : "↓ Trailing"}
-                  </span>
+                  <p className="text-lg font-extrabold text-slate-900 font-sans mt-0.5">
+                    {store.sales}
+                  </p>
                 </div>
               </div>
             ))}
@@ -4438,7 +4540,7 @@ export const DashboardView = ({
                     {p.name}
                   </p>
                   <p className="text-[10px] text-slate-400 font-mono">
-                    Stock remaining: {p.stock} units
+                    {p.stock !== '-' && p.stock !== undefined ? `Stock remaining: ${p.stock} units` : 'In Stock'}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -4465,47 +4567,41 @@ export const DashboardView = ({
             </p>
           </div>
           <div className="divide-y divide-slate-100">
-            {topCustomersSorted.map((c, idx) => {
-              const tierColor =
-                c.membership === "Platinum"
-                  ? "bg-slate-950 text-amber-400"
-                  : c.membership === "Gold"
-                    ? "bg-amber-100 text-amber-800"
-                    : "bg-slate-100 text-slate-700";
-              return (
-                <div
-                  key={idx}
-                  className="py-3 flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 shrink-0">
-                      {c.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-800 truncate">
-                        {c.name}
-                      </p>
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium ${tierColor}`}
-                      >
-                        {c.membership} Tier
-                      </span>
-                    </div>
+            {topCustomersSorted.map((c, idx) => (
+              <div
+                key={idx}
+                className="py-3 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 shrink-0 uppercase">
+                    {(c.name || "C")
+                      .split(" ")
+                      .filter(Boolean)
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("") || "C"}
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-bold text-slate-800">
-                      ₹{Number(c?.totalSpent || 0).toLocaleString("en-IN")}
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-800 truncate">
+                      {c.name || "Customer"}
                     </p>
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      {c.loyaltyPoints} LP
-                    </p>
+                    {c.phone && (
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        {c.phone}
+                      </p>
+                    )}
                   </div>
                 </div>
-              );
-            })}
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-bold text-slate-800">
+                    ₹{Number(c?.totalSpent || 0).toLocaleString("en-IN")}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    {c.loyaltyPoints || 0} LP
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
