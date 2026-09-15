@@ -20,6 +20,8 @@ import { SABusinesses } from "./SABusinesses";
 import { SASubscriptions } from "./SASubscriptions";
 import { SASettings } from "./SASettings";
 
+import { VastraLogo } from "../VastraLogo";
+
 const SA_MODULES = [
   { id: "dashboard",      path: "/super-admin/dashboard",    label: "Platform Dashboard",    icon: LayoutDashboard },
   { id: "businesses",     path: "/super-admin/businesses",   label: "Tenants / Businesses",  icon: Building2 },
@@ -57,25 +59,17 @@ export function SuperAdminLayout({ currentUser, onLogout, tenants = [] }) {
         className={`erp-sidebar ${sidebarOpen ? "" : "erp-sidebar--collapsed items-center"}`}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 gap-2">
           {sidebarOpen && (
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wider leading-tight">
-                  Vastra ERP
-                </p>
-                <p className="text-[9px] text-indigo-600 font-bold uppercase tracking-widest">
-                  Super Admin
-                </p>
+            <div className="flex-1 flex justify-center">
+              <div className="bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-900 px-3.5 py-2 rounded-xl border border-purple-500/30 shadow-xs flex items-center justify-center">
+                <VastraLogo className="h-5 w-auto" />
               </div>
             </div>
           )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="icon-btn mx-auto"
+            className="icon-btn shrink-0"
           >
             {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>

@@ -3064,15 +3064,13 @@ export const DashboardView = ({
             <span className="bg-indigo-500/20 text-indigo-400 text-xs px-2.5 py-1 rounded-full font-mono border border-indigo-500/30">
               Enterprise v2.6
             </span>
-            <span className="text-slate-400 text-xs font-mono">
-              Tenant: Ziva Boutiques
-            </span>
+
           </div>
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
             System Overview & Terminal
           </h1>
           <p className="text-sm text-slate-300">
-            Activity Feed &amp; system telemetry — {monthNames[currentMonth]} {currentYear}.
+            Activity Feed &amp; system telemetry - {monthNames[currentMonth]} {currentYear}.
           </p>
         </div>
         <div className="flex items-center gap-3">

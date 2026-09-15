@@ -2090,9 +2090,9 @@ export const BillingPOSView = ({
         // Update local invoice history in real-time
         setHistoryInvoices(prev => (prev || []).map(i => {
           const isMatch = (i.invoiceNo && (i.invoiceNo === pssSlipData.originalInvoiceNo || i.invoiceNo === pssSlipData.billBarcode)) ||
-                          (i.billNo && (i.billNo === pssSlipData.originalInvoiceNo || i.billNo === pssSlipData.billBarcode)) ||
-                          (i.billBarcode && (i.billBarcode === pssSlipData.billBarcode || i.billBarcode === pssSlipData.originalInvoiceNo)) ||
-                          (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipData.pssmNo));
+            (i.billNo && (i.billNo === pssSlipData.originalInvoiceNo || i.billNo === pssSlipData.billBarcode)) ||
+            (i.billBarcode && (i.billBarcode === pssSlipData.billBarcode || i.billBarcode === pssSlipData.originalInvoiceNo)) ||
+            (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipData.pssmNo));
           if (isMatch) {
             return {
               ...i,
@@ -2170,9 +2170,9 @@ export const BillingPOSView = ({
         if (typeof setInvoiceList === 'function') {
           setInvoiceList(prev => (prev || []).map(i => {
             const isMatch = (i.invoiceNo && (i.invoiceNo === billBarcode || i.invoiceNo === pssm.billNo)) ||
-                            (i.billNo && (i.billNo === billBarcode || i.billNo === pssm.billNo)) ||
-                            (i.billBarcode && (i.billBarcode === billBarcode || i.billBarcode === pssm.billBarcode)) ||
-                            (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === item.pssmNo));
+              (i.billNo && (i.billNo === billBarcode || i.billNo === pssm.billNo)) ||
+              (i.billBarcode && (i.billBarcode === billBarcode || i.billBarcode === pssm.billBarcode)) ||
+              (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === item.pssmNo));
             if (isMatch) {
               return {
                 ...i,
@@ -2187,9 +2187,9 @@ export const BillingPOSView = ({
         if (typeof setHistoryInvoices === 'function') {
           setHistoryInvoices(prev => (prev || []).map(i => {
             const isMatch = (i.invoiceNo && (i.invoiceNo === billBarcode || i.invoiceNo === pssm.billNo)) ||
-                            (i.billNo && (i.billNo === billBarcode || i.billNo === pssm.billNo)) ||
-                            (i.billBarcode && (i.billBarcode === billBarcode || i.billBarcode === pssm.billBarcode)) ||
-                            (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === item.pssmNo));
+              (i.billNo && (i.billNo === billBarcode || i.billNo === pssm.billNo)) ||
+              (i.billBarcode && (i.billBarcode === billBarcode || i.billBarcode === pssm.billBarcode)) ||
+              (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === item.pssmNo));
             if (isMatch) {
               return {
                 ...i,
@@ -2422,7 +2422,7 @@ export const BillingPOSView = ({
     setTimeout(focusAction, 150);
   };
 
-// Centralized helper to completely wipe out existing context (cart, loaded invoice, customer, returns)
+  // Centralized helper to completely wipe out existing context (cart, loaded invoice, customer, returns)
   const handleClearBillContext = (notificationTitle = "Clear Bill", notificationMsg = "Context cleared.") => {
     setCart([]);
     setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
@@ -3627,7 +3627,7 @@ export const BillingPOSView = ({
       sgstAmount: isGstApplied ? computedSgstAmount : 0,
       igstAmount: isGstApplied ? computedIgstAmount : 0,
       totalTax: isGstApplied ? computedTotalTax : 0
-      ,taxBreakdown: isGstApplied ? computedTaxBreakdown : []
+      , taxBreakdown: isGstApplied ? computedTaxBreakdown : []
     };
 
     return {
@@ -4079,7 +4079,7 @@ export const BillingPOSView = ({
       });
 
       handleClearBillContext("Invoice Compiled Successfully", `Issued receipt ${newInvoice.invoiceNo} for ₹${newInvoice.grandTotal.toLocaleString()}`);
-      
+
       setCouponCode("");
       setCustomerSearch("");
       setOtherBillDetails({ transporter: '', trackingNo: '', shippingAddress: '' });
@@ -4522,7 +4522,7 @@ export const BillingPOSView = ({
             if (printFrame.parentNode) {
               printFrame.parentNode.removeChild(printFrame);
             }
-          } catch (e) {}
+          } catch (e) { }
         }, 2000);
       }, 300);
     } catch (err) {
@@ -4571,7 +4571,7 @@ export const BillingPOSView = ({
       return `• ${iName} (Qty: ${iQty}) - ₹${iPrice.toLocaleString('en-IN')}`;
     }).join('\n');
 
-    const messageText = `*ZIVA FASHION BOUTIQUE*\nInvoice & Receipt Confirmation\n--------------------------------\n*Receipt No:* ${invNo}\n*Date:* ${dateStr}\n*Customer:* ${custName}\n\n*Items Purchased:*\n${itemsSummary}\n\n*Grand Total:* ₹${total}\n*Payment Mode:* ${payMode}\n\nThank you for shopping with us! 🙏`;
+    const messageText = `*VASTRA ERP*\nInvoice & Receipt Confirmation\n--------------------------------\n*Receipt No:* ${invNo}\n*Date:* ${dateStr}\n*Customer:* ${custName}\n\n*Items Purchased:*\n${itemsSummary}\n\n*Grand Total:* ₹${total}\n*Payment Mode:* ${payMode}\n\nThank you for shopping with us! 🙏`;
 
     const encodedMsg = encodeURIComponent(messageText);
     let whatsappUrl = `https://api.whatsapp.com/send?text=${encodedMsg}`;
@@ -4689,8 +4689,8 @@ export const BillingPOSView = ({
       </style>
     </head>
     <body>
-      <h1>ZIVA FASHION BOUTIQUE</h1>
-      <p style="text-align: center; font-size: 12px; color: #777;">Bandra, Mumbai - GSTIN 27AABCV1942A1ZX</p>
+      <h1>VASTRA ERP</h1>
+      <p style="text-align: center; font-size: 12px; color: #777;">Official Invoice &amp; Payment Receipt</p>
       
       <div class="header-info">
         <p><strong>Receipt No:</strong> ${invoice.invoiceNo}</p>
@@ -4759,7 +4759,7 @@ export const BillingPOSView = ({
             }
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     }
 
     // 1. Check if scanned value is a known bill in memory or starts with INV- / BILL-
@@ -4843,7 +4843,7 @@ export const BillingPOSView = ({
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const localBillFallback = (invoiceList || invoices || []).find(inv => (inv.invoiceNo || inv.billNo || '').toLowerCase() === q.toLowerCase());
     if (localBillFallback) {
@@ -5480,11 +5480,10 @@ export const BillingPOSView = ({
                             setSelectedCartRowIndex(idx);
                             setFocusedAlterationIndex(idx);
                           }}
-                          className={`border-b border-slate-200 transition-all cursor-pointer ${firmStyle.rowClass} ${
-                            selectedCartRowIndex === idx
+                          className={`border-b border-slate-200 transition-all cursor-pointer ${firmStyle.rowClass} ${selectedCartRowIndex === idx
                               ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
                               : ''
-                          }`}
+                            }`}
                         >
                           <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
@@ -6244,16 +6243,20 @@ export const BillingPOSView = ({
                     { id: "viewTotals", label: "Cash Summary", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
-                    { id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
-                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                      setReturnActionType("return");
-                      setActivePOSMode("returns");
-                    } },
-                    { id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
-                      if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                      setReturnActionType("exchange");
-                      setActivePOSMode("returns");
-                    } },
+                    {
+                      id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
+                        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+                        setReturnActionType("return");
+                        setActivePOSMode("returns");
+                      }
+                    },
+                    {
+                      id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
+                        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+                        setReturnActionType("exchange");
+                        setActivePOSMode("returns");
+                      }
+                    },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
                     { id: "adjustments", label: "Adjustments (A)", icon: <AlertCircle className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: () => setShowAdjustmentModal(true) },
                     { id: "clearBill", label: "Clear Bill (C)", icon: <X className="w-5 h-5 text-red-600 mx-auto" />, onClick: () => handleClearBillContext() },
@@ -6407,13 +6410,12 @@ export const BillingPOSView = ({
                                   <span className="font-bold text-purple-800 truncate text-[8.5px]">
                                     PSS: {item.pssmNo || item.pssmRecord?.pssmNo}
                                   </span>
-                                  <span className={`px-1 py-0.2 rounded font-black text-[7.5px] shrink-0 uppercase tracking-wider ${
-                                    isCollected
+                                  <span className={`px-1 py-0.2 rounded font-black text-[7.5px] shrink-0 uppercase tracking-wider ${isCollected
                                       ? 'bg-emerald-600 text-white'
                                       : pssStatus === 'READY'
                                         ? 'bg-blue-600 text-white animate-pulse'
                                         : 'bg-amber-500 text-white'
-                                  }`}>
+                                    }`}>
                                     {isCollected ? 'COLLECTED' : pssStatus === 'READY' ? 'READY' : (pssStatus === 'IN_PROGRESS' ? 'IN PROGRESS' : (pssStatus || 'IN PROGRESS'))}
                                   </span>
                                 </div>
@@ -6557,19 +6559,18 @@ export const BillingPOSView = ({
                                 </div>
                                 <div className="flex items-center gap-1.5 text-[11px]">
                                   <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
-                                  <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${
-                                    displayStatus === 'CLOSED'
+                                  <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${displayStatus === 'CLOSED'
                                       ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
                                       : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                      : displayStatus === 'PARTIALLY_COLLECTED'
-                                      ? 'bg-teal-100 text-teal-800 border-teal-300'
-                                      : displayStatus === 'PARTIALLY_READY'
-                                      ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                      : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
-                                      ? 'bg-purple-100 text-purple-800 border-purple-300'
-                                      : 'bg-amber-100 text-amber-800 border-amber-300'
-                                  }`}>
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : displayStatus === 'PARTIALLY_COLLECTED'
+                                          ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                          : displayStatus === 'PARTIALLY_READY'
+                                            ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                            : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
+                                              ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                                    }`}>
                                     {displayStatus.replace(/_/g, ' ')}
                                   </span>
                                 </div>
@@ -6832,7 +6833,7 @@ export const BillingPOSView = ({
                                 };
                               });
                             }
-                          }).catch(() => {});
+                          }).catch(() => { });
                         }
                         setReturnSearchQuery("");
                         setReturnedItemIds([]);
@@ -7095,13 +7096,12 @@ export const BillingPOSView = ({
                                                 </span>
                                               </span>
                                             </div>
-                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
-                                              (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
                                                 ? 'bg-emerald-100 text-emerald-800'
                                                 : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
                                                   ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
                                                   : 'bg-amber-100 text-amber-800'
-                                            }`}>
+                                              }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
                                           </div>
@@ -7433,13 +7433,12 @@ export const BillingPOSView = ({
                                               <strong>PSSM:</strong> {item.pssmNo || item.pssmRecord?.pssmNo} {item.pssmServiceType ? `(${item.pssmServiceType})` : ''} | Tailor: {item.pssmTailorName || item.pssmRecord?.tailorName || 'Assigned'}
                                             </span>
                                           </div>
-                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
-                                            (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
                                               ? 'bg-emerald-100 text-emerald-800'
                                               : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
                                                 ? 'bg-blue-100 text-blue-800'
                                                 : 'bg-amber-100 text-amber-800'
-                                          }`}>
+                                            }`}>
                                             {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
                                           </span>
                                         </div>
@@ -7555,7 +7554,7 @@ export const BillingPOSView = ({
                           if (returnedItems.length === 0 || exchangeCart.length === 0) return null;
 
                           let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-                          
+
                           if (totalAdjAmt > 0) {
                             const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                             const adjustmentRatio = totalAdjAmt / totalItemsPrice;
@@ -7604,7 +7603,7 @@ export const BillingPOSView = ({
                               if (returnedItems.length === 0 || exchangeCart.length === 0) return;
 
                               let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-                              
+
                               if (totalAdjAmt > 0) {
                                 const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                                 const adjustmentRatio = totalAdjAmt / totalItemsPrice;
@@ -8063,7 +8062,7 @@ export const BillingPOSView = ({
                   required
                   value={orderCustName}
                   onChange={(e) => setOrderCustName(e.target.value)}
-                  placeholder="e.g. Ziva Retail Bangalore"
+                  placeholder="e.g. Vastra Retail Hub"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-800 outline-none"
                 />
               </div>
@@ -10078,14 +10077,13 @@ export const BillingPOSView = ({
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">Split Amounts</span>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        splitRemaining < 0 ? 'bg-red-100 text-red-600' :
-                        splitRemaining === 0 ? 'bg-green-100 text-green-700' :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${splitRemaining < 0 ? 'bg-red-100 text-red-600' :
+                          splitRemaining === 0 ? 'bg-green-100 text-green-700' :
+                            'bg-amber-100 text-amber-700'
+                        }`}>
                         {splitRemaining < 0 ? '⚠ Over by ₹' + Math.abs(splitRemaining).toLocaleString() :
-                         splitRemaining === 0 ? '✓ Balanced' :
-                         'Remaining: ₹' + splitRemaining.toLocaleString()}
+                          splitRemaining === 0 ? '✓ Balanced' :
+                            'Remaining: ₹' + splitRemaining.toLocaleString()}
                       </span>
                     </div>
                     <div className="space-y-2">
@@ -10143,9 +10141,9 @@ export const BillingPOSView = ({
                   disabled={isSavingPayMethod || (isPartPay && splitTotal === 0)}
                   onClick={handleSave}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all
-                    ${ isSavingPayMethod || (isPartPay && splitTotal === 0)
+                    ${isSavingPayMethod || (isPartPay && splitTotal === 0)
                       ? 'bg-amber-300 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 cursor-pointer shadow-md' }`}
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 cursor-pointer shadow-md'}`}
                 >
                   {isSavingPayMethod ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
                 </button>
@@ -10267,8 +10265,8 @@ export const BillingPOSView = ({
 
             {/* Docket Ticket View */}
             <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-96 overflow-y-auto">
-              <div className="text-center font-bold text-slate-900 text-sm">
-                ZIVA FASHION BOUTIQUE
+              <div className="">
+
                 <p className="text-[10px] text-indigo-600 uppercase font-black tracking-widest mt-0.5">
                   OFFICIAL EXCHANGE SLIP DOCKET
                 </p>
@@ -10350,7 +10348,7 @@ export const BillingPOSView = ({
                     </head>
                     <body>
                       <div class="header">
-                        <h2 style="margin:0;">ZIVA FASHION BOUTIQUE</h2>
+                        <h2 style="margin:0;">VASTRA ERP</h2>
                         <p style="margin:2px 0; font-size:11px;">OFFICIAL EXCHANGE DOCKET</p>
                         <div class="badge">${docket.docketNo}</div>
                       </div>
@@ -10377,7 +10375,7 @@ export const BillingPOSView = ({
                         </div>
                       </div>
                       <div class="header" style="border-top:2px dashed #000; border-bottom:none; margin-top:15px; padding-top:10px;">
-                        <p style="font-size:10px; margin:0;">Thank you for shopping with Ziva Boutique!</p>
+                        <p style="font-size:10px; margin:0;">Thank you for shopping with Vastra!</p>
                       </div>
                     <script>window.onload = function() { setTimeout(function() { window.print(); }, 500); }</script>
                       </body>
@@ -10401,7 +10399,7 @@ export const BillingPOSView = ({
       {showPSSQuestionPromptModal && pssInvoice && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-fade-in font-sans">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-scale-up text-slate-800 space-y-6">
-            
+
             {/* Header / Badge */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -10640,11 +10638,10 @@ export const BillingPOSView = ({
                           setPssCustWhatsapp(pssCustPhone);
                         }
                       }}
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
-                        pssSameAsMobileWhatsapp
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${pssSameAsMobileWhatsapp
                           ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
                           : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                      }`}
+                        }`}
                       title="Auto-fill with Mobile number"
                     >
                       {pssSameAsMobileWhatsapp ? '✓ Same as Mobile' : 'Same as Mobile'}
@@ -10710,7 +10707,7 @@ export const BillingPOSView = ({
       {showPSSItemSelectModal && pssInvoice && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-6 animate-fade-in overflow-y-auto font-sans">
           <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
-            
+
             {/* Modal Header */}
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
               <div className="flex items-center gap-3">
@@ -10787,20 +10784,17 @@ export const BillingPOSView = ({
                           setPssFocusedIndex(idx);
                           setPssConfigItems(prev => prev.map((itm, i) => i === idx ? { ...itm, selectedForPSS: !itm.selectedForPSS } : itm));
                         }}
-                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
-                          isSelected
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
                             ? 'bg-emerald-50 border-emerald-500 shadow-md ring-1 ring-emerald-500/40'
                             : 'bg-slate-50 border-slate-200 opacity-90 hover:opacity-100'
-                        } ${
-                          isFocused ? 'ring-4 ring-rose-500/70 border-rose-500 scale-[1.01] shadow-xl' : ''
-                        }`}
+                          } ${isFocused ? 'ring-4 ring-rose-500/70 border-rose-500 scale-[1.01] shadow-xl' : ''
+                          }`}
                       >
                         {/* Header Item Strip */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center font-bold text-xs transition-colors ${
-                              isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
-                            }`}>
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center font-bold text-xs transition-colors ${isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
+                              }`}>
                               ✓
                             </div>
                             <div>
@@ -10883,7 +10877,7 @@ export const BillingPOSView = ({
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -10900,7 +10894,7 @@ export const BillingPOSView = ({
                 </div>
               </div>
               <button type="button" onClick={() => setShowPSSWaitingModal(false)} className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
 
@@ -10922,45 +10916,41 @@ export const BillingPOSView = ({
                     <div
                       key={opt.value}
                       onClick={() => setPssCustomerWaitingOption(opt.value)}
-                      className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
-                        pssCustomerWaitingOption === opt.value
+                      className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${pssCustomerWaitingOption === opt.value
                           ? opt.color === 'rose' ? 'bg-rose-50 border-rose-500 ring-1 ring-rose-500/30 shadow-md'
                             : opt.color === 'blue' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30 shadow-md'
-                            : 'bg-slate-100 border-slate-500 ring-1 ring-slate-500/30 shadow-md'
+                              : 'bg-slate-100 border-slate-500 ring-1 ring-slate-500/30 shadow-md'
                           : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          pssCustomerWaitingOption === opt.value
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${pssCustomerWaitingOption === opt.value
                             ? opt.color === 'rose' ? 'border-rose-600 bg-rose-600' : opt.color === 'blue' ? 'border-blue-600 bg-blue-600' : 'border-slate-600 bg-slate-600'
                             : 'border-slate-300 bg-white'
-                        }`}>
+                          }`}>
                           {pssCustomerWaitingOption === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <p className="text-xs font-black text-slate-900">{opt.label}</p>
                       </div>
-                      <span className={`text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded ${
-                        opt.color === 'rose' ? 'bg-rose-100 text-rose-700'
-                        : opt.color === 'blue' ? 'bg-blue-100 text-blue-700'
-                        : 'bg-slate-200 text-slate-700'
-                      }`}>{opt.badge}</span>
+                      <span className={`text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded ${opt.color === 'rose' ? 'bg-rose-100 text-rose-700'
+                          : opt.color === 'blue' ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>{opt.badge}</span>
                       <p className="text-[10px] text-slate-500 mt-1.5">{opt.desc}</p>
                     </div>
                   ))}
                 </div>
                 {/* Priority Preview */}
-                <div className={`rounded-xl p-3 flex items-center gap-2 text-xs font-bold border ${
-                  pssCustomerWaitingOption === 'Waiting in Store' ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : pssCustomerWaitingOption === 'Home Delivery Required' ? 'bg-blue-50 border-blue-200 text-blue-700'
-                  : 'bg-slate-50 border-slate-200 text-slate-600'
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <div className={`rounded-xl p-3 flex items-center gap-2 text-xs font-bold border ${pssCustomerWaitingOption === 'Waiting in Store' ? 'bg-rose-50 border-rose-200 text-rose-700'
+                    : pssCustomerWaitingOption === 'Home Delivery Required' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
                   Auto Priority:&nbsp;
                   <strong>
                     {pssCustomerWaitingOption === 'Waiting in Store' ? 'HIGH / URGENT'
-                     : pssCustomerWaitingOption === 'Home Delivery Required' ? 'DELIVERY'
-                     : 'NORMAL'}
+                      : pssCustomerWaitingOption === 'Home Delivery Required' ? 'DELIVERY'
+                        : 'NORMAL'}
                   </strong>
                 </div>
               </div>
@@ -11022,7 +11012,7 @@ export const BillingPOSView = ({
                               onClick={() => setPssSalesmanName('')}
                               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                             </button>
                           )}
 
@@ -11034,11 +11024,10 @@ export const BillingPOSView = ({
                                   key={emp._id || emp.id || emp.name}
                                   type="button"
                                   onClick={() => setPssSalesmanName(emp.name)}
-                                  className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-2.5 hover:bg-indigo-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${
-                                    pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase()
+                                  className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-2.5 hover:bg-indigo-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase()
                                       ? 'bg-indigo-50 font-black text-indigo-900'
                                       : 'font-semibold text-slate-800'
-                                  }`}
+                                    }`}
                                 >
                                   <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-[10px] shrink-0">
                                     {(emp.name || 'S')[0].toUpperCase()}
@@ -11048,7 +11037,7 @@ export const BillingPOSView = ({
                                     {emp.designation && <p className="text-[10px] text-slate-400 truncate">{emp.designation}</p>}
                                   </div>
                                   {pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase() && (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-indigo-600 ml-auto shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-indigo-600 ml-auto shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
                                   )}
                                 </button>
                               ))}
@@ -11059,7 +11048,7 @@ export const BillingPOSView = ({
                         {/* Selected confirmation pill */}
                         {pssSalesmanName.trim() && suggestions.some(e => e.name.toLowerCase() === pssSalesmanName.trim().toLowerCase()) && (
                           <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                             Selected: <span className="text-slate-900">{pssSalesmanName.trim()}</span>
                           </p>
                         )}
@@ -11094,7 +11083,7 @@ export const BillingPOSView = ({
                 </div>
                 <div>
                   <label htmlFor="pssWhatsAppConsent" className="text-xs font-black text-slate-900 cursor-pointer flex items-center gap-1.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
                     Customer has given WhatsApp consent
                   </label>
                   <p className="text-[11px] text-slate-500 mt-0.5">
@@ -11121,7 +11110,7 @@ export const BillingPOSView = ({
                 onClick={() => { setShowPSSWaitingModal(false); setShowPSSServiceSelectModal(true); }}
                 className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
                 CONTINUE TO SERVICE SELECTION →
               </button>
             </div>
@@ -11134,7 +11123,7 @@ export const BillingPOSView = ({
       {showPSSServiceSelectModal && pssInvoice && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in overflow-y-auto font-sans">
           <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scale-up text-slate-800">
-            
+
             {/* Modal Header */}
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
               <div className="flex items-center gap-3">
@@ -11190,15 +11179,14 @@ export const BillingPOSView = ({
                           key={gf}
                           type="button"
                           onClick={() => setPssServiceGenderFilter(gf)}
-                          className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                            isAct
+                          className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${isAct
                               ? gf === 'Ladies'
                                 ? 'bg-rose-600 text-white shadow-xs'
                                 : gf === 'Gents'
                                   ? 'bg-blue-600 text-white shadow-xs'
                                   : 'bg-slate-900 text-white shadow-xs'
                               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
-                          }`}
+                            }`}
                         >
                           {gf === 'Gents' && <span>👨</span>}
                           {gf === 'Ladies' && <span>👩</span>}
@@ -11245,11 +11233,10 @@ export const BillingPOSView = ({
                                     onClick={() => {
                                       setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Gents' } : itm));
                                     }}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                                      (item.gender || 'Gents') === 'Gents'
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(item.gender || 'Gents') === 'Gents'
                                         ? 'bg-blue-600 text-white shadow-xs'
                                         : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                      }`}
                                   >
                                     <span>👨 Gents</span>
                                   </button>
@@ -11258,11 +11245,10 @@ export const BillingPOSView = ({
                                     onClick={() => {
                                       setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Ladies' } : itm));
                                     }}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-                                      item.gender === 'Ladies'
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${item.gender === 'Ladies'
                                         ? 'bg-rose-600 text-white shadow-xs'
                                         : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                      }`}
                                   >
                                     <span>👩 Ladies</span>
                                   </button>
@@ -11277,11 +11263,10 @@ export const BillingPOSView = ({
                                       {sv}
                                     </span>
                                     {sv.toLowerCase().includes('alteration') && (
-                                      <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${
-                                        (item.gender || 'Gents') === 'Ladies'
+                                      <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${(item.gender || 'Gents') === 'Ladies'
                                           ? 'bg-pink-50 text-pink-700 border-pink-200'
                                           : 'bg-blue-50 text-blue-700 border-blue-200'
-                                      }`}>
+                                        }`}>
                                         {(item.gender || 'Gents')}
                                       </span>
                                     )}
@@ -11291,125 +11276,124 @@ export const BillingPOSView = ({
                             </div>
                           </div>
 
-                        {/* Multi-Service Selection */}
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
-                            Select Required Service(s) * <span className="text-slate-400 font-normal normal-case">(Select all that apply — one ticket per garment)</span>
-                          </label>
-                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                            {['Alteration', 'Re-Alteration', 'Dry Clean', 'Fall & Pico', 'Charak', 'Embroidery', 'Repair', 'Ironing', 'Finishing', 'Packing'].map(srv => {
-                              const isChecked = selectedServices.includes(srv);
-                              return (
-                                <label
-                                  key={srv}
-                                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold select-none ${
-                                    isChecked
-                                      ? 'bg-rose-50 border-rose-500 text-rose-800 shadow-sm'
-                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      const newServices = isChecked
-                                        ? selectedServices.filter(s => s !== srv)
-                                        : [...selectedServices, srv];
-                                      setPssConfigItems(prev => prev.map(itm =>
-                                        itm.itemKey === item.itemKey
-                                          ? { ...itm, services: newServices.length ? newServices : ['Alteration'], serviceType: newServices[0] || 'Alteration' }
-                                          : itm
-                                      ));
-                                    }}
-                                    className="w-3 h-3 accent-rose-600 shrink-0 cursor-pointer"
-                                  />
-                                  <span className="truncate">{srv}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          {selectedServices.length === 0 && (
-                            <p className="text-[11px] text-rose-600 font-bold mt-1">⚠ Select at least one service</p>
-                          )}
-                        </div>
-
-                        {/* Trial Required Option (Shown when Alteration service is selected) */}
-                        {hasAlteration && (
-                          <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] font-black uppercase text-purple-950 flex items-center gap-1.5">
-                                <span>👔</span> Trial Required?
-                              </span>
-                              <div className="flex items-center gap-3">
-                                <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`trialReq-${item.itemKey || idx}`}
-                                    checked={item.trialRequired !== false}
-                                    onChange={() => {
-                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: true } : itm));
-                                    }}
-                                    className="accent-purple-600 cursor-pointer"
-                                  />
-                                  <span>Yes</span>
-                                </label>
-                                <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`trialReq-${item.itemKey || idx}`}
-                                    checked={item.trialRequired === false}
-                                    onChange={() => {
-                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: false } : itm));
-                                    }}
-                                    className="accent-purple-600 cursor-pointer"
-                                  />
-                                  <span>No</span>
-                                </label>
-                              </div>
+                          {/* Multi-Service Selection */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                              Select Required Service(s) * <span className="text-slate-400 font-normal normal-case">(Select all that apply — one ticket per garment)</span>
+                            </label>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                              {['Alteration', 'Re-Alteration', 'Dry Clean', 'Fall & Pico', 'Charak', 'Embroidery', 'Repair', 'Ironing', 'Finishing', 'Packing'].map(srv => {
+                                const isChecked = selectedServices.includes(srv);
+                                return (
+                                  <label
+                                    key={srv}
+                                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold select-none ${isChecked
+                                        ? 'bg-rose-50 border-rose-500 text-rose-800 shadow-sm'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                      }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        const newServices = isChecked
+                                          ? selectedServices.filter(s => s !== srv)
+                                          : [...selectedServices, srv];
+                                        setPssConfigItems(prev => prev.map(itm =>
+                                          itm.itemKey === item.itemKey
+                                            ? { ...itm, services: newServices.length ? newServices : ['Alteration'], serviceType: newServices[0] || 'Alteration' }
+                                            : itm
+                                        ));
+                                      }}
+                                      className="w-3 h-3 accent-rose-600 shrink-0 cursor-pointer"
+                                    />
+                                    <span className="truncate">{srv}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
-
-                            {item.trialRequired !== false && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold uppercase text-purple-900">Trial Date:</span>
-                                <input
-                                  type="date"
-                                  value={item.trialDate || pssGeneralTrialDate || ''}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialDate: v } : itm));
-                                  }}
-                                  className="bg-white border border-purple-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-purple-950 outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
-                                />
-                              </div>
+                            {selectedServices.length === 0 && (
+                              <p className="text-[11px] text-rose-600 font-bold mt-1">⚠ Select at least one service</p>
                             )}
                           </div>
-                        )}
 
-                        {/* Tailor Assignment */}
-                        {pssAssignmentOption === "DIRECT" && (
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Tailor / Vendor Assignment
-                            </label>
-                            <select
-                              value={item.tailorName || pssGeneralTailor}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, tailorName: val } : itm));
-                              }}
-                              className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
-                            >
-                              {tailorEmployeesList.map(t => (
-                                <option key={t.id || t._id || t.name} value={t.name}>
-                                  {t.name} {t.designation ? `(${t.designation})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {/* Trial Required Option (Shown when Alteration service is selected) */}
+                          {hasAlteration && (
+                            <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                              <div className="flex items-center gap-3">
+                                <span className="text-[11px] font-black uppercase text-purple-950 flex items-center gap-1.5">
+                                  <span>👔</span> Trial Required?
+                                </span>
+                                <div className="flex items-center gap-3">
+                                  <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`trialReq-${item.itemKey || idx}`}
+                                      checked={item.trialRequired !== false}
+                                      onChange={() => {
+                                        setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: true } : itm));
+                                      }}
+                                      className="accent-purple-600 cursor-pointer"
+                                    />
+                                    <span>Yes</span>
+                                  </label>
+                                  <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`trialReq-${item.itemKey || idx}`}
+                                      checked={item.trialRequired === false}
+                                      onChange={() => {
+                                        setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialRequired: false } : itm));
+                                      }}
+                                      className="accent-purple-600 cursor-pointer"
+                                    />
+                                    <span>No</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              {item.trialRequired !== false && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-bold uppercase text-purple-900">Trial Date:</span>
+                                  <input
+                                    type="date"
+                                    value={item.trialDate || pssGeneralTrialDate || ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, trialDate: v } : itm));
+                                    }}
+                                    className="bg-white border border-purple-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-purple-950 outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Tailor Assignment */}
+                          {pssAssignmentOption === "DIRECT" && (
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                Tailor / Vendor Assignment
+                              </label>
+                              <select
+                                value={item.tailorName || pssGeneralTailor}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, tailorName: val } : itm));
+                                }}
+                                className="w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                              >
+                                {tailorEmployeesList.map(t => (
+                                  <option key={t.id || t._id || t.name} value={t.name}>
+                                    {t.name} {t.designation ? `(${t.designation})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 
@@ -11424,11 +11408,10 @@ export const BillingPOSView = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div
                     onClick={() => setPssAssignmentOption("DIRECT")}
-                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
-                      pssAssignmentOption === "DIRECT"
+                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${pssAssignmentOption === "DIRECT"
                         ? 'bg-rose-50 border-rose-500 shadow-xs ring-1 ring-rose-500/30'
                         : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -11449,11 +11432,10 @@ export const BillingPOSView = ({
 
                   <div
                     onClick={() => setPssAssignmentOption("PENDING_QUEUE")}
-                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
-                      pssAssignmentOption === "PENDING_QUEUE"
+                    className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${pssAssignmentOption === "PENDING_QUEUE"
                         ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500/30'
                         : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -11525,11 +11507,10 @@ export const BillingPOSView = ({
                       setPssGeneralTrialDate(v);
                       setPssConfigItems(prev => prev.map(itm => ({ ...itm, trialDate: itm.trialDate || v })));
                     }}
-                    className={`w-full border rounded-xl text-xs font-mono font-bold px-3 py-2 outline-none ${
-                      pssGeneralTrialRequired === false
+                    className={`w-full border rounded-xl text-xs font-mono font-bold px-3 py-2 outline-none ${pssGeneralTrialRequired === false
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                         : 'bg-purple-50/50 border-purple-300 text-purple-950 focus:ring-2 focus:ring-purple-500'
-                    }`}
+                      }`}
                   />
                 </div>
 
@@ -11543,11 +11524,10 @@ export const BillingPOSView = ({
                         key={prio}
                         type="button"
                         onClick={() => setPssGeneralPriority(prio)}
-                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
-                          pssGeneralPriority === prio
+                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${pssGeneralPriority === prio
                             ? prio === 'Urgent' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
                             : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         {prio}
                       </button>
@@ -11627,7 +11607,7 @@ export const BillingPOSView = ({
             {/* Docket Ticket View (Supports Multiple Garments) */}
             <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 font-mono text-xs text-slate-800 space-y-3 max-h-96 overflow-y-auto">
               <div className="text-center font-bold text-slate-900 text-sm">
-                ZIVA FASHION BOUTIQUE
+                VASTRA ERP
                 <p className="text-[10px] text-rose-600 uppercase font-black tracking-widest mt-0.5">
                   OFFICIAL ALTERATION JOB DOCKET
                 </p>
@@ -11723,7 +11703,7 @@ export const BillingPOSView = ({
                     </head>
                     <body>
                       <div class="header">
-                        <h2 style="margin:0;">ZIVA FASHION BOUTIQUE</h2>
+                        <h2 style="margin:0;">VASTRA ERP</h2>
                         <p style="margin:2px 0; font-size:11px;">OFFICIAL ALTERATION SLIP</p>
                         <div class="badge">${docket.docketNo}</div>
                       </div>
@@ -11733,8 +11713,8 @@ export const BillingPOSView = ({
                         <div><b>Customer:</b> ${docket.customerName} ${docket.customerPhone ? `(${docket.customerPhone})` : ''}</div>
                       </div>
                       ${itemsList.map((itm, iIdx) => {
-                        const rec = itm.alterationRecord || docket;
-                        return `
+                    const rec = itm.alterationRecord || docket;
+                    return `
                           <div class="section">
                             <b>${iIdx + 1}. GARMENT:</b> ${itm.name} (${itm.size || 'M'} / ${itm.color || 'Std'})<br/>
                             <b>Barcode:</b> ${itm.barcode || itm.uniqueCode || 'N/A'}<br/>
@@ -11746,7 +11726,7 @@ export const BillingPOSView = ({
                             ${Object.entries(rec.measurements || {}).filter(([_, v]) => v).map(([k, v]) => `<span><b>${k}:</b> ${v}" </span>`).join(' | ')}
                           </div>
                         `;
-                      }).join('')}
+                  }).join('')}
                       <div style="text-align: center; font-size: 10px; margin-top: 15px;">
                         *** Please present this slip during delivery collection ***
                       </div>
@@ -11778,7 +11758,7 @@ export const BillingPOSView = ({
             <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/30">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
                 </div>
                 <div>
                   <p className="text-sm font-black uppercase tracking-wide font-mono">PSS SLIP ISSUED</p>
@@ -11786,7 +11766,7 @@ export const BillingPOSView = ({
                 </div>
               </div>
               <button onClick={() => setPssSlipData(null)} className="text-slate-400 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-800 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
 
@@ -11831,7 +11811,7 @@ export const BillingPOSView = ({
                   <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-lg font-mono">{pssSlipData.billBarcode}</span>
                 </div>
                 <div className="border-t border-dashed border-slate-200 my-1" />
-                
+
                 {/* Financial Summary: Advance / Balance */}
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Advance Paid</span>
@@ -11839,7 +11819,7 @@ export const BillingPOSView = ({
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Balance Due</span>
-                  <span className={`font-black px-2 py-0.5 rounded ${ (pssSlipData.balanceDue || 0) > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800'}`}>
+                  <span className={`font-black px-2 py-0.5 rounded ${(pssSlipData.balanceDue || 0) > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800'}`}>
                     ₹{(pssSlipData.balanceDue || 0).toLocaleString()}
                   </span>
                 </div>
@@ -11847,11 +11827,10 @@ export const BillingPOSView = ({
 
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Priority</span>
-                  <span className={`font-black px-2.5 py-0.5 rounded-lg ${
-                    pssSlipData.priority === 'HIGH' ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                    : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                    : 'bg-slate-100 text-slate-700 border border-slate-200'
-                  }`}>{pssSlipData.priority}</span>
+                  <span className={`font-black px-2.5 py-0.5 rounded-lg ${pssSlipData.priority === 'HIGH' ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                      : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                    }`}>{pssSlipData.priority}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Salesman</span>
@@ -11883,14 +11862,13 @@ export const BillingPOSView = ({
                   return (
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
-                      <span className={`font-black uppercase px-2.5 py-0.5 rounded-lg text-xs border ${
-                        displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
-                        displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                        displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
-                        displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                        displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
-                        'bg-amber-100 text-amber-800 border-amber-200'
-                      }`}>
+                      <span className={`font-black uppercase px-2.5 py-0.5 rounded-lg text-xs border ${displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
+                          displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                            displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                              displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                                  'bg-amber-100 text-amber-800 border-amber-200'
+                        }`}>
                         {displayStatus.replace(/_/g, ' ')}
                       </span>
                     </div>
@@ -11940,18 +11918,16 @@ export const BillingPOSView = ({
                   const inseamVal = measurementsObj.inseam || measurementsObj.innerLegLength || measurementsObj.Inseam || measurementsObj['Inner Leg Length'] || '';
 
                   return (
-                    <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${
-                      isCollected ? 'bg-slate-50/80 border-slate-200' :
-                      isReady ? 'bg-emerald-50/70 border-emerald-300' :
-                      'bg-white border-slate-200'
-                    }`}>
+                    <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${isCollected ? 'bg-slate-50/80 border-slate-200' :
+                        isReady ? 'bg-emerald-50/70 border-emerald-300' :
+                          'bg-white border-slate-200'
+                      }`}>
                       <div className="flex justify-between items-start gap-2">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="font-black text-slate-900">{idx + 1}. {itm.name}</p>
-                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${
-                              (itm.gender || 'Gents') === 'Ladies' ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-blue-100 text-blue-700 border-blue-300'
-                            }`}>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded border ${(itm.gender || 'Gents') === 'Ladies' ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-blue-100 text-blue-700 border-blue-300'
+                              }`}>
                               {itm.gender || 'Gents'}
                             </span>
                           </div>
@@ -11984,11 +11960,10 @@ export const BillingPOSView = ({
                             </span>
                           ) : (
                             <>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                isReady ? 'bg-emerald-600 text-white border-emerald-700' :
-                                itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
-                                'bg-amber-100 text-amber-800 border-amber-200'
-                              }`}>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${isReady ? 'bg-emerald-600 text-white border-emerald-700' :
+                                  itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                    'bg-amber-100 text-amber-800 border-amber-200'
+                                }`}>
                                 {(itm.status || 'PENDING').replace(/_/g, ' ')}
                               </span>
                               {itm._id && (
@@ -12121,13 +12096,13 @@ export const BillingPOSView = ({
                     height: 100,
                     padding: 1
                   });
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.qr-wrap{text-align:center;margin-top:14px;padding-top:8px;border-top:1px dashed #000}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}</div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; const itemAltBarcode = it.alterationBarcode || it.tailorInvoiceNo || (it.barcode && String(it.barcode).startsWith('TI-') ? it.barcode : null) || (d.pssmNo ? `${d.pssmNo}-${i + 1}` : null); const itemBarcodeSvg = itemAltBarcode ? generateCode128SvgString(itemAltBarcode, { width: 1.4, height: 34, displayValue: false, margin: 2, background: '#ffffff', lineColor: '#000000' }) : ''; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}${itemAltBarcode ? `<div style="text-align:center;margin:6px 0;padding:4px;border:1px dashed #000;background:#fafafa"><div style="font-size:8px;font-weight:bold;color:#444;margin-bottom:2px">GARMENT ALTERATION BARCODE</div><div style="display:inline-block;max-width:100%;background:#fff">${itemBarcodeSvg}</div><div style="font-size:10px;font-weight:900;font-family:monospace;letter-spacing:1px;margin-top:2px">${itemAltBarcode}</div></div>` : ''}</div>`; }).join('')}<div class="qr-wrap"><div style="font-size:9px;font-weight:bold;color:#333;margin-bottom:4px;letter-spacing:0.5px">ALTERATION TRACKING QR CODE</div><div style="display:inline-block;background:#fff;padding:4px;border:1px solid #ccc;border-radius:4px"><div style="width:100px;height:100px;margin:0 auto">${pssmQrSvg}</div></div><p style="margin:4px 0 2px;font-size:11px;font-weight:bold;font-family:monospace">PSSM: ${d.pssmNo}</p><p style="font-size:9.5px;margin-top:2px;font-style:italic;color:#666">*** Scan to view live alteration status &amp; product progress ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.qr-wrap{text-align:center;margin-top:14px;padding-top:8px;border-top:1px dashed #000}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}</div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Cashier:</b> ${d.cashierName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k, v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; const itemAltBarcode = it.alterationBarcode || it.tailorInvoiceNo || (it.barcode && String(it.barcode).startsWith('TI-') ? it.barcode : null) || (d.pssmNo ? `${d.pssmNo}-${i + 1}` : null); const itemBarcodeSvg = itemAltBarcode ? generateCode128SvgString(itemAltBarcode, { width: 1.4, height: 34, displayValue: false, margin: 2, background: '#ffffff', lineColor: '#000000' }) : ''; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '[COLLECTED]' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo}${itemAltBarcode ? `<div style="text-align:center;margin:6px 0;padding:4px;border:1px dashed #000;background:#fafafa"><div style="font-size:8px;font-weight:bold;color:#444;margin-bottom:2px">GARMENT ALTERATION BARCODE</div><div style="display:inline-block;max-width:100%;background:#fff">${itemBarcodeSvg}</div><div style="font-size:10px;font-weight:900;font-family:monospace;letter-spacing:1px;margin-top:2px">${itemAltBarcode}</div></div>` : ''}</div>`; }).join('')}<div class="qr-wrap"><div style="font-size:9px;font-weight:bold;color:#333;margin-bottom:4px;letter-spacing:0.5px">ALTERATION TRACKING QR CODE</div><div style="display:inline-block;background:#fff;padding:4px;border:1px solid #ccc;border-radius:4px"><div style="width:100px;height:100px;margin:0 auto">${pssmQrSvg}</div></div><p style="margin:4px 0 2px;font-size:11px;font-weight:bold;font-family:monospace">PSSM: ${d.pssmNo}</p><p style="font-size:9.5px;margin-top:2px;font-style:italic;color:#666">*** Scan to view live alteration status &amp; product progress ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}
                 className="py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
                 Print Slip
               </button>
               <button
@@ -12146,13 +12121,12 @@ export const BillingPOSView = ({
                     : `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
                   window.open(waUrl, '_blank');
                 }}
-                className={`py-2.5 font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1 ${
-                  pssSlipData.allowWhatsApp
+                className={`py-2.5 font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1 ${pssSlipData.allowWhatsApp
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
+                  }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
                 WhatsApp
               </button>
             </div>
@@ -12176,7 +12150,7 @@ export const BillingPOSView = ({
         return (
           <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
             <div className="bg-slate-50 border border-slate-300 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-scale-up">
-              
+
               {/* Modal Header */}
               <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
                 <div className="flex items-center gap-3">
@@ -12226,7 +12200,7 @@ export const BillingPOSView = ({
               {/* Modal Body */}
               <div className="p-5 overflow-y-auto flex-1 custom-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-                  
+
                   {/* Left Column: Bill Details */}
                   <div className="bg-white rounded-xl border border-slate-200 p-4 md:col-span-4 space-y-3">
                     <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
@@ -12381,13 +12355,12 @@ export const BillingPOSView = ({
                                                 </span>
                                               </span>
                                             </div>
-                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
-                                              (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
                                                 ? 'bg-emerald-100 text-emerald-800'
                                                 : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
                                                   ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
                                                   : 'bg-amber-100 text-amber-800'
-                                            }`}>
+                                              }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
                                           </div>
@@ -12612,7 +12585,7 @@ export const BillingPOSView = ({
                                 setSelectedCustomerId('');
                                 setCustomerSearchQuery('');
                               }
-                              
+
                               setSelectedInvoiceForReturn(null);
                               setReturnedItemIds([]);
                               setReturnApprovedCheckbox(false);
@@ -12739,13 +12712,12 @@ export const BillingPOSView = ({
                                                 </span>
                                               </span>
                                             </div>
-                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
-                                              (item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
+                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
                                                 ? 'bg-emerald-100 text-emerald-800'
                                                 : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
                                                   ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
                                                   : 'bg-amber-100 text-amber-800'
-                                            }`}>
+                                              }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
                                           </div>
@@ -12868,7 +12840,7 @@ export const BillingPOSView = ({
                           if (returnedItems.length === 0 || exchangeCart.length === 0) return null;
 
                           let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-                          
+
                           if (totalAdjAmt > 0) {
                             const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                             const adjustmentRatio = totalAdjAmt / totalItemsPrice;
@@ -12917,7 +12889,7 @@ export const BillingPOSView = ({
                               if (returnedItems.length === 0 || exchangeCart.length === 0) return;
 
                               let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-                              
+
                               if (totalAdjAmt > 0) {
                                 const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
                                 const adjustmentRatio = totalAdjAmt / totalItemsPrice;

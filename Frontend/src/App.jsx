@@ -75,6 +75,7 @@ import { PublicProductInfoModal } from "./components/PublicProductInfoModal";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SuperAdminLayout } from "./components/superadmin/SuperAdminLayout";
+import { VastraLogo } from "./components/VastraLogo";
 import { useSocket } from "./contexts/SocketContext";
 import { useSession } from "./contexts/SessionProvider";
 import { setupFetchInterceptor } from "./utils/apiInterceptor";
@@ -301,7 +302,7 @@ export default function App() {
       let storedUser = null;
       try {
         storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      } catch (e) {}
+      } catch (e) { }
 
       const myId = String(storedUser?._id || storedUser?.id || currentUser?._id || currentUser?.id || '');
       const myEmail = (storedUser?.email || currentUser?.email || '').toLowerCase().trim();
@@ -393,7 +394,7 @@ export default function App() {
         try {
           const resCustomers = await api.get(`/customers`);
           if (resCustomers.data?.success) setCustomers(resCustomers.data.data.map(c => ({ ...c, id: c._id })));
-        } catch (e) {}
+        } catch (e) { }
 
         try {
           const resInvoices = await api.get(`/billing?limit=2000`);
@@ -408,7 +409,7 @@ export default function App() {
         try {
           const resSuppliers = await api.get(`/suppliers`);
           if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
-        } catch (e) {}
+        } catch (e) { }
 
         try {
           const resPurchaseOrders = await api.get(`/purchase-orders`);
@@ -418,7 +419,7 @@ export default function App() {
           if (dataOrBills.length > 0) {
             setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
           }
-        } catch (e) {}
+        } catch (e) { }
 
         try {
           const resEmployees = await api.get(`/employees`);
@@ -445,10 +446,10 @@ export default function App() {
                   setCurrentUser(updatedUser);
                   localStorage.setItem("user", JSON.stringify(updatedUser));
                 }
-              } catch (err) {}
+              } catch (err) { }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         // Fetch purchase management data (non-blocking, best-effort)
         try {
@@ -476,7 +477,7 @@ export default function App() {
       }
     };
     fetchProducts();
-    
+
     // Listen for global refresh events from downstream modules like PTImporter
     window.addEventListener("vastra-data-refresh", fetchProducts);
     return () => window.removeEventListener("vastra-data-refresh", fetchProducts);
@@ -572,7 +573,7 @@ export default function App() {
             return merged;
           });
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     syncUserProfile();
 
@@ -1225,7 +1226,7 @@ export default function App() {
 
           if (resProducts.data?.success) setProducts(resProducts.data.data.map(p => ({ ...p, id: p._id })));
           if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
-        } catch (e) {}
+        } catch (e) { }
         return true;
       } else {
         addToastNotification("Error", data.message || "Failed to save Purchase Order", "danger");
@@ -1585,40 +1586,32 @@ export default function App() {
       <aside
         className={`erp-sidebar justify-between duration-300 ${sidebarCollapsed ? "erp-sidebar--collapsed" : ""}`}
       >
-        <div className="overflow-y-auto flex-1 py-4 px-3 space-y-6">
+        <div className="overflow-y-auto flex-1 py-3 px-3 space-y-3">
           {/* Brand header */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            {!sidebarCollapsed && (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-sm font-sans tracking-tight">
-                  V
+          <div className="space-y-3 pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between gap-2">
+              {!sidebarCollapsed && (
+                <div className="flex-1 flex justify-center">
+                  <div className="bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-900 px-3.5 py-2 rounded-xl border border-purple-500/30 shadow-xs flex items-center justify-center">
+                    <VastraLogo className="h-5 w-auto" />
+                  </div>
                 </div>
-                <div>
-                  <h1 className="font-extrabold text-slate-800 text-xs tracking-wider uppercase">
-                    Vastra ERP
-                  </h1>
-                  <span className="text-[9px] text-indigo-600 font-bold uppercase tracking-widest block">
-                    v1.2 SaaS PRO
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
 
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="erp-icon-btn mx-auto border border-slate-200/60"
-            >
-              <ChevronsLeft
-                className={`w-4 h-4 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="erp-icon-btn shrink-0 border border-slate-200/60"
+              >
+                <ChevronsLeft
+                  className={`w-4 h-4 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`}
+                />
+              </button>
+            </div>
 
-          {/* Nav List */}
-          <nav className="space-y-1">
             {!sidebarCollapsed && (
-              <div className="px-2 py-1.5 mb-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] text-slate-500 font-medium leading-tight">
-                <span>Designed &amp; Developed by <span className="text-rose-500">❤️</span> </span>
+              <div className="mt-2.5 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[14px] text-slate-500 font-medium leading-tight">
+                <span>Designed &amp; Developed by </span> <br />
+                <span>💻</span>{' '}
                 <a
                   href="https://www.requingroup.com/"
                   target="_blank"
@@ -1629,14 +1622,17 @@ export default function App() {
                 </a>
               </div>
             )}
+          </div>
 
+          {/* Nav List */}
+          <nav className="space-y-1">
             {!sidebarCollapsed && (
               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block pl-2 mb-2">
                 OPERATIONS DIRECTORY
               </span>
             )}
 
-             {modulesList
+            {modulesList
               .filter((mod) =>
                 getAccessibleModules(currentUser?.role, currentUser?.designation, currentUser).includes(mod.id),
               )
@@ -1986,202 +1982,202 @@ export default function App() {
         {/* DYNAMIC VIEW CONTENT */}
         <main className="erp-main-content">
           <ErrorBoundary key={activeModule}>
-          {activeModule === "dashboard" && (
-            <DashboardView
-              currentUser={currentUser}
-              products={products}
-              customers={customers}
-              employees={employees}
-              invoices={invoices}
-              purchaseOrders={purchaseOrders}
-              expenses={expenses}
-              notifications={notifications}
-              auditLogs={auditLogs}
-              setActiveTab={setActiveModule}
-              openArticulationWithDefaults={openArticulationWithDefaults}
-              openPOSWithDefaults={openPOSWithDefaults}
-              socket={socket}
-              socketConnected={connected}
-            />
-          )}
+            {activeModule === "dashboard" && (
+              <DashboardView
+                currentUser={currentUser}
+                products={products}
+                customers={customers}
+                employees={employees}
+                invoices={invoices}
+                purchaseOrders={purchaseOrders}
+                expenses={expenses}
+                notifications={notifications}
+                auditLogs={auditLogs}
+                setActiveTab={setActiveModule}
+                openArticulationWithDefaults={openArticulationWithDefaults}
+                openPOSWithDefaults={openPOSWithDefaults}
+                socket={socket}
+                socketConnected={connected}
+              />
+            )}
 
-          {activeModule === "summary-dashboard" && (
-            <SummaryDashboardView
-              currentUser={currentUser}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "summary-dashboard" && (
+              <SummaryDashboardView
+                currentUser={currentUser}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
-            <BillingPOSView
-              posInitialMode={posInitialMode}
-              activeModule={activeModule}
-              currentUser={currentUser}
-              products={products}
-              customers={customers}
-              employees={employees}
-              invoices={invoices}
-              isLoadingInvoices={isLoadingInvoices}
-              isLoadingProducts={isLoadingProducts}
-              onAddInvoice={handleAddInvoice}
-              onAddCustomer={handleAddCustomer}
-              onUpdateCustomerBalance={handleUpdateCustomerBalance}
-              onAddNotification={addToastNotification}
-              onRetryWhatsApp={handleRetryWhatsApp}
-              quickArticulateItem={quickArticulateItem}
-              clearQuickArticulateItem={() => setQuickArticulateItem(null)}
-              onAlterationIssued={handleAlterationIssued}
-            />
-          </div>
+            <div style={{ display: activeModule === "billing" ? "block" : "none", height: "100%" }}>
+              <BillingPOSView
+                posInitialMode={posInitialMode}
+                activeModule={activeModule}
+                currentUser={currentUser}
+                products={products}
+                customers={customers}
+                employees={employees}
+                invoices={invoices}
+                isLoadingInvoices={isLoadingInvoices}
+                isLoadingProducts={isLoadingProducts}
+                onAddInvoice={handleAddInvoice}
+                onAddCustomer={handleAddCustomer}
+                onUpdateCustomerBalance={handleUpdateCustomerBalance}
+                onAddNotification={addToastNotification}
+                onRetryWhatsApp={handleRetryWhatsApp}
+                quickArticulateItem={quickArticulateItem}
+                clearQuickArticulateItem={() => setQuickArticulateItem(null)}
+                onAlterationIssued={handleAlterationIssued}
+              />
+            </div>
 
-          {activeModule === "articulation" && (
-            <ArticulationView
-              customers={customers}
-              employees={employees}
-              products={products}
-              invoices={invoices}
-              initialTab={articulationInitialTab}
-              initialFilterStatus={articulationInitialFilter}
-              autoStartAlteration={articulationStartAlteration}
-              clearAutoStartAlteration={() => setArticulationStartAlteration(false)}
-              onAddCustomToCart={(customItem) => {
-                setQuickArticulateItem(customItem);
-                setActiveModule("billing");
-              }}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "articulation" && (
+              <ArticulationView
+                customers={customers}
+                employees={employees}
+                products={products}
+                invoices={invoices}
+                initialTab={articulationInitialTab}
+                initialFilterStatus={articulationInitialFilter}
+                autoStartAlteration={articulationStartAlteration}
+                clearAutoStartAlteration={() => setArticulationStartAlteration(false)}
+                onAddCustomToCart={(customItem) => {
+                  setQuickArticulateItem(customItem);
+                  setActiveModule("billing");
+                }}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "commissions" && (
-            <CommissionView
-              employees={employees}
-              invoices={invoices}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "commissions" && (
+              <CommissionView
+                employees={employees}
+                invoices={invoices}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "products" && (
-            <ProductManagementView
-              currentUser={currentUser}
-              products={products}
-              isLoadingProducts={isLoadingProducts}
-              onAddProduct={handleAddProduct}
-              onUpdateProduct={handleUpdateProduct}
-              onDeleteProducts={handleDeleteProducts}
-              onAddNotification={addToastNotification}
-              onNavigate={setActiveModule}
-            />
-          )}
+            {activeModule === "products" && (
+              <ProductManagementView
+                currentUser={currentUser}
+                products={products}
+                isLoadingProducts={isLoadingProducts}
+                onAddProduct={handleAddProduct}
+                onUpdateProduct={handleUpdateProduct}
+                onDeleteProducts={handleDeleteProducts}
+                onAddNotification={addToastNotification}
+                onNavigate={setActiveModule}
+              />
+            )}
 
-          {activeModule === "inventory" && (
-            <InventoryView
-              products={products}
-              onAdjustStock={handleAdjustStock}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "inventory" && (
+              <InventoryView
+                products={products}
+                onAdjustStock={handleAdjustStock}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "stock-management" && (
-            <StockManagementView
-              products={products}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "stock-management" && (
+              <StockManagementView
+                products={products}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "billing-sales" && (
-            <BillingSalesView
-              products={products}
-              customers={customers}
-              employees={employees}
-              invoices={invoices}
-              isLoadingInvoices={isLoadingInvoices}
-              isLoadingProducts={isLoadingProducts}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "billing-sales" && (
+              <BillingSalesView
+                products={products}
+                customers={customers}
+                employees={employees}
+                invoices={invoices}
+                isLoadingInvoices={isLoadingInvoices}
+                isLoadingProducts={isLoadingProducts}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "discount-offers" && (
-            <DiscountManagementView
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "discount-offers" && (
+              <DiscountManagementView
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "purchase" && (
-            <PurchaseView
-              vendors={vendors}
-              setVendors={setVendors}
-              grns={grns}
-              setGrns={setGrns}
-              purchaseInvoices={purchaseInvoices}
-              setPurchaseInvoices={setPurchaseInvoices}
-              purchaseReturns={purchaseReturns}
-              setPurchaseReturns={setPurchaseReturns}
-              pendingPurchases={pendingPurchases}
-              setPendingPurchases={setPendingPurchases}
-              vendorOutstanding={vendorOutstanding}
-              setVendorOutstanding={setVendorOutstanding}
-              purchaseReports={purchaseReports}
-              setPurchaseReports={setPurchaseReports}
-              products={products}
-              setProducts={setProducts}
-              suppliers={suppliers}
-              setSuppliers={setSuppliers}
-              purchaseOrders={purchaseOrders}
-              setPurchaseOrders={setPurchaseOrders}
-              onAddPurchaseOrder={handleAddPurchaseOrder}
-              onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
-              onDeletePurchaseOrder={handleDeletePurchaseOrder}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "purchase" && (
+              <PurchaseView
+                vendors={vendors}
+                setVendors={setVendors}
+                grns={grns}
+                setGrns={setGrns}
+                purchaseInvoices={purchaseInvoices}
+                setPurchaseInvoices={setPurchaseInvoices}
+                purchaseReturns={purchaseReturns}
+                setPurchaseReturns={setPurchaseReturns}
+                pendingPurchases={pendingPurchases}
+                setPendingPurchases={setPendingPurchases}
+                vendorOutstanding={vendorOutstanding}
+                setVendorOutstanding={setVendorOutstanding}
+                purchaseReports={purchaseReports}
+                setPurchaseReports={setPurchaseReports}
+                products={products}
+                setProducts={setProducts}
+                suppliers={suppliers}
+                setSuppliers={setSuppliers}
+                purchaseOrders={purchaseOrders}
+                setPurchaseOrders={setPurchaseOrders}
+                onAddPurchaseOrder={handleAddPurchaseOrder}
+                onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+                onDeletePurchaseOrder={handleDeletePurchaseOrder}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "goods-return" && (
-            <GoodsReturnView
-              products={products}
-              vendors={vendors}
-              purchaseBills={purchaseInvoices}
-              currentUser={currentUser}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "goods-return" && (
+              <GoodsReturnView
+                products={products}
+                vendors={vendors}
+                purchaseBills={purchaseInvoices}
+                currentUser={currentUser}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "vendor-communication" && (
-            <VendorCommunicationCard currentUser={currentUser} />
-          )}
+            {activeModule === "vendor-communication" && (
+              <VendorCommunicationCard currentUser={currentUser} />
+            )}
 
-          {activeModule === "financial-management" && (
-            <FinancialView
-              mode="financial"
-              onAddNotification={addToastNotification}
-              currentUser={currentUser}
-            />
-          )}
+            {activeModule === "financial-management" && (
+              <FinancialView
+                mode="financial"
+                onAddNotification={addToastNotification}
+                currentUser={currentUser}
+              />
+            )}
 
-          {activeModule === "accounts-treasury" && (
-            <FinancialView
-              mode="accounts"
-              onAddNotification={addToastNotification}
-              currentUser={currentUser}
-            />
-          )}
+            {activeModule === "accounts-treasury" && (
+              <FinancialView
+                mode="accounts"
+                onAddNotification={addToastNotification}
+                currentUser={currentUser}
+              />
+            )}
 
-          {activeModule === "customers" && (
-            <CustomersView
-              customers={customers}
-              invoices={invoices}
-              onSettleCustomerBalance={handleSettleCustomerBalance}
-              onAddNotification={addToastNotification}
-              onAddCustomer={handleAddCustomer}
-              onDeleteCustomer={(deletedCustId) => {
-                setCustomers(prev => prev.filter(c => (c.id || c._id) !== deletedCustId));
-              }}
-              onUpdateCustomerPrepaidAdvance={(updatedCustId, updatedCustData) => {
-                setCustomers(prev => prev.map(c => ((c.id || c._id) === updatedCustId ? { ...c, ...updatedCustData, id: updatedCustData._id || updatedCustId } : c)));
-              }}
-            />
-          )}
+            {activeModule === "customers" && (
+              <CustomersView
+                customers={customers}
+                invoices={invoices}
+                onSettleCustomerBalance={handleSettleCustomerBalance}
+                onAddNotification={addToastNotification}
+                onAddCustomer={handleAddCustomer}
+                onDeleteCustomer={(deletedCustId) => {
+                  setCustomers(prev => prev.filter(c => (c.id || c._id) !== deletedCustId));
+                }}
+                onUpdateCustomerPrepaidAdvance={(updatedCustId, updatedCustData) => {
+                  setCustomers(prev => prev.map(c => ((c.id || c._id) === updatedCustId ? { ...c, ...updatedCustData, id: updatedCustData._id || updatedCustId } : c)));
+                }}
+              />
+            )}
 
-          {/* {activeModule === "employees" && (
+            {/* {activeModule === "employees" && (
             <EmployeeView
               currentUser={currentUser}
               employees={employees}
@@ -2191,68 +2187,68 @@ export default function App() {
             />
           )} */}
 
-          {activeModule === "staff" && (
-            <StaffManagementView />
-          )}
+            {activeModule === "staff" && (
+              <StaffManagementView />
+            )}
 
-          {activeModule === "accounting" && (
-            <AccountingView
-              expenses={expenses}
-              invoices={invoices}
-              onAddExpense={handleAddExpense}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "accounting" && (
+              <AccountingView
+                expenses={expenses}
+                invoices={invoices}
+                onAddExpense={handleAddExpense}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "reports" && (
-            <ReportsView
-              invoices={invoices}
-              purchaseOrders={purchaseOrders}
-              products={products}
-              employees={employees}
-              customers={customers}
-              setActiveModule={setActiveModule}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "reports" && (
+              <ReportsView
+                invoices={invoices}
+                purchaseOrders={purchaseOrders}
+                products={products}
+                employees={employees}
+                customers={customers}
+                setActiveModule={setActiveModule}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "saas" && (
-            <SaaSPanelView
-              tenants={tenants}
-              supportTickets={supportTickets}
-              onResolveTicket={handleResolveTicket}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "saas" && (
+              <SaaSPanelView
+                tenants={tenants}
+                supportTickets={supportTickets}
+                onResolveTicket={handleResolveTicket}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "developer" && (
-            <DeveloperPortalView onAddNotification={addToastNotification} />
-          )}
+            {activeModule === "developer" && (
+              <DeveloperPortalView onAddNotification={addToastNotification} />
+            )}
 
-          {activeModule === "integrations" && (
-            <IntegrationsView onAddNotification={addToastNotification} />
-          )}
+            {activeModule === "integrations" && (
+              <IntegrationsView onAddNotification={addToastNotification} />
+            )}
 
-          {activeModule === "settings" && (
-            <SettingsView onAddNotification={addToastNotification} currentUser={currentUser} />
-          )}
+            {activeModule === "settings" && (
+              <SettingsView onAddNotification={addToastNotification} currentUser={currentUser} />
+            )}
 
-          {activeModule === "permissions" && (
-            <PermissionsView
-              employees={employees}
-              currentUser={currentUser}
-              onAddNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "permissions" && (
+              <PermissionsView
+                employees={employees}
+                currentUser={currentUser}
+                onAddNotification={addToastNotification}
+              />
+            )}
 
-          {activeModule === "staff-activity" && (
-            <StaffActivityView
-              currentUser={currentUser}
-              addToastNotification={addToastNotification}
-            />
-          )}
+            {activeModule === "staff-activity" && (
+              <StaffActivityView
+                currentUser={currentUser}
+                addToastNotification={addToastNotification}
+              />
+            )}
 
-          {/* {activeModule === "attendance-dashboard" && (
+            {/* {activeModule === "attendance-dashboard" && (
             <AttendanceDashboardView employees={employees} token={localStorage.getItem('token')} onAddNotification={addToastNotification} currentUser={currentUser} />
           )}
 
