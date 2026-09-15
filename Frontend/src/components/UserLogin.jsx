@@ -122,13 +122,9 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
               const password = e.target.password.value;
               const businessId = e.target.businessId.value.trim();
 
-              console.log('[Auth Trace] Initiating Tenant Login Request:', { businessId, email });
-
               try {
                 const res = await api.post(`/auth/login`, { businessId, tenantCode: businessId, email, password });
                 const data = res.data;
-
-                console.log('[Auth Trace] Login Response Received:', data);
 
                 if (data.success && data.data) {
                   const accessToken = data.data.accessToken;
@@ -139,8 +135,6 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
                     token: accessToken
                   };
 
-                  console.log('[Auth Trace] Storing token & updating session state:', { accessToken: accessToken ? 'PRESENT' : 'MISSING', user: authenticatedUser });
-
                   onLogin(authenticatedUser);
                   addToastNotification(
                     "Session Initiated",
@@ -148,7 +142,6 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
                     "success"
                   );
                 } else {
-                  console.warn('[Auth Trace] Login Failed:', data.message);
                   addToastNotification(
                     "Access Denied",
                     data.message || "wrong or invalid credential try another",
@@ -156,7 +149,6 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
                   );
                 }
               } catch (err) {
-                console.error('[Auth Trace] Login Error:', err?.response?.data || err.message);
                 addToastNotification("Connection Error", err?.response?.data?.message || "Could not reach the authentication server.", "danger");
               }
             }}

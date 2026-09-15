@@ -32,14 +32,10 @@ export function AdminLogin({ onLogin, addToastNotification }) {
             const email = e.target.email.value;
             const password = e.target.secretKey.value;
 
-            console.log('[Auth Trace] Initiating SuperAdmin Login Request:', { email });
-
             try {
               // SuperAdmin authenticates via /auth/login without tenantCode
               const res = await api.post(`/auth/login`, { email, password });
               const data = res.data;
-
-              console.log('[Auth Trace] SuperAdmin Response Received:', data);
 
               if (data.success && data.data) {
                 const accessToken = data.data.accessToken;
@@ -53,8 +49,6 @@ export function AdminLogin({ onLogin, addToastNotification }) {
                   token: accessToken
                 };
 
-                console.log('[Auth Trace] Storing SuperAdmin token & updating session state:', { accessToken: accessToken ? 'PRESENT' : 'MISSING', user: superAdminUser });
-
                 localStorage.setItem("token", accessToken);
                 localStorage.setItem("user", JSON.stringify(superAdminUser));
                 onLogin(superAdminUser);
@@ -66,7 +60,6 @@ export function AdminLogin({ onLogin, addToastNotification }) {
                 );
                 navigate("/super-admin/dashboard", { replace: true });
               } else {
-                console.warn('[Auth Trace] SuperAdmin Login Failed:', data.message);
                 addToastNotification(
                   "Access Denied",
                   data.message || "wrong or invalid credential try another",
@@ -74,7 +67,6 @@ export function AdminLogin({ onLogin, addToastNotification }) {
                 );
               }
             } catch (err) {
-              console.error('[Auth Trace] SuperAdmin Login Error:', err?.response?.data || err.message);
               addToastNotification("Connection Error", err?.response?.data?.message || "Could not reach authentication server.", "danger");
             }
           }}

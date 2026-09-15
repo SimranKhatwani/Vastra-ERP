@@ -381,7 +381,6 @@ export default function App() {
           if (dataProducts && dataProducts.success) {
             const rawList = Array.isArray(dataProducts.data) ? dataProducts.data : (dataProducts.data?.products || []);
             const arr = rawList.map(p => ({ ...p, id: p._id }));
-            console.log('[App Trace] Loaded products count:', arr.length);
             setProducts(arr);
           }
         } catch (err) {
