@@ -3070,7 +3070,7 @@ export const DashboardView = ({
             System Overview & Terminal
           </h1>
           <p className="text-sm text-slate-300">
-            Activity Feed &amp; system telemetry - {monthNames[currentMonth]} {currentYear}.
+            Activity Feed &amp; system telemetry — {monthNames[currentMonth]} {currentYear}.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -3443,8 +3443,8 @@ export const DashboardView = ({
         </div>
       </div>
 
-      {/* ─── EMPLOYEE ATTENDANCE SUMMARY WIDGET ─── */}
-      {(() => {
+      {/* ─── EMPLOYEE ATTENDANCE SUMMARY WIDGET (COMMENTED OUT) ─── */}
+      {/* {(() => {
         const staffTotal = employees.length || 1;
         const presentCount = attendanceStats?.present ?? employees.filter(e => e.attendanceStatus === 'Present' || (e.punchInTime && e.attendanceStatus !== 'Absent')).length;
         const lateCount = attendanceStats?.veryLates ?? (attendanceStats?.normalArrivals ?? employees.filter(e => e.attendanceStatus === 'Late').length);
@@ -3455,7 +3455,6 @@ export const DashboardView = ({
 
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4 mt-6">
-            {/* Widget Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-xs">
@@ -3483,9 +3482,7 @@ export const DashboardView = ({
               </button>
             </div>
 
-            {/* Attendance KPI Clickable Tabs Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {/* TOTAL STAFF */}
               <div
                 onClick={openAttendanceRecords}
                 className="bg-slate-50 hover:bg-slate-100/90 p-4 rounded-xl border border-slate-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
@@ -3499,7 +3496,6 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              {/* PRESENT TODAY */}
               <div
                 onClick={openAttendanceRecords}
                 className="bg-emerald-50/80 hover:bg-emerald-100/90 p-4 rounded-xl border border-emerald-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
@@ -3513,7 +3509,6 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              {/* LATE ARRIVAL */}
               <div
                 onClick={openAttendanceRecords}
                 className="bg-amber-50/80 hover:bg-amber-100/90 p-4 rounded-xl border border-amber-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
@@ -3527,7 +3522,6 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              {/* ABSENT */}
               <div
                 onClick={openAttendanceRecords}
                 className="bg-rose-50/80 hover:bg-rose-100/90 p-4 rounded-xl border border-rose-200/80 flex justify-between items-center cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
@@ -3541,7 +3535,6 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              {/* TURNOUT RATE */}
               <div
                 onClick={openAttendanceRecords}
                 className="bg-indigo-50/80 hover:bg-indigo-100/90 p-4 rounded-xl border border-indigo-200/80 flex justify-between items-center col-span-2 lg:col-span-1 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group"
@@ -3559,7 +3552,7 @@ export const DashboardView = ({
             </div>
           </div>
         );
-      })()}
+      })()} */}
 
       {/* ─── GARMENT TAILORING & ALTERATION SUMMARY WIDGET ─── */}
       {(() => {
