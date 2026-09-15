@@ -122,9 +122,22 @@ export function UserLogin({ onLogin, addToastNotification, switchableEmployees, 
         </form>
 
         {/* Footer */}
-        <p className="text-[10px] text-slate-500 text-center font-mono font-medium pt-3 border-t border-slate-700/40">
-          Vastra ERP &bull; Encryption AES-256 Enabled
-        </p>
+        <div className="pt-3 border-t border-slate-700/40 text-center space-y-1">
+          <p className="text-[10px] text-slate-500 font-mono font-medium">
+            Vastra ERP &bull; Encryption AES-256 Enabled
+          </p>
+          <p className="text-[11px] text-slate-400 font-medium">
+            Designed & Developed by <span className="text-rose-500">❤️</span>{' '}
+            <a
+              href="https://www.requingroup.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-300 hover:text-indigo-300 underline font-semibold transition-colors"
+            >
+              Requin Solutions Pvt. Ltd
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

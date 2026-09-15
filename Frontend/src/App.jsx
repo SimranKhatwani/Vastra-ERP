@@ -1617,6 +1617,20 @@ export default function App() {
           {/* Nav List */}
           <nav className="space-y-1">
             {!sidebarCollapsed && (
+              <div className="px-2 py-1.5 mb-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] text-slate-500 font-medium leading-tight">
+                <span>Designed &amp; Developed by <span className="text-rose-500">❤️</span> </span>
+                <a
+                  href="https://www.requingroup.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-slate-800 hover:text-indigo-600 underline transition-colors"
+                >
+                  Requin Solutions Pvt. Ltd
+                </a>
+              </div>
+            )}
+
+            {!sidebarCollapsed && (
               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block pl-2 mb-2">
                 OPERATIONS DIRECTORY
               </span>

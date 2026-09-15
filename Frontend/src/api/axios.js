@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+const resolveApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl) return 'http://localhost:5001/api';
+  const clean = envUrl.trim().replace(/\/+$/, '');
+  if (clean.endsWith('/api') || clean.endsWith('/api/v1')) {
+    return clean;
+  }
+  return `${clean}/api`;
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
+  baseURL: resolveApiBaseUrl(),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -30,7 +40,7 @@ api.interceptors.response.use(
       try {
         // Try to refresh token
         const res = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/auth/refresh-token`,
+          `${resolveApiBaseUrl()}/auth/refresh-token`,
           {},
           { withCredentials: true }
         );

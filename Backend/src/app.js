@@ -42,6 +42,18 @@ app.use('/api', apiLimiter);
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Root Health & Status
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'UP',
+    name: 'Vastra ERP SaaS Backend',
+    message: 'API is operational',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Health Check
 app.get('/health', (req, res) => {
   res.status(200).json({
