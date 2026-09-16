@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ApiError = require('../helpers/ApiError');
 const SaleBill = require('../models/billing/SaleBill');
 const SaleItem = require('../models/billing/SaleItem');
@@ -1445,6 +1446,137 @@ class BillingService {
         advancePaid: pssm.advancePaid,
         balanceDue: pssm.balanceDue
       } : null
+    };
+  }
+
+  /**
+   * Send WhatsApp notification for a sale bill / invoice / ticket
+   */
+  static async sendWhatsApp(identifier, userId, tenantId, options = {}) {
+    if (!identifier) {
+      throw new ApiError(400, 'Invoice number or ID is required.');
+    }
+
+    const trimmed = String(identifier).trim();
+    let trackingData = null;
+
+    try {
+      trackingData = await this.trackBillPublic(trimmed);
+    } catch (e) {
+      // If public track fails or throws 404, check direct SaleBill lookup
+      let bill = null;
+      if (mongoose.Types.ObjectId.isValid(trimmed) && trimmed.length === 24) {
+        bill = await SaleBill.findById(trimmed).populate('customerId').lean();
+      }
+      if (!bill) {
+        bill = await SaleBill.findOne({
+          $or: [
+            { billNo: trimmed },
+            { billNo: new RegExp(`^${trimmed}$`, 'i') },
+            { billBarcode: trimmed }
+          ]
+        }).populate('customerId').lean();
+      }
+
+      if (!bill) {
+        throw new ApiError(404, `Invoice or bill not found with ID/Number "${trimmed}".`);
+      }
+
+      trackingData = {
+        bill: {
+          ...bill,
+          billNo: bill.billNo,
+          invoiceNo: bill.billNo,
+          customerName: bill.customerId?.name || bill.customerName || 'Customer',
+          customerPhone: bill.customerId?.phone || bill.customerPhone || '',
+          grandTotal: bill.grandTotal || 0,
+          amountPaid: bill.paidAmount || 0,
+          balanceDue: bill.balanceDue || 0
+        },
+        store: {
+          name: 'NEW FASHION STYLE (NFS)',
+          phone: '9829000000'
+        }
+      };
+    }
+
+    const bill = trackingData.bill || {};
+    const store = trackingData.store || { name: 'NEW FASHION STYLE (NFS)', phone: '9829000000' };
+    const billNo = bill.billNo || bill.invoiceNo || trimmed;
+    const customerName = bill.customerName || 'Customer';
+    const customerPhone = bill.customerPhone || bill.whatsappNumber || '';
+    const grandTotal = bill.grandTotal || 0;
+    const paidAmount = bill.amountPaid !== undefined ? bill.amountPaid : (bill.paidAmount || 0);
+    const balanceDue = bill.balanceDue !== undefined ? bill.balanceDue : Math.max(0, grandTotal - paidAmount);
+
+    const protocol = options.protocol || 'http';
+    const host = options.host || 'localhost:3000';
+    const baseUrl = options.baseUrl || process.env.PUBLIC_TRACKING_URL || global.publicTrackingBaseUrl || `${protocol}://${host}`;
+    const trackingUrl = `${baseUrl}/track/${encodeURIComponent(billNo)}`;
+    const pdfUrl = `${baseUrl}/api/billing/public/invoice-pdf/${encodeURIComponent(billNo)}`;
+
+    let cleanPhone = customerPhone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length === 10) {
+      cleanPhone = `91${cleanPhone}`;
+    }
+
+    const messageText = `🌟 *INVOICE & SERVICE UPDATE* 🌟\n*${store.name}*\n\nDear *${customerName}*,\nThank you for shopping with us! Here are your bill details:\n\n🧾 *Bill / Invoice No:* ${billNo}\n💵 *Total Amount:* ₹${grandTotal.toLocaleString('en-IN')}\n✅ *Paid Amount:* ₹${paidAmount.toLocaleString('en-IN')}${balanceDue > 0 ? `\n⚠️ *Balance Due:* ₹${balanceDue.toLocaleString('en-IN')}` : ''}\n\n📄 *Download Digital Invoice (PDF):*\n${pdfUrl}\n\n📍 *Live Order & Alteration Tracking:*\n${trackingUrl}\n\nFor any questions or support, call us at ${store.phone}.\nThank you for choosing ${store.name}!`;
+
+    const whatsappLink = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`;
+
+    // Optional: Log dispatch to Notification model if exists
+    try {
+      const Notification = require('../models/Notification');
+      if (tenantId) {
+        await Notification.create({
+          tenantId,
+          userId: userId || null,
+          title: `WhatsApp Dispatched - #${billNo}`,
+          message: `WhatsApp bill summary prepared for ${customerName} (${customerPhone || 'No Phone'})`,
+          category: 'GENERAL',
+          type: 'SUCCESS',
+          metadata: {
+            billNo,
+            customerName,
+            customerPhone,
+            channel: 'WhatsApp',
+            messageStatus: 'SENT'
+          }
+        });
+      }
+    } catch (nErr) {
+      // Non-blocking notification logging
+    }
+
+    // Optional: Socket.IO broadcast
+    if (global.io && typeof global.io.emit === 'function') {
+      try {
+        global.io.emit('whatsapp_dispatch', {
+          billNo,
+          customerName,
+          customerPhone,
+          timestamp: new Date().toISOString()
+        });
+      } catch (sErr) {}
+    }
+
+    return {
+      success: true,
+      action: 'WhatsApp Dispatched',
+      billNo,
+      invoiceNo: billNo,
+      customerName,
+      customerPhone,
+      grandTotal,
+      paidAmount,
+      balanceDue,
+      trackingUrl,
+      pdfUrl,
+      whatsappLink,
+      messageText,
+      dispatchedAt: new Date().toISOString()
     };
   }
 }

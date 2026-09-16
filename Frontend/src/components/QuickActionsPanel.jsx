@@ -84,7 +84,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
         return;
       }
 
-      if (!['search_customer', 'search_bill', 'scan_bill', 'scan_item', 'search_barcode'].includes(activeModal)) {
+      if (!['search_customer', 'search_bill', 'scan_bill', 'scan_item', 'search_barcode', 'whatsapp'].includes(activeModal)) {
         return;
       }
 
@@ -93,7 +93,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
         let res;
         if (activeModal === 'search_customer') {
           res = await api.get(`/customers?search=${inputValue}`);
-        } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
+        } else if (activeModal === 'search_bill' || activeModal === 'scan_bill' || activeModal === 'whatsapp') {
           res = await api.get(`/billing?search=${inputValue}`);
         } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
           res = await api.get(`/products?search=${inputValue}`);
@@ -275,7 +275,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
         setError(data.message || 'Action failed');
       }
     } catch (err) {
-      setError(err.message || 'An error occurred.');
+      setError(err.response?.data?.message || err.message || 'An error occurred.');
     } finally {
       setLoading(false);
     }
@@ -310,7 +310,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
     if (activeModal === 'scan_bill' || activeModal === 'search_bill') inputLabel = "Enter Invoice Number / Customer Phone";
     else if (activeModal === 'scan_item' || activeModal === 'search_barcode' || activeModal === 'print_tag') inputLabel = "Enter SKU or Barcode";
     else if (activeModal === 'search_customer') inputLabel = "Enter Customer Name or Phone";
-    else if (activeModal === 'whatsapp') inputLabel = "Enter Invoice ID (_id)";
+    else if (activeModal === 'whatsapp') inputLabel = "Enter Invoice Number / Bill ID (e.g. INV-40859219-971)";
     else if (activeModal === 'alteration') inputLabel = "Describe Alteration Details";
 
     return (
@@ -624,7 +624,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
                           onClick={() => {
                             if (activeModal === 'search_customer') {
                               setInputValue(item.phone || item.name);
-                            } else if (activeModal === 'search_bill' || activeModal === 'scan_bill') {
+                            } else if (activeModal === 'search_bill' || activeModal === 'scan_bill' || activeModal === 'whatsapp') {
                               setInputValue(item.invoiceNo || item.billNo);
                             } else if (activeModal === 'scan_item' || activeModal === 'search_barcode') {
                               setInputValue(item.barcode || item.sku);
@@ -636,7 +636,7 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
                           {activeModal === 'search_customer' && (
                             <div className="text-sm font-medium text-slate-700">{item.name} <span className="text-slate-400 text-xs ml-2">{item.phone}</span></div>
                           )}
-                          {(activeModal === 'search_bill' || activeModal === 'scan_bill') && (
+                          {(activeModal === 'search_bill' || activeModal === 'scan_bill' || activeModal === 'whatsapp') && (
                             <div className="text-sm font-medium text-slate-700">{item.invoiceNo || item.billNo} <span className="text-slate-400 text-xs ml-2">{item.customerName}</span></div>
                           )}
                           {(activeModal === 'scan_item' || activeModal === 'search_barcode') && (
@@ -665,17 +665,59 @@ export const QuickActionsPanel = ({ onNavigate, openArticulationWithDefaults, em
 
             {result && !isAlterationAction && (
               <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl max-h-60 overflow-y-auto">
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Success Result</h4>
-                <pre className="text-[10px] text-slate-700 whitespace-pre-wrap font-mono">
-                  {JSON.stringify(result, null, 2)}
-                </pre>
-                {activeModal === 'print_tag' && (
-                  <button
-                    onClick={() => window.print()}
-                    className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm transition-all cursor-pointer"
-                  >
-                    Print Tag Now
-                  </button>
+                {activeModal === 'whatsapp' ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>{result.action || 'WhatsApp Message Ready!'}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Invoice:</span>
+                        <span className="font-mono font-bold text-slate-800">{result.billNo || result.invoiceNo}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Customer:</span>
+                        <span className="font-bold text-slate-800">{result.customerName}</span>
+                      </div>
+                      {result.customerPhone && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500 font-medium">Phone:</span>
+                          <span className="font-mono text-slate-700">{result.customerPhone}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Amount:</span>
+                        <span className="font-bold text-emerald-700">₹{Number(result.grandTotal || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    {result.whatsappLink && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(result.whatsappLink, '_blank')}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>Open WhatsApp Chat</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Success Result</h4>
+                    <pre className="text-[10px] text-slate-700 whitespace-pre-wrap font-mono">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                    {activeModal === 'print_tag' && (
+                      <button
+                        onClick={() => window.print()}
+                        className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm transition-all cursor-pointer"
+                      >
+                        Print Tag Now
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}

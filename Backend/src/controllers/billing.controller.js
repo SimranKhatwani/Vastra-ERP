@@ -130,6 +130,15 @@ class BillingController {
       trackingBaseUrl: publicUrl
     }, 'Network info retrieved successfully.'));
   });
+
+  static sendWhatsApp = asyncHandler(async (req, res) => {
+    const id = req.params.id || req.params.billNo || req.body.id || req.body.invoiceId || req.body.billNo || req.body.invoiceNo;
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const baseUrl = process.env.PUBLIC_TRACKING_URL || global.publicTrackingBaseUrl || `${protocol}://${host}`;
+    const result = await BillingService.sendWhatsApp(id, req.user?.id, req.tenantId, { baseUrl, protocol, host });
+    return res.status(200).json(new ApiResponse(200, result, 'WhatsApp message prepared and dispatched successfully.'));
+  });
 }
 
 module.exports = BillingController;

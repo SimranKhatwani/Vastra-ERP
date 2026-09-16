@@ -7,7 +7,7 @@ const generateAccessToken = (payload) => {
   return jwt.sign(
     payload,
     process.env.JWT_ACCESS_SECRET || 'vastra_access_secret_super_secure_key_2026_!@#$',
-    { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m' }
+    { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '1h' }
   );
 };
 

@@ -31,6 +31,8 @@ router.post('/:id/payments', authorize(PERMISSIONS.BILLING_CREATE), auditLog('RE
 router.get('/:id/reprint', authorize(PERMISSIONS.BILLING_READ), BillingController.reprintBill);
 router.post('/:id/cancel', authorize(PERMISSIONS.BILLING_CANCEL), auditLog('CANCEL_SALE_BILL', 'billing'), BillingController.cancelSaleBill);
 router.patch('/:id/payment-method', authorize(PERMISSIONS.BILLING_CREATE), auditLog('UPDATE_PAYMENT_METHOD', 'billing'), BillingController.updatePaymentMethod);
+router.post('/send-whatsapp', authorize(PERMISSIONS.BILLING_READ), auditLog('SEND_WHATSAPP', 'billing'), BillingController.sendWhatsApp);
+router.post('/:id/send-whatsapp', authorize(PERMISSIONS.BILLING_READ), auditLog('SEND_WHATSAPP', 'billing'), BillingController.sendWhatsApp);
 router.delete('/:id', authorize(PERMISSIONS.BILLING_CANCEL), auditLog('DELETE_SALE_BILL', 'billing'), BillingController.deleteSaleBill);
 
 module.exports = router;

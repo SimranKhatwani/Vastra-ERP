@@ -2781,12 +2781,12 @@ export const InventoryView = ({
 
       {/* TAB: MANUAL ADJUSTMENTS */}
       {activeTab === "adjustments" && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        <div className="max-w-2xl bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-xs">
           <form
             onSubmit={handleApplyAdjustment}
-            className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm md:col-span-5 space-y-4 text-xs"
+            className="space-y-4"
           >
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-50 pb-2">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-3">
               Manual Inventory Correction
             </h4>
             <div>
@@ -2797,7 +2797,7 @@ export const InventoryView = ({
                 required
                 value={adjustingId}
                 onChange={(e) => setAdjustingId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-700 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select Item...</option>
                 {products.map((p) => (
@@ -2817,14 +2817,14 @@ export const InventoryView = ({
                   <button
                     type="button"
                     onClick={() => setAdjustType("Add")}
-                    className={`w-full py-1.5 text-xs font-bold rounded-lg ${adjustType === "Add" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500"}`}
+                    className={`w-full py-1.5 text-xs font-bold rounded-lg cursor-pointer ${adjustType === "Add" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500"}`}
                   >
                     Stock In (+)
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdjustType("Remove")}
-                    className={`w-full py-1.5 text-xs font-bold rounded-lg ${adjustType === "Remove" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500"}`}
+                    className={`w-full py-1.5 text-xs font-bold rounded-lg cursor-pointer ${adjustType === "Remove" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500"}`}
                   >
                     Stock Out (-)
                   </button>
@@ -2842,7 +2842,7 @@ export const InventoryView = ({
                   onChange={(e) =>
                     setAdjustAmount(Math.max(1, Number(e.target.value)))
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -2857,49 +2857,17 @@ export const InventoryView = ({
                 value={adjustReason}
                 onChange={(e) => setAdjustReason(e.target.value)}
                 placeholder="e.g. Replenishment, Damaged on floor, QC fail..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 cursor-pointer shadow-xs"
+              className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 cursor-pointer shadow-xs transition-colors"
             >
               Apply Stock Correction
             </button>
           </form>
-
-          <div className="bg-slate-900 rounded-2xl p-5 text-white border border-slate-800 md:col-span-7 space-y-4 font-mono text-xs">
-            <h4 className="text-xs font-bold tracking-wider text-indigo-400 uppercase">
-              Interactive Stock Simulator
-            </h4>
-            <p className="text-slate-400 leading-relaxed text-[11px]">
-              This ledger directly triggers the physical stock adjustments.
-              Altering stock quantities impacts overall COGS valuation, balance
-              sheet equations, and triggers real-time webhook broadcasts to
-              e-commerce storefront channels (such as Shopify & WooCommerce
-              bridges).
-            </p>
-            <div className="border-t border-slate-800 pt-3">
-              <span className="text-[10px] text-slate-500 block mb-1">
-                Active Channel Targets:
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-[10px]">
-                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block">Shopify status</span>
-                  <span className="text-emerald-400 font-bold">
-                    ✓ AUTO SYNC ACTIVE
-                  </span>
-                </div>
-                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block">
-                    WooCommerce status
-                  </span>
-                  <span className="text-amber-500 font-bold">⚠ OFFLINE</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

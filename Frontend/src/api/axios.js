@@ -18,11 +18,45 @@ const api = axios.create({
   },
 });
 
+// Helper to identify public routes that don't need authentication tokens
+const isPublicRoute = (url = '') => {
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/register') ||
+    url.includes('/auth/refresh-token') ||
+    url.includes('/public/') ||
+    url.includes('/billing/public/') ||
+    url.includes('/pssm/public/') ||
+    url.includes('/network-info')
+  );
+};
+
+// Queue mechanism for handling simultaneous 401s cleanly
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (!isPublicRoute(config.url || '')) {
+      // If user has no token and is requesting a protected resource,
+      // cancel quietly before triggering a failing 401 HTTP network call
+      const controller = new AbortController();
+      config.signal = controller.signal;
+      controller.abort('User unauthenticated - skipping request');
     }
     return config;
   },
@@ -34,35 +68,62 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // If request was aborted because unauthenticated, handle gracefully
+    if (axios.isCancel(error) || error.message?.includes('User unauthenticated')) {
+      return Promise.reject({ isAuthCancelled: true, message: 'Unauthenticated' });
+    }
+
     const originalRequest = error.config;
+
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      // If the 401 came from refresh-token or login itself, don't loop
+      if (originalRequest.url?.includes('/auth/refresh-token') || originalRequest.url?.includes('/auth/login')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch(err => Promise.reject(err));
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
+
       try {
-        // Try to refresh token
         const res = await axios.post(
           `${resolveApiBaseUrl()}/auth/refresh-token`,
           {},
           { withCredentials: true }
         );
-        if (res.data && res.data.data && res.data.data.accessToken) {
-          const newAccessToken = res.data.data.accessToken;
+
+        const newAccessToken = res.data?.data?.accessToken;
+        if (newAccessToken) {
           localStorage.setItem('token', newAccessToken);
-          // Update the original request's authorization header
+          api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          processQueue(null, newAccessToken);
           return api(originalRequest);
+        } else {
+          throw new Error('No access token returned from refresh');
         }
       } catch (refreshError) {
-        console.warn("Session expired. Logging out.");
+        processQueue(refreshError, null);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
-    
-    // If not a 401 or refresh failed, reject standard
+
     return Promise.reject(error);
   }
 );

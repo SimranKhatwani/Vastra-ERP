@@ -3608,38 +3608,42 @@ export const DashboardView = ({
             </div>
 
             {/* 11 Summary Features Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 sm:gap-2.5">
               {[
-                { id: "Today's Jobs", label: "Today's Jobs", count: todaysJobs, icon: Calendar, bg: "bg-indigo-50/70 hover:bg-indigo-100/90", border: "border-indigo-200/80", text: "text-indigo-900", iconColor: "text-indigo-600", sub: "Booked today" },
-                { id: "Due Today", label: "Due Today", count: dueToday, icon: Clock, bg: "bg-amber-50/70 hover:bg-amber-100/90", border: "border-amber-200/80", text: "text-amber-900", iconColor: "text-amber-600", sub: "Promised today" },
-                { id: "Overdue", label: "Overdue", count: overdue, icon: AlertTriangle, bg: "bg-rose-50/70 hover:bg-rose-100/90", border: "border-rose-200/80", text: "text-rose-900", iconColor: "text-rose-600", sub: "Deadline passed" },
-                { id: "Pending", label: "Pending", count: pending, icon: FileText, bg: "bg-slate-50 hover:bg-slate-100/90", border: "border-slate-200/80", text: "text-slate-900", iconColor: "text-slate-600", sub: "Queued tickets" },
-                { id: "In Cutting", label: "In Cutting", count: inCutting, icon: Scissors, bg: "bg-orange-50/70 hover:bg-orange-100/90", border: "border-orange-200/80", text: "text-orange-900", iconColor: "text-orange-600", sub: "Pattern cutting" },
-                { id: "In Stitching", label: "In Stitching", count: inStitching, icon: Layers, bg: "bg-blue-50/70 hover:bg-blue-100/90", border: "border-blue-200/80", text: "text-blue-900", iconColor: "text-blue-600", sub: "With tailor" },
-                { id: "In Trial", label: "In Trial", count: inTrial, icon: Shirt, bg: "bg-purple-50/70 hover:bg-purple-100/90", border: "border-purple-200/80", text: "text-purple-900", iconColor: "text-purple-600", sub: "Fitting trial" },
-                { id: "Re-Alteration", label: "Re-Alteration", count: reAlteration, icon: RefreshCw, bg: "bg-red-50/70 hover:bg-red-100/90", border: "border-red-200/80", text: "text-red-900", iconColor: "text-red-600", sub: "Post-trial fix" },
-                { id: "Quality Check", label: "Quality Check", count: qualityCheck, icon: ShieldCheck, bg: "bg-teal-50/70 hover:bg-teal-100/90", border: "border-teal-200/80", text: "text-teal-900", iconColor: "text-teal-600", sub: "QC inspection" },
-                { id: "Ready", label: "Ready", count: ready, icon: CheckCircle2, bg: "bg-emerald-50/70 hover:bg-emerald-100/90", border: "border-emerald-200/80", text: "text-emerald-900", iconColor: "text-emerald-600", sub: "Ready for pickup" },
-                { id: "Delivered", label: "Delivered", count: delivered, icon: PackageCheck, bg: "bg-emerald-50/50 hover:bg-emerald-100/70", border: "border-emerald-300/80", text: "text-emerald-950", iconColor: "text-emerald-700", sub: "Collected" }
+                { id: "Today's Jobs", label: "Today's Jobs", count: todaysJobs, icon: Calendar, bg: "bg-indigo-50/70 hover:bg-indigo-100/80", border: "border-indigo-200", text: "text-indigo-900", iconColor: "text-indigo-600", sub: "Booked today" },
+                { id: "Due Today", label: "Due Today", count: dueToday, icon: Clock, bg: "bg-amber-50/70 hover:bg-amber-100/80", border: "border-amber-200", text: "text-amber-900", iconColor: "text-amber-600", sub: "Promise today" },
+                { id: "Overdue", label: "Overdue", count: overdue, icon: AlertTriangle, bg: "bg-rose-50/70 hover:bg-rose-100/80", border: "border-rose-200", text: "text-rose-900", iconColor: "text-rose-600", sub: "Past deadline" },
+                { id: "Pending", label: "Pending", count: pending, icon: FileText, bg: "bg-slate-50/80 hover:bg-slate-100", border: "border-slate-200", text: "text-slate-900", iconColor: "text-slate-600", sub: "Queued tickets" },
+                { id: "In Cutting", label: "In Cutting", count: inCutting, icon: Scissors, bg: "bg-orange-50/70 hover:bg-orange-100/80", border: "border-orange-200", text: "text-orange-900", iconColor: "text-orange-600", sub: "Pattern cutting" },
+                { id: "In Stitching", label: "In Stitching", count: inStitching, icon: Layers, bg: "bg-blue-50/70 hover:bg-blue-100/80", border: "border-blue-200", text: "text-blue-900", iconColor: "text-blue-600", sub: "With tailor" },
+                { id: "In Trial", label: "In Trial", count: inTrial, icon: Shirt, bg: "bg-purple-50/70 hover:bg-purple-100/80", border: "border-purple-200", text: "text-purple-900", iconColor: "text-purple-600", sub: "Fitting trial" },
+                { id: "Re-Alteration", label: "Re-Alteration", count: reAlteration, icon: RefreshCw, bg: "bg-red-50/70 hover:bg-red-100/80", border: "border-red-200", text: "text-red-900", iconColor: "text-red-600", sub: "Post-trial fix" },
+                { id: "Quality Check", label: "Quality Check", count: qualityCheck, icon: ShieldCheck, bg: "bg-teal-50/70 hover:bg-teal-100/80", border: "border-teal-200", text: "text-teal-900", iconColor: "text-teal-600", sub: "QC inspection" },
+                { id: "Ready", label: "Ready", count: ready, icon: CheckCircle2, bg: "bg-emerald-50/70 hover:bg-emerald-100/80", border: "border-emerald-200", text: "text-emerald-900", iconColor: "text-emerald-600", sub: "Ready for pickup" },
+                { id: "Delivered", label: "Delivered", count: delivered, icon: PackageCheck, bg: "bg-emerald-50/50 hover:bg-emerald-100/70", border: "border-emerald-300", text: "text-emerald-950", iconColor: "text-emerald-700", sub: "Collected" }
               ].map(card => {
                 const Icon = card.icon;
                 return (
                   <div
                     key={card.id}
                     onClick={() => handleNavigateAlteration(card.id, "dashboard")}
-                    className={`${card.bg} ${card.border} p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group`}
+                    className={`p-2 sm:p-2.5 rounded-2xl border ${card.bg} ${card.border} transition-all cursor-pointer flex flex-col justify-between select-none relative group hover:shadow-md hover:-translate-y-0.5`}
                   >
-                    <div className="flex justify-between items-start mb-1.5">
-                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block truncate group-hover:text-slate-900">
-                        {card.label}
-                      </span>
-                      <div className="p-1 rounded bg-white/80 shadow-2xs group-hover:scale-110 transition-transform">
-                        <Icon className={`w-3.5 h-3.5 ${card.iconColor}`} />
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className={`p-1 rounded-md shrink-0 ${card.iconColor} bg-white shadow-2xs group-hover:scale-110 transition-transform`}>
+                        <Icon className="w-3.5 h-3.5" />
                       </div>
+                      <span className={`text-base sm:text-lg font-black font-mono leading-none ${card.text}`}>
+                        {card.count}
+                      </span>
                     </div>
-                    <div>
-                      <span className={`text-xl font-black font-mono block ${card.text}`}>{card.count}</span>
-                      <span className="text-[9px] text-slate-500 font-medium truncate block mt-0.5">{card.sub}</span>
+                    <div className="mt-0.5">
+                      <p className="text-[10px] sm:text-[11px] font-black uppercase tracking-tight leading-[13px] whitespace-normal break-words text-slate-800 group-hover:text-slate-950">
+                        {card.label}
+                      </p>
+                      <p className="text-[8.5px] font-medium leading-none mt-1 truncate text-slate-500">
+                        {card.sub}
+                      </p>
                     </div>
                   </div>
                 );
@@ -3851,42 +3855,7 @@ export const DashboardView = ({
           </div>
         </div>
 
-        {/* 🚨 90% CAPACITY ALERT BANNER */}
-        {(activeTailorStats.isOverloaded || (capacityAlerts && capacityAlerts.length > 0)) && (
-          <div className="bg-red-50/95 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-pulse">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-red-100 text-red-700 rounded-xl border border-red-200 shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <h4 className="text-xs font-black uppercase text-red-950 tracking-wider flex items-center gap-2">
-                  <span>🚨 Tailor Capacity Alert — Over 90% Threshold Exceeded!</span>
-                  <span className="bg-red-200 text-red-900 text-[10px] font-black px-2 py-0.5 rounded-full font-mono">
-                    {activeTailorStats.isOverloaded ? `${activeTailorStats.capacityUtilization}% Capacity` : `${capacityAlerts.length} Overloaded`}
-                  </span>
-                </h4>
-                <p className="text-xs text-red-800 mt-0.5">
-                  {activeTailorStats.isOverloaded
-                    ? `अगर किसी Tailor की capacity 90% cross हो जाए: ${activeTailorStats.tailorName} has reached ${activeTailorStats.capacityUtilization}% capacity with ${activeTailorStats.inProgress} active in-progress items. Please redistribute or reassign pending tickets!`
-                    : capacityAlerts.map(a => `${a.tailorName} (${a.capacityUtilization}%)`).join(", ") + " have crossed 90% capacity!"}
-                </p>
-              </div>
-            </div>
 
-            <button
-              onClick={() => {
-                if (typeof openArticulationWithDefaults === "function") {
-                  openArticulationWithDefaults({ tab: "tracking" });
-                } else {
-                  setActiveTab("articulation");
-                }
-              }}
-              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
-            >
-              Reassign Jobs in Studio ➔
-            </button>
-          </div>
-        )}
 
         {/* 8 Required Tailor Summary Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
