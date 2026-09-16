@@ -5,9 +5,64 @@ const Role = require('../models/Role');
 const BaseRepository = require('../repositories/BaseRepository');
 const { formatExportData } = require('../helpers/export.helper');
 
+const Salesman = require('../models/masters/Salesman');
+
 const userRepo = new BaseRepository(User);
 
 class UserService {
+  /**
+   * Automatically sync Salesman master collection when a user is created or updated
+   */
+  static async syncSalesmanWithUser(user, tenantId) {
+    if (!user || !tenantId) return;
+    const isSalesperson = (user.designation || '').toLowerCase().includes('sales');
+
+    if (isSalesperson && !user.isDeleted) {
+      await Salesman.findOneAndUpdate(
+        {
+          tenantId,
+          $or: [
+            { userId: user._id },
+            { phone: user.phone },
+            { email: user.email },
+            { name: user.name }
+          ]
+        },
+        {
+          $set: {
+            name: user.name,
+            phone: user.phone,
+            email: user.email,
+            designation: user.designation || 'salesperson',
+            userId: user._id,
+            status: user.status || 'ACTIVE',
+            isDeleted: false,
+            tenantId
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } else if (!isSalesperson || user.isDeleted) {
+      // If user is no longer a salesperson or is deleted, update or soft-delete from Salesman collection
+      await Salesman.updateMany(
+        {
+          tenantId,
+          $or: [
+            { userId: user._id },
+            { phone: user.phone },
+            { email: user.email }
+          ]
+        },
+        {
+          $set: {
+            designation: user.designation || '',
+            isDeleted: true
+          }
+        }
+      );
+    }
+  }
+
   static async createUser(userData, tenantId) {
     let email = userData.email ? userData.email.trim().toLowerCase() : null;
     if (email) {
@@ -52,6 +107,10 @@ class UserService {
     }, tenantId);
 
     const createdUser = await User.findById(user._id).select('-password').populate('roleId');
+    
+    // Sync with Salesman master if designation is salesperson
+    await this.syncSalesmanWithUser(createdUser, tenantId);
+
     // Attach generated password so controller can return it
     if (generatedPassword) {
       createdUser._generatedPassword = generatedPassword;
@@ -129,14 +188,22 @@ class UserService {
     }
     const updatedUser = await userRepo.update(userId, updateData, tenantId, { new: true });
     if (!updatedUser) throw new ApiError(404, 'User not found.');
-    return User.findById(updatedUser._id).select('-password').populate('roleId');
+
+    const populatedUser = await User.findById(updatedUser._id).select('-password').populate('roleId');
+    await this.syncSalesmanWithUser(populatedUser, tenantId);
+    return populatedUser;
   }
 
   static async deleteUser(userId, currentUserId, tenantId) {
     if (userId.toString() === currentUserId.toString()) {
       throw new ApiError(400, 'You cannot delete your own account.');
     }
-    return userRepo.softDelete(userId, currentUserId, tenantId);
+    const result = await userRepo.softDelete(userId, currentUserId, tenantId);
+    await Salesman.updateMany(
+      { tenantId, $or: [{ userId }, { _id: userId }] },
+      { $set: { isDeleted: true } }
+    );
+    return result;
   }
 
   static async restoreUser(userId, tenantId) {

@@ -77,5 +77,6 @@ const AlterationController = require('../controllers/alteration.controller');
 const { authenticate } = require('../middlewares/auth.middleware');
 const { tenantContext } = require('../middlewares/tenantContext.middleware');
 router.use('/alteration-reports', authenticate, tenantContext, AlterationController.getDashboard);
+router.use('/employee-alteration-performance', authenticate, tenantContext, AlterationController.getDashboard);
 
 module.exports = router;

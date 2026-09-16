@@ -232,10 +232,10 @@ export const CommissionView = ({
         const headers = { Authorization: `Bearer ${token}` };
 
         const [
-          marketplacesRes, 
-          influencersRes, 
-          rulesRes, 
-          settlementsRes, 
+          marketplacesRes,
+          influencersRes,
+          rulesRes,
+          settlementsRes,
           auditRes,
           staffRes
         ] = await Promise.all([
@@ -300,19 +300,19 @@ export const CommissionView = ({
 
   const salespersonIncentives = useMemo(() => {
     const combinedStaff = [...staffList];
-    
+
     // Add roster Salesperson employees
     employees.forEach(emp => {
-       if (!combinedStaff.find(s => (s._id === emp.id || s.name === emp.name))) {
-          combinedStaff.push({ _id: emp.id, name: emp.name, designation: emp.role || 'Salesperson', monthlyTarget: 150000 });
-       }
+      if (!combinedStaff.find(s => (s._id === emp.id || s.name === emp.name))) {
+        combinedStaff.push({ _id: emp.id, name: emp.name, designation: emp.role || 'Salesperson', monthlyTarget: 150000 });
+      }
     });
 
     // Add any salesperson names that have been entered in invoices but are missing from staff lists
     invoices.forEach((inv) => {
       const spName = inv.salespersonName?.trim();
       if (spName && !combinedStaff.find(s => (s.name || '').toLowerCase() === spName.toLowerCase())) {
-         combinedStaff.push({ _id: `temp-${spName}`, name: spName, designation: 'Salesperson', monthlyTarget: 150000 });
+        combinedStaff.push({ _id: `temp-${spName}`, name: spName, designation: 'Salesperson', monthlyTarget: 150000 });
       }
     });
 
@@ -326,7 +326,7 @@ export const CommissionView = ({
           }
           return sum;
         }, 0);
-        
+
         const target = emp.monthlyTarget || 150000;
         const isTailor = (emp.designation || '').toLowerCase().includes('tailor');
         const basePct = isTailor ? 0.05 : 0.02; // 5% for tailors, 2% for sales
@@ -702,7 +702,7 @@ export const CommissionView = ({
   const handleApproveSalespersonPayout = (employeeId) => {
     setLocalPayouts(prev => ({ ...prev, [employeeId]: true }));
     onAddNotification("Payout Processed", "Funds disbursed to salesperson.", "success");
-    
+
     const emp = salespersonIncentives.find(e => e.employeeId === employeeId);
     if (emp && emp.commissionPending > 0) {
       const hist = {
@@ -839,10 +839,10 @@ export const CommissionView = ({
       prev.map((p) =>
         p.id === partner.id
           ? {
-              ...p,
-              revenue: p.revenue + Number(recordSaleAmt),
-              commissionEarned: p.commissionEarned + commAmt,
-            }
+            ...p,
+            revenue: p.revenue + Number(recordSaleAmt),
+            commissionEarned: p.commissionEarned + commAmt,
+          }
           : p,
       ),
     );
@@ -1021,17 +1021,17 @@ export const CommissionView = ({
             {(searchQuery ||
               statusFilter !== "All" ||
               channelFilter !== "All") && (
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setStatusFilter("All");
-                  setChannelFilter("All");
-                }}
-                className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
-              >
-                Clear Filters
-              </button>
-            )}
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setStatusFilter("All");
+                    setChannelFilter("All");
+                  }}
+                  className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Clear Filters
+                </button>
+              )}
           </div>
         </div>
       )}
@@ -1094,8 +1094,7 @@ export const CommissionView = ({
                       <td className="p-3.5">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-2.5 h-2.5 rounded-full ${
-                              order.marketplace === "Amazon"
+                            className={`w-2.5 h-2.5 rounded-full ${order.marketplace === "Amazon"
                                 ? "bg-amber-500"
                                 : order.marketplace === "Myntra"
                                   ? "bg-rose-500"
@@ -1104,7 +1103,7 @@ export const CommissionView = ({
                                     : order.marketplace === "Flipkart"
                                       ? "bg-blue-500"
                                       : "bg-emerald-500"
-                            }`}
+                              }`}
                           />
                           <div>
                             <p className="font-extrabold text-slate-700">
@@ -1158,24 +1157,22 @@ export const CommissionView = ({
                       <td className="p-3.5 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                              order.orderStatus === "Delivered"
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${order.orderStatus === "Delivered"
                                 ? "bg-emerald-50 text-emerald-600"
                                 : order.orderStatus === "Returned"
                                   ? "bg-red-50 text-red-600"
                                   : "bg-amber-50 text-amber-600"
-                            }`}
+                              }`}
                           >
                             {order.orderStatus}
                           </span>
                           <span
-                            className={`px-2 py-0.2 rounded text-[8px] font-extrabold uppercase ${
-                              order.settlementStatus === "Settled"
+                            className={`px-2 py-0.2 rounded text-[8px] font-extrabold uppercase ${order.settlementStatus === "Settled"
                                 ? "bg-indigo-50 text-indigo-600"
                                 : order.settlementStatus === "Disputed"
                                   ? "bg-red-100 text-red-700 border border-red-200"
                                   : "bg-amber-100 text-amber-700 border border-amber-200"
-                            }`}
+                              }`}
                           >
                             {order.settlementStatus === "Settled"
                               ? `Paid (${order.settlementDate})`
@@ -1391,7 +1388,7 @@ export const CommissionView = ({
         <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs">
           <div className="mb-2">
             <h3 className="text-base font-extrabold text-slate-800">Staff Commission Performance</h3>
-            <p className="text-xs text-slate-500 font-medium">Track, filter, and pay commissions for salespeople and workshop tailors.</p>
+            <p className="text-xs text-slate-500 font-medium">Track, filter, and pay commissions for salespeople and workers.</p>
           </div>
           <StaffCommissionPanel role="All" onAddNotification={onAddNotification} />
         </div>
@@ -1433,11 +1430,11 @@ export const CommissionView = ({
                   <p className="text-xs text-slate-500">Calculate commissions during checkout automatically.</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only peer" 
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
                     checked={commissionSettings.isEnabled}
-                    onChange={(e) => setCommissionSettings({...commissionSettings, isEnabled: e.target.checked})}
+                    onChange={(e) => setCommissionSettings({ ...commissionSettings, isEnabled: e.target.checked })}
                   />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
@@ -1445,27 +1442,27 @@ export const CommissionView = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">Salesperson Commission (%)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
                   min="0"
                   max="100"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
                   value={commissionSettings.salespersonPercentage}
-                  onChange={(e) => setCommissionSettings({...commissionSettings, salespersonPercentage: Number(e.target.value)})}
+                  onChange={(e) => setCommissionSettings({ ...commissionSettings, salespersonPercentage: Number(e.target.value) })}
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">Worker/Tailor Commission (%)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
                   min="0"
                   max="100"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
                   value={commissionSettings.workerPercentage}
-                  onChange={(e) => setCommissionSettings({...commissionSettings, workerPercentage: Number(e.target.value)})}
+                  onChange={(e) => setCommissionSettings({ ...commissionSettings, workerPercentage: Number(e.target.value) })}
                 />
               </div>
 
@@ -1474,7 +1471,7 @@ export const CommissionView = ({
                 <select
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:border-indigo-500 focus:bg-white transition-all outline-none"
                   value={commissionSettings.calculationBasis}
-                  onChange={(e) => setCommissionSettings({...commissionSettings, calculationBasis: e.target.value})}
+                  onChange={(e) => setCommissionSettings({ ...commissionSettings, calculationBasis: e.target.value })}
                 >
                   <option value="Selling Price">Selling Price</option>
                   <option value="Net Selling Price">Net Selling Price</option>
@@ -1690,12 +1687,12 @@ export const CommissionView = ({
                     {Math.max(
                       0,
                       mpSellingPrice -
-                        Math.round(
-                          (mpSellingPrice * mpCommissionPercent) / 100,
-                        ) -
-                        mpShipping -
-                        mpPackaging -
-                        Math.round(mpSellingPrice * (mpTax / 100)),
+                      Math.round(
+                        (mpSellingPrice * mpCommissionPercent) / 100,
+                      ) -
+                      mpShipping -
+                      mpPackaging -
+                      Math.round(mpSellingPrice * (mpTax / 100)),
                     )}
                   </span>
                 </div>

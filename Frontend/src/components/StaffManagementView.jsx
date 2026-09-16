@@ -5,6 +5,7 @@ import api from '../api/axios';
 
 export function StaffManagementView() {
   const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -38,6 +39,7 @@ export function StaffManagementView() {
 
   const fetchStaff = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Offline Mode");
       const { data } = await api.get(`/staff`, {
@@ -49,6 +51,8 @@ export function StaffManagementView() {
     } catch (error) {
       console.warn("Failed to fetch staff from API:", error.message);
       setStaff([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -198,9 +202,18 @@ export function StaffManagementView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-600 font-medium text-xs">
-              {filteredStaff.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                  <td colSpan="7" className="p-10 text-center text-slate-500 font-semibold">
+                    <div className="flex items-center justify-center gap-2.5">
+                      <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span>Loading staff members...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredStaff.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="p-8 text-center text-slate-400 font-medium">
                     No staff members found.
                   </td>
                 </tr>

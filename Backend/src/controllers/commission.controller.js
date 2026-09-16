@@ -15,7 +15,11 @@ class CommissionController {
     // Automatically ensure all bills and alterations are synced to the Commission collection
     await CommissionService.syncCommissionsForTenant(tenantId);
 
-    const commissions = await Commission.find({ tenantId, isDeleted: false })
+    const commissions = await Commission.find({
+      tenantId,
+      isDeleted: false,
+      employeeRole: { $in: ['Salesperson', 'Worker'] }
+    })
       .sort({ date: -1 })
       .lean();
 

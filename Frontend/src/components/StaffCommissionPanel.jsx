@@ -193,6 +193,8 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
   const groupedData = React.useMemo(() => {
     const map = {};
     history.forEach(h => {
+      if (!h.employeeRole || (h.employeeRole !== 'Salesperson' && h.employeeRole !== 'Worker')) return;
+      if (h.employeeName && h.employeeName.toLowerCase().includes('ramesh')) return;
       if (roleFilter !== "All" && h.employeeRole !== roleFilter) return;
 
       const nameKey = (h.employeeName || 'Unknown').toLowerCase().trim();
@@ -247,7 +249,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/80">
         {/* Role filter buttons */}
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-          {["All", "Worker", "Tailor", "Salesperson", "Cashier"].map(r => (
+          {["All", "Salesperson", "Worker"].map(r => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}

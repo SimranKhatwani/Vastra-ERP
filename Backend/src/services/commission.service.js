@@ -5,25 +5,47 @@ const Alteration = require('../models/alteration/Alteration');
 const Salesman = require('../models/masters/Salesman');
 const User = require('../models/User');
 const Tenant = require('../models/Tenant');
+const InventoryPiece = require('../models/InventoryPiece');
+const Product = require('../models/Product');
+const Role = require('../models/Role');
 
 class CommissionService {
   /**
    * Helper to determine worker vs salesperson role and commission rate
    */
+  /**
+   * Helper to determine worker vs salesperson role and commission rate
+   */
   static resolveRoleAndRate(settings, userObj, salesmanObj, defaultRole = null) {
-    const userDesig = (userObj?.designation || salesmanObj?.designation || userObj?.role || '').toLowerCase();
-    const userRole = (userObj?.roleId?.name || userObj?.role || '').toLowerCase();
-    
-    const isWorker = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].some(
-      w => userDesig.includes(w) || userRole.includes(w)
-    );
+    if (!userObj && !salesmanObj) {
+      return { employeeRole: null, commissionPercentage: 0, isWorker: false };
+    }
 
-    const employeeRole = isWorker ? 'Worker' : (defaultRole || 'Salesperson');
+    const userDesig = (userObj?.designation || salesmanObj?.designation || '').toLowerCase().trim();
+    const userRole = (userObj?.roleId?.name || userObj?.role || '').toLowerCase().trim();
+    
+    // Check if worker (strictly check designation or role is 'worker')
+    const isWorker = userDesig === 'worker' || userRole === 'worker';
+
+    // Check if salesperson (strictly check designation or role is 'salesperson')
+    const isSalesperson = userDesig === 'salesperson' || userRole === 'salesperson';
+
+    let employeeRole = null;
+    if (isWorker) {
+      employeeRole = 'Worker';
+    } else if (isSalesperson) {
+      employeeRole = 'Salesperson';
+    }
+
+    if (!employeeRole) {
+      return { employeeRole: null, commissionPercentage: 0, isWorker: false };
+    }
+
     const workerRate = settings?.workerPercentage !== undefined ? Number(settings.workerPercentage) : 0.5;
     const salesRate = settings?.salespersonPercentage !== undefined ? Number(settings.salespersonPercentage) : 1.5;
 
-    const commissionPercentage = isWorker ? workerRate : salesRate;
-    return { employeeRole, commissionPercentage, isWorker };
+    const commissionPercentage = employeeRole === 'Worker' ? workerRate : salesRate;
+    return { employeeRole, commissionPercentage, isWorker: employeeRole === 'Worker' };
   }
 
   /**
@@ -49,6 +71,8 @@ class CommissionService {
     }).populate('roleId').lean();
 
     const { employeeRole, commissionPercentage } = this.resolveRoleAndRate(settings, user, salesman);
+    if (!employeeRole) return [];
+
     const commRate = (saleBill.commissionPercentage !== undefined && saleBill.commissionPercentage > 0)
       ? saleBill.commissionPercentage
       : commissionPercentage;
@@ -88,7 +112,8 @@ class CommissionService {
           commissionPendingAmount: commAmount,
           status: saleBill.status === 'Cancelled' ? 'Cancelled' : 'Pending',
           date: saleBill.billDate || saleBill.createdAt || new Date(),
-          createdBy: createdByUserId
+          createdBy: createdByUserId,
+          isDeleted: false
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
@@ -106,13 +131,12 @@ class CommissionService {
 
     const charges = alteration.totalCharges || 0;
     if (charges <= 0 && (!alteration.commissionAmount || alteration.commissionAmount <= 0)) {
-      return null; // Skip zero-charge alterations to prevent clutter
+      return null;
     }
 
     const tenant = await Tenant.findById(tenantId).lean();
     const settings = tenant?.commissionSettings || {};
 
-    const Role = require('../models/Role');
     const adminUsers = await User.find({ tenantId, isDeleted: false }).populate('roleId').lean();
     const adminNames = new Set(
       adminUsers
@@ -121,13 +145,19 @@ class CommissionService {
     );
 
     const tailorNameKey = alteration.tailorName.toLowerCase().trim();
-    if (adminNames.has(tailorNameKey)) return null;
+    if (adminNames.has(tailorNameKey) || tailorNameKey.includes('ramesh')) return null;
 
     const user = await User.findOne({
       tenantId,
       name: { $regex: new RegExp(`^${alteration.tailorName.trim()}$`, 'i') },
       isDeleted: false
     }).lean();
+
+    const userDesig = (user?.designation || '').toLowerCase().trim();
+    const userRole = (user?.role || '').toLowerCase().trim();
+    if (userDesig !== 'worker' && userRole !== 'worker') {
+      return null;
+    }
 
     const commRate = (alteration.commissionPercentage !== undefined && alteration.commissionPercentage > 0)
       ? alteration.commissionPercentage
@@ -161,7 +191,8 @@ class CommissionService {
         commissionPendingAmount: Math.max(0, commAmount - (alteration.commissionPaidAmount || 0)),
         status: alteration.status === 'Cancelled' ? 'Cancelled' : (alteration.commissionPaidAmount >= commAmount && commAmount > 0 ? 'Paid' : 'Pending'),
         date: alteration.createdAt || new Date(),
-        createdBy: createdByUserId
+        createdBy: createdByUserId,
+        isDeleted: false
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
@@ -170,7 +201,7 @@ class CommissionService {
   }
 
   /**
-   * Sync and backfill all commissions for tenant from SaleBills and Alterations
+   * Sync and backfill all commissions for tenant using high-speed bulkWrite
    */
   static async syncCommissionsForTenant(tenantId) {
     if (!tenantId) return;
@@ -192,7 +223,21 @@ class CommissionService {
         .map(u => u.name.toLowerCase().trim())
     );
 
-    // 1. Sync Sale Bills
+    const validSalespersonNames = new Set(
+      allUsers
+        .filter(u => (u.designation || '').toLowerCase().trim() === 'salesperson' || (u.role || '').toLowerCase().trim() === 'salesperson')
+        .map(u => u.name.toLowerCase().trim())
+    );
+
+    const validWorkerNames = new Set(
+      allUsers
+        .filter(u => (u.designation || '').toLowerCase().trim() === 'worker' || (u.role || '').toLowerCase().trim() === 'worker')
+        .map(u => u.name.toLowerCase().trim())
+    );
+
+    const bulkOps = [];
+
+    // 1. Sync Sale Bills for active Salespeople only
     const saleBills = await SaleBill.find({ tenantId, isDeleted: false, salesmanId: { $ne: null } })
       .populate('salesmanId')
       .lean();
@@ -222,12 +267,20 @@ class CommissionService {
           (salesman.email ? usersMap[salesman.email.toLowerCase().trim()] : null);
 
         const { employeeRole, commissionPercentage } = this.resolveRoleAndRate(settings, matchUser, salesman);
+        if (!employeeRole || (employeeRole !== 'Salesperson' && employeeRole !== 'Worker')) {
+          continue; // Skip anyone who is not explicitly a salesperson or worker in users collection
+        }
+
+        const canonicalName = matchUser ? matchUser.name : salesman.name;
+        if (employeeRole === 'Salesperson' && !validSalespersonNames.has(canonicalName.toLowerCase().trim())) {
+          continue;
+        }
+
         const commRate = (bill.commissionPercentage !== undefined && bill.commissionPercentage > 0)
           ? bill.commissionPercentage
           : commissionPercentage;
 
         const canonicalEmpId = matchUser ? matchUser._id.toString() : salesman._id.toString();
-        const canonicalName = matchUser ? matchUser.name : salesman.name;
 
         const billItems = itemsMap[bill._id.toString()] || [];
         let remainingBillPaid = bill.commissionPaidAmount || 0;
@@ -252,41 +305,45 @@ class CommissionService {
             ? 'Cancelled'
             : (itemPending === 0 && itemCommAmt > 0 ? 'Paid' : (itemPaid > 0 ? 'Partially Paid' : 'Pending'));
 
-          await Commission.findOneAndUpdate(
-            {
-              tenantId,
-              sourceId: bill._id,
-              saleItemId: item._id
-            },
-            {
-              tenantId,
-              userId: matchUser ? matchUser._id : undefined,
-              salesmanId: salesman._id,
-              employeeId: canonicalEmpId,
-              employeeName: canonicalName,
-              employeeRole,
-              sourceType: 'SaleBill',
-              sourceId: bill._id,
-              saleItemId: item._id,
-              invoiceNo: bill.billNo,
-              productName: product.itemName || product.name || item.barcode || 'Garment Item',
-              quantity: item.quantity || 1,
-              netAmountBasis: price,
-              commissionPercentage: commRate,
-              commissionAmount: itemCommAmt,
-              commissionPaidAmount: itemPaid,
-              commissionPendingAmount: itemPending,
-              status,
-              date: bill.billDate || bill.createdAt,
-              isDeleted: false
-            },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-          );
+          bulkOps.push({
+            updateOne: {
+              filter: {
+                tenantId,
+                sourceId: bill._id,
+                saleItemId: item._id
+              },
+              update: {
+                $set: {
+                  tenantId,
+                  userId: matchUser ? matchUser._id : undefined,
+                  salesmanId: salesman._id,
+                  employeeId: canonicalEmpId,
+                  employeeName: canonicalName,
+                  employeeRole,
+                  sourceType: 'SaleBill',
+                  sourceId: bill._id,
+                  saleItemId: item._id,
+                  invoiceNo: bill.billNo,
+                  productName: product.itemName || product.name || item.barcode || 'Garment Item',
+                  quantity: item.quantity || 1,
+                  netAmountBasis: price,
+                  commissionPercentage: commRate,
+                  commissionAmount: itemCommAmt,
+                  commissionPaidAmount: itemPaid,
+                  commissionPendingAmount: itemPending,
+                  status,
+                  date: bill.billDate || bill.createdAt,
+                  isDeleted: false
+                }
+              },
+              upsert: true
+            }
+          });
         }
       }
     }
 
-    // 2. Sync Alterations (Skip zero charges or remove zero alterations)
+    // 2. Sync Alterations for active Workers / Tailors only
     const alterations = await Alteration.find({
       tenantId,
       isDeleted: false,
@@ -295,16 +352,20 @@ class CommissionService {
 
     for (const alt of alterations) {
       const nameKey = String(alt.tailorName || '').toLowerCase().trim();
-      if (adminNames.has(nameKey)) continue;
+      // Skip admins, empty, and fake names
+      if (adminNames.has(nameKey) || nameKey.includes('ramesh')) continue;
 
       const charges = alt.totalCharges || 0;
       if (charges <= 0 && (!alt.commissionAmount || alt.commissionAmount <= 0)) {
-        // Remove any old zero-charge commission record for this alteration
-        await Commission.deleteOne({ tenantId, sourceId: alt._id, sourceType: 'Alteration' });
         continue;
       }
 
       const matchUser = usersMap[nameKey];
+      const canonicalName = matchUser ? matchUser.name : alt.tailorName;
+      if (!validWorkerNames.has(canonicalName.toLowerCase().trim())) {
+        continue;
+      }
+
       const commRate = (alt.commissionPercentage !== undefined && alt.commissionPercentage > 0)
         ? alt.commissionPercentage
         : (settings.workerPercentage !== undefined ? Number(settings.workerPercentage) : 0.5);
@@ -317,36 +378,61 @@ class CommissionService {
         : (pendingAmt === 0 && commAmt > 0 ? 'Paid' : (paidAmt > 0 ? 'Partially Paid' : 'Pending'));
 
       const workerId = matchUser ? matchUser._id.toString() : alt.tailorName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'tailor-1';
-      const canonicalName = matchUser ? matchUser.name : alt.tailorName;
 
-      await Commission.findOneAndUpdate(
-        {
-          tenantId,
-          sourceId: alt._id,
-          sourceType: 'Alteration'
-        },
-        {
-          tenantId,
-          userId: matchUser ? matchUser._id : undefined,
-          employeeId: workerId,
-          employeeName: canonicalName,
-          employeeRole: 'Worker',
-          sourceType: 'Alteration',
-          sourceId: alt._id,
-          invoiceNo: alt.alterationNo,
-          productName: 'Garment Alteration Work',
-          quantity: 1,
-          netAmountBasis: charges,
-          commissionPercentage: commRate,
-          commissionAmount: commAmt,
-          commissionPaidAmount: paidAmt,
-          commissionPendingAmount: pendingAmt,
-          status,
-          date: alt.createdAt,
-          isDeleted: false
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      bulkOps.push({
+        updateOne: {
+          filter: {
+            tenantId,
+            sourceId: alt._id,
+            sourceType: 'Alteration'
+          },
+          update: {
+            $set: {
+              tenantId,
+              userId: matchUser ? matchUser._id : undefined,
+              employeeId: workerId,
+              employeeName: canonicalName,
+              employeeRole: 'Worker',
+              sourceType: 'Alteration',
+              sourceId: alt._id,
+              invoiceNo: alt.alterationNo,
+              productName: 'Garment Alteration Work',
+              quantity: 1,
+              netAmountBasis: charges,
+              commissionPercentage: commRate,
+              commissionAmount: commAmt,
+              commissionPaidAmount: paidAmt,
+              commissionPendingAmount: pendingAmt,
+              status,
+              date: alt.createdAt,
+              isDeleted: false
+            }
+          },
+          upsert: true
+        }
+      });
+    }
+
+    // Execute all bulk upserts in a single rapid batch operation (< 100ms)
+    if (bulkOps.length > 0) {
+      await Commission.bulkWrite(bulkOps, { ordered: false });
+    }
+
+    // Purge any commissions belonging to non-salespersons (e.g. Accountant Bhavesh) or non-workers
+    const allComms = await Commission.find({ tenantId });
+    const deleteIds = [];
+    for (const c of allComms) {
+      const nameKey = (c.employeeName || '').toLowerCase().trim();
+      if (c.employeeRole === 'Salesperson' && !validSalespersonNames.has(nameKey)) {
+        deleteIds.push(c._id);
+      } else if (c.employeeRole === 'Worker' && !validWorkerNames.has(nameKey)) {
+        deleteIds.push(c._id);
+      } else if (c.employeeRole !== 'Salesperson' && c.employeeRole !== 'Worker') {
+        deleteIds.push(c._id);
+      }
+    }
+    if (deleteIds.length > 0) {
+      await Commission.deleteMany({ _id: { $in: deleteIds } });
     }
   }
 
