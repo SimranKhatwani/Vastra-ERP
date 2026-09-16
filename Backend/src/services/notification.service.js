@@ -30,16 +30,17 @@ class NotificationService {
   }
 
   /**
-   * Helper to format a date for user-facing alert: e.g. "18 July" or "9 September"
+   * Helper to format a date for user-facing alert: e.g. "18 Jul 2026"
    */
   static formatDisplayDate(date, tz = 'Asia/Kolkata') {
-    if (!date) return 'Tomorrow';
+    if (!date) return 'N/A';
     try {
       const d = new Date(date);
       return new Intl.DateTimeFormat('en-IN', {
         timeZone: tz,
         day: 'numeric',
-        month: 'long'
+        month: 'short',
+        year: 'numeric'
       }).format(d);
     } catch (e) {
       return String(date);
@@ -52,7 +53,124 @@ class NotificationService {
   static isCompletedOrReadyStatus(status) {
     if (!status) return false;
     const s = String(status).trim().toUpperCase().replace(/_/g, ' ');
-    return ['READY', 'READY FOR DELIVERY', 'COLLECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'].includes(s);
+    return ['READY', 'READY FOR DELIVERY', 'COLLECTED', 'COMPLETED', 'CLOSED', 'CANCELLED', 'DELIVERED'].includes(s);
+  }
+
+  /**
+   * Helper to fetch Admin Users for a tenant
+   */
+  static async getAdminUsers(tenantId) {
+    try {
+      const adminRoles = await Role.find({
+        tenantId,
+        name: { $regex: /admin|owner|manager|super/i }
+      }).select('_id').lean();
+      const adminRoleIds = adminRoles.map(r => r._id);
+
+      return await User.find({
+        tenantId,
+        isDeleted: false,
+        $or: [
+          { isTenantOwner: true },
+          { isSuperAdmin: true },
+          { roleId: { $in: adminRoleIds } },
+          { designation: { $regex: /admin|manager|owner/i } }
+        ]
+      }).lean();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /**
+   * Helper to fetch all Staff Users for a tenant
+   */
+  static async getAllStaffUsers(tenantId) {
+    try {
+      return await User.find({
+        tenantId,
+        isDeleted: false
+      }).populate('roleId').lean();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /**
+   * Helper to resolve matched tailor user IDs
+   */
+  static resolveTailorRecipients(tailorName, allStaffUsers) {
+    const recipientIds = new Set();
+    const cleanTailor = (tailorName || '').trim().toLowerCase();
+    const isGeneric = !cleanTailor || ['not assigned', 'unassigned', 'default tailor', 'all tailors'].includes(cleanTailor);
+
+    const tailorUsers = allStaffUsers.filter(u => {
+      const role = (u.role || u.roleId?.name || '').toLowerCase();
+      const desig = (u.designation || '').toLowerCase();
+      return /tailor|karigar|stitcher|worker|fitter|production/i.test(role) ||
+             /tailor|karigar|stitcher|worker|fitter|production/i.test(desig);
+    });
+
+    if (!isGeneric) {
+      const matched = allStaffUsers.filter(u => {
+        if (u._id.toString() === tailorName) return true;
+        const uName = (u.name || '').trim().toLowerCase();
+        return uName === cleanTailor || uName.includes(cleanTailor) || cleanTailor.includes(uName);
+      });
+      if (matched.length > 0) {
+        matched.forEach(t => recipientIds.add(t._id.toString()));
+      } else {
+        tailorUsers.forEach(t => recipientIds.add(t._id.toString()));
+      }
+    } else {
+      tailorUsers.forEach(t => recipientIds.add(t._id.toString()));
+    }
+    return Array.from(recipientIds);
+  }
+
+  /**
+   * Helper to resolve matched salesperson user IDs
+   */
+  static resolveSalespersonRecipients(salespersonName, targetSalesmanId, allStaffUsers, salesmenDocs = []) {
+    const recipientIds = new Set();
+    const cleanSalesman = (salespersonName || '').trim().toLowerCase();
+    const isGeneric = !cleanSalesman || ['not assigned', 'unassigned', 'counter', 'sales counter'].includes(cleanSalesman);
+
+    const salespersonUsers = allStaffUsers.filter(u => {
+      const role = (u.role || u.roleId?.name || '').toLowerCase();
+      const desig = (u.designation || '').toLowerCase();
+      return /sales|salesperson|salesman|floorstaff|counter/i.test(role) ||
+             /sales|salesperson|salesman|floorstaff|counter/i.test(desig);
+    });
+
+    let matched = [];
+    if (targetSalesmanId) {
+      const sDoc = salesmenDocs.find(s => s._id.toString() === targetSalesmanId.toString());
+      if (sDoc) {
+        matched = allStaffUsers.filter(u => {
+          if (sDoc.phone && u.phone && String(u.phone).trim() === String(sDoc.phone).trim()) return true;
+          if (sDoc.email && u.email && u.email.toLowerCase() === sDoc.email.toLowerCase()) return true;
+          const uName = (u.name || '').trim().toLowerCase();
+          const sName = (sDoc.name || '').trim().toLowerCase();
+          return uName === sName || (sName && (uName.includes(sName) || sName.includes(uName)));
+        });
+      }
+    }
+
+    if (matched.length === 0 && !isGeneric) {
+      matched = allStaffUsers.filter(u => {
+        const uName = (u.name || '').trim().toLowerCase();
+        return uName === cleanSalesman || uName.includes(cleanSalesman) || cleanSalesman.includes(uName);
+      });
+    }
+
+    if (matched.length > 0) {
+      matched.forEach(s => recipientIds.add(s._id.toString()));
+    } else {
+      salespersonUsers.forEach(s => recipientIds.add(s._id.toString()));
+    }
+
+    return Array.from(recipientIds);
   }
 
   /**
@@ -99,92 +217,679 @@ class NotificationService {
     }
   }
 
-  /**
-   * Automatically monitors all PSS items for a tenant whose delivery date is TOMORROW
-   * and generates item-level alerts for Admin, assigned Tailor, and assigned Salesperson.
-   */
-  static async checkAndGeneratePSSDeadlineAlerts(tenantId) {
-    if (!tenantId) return { checked: 0, alertsCreated: 0 };
+  // ══════════════════════════════════════════════════════════════════════════
+  //  1. REPEAT RE-ALTER CUSTOMER ALERT (Target: Admin)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateRepeatReAlterAlerts(tenantId, adminUsers, pssmItems = []) {
+    if (!tenantId || !adminUsers.length) return 0;
 
-    // Calculate tomorrow's date string in IST
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'REPEAT_RE_ALTER_CUSTOMER'
+    }).select('userId metadata.customerPhone metadata.reAlterCount').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.metadata?.customerPhone}_${e.metadata?.reAlterCount}`)
+    );
+
+    // Group items by customer phone / ID
+    const customerGroup = {};
+    pssmItems.forEach(item => {
+      const pssm = item.pssmId || {};
+      const custPhone = pssm.customerPhone || item.customerPhone || 'unknown';
+      const custName = pssm.customerName || item.customerName || 'Customer';
+      if (!customerGroup[custPhone]) {
+        customerGroup[custPhone] = {
+          name: custName,
+          phone: custPhone,
+          items: [],
+          reAlterCount: 0
+        };
+      }
+      customerGroup[custPhone].items.push(item);
+      if (item.reAlterationRequired || /re-alter|realter|repair/i.test(item.serviceType || '')) {
+        customerGroup[custPhone].reAlterCount++;
+      }
+    });
+
+    const docsToCreate = [];
+
+    for (const phone of Object.keys(customerGroup)) {
+      const group = customerGroup[phone];
+      if (group.reAlterCount > 1) {
+        const latestItem = group.items[group.items.length - 1];
+        const pssm = latestItem.pssmId || {};
+        const pssNo = pssm.pssmNo || 'N/A';
+        const billNo = pssm.billNo || 'N/A';
+        const tailorName = latestItem.assignedTo || pssm.tailorName || 'Not Assigned';
+        const itemName = latestItem.pieceName || latestItem.productName || 'Garment Item';
+        const service = latestItem.serviceType || 'Alteration';
+
+        const alertTitle = '🔁 REPEAT RE-ALTER CUSTOMER ALERT';
+        const alertMessage =
+`Customer: ${group.name} (${group.phone})
+Ticket: ${pssNo} | Bill No: ${billNo}
+Total Re-Alter Requests: ${group.reAlterCount}
+Latest Item: ${itemName} (${service})
+Assigned Tailor: ${tailorName}
+
+Customer has requested re-alteration more than once.
+Administrative review and quality inspection recommended.`;
+
+        for (const admin of adminUsers) {
+          const key = `${admin._id.toString()}_${group.phone}_${group.reAlterCount}`;
+          if (!existingSet.has(key)) {
+            existingSet.add(key);
+            docsToCreate.push({
+              tenantId,
+              userId: admin._id,
+              title: alertTitle,
+              message: alertMessage,
+              type: 'CRITICAL',
+              priority: 'Critical',
+              category: 'REPEAT_RE_ALTER_CUSTOMER',
+              entityId: latestItem._id,
+              metadata: {
+                customerPhone: group.phone,
+                customerName: group.name,
+                reAlterCount: group.reAlterCount,
+                billNo,
+                pssmNo: pssNo,
+                tailorName
+              },
+              isRead: false
+            });
+          }
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  2. TAILOR CAPACITY FULL ALERT (Target: Admin, Assigned Tailor)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateTailorCapacityAlerts(tenantId, adminUsers, allStaffUsers, pssmItems = []) {
+    if (!tenantId) return 0;
+    const DEFAULT_MAX_CAPACITY = 20;
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayDateStr = this.getLocalDateString(now);
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'TAILOR_CAPACITY_FULL',
+      'metadata.dateStr': todayDateStr
+    }).select('userId metadata.tailorName').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${(e.metadata?.tailorName || '').toLowerCase().trim()}`)
+    );
+
+    // Map total assigned workload, active workload (under all PSSM services), and delayed alterations (pure alterations)
+    const tailorWorkloads = {};
+    pssmItems.forEach(item => {
+      const tailorName = (item.assignedTo || item.pssmId?.tailorName || 'Ajay').trim();
+      if (!tailorWorkloads[tailorName]) {
+        tailorWorkloads[tailorName] = { assignedCount: 0, activeCount: 0, alterationsAssigned: 0, delayedAltCount: 0 };
+      }
+      tailorWorkloads[tailorName].assignedCount++;
+
+      const isCompleted = this.isCompletedOrReadyStatus(item.status);
+      if (!isCompleted) {
+        tailorWorkloads[tailorName].activeCount++;
+      }
+
+      // Check pure alteration delayed
+      const deliveryDate = item.expectedDeliveryDate || item.pssmId?.expectedDeliveryDate;
+      const sType = String(item.serviceType || item.pssmId?.serviceType || '').toLowerCase();
+      const details = (Array.isArray(item.alterationDetails) ? item.alterationDetails.join(' ') : '').toLowerCase();
+      const isPureAlt = sType.includes('alter') || details.includes('alter') || !sType || sType === 'standard';
+
+      if (isPureAlt) {
+        tailorWorkloads[tailorName].alterationsAssigned++;
+      }
+
+      if (!isCompleted && isPureAlt && deliveryDate && new Date(deliveryDate) < todayStart) {
+        tailorWorkloads[tailorName].delayedAltCount++;
+      }
+    });
+
+    const docsToCreate = [];
+
+    for (const tailorName of Object.keys(tailorWorkloads)) {
+      if (!tailorName || ['unassigned', 'not assigned', 'none', 'n/a'].includes(tailorName.toLowerCase())) continue;
+
+      const data = tailorWorkloads[tailorName];
+      const activeWorkload = data.activeCount;
+      const assignedCount = data.assignedCount;
+      const alterationsAssigned = data.alterationsAssigned;
+      const delayedAltCount = data.delayedAltCount;
+      const capacityUtilization = Math.min(100, Math.round((activeWorkload / DEFAULT_MAX_CAPACITY) * 100));
+
+      if (capacityUtilization >= 90 || activeWorkload >= 18 || assignedCount >= 20) {
+        const alertTitle = '🚨 TAILOR CAPACITY FULL ALERT';
+        const alertMessage =
+`Tailor: ${tailorName}
+Active Workload: ${Math.round(activeWorkload)}/${DEFAULT_MAX_CAPACITY} jobs
+Total PSSM Workload: ${assignedCount} assigned (${activeWorkload} active open jobs)
+Alterations: ${alterationsAssigned} assigned (${delayedAltCount} delayed)
+Capacity Utilization: ${capacityUtilization}%
+
+Tailor workload has reached maximum capacity threshold (≥90%).
+Please redistribute pending alterations or expedite ready items.`;
+
+        // Recipients: Admins + Assigned Tailor
+        const recipientUserIds = new Set();
+        adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+        const tailorRecipients = this.resolveTailorRecipients(tailorName, allStaffUsers);
+        tailorRecipients.forEach(tId => recipientUserIds.add(tId));
+
+        for (const rId of recipientUserIds) {
+          const key = `${rId}_${tailorName.toLowerCase().trim()}`;
+          if (!existingSet.has(key)) {
+            existingSet.add(key);
+            docsToCreate.push({
+              tenantId,
+              userId: rId,
+              title: alertTitle,
+              message: alertMessage,
+              type: 'CRITICAL',
+              priority: 'Critical',
+              category: 'TAILOR_CAPACITY_FULL',
+              metadata: {
+                tailorName,
+                totalAssigned: assignedCount,
+                activeWorkload: Math.round(activeWorkload),
+                delayedCount: delayedAltCount,
+                capacityUtilization,
+                maxCapacity: DEFAULT_MAX_CAPACITY,
+                dateStr: todayDateStr
+              },
+              isRead: false
+            });
+          }
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  3. COUNTER PENDING ENTRY ALERT (Target: Admin)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateCounterPendingAlerts(tenantId, adminUsers, pssmItems = []) {
+    if (!tenantId || !adminUsers.length) return 0;
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'COUNTER_PENDING_ENTRY',
+      resolved: false
+    }).select('userId entityId').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.entityId?.toString()}`)
+    );
+
+    const pendingCounterItems = pssmItems.filter(item => {
+      if (this.isCompletedOrReadyStatus(item.status)) return false;
+      const isUnassigned = !item.assignedTo || ['unassigned', 'not assigned', ''].includes(item.assignedTo.trim().toLowerCase());
+      const isPendingQueue = item.status === 'PENDING_ASSIGNMENT' || item.delegatedTo === 'Counter Salesman';
+      return isUnassigned || isPendingQueue;
+    });
+
+    const docsToCreate = [];
+
+    for (const item of pendingCounterItems) {
+      const pssm = item.pssmId || {};
+      const pssNo = pssm.pssmNo || 'N/A';
+      const billNo = pssm.billNo || 'N/A';
+      const custName = pssm.customerName || item.customerName || 'Customer';
+      const custPhone = pssm.customerPhone || item.customerPhone || 'N/A';
+      const itemName = item.pieceName || item.productName || 'Garment Item';
+      const createdDate = this.formatDisplayDate(item.createdAt || pssm.createdAt);
+
+      const alertTitle = '📋 COUNTER PENDING ENTRY ALERT';
+      const alertMessage =
+`Ticket: ${pssNo} | Bill No: ${billNo}
+Customer: ${custName} (${custPhone})
+Item: ${itemName}
+Entry Date: ${createdDate}
+Status: Pending Counter Assignment
+
+Item is currently unassigned in the store counter queue.
+Please assign to a designated tailor / salesperson.`;
+
+      for (const admin of adminUsers) {
+        const key = `${admin._id.toString()}_${item._id.toString()}`;
+        if (!existingSet.has(key)) {
+          existingSet.add(key);
+          docsToCreate.push({
+            tenantId,
+            userId: admin._id,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'ALERT',
+            priority: 'High',
+            category: 'COUNTER_PENDING_ENTRY',
+            entityId: item._id,
+            metadata: {
+              pssmItemId: item._id,
+              billNo,
+              pssmNo: pssNo,
+              customerName: custName,
+              customerPhone: custPhone,
+              itemName
+            },
+            isRead: false,
+            resolved: false
+          });
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  4. RE-ALTER RATE INCREASED ALERT (Target: Admin, Tailors)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateReAlterRateAlerts(tenantId, adminUsers, allStaffUsers, pssmItems = []) {
+    if (!tenantId) return 0;
+    const todayDateStr = this.getLocalDateString(new Date());
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'RE_ALTER_RATE_INCREASED',
+      'metadata.dateStr': todayDateStr
+    }).select('userId').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => e.userId.toString())
+    );
+
+    const totalActive = pssmItems.length;
+    const reAlterItems = pssmItems.filter(i => i.reAlterationRequired || /re-alter|realter|repair/i.test(i.serviceType || ''));
+    const reAlterCount = reAlterItems.length;
+    const reAlterRate = totalActive > 0 ? ((reAlterCount / totalActive) * 100).toFixed(1) : '0.0';
+
+    if (reAlterCount >= 10 || Number(reAlterRate) >= 10.0) {
+      const alertTitle = '📈 RE-ALTER RATE SURGE ALERT';
+      const alertMessage =
+`Active Re-Alter Cases: ${reAlterCount} items
+Current Workshop Re-Alter Rate: ${reAlterRate}%
+Status: Exceeds 10% Workmanship Threshold
+
+Re-alteration volume has breached the tolerance threshold.
+Immediate fitting audit and workmanship quality check required.`;
+
+      const recipientUserIds = new Set();
+      adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+      const allTailorRecipients = this.resolveTailorRecipients(null, allStaffUsers);
+      allTailorRecipients.forEach(tId => recipientUserIds.add(tId));
+
+      const docsToCreate = [];
+
+      for (const rId of recipientUserIds) {
+        if (!existingSet.has(rId)) {
+          existingSet.add(rId);
+          docsToCreate.push({
+            tenantId,
+            userId: rId,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'ALERT',
+            priority: 'High',
+            category: 'RE_ALTER_RATE_INCREASED',
+            metadata: {
+              reAlterCount,
+              reAlterRate,
+              dateStr: todayDateStr
+            },
+            isRead: false
+          });
+        }
+      }
+
+      if (docsToCreate.length > 0) {
+        const created = await Notification.insertMany(docsToCreate);
+        created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+        return created.length;
+      }
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  5. DELAY INCREASED ALERT (Target: Admin, Assigned Salesperson, Assigned Tailor)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateDelayIncreasedAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, pssmItems = []) {
+    if (!tenantId) return 0;
+    const now = new Date();
+    const todayDateStr = this.getLocalDateString(now);
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'DELAY_INCREASED',
+      'metadata.dateStr': todayDateStr
+    }).select('userId entityId').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.entityId?.toString()}`)
+    );
+
+    const delayedItems = pssmItems.filter(item => {
+      if (this.isCompletedOrReadyStatus(item.status)) return false;
+      const deliveryDate = item.expectedDeliveryDate || item.pssmId?.expectedDeliveryDate;
+      if (!deliveryDate) return false;
+      return new Date(deliveryDate).getTime() < (now.getTime() - 2 * 60 * 60 * 1000); // Past due by > 2 hours
+    });
+
+    const docsToCreate = [];
+
+    for (const item of delayedItems) {
+      const pssm = item.pssmId || {};
+      const pssNo = pssm.pssmNo || 'N/A';
+      const billNo = pssm.billNo || 'N/A';
+      const custName = pssm.customerName || item.customerName || 'Customer';
+      const custPhone = pssm.customerPhone || item.customerPhone || 'N/A';
+      const itemName = item.pieceName || item.productName || 'Garment Item';
+      const service = item.serviceType || 'Alteration';
+      const tailorName = item.assignedTo || pssm.tailorName || 'Not Assigned';
+      const salespersonName = item.salesmanName || pssm.salesmanName || 'Not Assigned';
+      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
+      const deliveryDate = item.expectedDeliveryDate || pssm.expectedDeliveryDate;
+      const originalDate = this.formatDisplayDate(deliveryDate);
+      const currentStatus = (item.status || 'PENDING').replace(/_/g, ' ').toUpperCase();
+      const delayedDays = Math.max(1, Math.ceil((now.getTime() - new Date(deliveryDate).getTime()) / (1000 * 60 * 60 * 24)));
+
+      const alertTitle = '⏳ ALTERATION DELAY INCREASED ALERT';
+      const alertMessage =
+`Ticket: ${pssNo} | Bill No: ${billNo}
+Customer: ${custName} (${custPhone})
+Item: ${itemName} (${service})
+
+Original Due Date: ${originalDate}
+Current Status: ${currentStatus}
+Delay Status: Overdue by ${delayedDays} day(s)
+
+Assigned Tailor: ${tailorName}
+Assigned Salesperson: ${salespersonName}
+
+Urgent escalation required to complete and dispatch to customer.`;
+
+      // Recipients: Admins + Assigned Salesperson + Assigned Tailor
+      const recipientUserIds = new Set();
+      adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+      this.resolveTailorRecipients(tailorName, allStaffUsers).forEach(tId => recipientUserIds.add(tId));
+      this.resolveSalespersonRecipients(salespersonName, targetSalesmanId, allStaffUsers, salesmenDocs).forEach(sId => recipientUserIds.add(sId));
+
+      for (const rId of recipientUserIds) {
+        const key = `${rId}_${item._id.toString()}`;
+        if (!existingSet.has(key)) {
+          existingSet.add(key);
+          docsToCreate.push({
+            tenantId,
+            userId: rId,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'CRITICAL',
+            priority: 'Critical',
+            category: 'DELAY_INCREASED',
+            entityId: item._id,
+            metadata: {
+              pssmItemId: item._id,
+              billNo,
+              pssmNo: pssNo,
+              customerName: custName,
+              customerPhone: custPhone,
+              tailorName,
+              salespersonName,
+              delayedDays,
+              dateStr: todayDateStr
+            },
+            isRead: false
+          });
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  6. MESSAGE FAILED ALERT (Target: Admin, Assigned Salesperson, Assigned Tailor)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateMessageFailedAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, pssmItems = []) {
+    if (!tenantId) return 0;
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'MESSAGE_FAILED'
+    }).select('userId entityId metadata.phone').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.entityId?.toString()}_${e.metadata?.phone}`)
+    );
+
+    const failedMessageItems = pssmItems.filter(item => {
+      return item.metadata?.messageStatus === 'FAILED' || item.metadata?.whatsappFailed === true;
+    });
+
+    const docsToCreate = [];
+
+    for (const item of failedMessageItems) {
+      const pssm = item.pssmId || {};
+      const pssNo = pssm.pssmNo || 'N/A';
+      const billNo = pssm.billNo || 'N/A';
+      const custName = pssm.customerName || item.customerName || 'Customer';
+      const custPhone = pssm.customerPhone || item.customerPhone || 'N/A';
+      const tailorName = item.assignedTo || pssm.tailorName || 'Not Assigned';
+      const salespersonName = item.salesmanName || pssm.salesmanName || 'Not Assigned';
+      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
+      const channel = item.metadata?.channel || 'WhatsApp / SMS';
+      const reason = item.metadata?.failureReason || 'Delivery failure / Number invalid';
+
+      const alertTitle = '❌ CUSTOMER MESSAGE DISPATCH FAILED';
+      const alertMessage =
+`Customer: ${custName} (${custPhone})
+Ticket: ${pssNo} | Bill No: ${billNo}
+Channel: ${channel}
+Failure Reason: ${reason}
+
+Assigned Salesperson: ${salespersonName}
+Assigned Tailor: ${tailorName}
+
+Customer did not receive automated status update.
+Please reach out manually via phone call.`;
+
+      const recipientUserIds = new Set();
+      adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+      this.resolveTailorRecipients(tailorName, allStaffUsers).forEach(tId => recipientUserIds.add(tId));
+      this.resolveSalespersonRecipients(salespersonName, targetSalesmanId, allStaffUsers, salesmenDocs).forEach(sId => recipientUserIds.add(sId));
+
+      for (const rId of recipientUserIds) {
+        const key = `${rId}_${item._id.toString()}_${custPhone}`;
+        if (!existingSet.has(key)) {
+          existingSet.add(key);
+          docsToCreate.push({
+            tenantId,
+            userId: rId,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'CRITICAL',
+            priority: 'Critical',
+            category: 'MESSAGE_FAILED',
+            entityId: item._id,
+            metadata: {
+              pssmItemId: item._id,
+              billNo,
+              pssmNo: pssNo,
+              customerName: custName,
+              phone: custPhone,
+              channel,
+              reason
+            },
+            isRead: false
+          });
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  7. CUSTOMER COMPLAINT PENDING ALERT (Target: Admin, Assigned Salesperson, Assigned Tailor)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGenerateComplaintPendingAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, pssmItems = []) {
+    if (!tenantId) return 0;
+
+    const existingAlerts = await Notification.find({
+      tenantId,
+      category: 'CUSTOMER_COMPLAINT_PENDING',
+      resolved: false
+    }).select('userId entityId').lean();
+
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.entityId?.toString()}`)
+    );
+
+    const complaintItems = pssmItems.filter(item => {
+      if (this.isCompletedOrReadyStatus(item.status)) return false;
+      const hasDefect = item.fittingResult === 'Unsatisfied' || /defect|complaint|bad fit|issue/i.test(item.fittingResult || '');
+      const hasChanges = Boolean(item.requiredChanges && item.requiredChanges.trim().length > 0);
+      return hasDefect || hasChanges;
+    });
+
+    const docsToCreate = [];
+
+    for (const item of complaintItems) {
+      const pssm = item.pssmId || {};
+      const pssNo = pssm.pssmNo || 'N/A';
+      const billNo = pssm.billNo || 'N/A';
+      const custName = pssm.customerName || item.customerName || 'Customer';
+      const custPhone = pssm.customerPhone || item.customerPhone || 'N/A';
+      const itemName = item.pieceName || item.productName || 'Garment Item';
+      const service = item.serviceType || 'Alteration';
+      const tailorName = item.assignedTo || pssm.tailorName || 'Not Assigned';
+      const salespersonName = item.salesmanName || pssm.salesmanName || 'Not Assigned';
+      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
+      const issue = item.requiredChanges || item.fittingResult || 'Fitting dissatisfaction / Alteration defect';
+
+      const alertTitle = '⚠ CUSTOMER COMPLAINT PENDING';
+      const alertMessage =
+`Ticket: ${pssNo} | Bill No: ${billNo}
+Customer: ${custName} (${custPhone})
+Item: ${itemName} (${service})
+
+Complaint / Issue: ${issue}
+Status: Resolution Pending
+
+Assigned Salesperson: ${salespersonName}
+Assigned Tailor: ${tailorName}
+
+Immediate customer handling and service recovery required.`;
+
+      const recipientUserIds = new Set();
+      adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+      this.resolveTailorRecipients(tailorName, allStaffUsers).forEach(tId => recipientUserIds.add(tId));
+      this.resolveSalespersonRecipients(salespersonName, targetSalesmanId, allStaffUsers, salesmenDocs).forEach(sId => recipientUserIds.add(sId));
+
+      for (const rId of recipientUserIds) {
+        const key = `${rId}_${item._id.toString()}`;
+        if (!existingSet.has(key)) {
+          existingSet.add(key);
+          docsToCreate.push({
+            tenantId,
+            userId: rId,
+            title: alertTitle,
+            message: alertMessage,
+            type: 'ALERT',
+            priority: 'High',
+            category: 'CUSTOMER_COMPLAINT_PENDING',
+            entityId: item._id,
+            metadata: {
+              pssmItemId: item._id,
+              billNo,
+              pssmNo: pssNo,
+              customerName: custName,
+              customerPhone: custPhone,
+              issue
+            },
+            isRead: false,
+            resolved: false
+          });
+        }
+      }
+    }
+
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ORIGINAL: PSS DEADLINE TOMORROW ALERT (Target: Admin, Tailor, Salesperson)
+  // ══════════════════════════════════════════════════════════════════════════
+  static async checkAndGeneratePSSDeadlineAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, pssmItems = []) {
+    if (!tenantId) return 0;
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const tomorrowDateStr = this.getLocalDateString(tomorrow);
-    const todayDateStr = this.getLocalDateString(now);
 
-    // 1. Fetch active PSS items that are NOT ready/collected/closed
-    const activeItems = await PSSMItem.find({
+    const existingAlerts = await Notification.find({
       tenantId,
-      status: { $nin: ['READY', 'READY FOR DELIVERY', 'COLLECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'] }
-    })
-      .populate('pssmId')
-      .lean();
+      category: 'PSS_DEADLINE_TOMORROW',
+      'metadata.deliveryDateStr': tomorrowDateStr
+    }).select('userId entityId').lean();
 
-    if (!activeItems.length) {
-      return { checked: 0, alertsCreated: 0 };
-    }
+    const existingSet = new Set(
+      existingAlerts.map(e => `${e.userId.toString()}_${e.entityId?.toString()}`)
+    );
 
-    // 2. Pre-fetch potential Admin users in this tenant
-    const adminRoles = await Role.find({
-      tenantId,
-      name: { $regex: /admin|owner|manager|super/i }
-    }).select('_id').lean();
-    const adminRoleIds = adminRoles.map(r => r._id);
+    const docsToCreate = [];
 
-    const adminUsers = await User.find({
-      tenantId,
-      isDeleted: false,
-      $or: [
-        { isTenantOwner: true },
-        { isSuperAdmin: true },
-        { roleId: { $in: adminRoleIds } },
-        { designation: { $regex: /admin|manager|owner/i } }
-      ]
-    }).lean();
-
-    // Pre-fetch all staff users for tailor/salesperson mapping
-    const allStaffUsers = await User.find({
-      tenantId,
-      isDeleted: false
-    }).lean();
-
-    const tailorUsers = allStaffUsers.filter(u => {
-      const role = (u.role || '').toLowerCase();
-      const desig = (u.designation || '').toLowerCase();
-      return /tailor|karigar|stitcher|worker|fitter|production/i.test(role) ||
-             /tailor|karigar|stitcher|worker|fitter|production/i.test(desig);
-    });
-
-    const salespersonUsers = allStaffUsers.filter(u => {
-      const role = (u.role || '').toLowerCase();
-      const desig = (u.designation || '').toLowerCase();
-      return /sales|salesperson|salesman|floorstaff|counter/i.test(role) ||
-             /sales|salesperson|salesman|floorstaff|counter/i.test(desig);
-    });
-
-    let alertsCreated = 0;
-
-    for (const item of activeItems) {
-      const pssm = item.pssmId;
-      if (!pssm) continue;
-
-      // Determine effective delivery date (item level override or header level)
+    for (const item of pssmItems) {
+      if (this.isCompletedOrReadyStatus(item.status)) continue;
+      const pssm = item.pssmId || {};
       const deliveryDate = item.expectedDeliveryDate || pssm.expectedDeliveryDate;
       if (!deliveryDate) continue;
 
       const itemDeliveryDateStr = this.getLocalDateString(deliveryDate);
+      if (itemDeliveryDateStr !== tomorrowDateStr) continue;
 
-      // Condition: Delivery Date must be TOMORROW
-      if (itemDeliveryDateStr !== tomorrowDateStr) {
-        continue;
-      }
-
-      // Condition: Status must still be pending/incomplete
-      if (this.isCompletedOrReadyStatus(item.status)) {
-        continue;
-      }
-
-      // Format alert fields
       const billNo = pssm.billNo || pssm.billBarcode || 'N/A';
       const pssTicket = pssm.pssmNo || 'N/A';
       const customerName = pssm.customerName || 'Customer';
@@ -192,11 +897,12 @@ class NotificationService {
       const service = item.serviceType || pssm.serviceType || 'Alteration';
       const tailorName = item.assignedTo || item.tailorName || pssm.tailorName || 'Not Assigned';
       const salespersonName = item.salesmanName || pssm.salesmanName || 'Not Assigned';
+      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
       const formattedDeliveryDate = this.formatDisplayDate(deliveryDate);
       const currentStatus = (item.status || 'PENDING').replace(/_/g, ' ').toUpperCase();
 
       const alertTitle = '⚠ PSS DELIVERY ALERT — CRITICAL';
-      const alertMessage = 
+      const alertMessage =
 `Bill No: ${billNo}
 PSS Ticket: ${pssTicket}
 
@@ -214,242 +920,19 @@ Current Status: ${currentStatus}
 Delivery is tomorrow.
 Please complete this item on priority.`;
 
-      // 3. Identify Target Recipients
       const recipientUserIds = new Set();
+      adminUsers.forEach(a => recipientUserIds.add(a._id.toString()));
+      this.resolveTailorRecipients(tailorName, allStaffUsers).forEach(tId => recipientUserIds.add(tId));
+      this.resolveSalespersonRecipients(salespersonName, targetSalesmanId, allStaffUsers, salesmenDocs).forEach(sId => recipientUserIds.add(sId));
 
-      // (A) Admin receives alert
-      adminUsers.forEach(admin => recipientUserIds.add(admin._id.toString()));
-
-      // (B) Assigned Tailor / Service Person
-      const cleanTailor = (tailorName || '').trim().toLowerCase();
-      const isGenericTailor = !cleanTailor || cleanTailor === 'not assigned' || cleanTailor === 'unassigned' || cleanTailor === 'default tailor';
-
-      if (!isGenericTailor) {
-        const matchedTailors = allStaffUsers.filter(u => {
-          if (u._id.toString() === tailorName) return true;
-          const uName = (u.name || '').trim().toLowerCase();
-          return uName === cleanTailor || uName.includes(cleanTailor) || cleanTailor.includes(uName);
-        });
-
-        if (matchedTailors.length > 0) {
-          matchedTailors.forEach(t => recipientUserIds.add(t._id.toString()));
-        } else {
-          // If named tailor doesn't have an exact User match, notify all shop tailors
-          tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
-        }
-      } else {
-        // If "Default Tailor" or "Not Assigned", notify ALL tailors so work gets assigned and started!
-        tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
-      }
-
-      // (C) Assigned Salesperson (Only the salesperson associated with this bill/item, or floor team)
-      const targetSalesmanId = item.salesmanId || pssm.salesmanId;
-      const cleanSalesman = (salespersonName || '').trim().toLowerCase();
-      const isGenericSalesman = !cleanSalesman || cleanSalesman === 'not assigned' || cleanSalesman === 'unassigned';
-
-      let matchedSalespeople = [];
-
-      if (targetSalesmanId) {
-        try {
-          const Salesman = require('../models/masters/Salesman');
-          const salesmanDoc = await Salesman.findById(targetSalesmanId).lean().catch(() => null);
-          if (salesmanDoc) {
-            matchedSalespeople = allStaffUsers.filter(u => {
-              if (salesmanDoc.phone && u.phone && String(u.phone).trim() === String(salesmanDoc.phone).trim()) return true;
-              if (salesmanDoc.email && u.email && u.email.toLowerCase() === salesmanDoc.email.toLowerCase()) return true;
-              const uName = (u.name || '').trim().toLowerCase();
-              const sName = (salesmanDoc.name || '').trim().toLowerCase();
-              return uName === sName || (sName && (uName.includes(sName) || sName.includes(uName)));
-            });
-          }
-        } catch (e) {
-          // quiet fallback
-        }
-      }
-
-      if (matchedSalespeople.length === 0 && !isGenericSalesman) {
-        matchedSalespeople = allStaffUsers.filter(u => {
-          const uName = (u.name || '').trim().toLowerCase();
-          return uName === cleanSalesman || uName.includes(cleanSalesman) || cleanSalesman.includes(uName);
-        });
-      }
-
-      // Also notify the user who booked this ticket / bill
       const creatorUserId = (item.createdBy || pssm.createdBy)?.toString();
-      if (creatorUserId) {
-        recipientUserIds.add(creatorUserId);
-      }
+      if (creatorUserId) recipientUserIds.add(creatorUserId);
 
-      if (matchedSalespeople.length > 0) {
-        matchedSalespeople.forEach(s => recipientUserIds.add(s._id.toString()));
-      } else {
-        // If unassigned or no specific salesperson matched, alert all salesperson users!
-        salespersonUsers.forEach(s => recipientUserIds.add(s._id.toString()));
-      }
-
-      // 4. Duplicate Prevention & Creation
       for (const recipientId of recipientUserIds) {
-        const existingAlert = await Notification.findOne({
-          tenantId,
-          userId: recipientId,
-          entityId: item._id,
-          category: 'PSS_DEADLINE_TOMORROW',
-          'metadata.deliveryDateStr': tomorrowDateStr
-        });
-
-        if (existingAlert) {
-          // Already created for this PSS item + Delivery Date + User. Skip duplicate!
-          continue;
-        }
-
-        const newNotif = await Notification.create({
-          tenantId,
-          userId: recipientId,
-          title: alertTitle,
-          message: alertMessage,
-          type: 'CRITICAL',
-          priority: 'Critical',
-          category: 'PSS_DEADLINE_TOMORROW',
-          entityId: item._id,
-          metadata: {
-            pssmItemId: item._id,
-            pssmId: pssm._id,
-            deliveryDateStr: tomorrowDateStr,
-            billNo,
-            pssmNo: pssTicket,
-            customerName,
-            itemName,
-            service,
-            tailorName,
-            salespersonName,
-            status: item.status
-          },
-          isRead: false,
-          resolved: false
-        });
-
-        this.emitSocketNotification(recipientId, newNotif, tenantId);
-        alertsCreated++;
-      }
-    }
-
-    // Also check active Alteration items
-    try {
-      const Alteration = require('../models/alteration/Alteration');
-      const activeAlterations = await Alteration.find({
-        tenantId,
-        isDeleted: false,
-        status: { $nin: ['Ready for Delivery', 'Delivered', 'Cancelled'] }
-      }).populate('customerId saleBillId').lean();
-
-      for (const alt of activeAlterations) {
-        if (activeItems.some(pi => pi.pssmId?.pssmNo === alt.alterationNo)) continue;
-        const deliveryDate = alt.expectedDeliveryDate;
-        if (!deliveryDate) continue;
-
-        const itemDeliveryDateStr = this.getLocalDateString(deliveryDate);
-        if (itemDeliveryDateStr !== tomorrowDateStr) continue;
-        if (this.isCompletedOrReadyStatus(alt.status)) continue;
-
-        const billNo = alt.saleBillId?.billNo || alt.saleBillId?.invoiceNo || alt.invoiceNumber || 'N/A';
-        const pssTicket = alt.alterationNo || 'N/A';
-        const customerName = alt.customerName || alt.customerId?.name || 'Customer';
-        const itemName = 'Altered Garment';
-        const service = 'Alteration';
-        const tailorName = alt.tailorName || 'Not Assigned';
-        const salespersonName = alt.saleBillId?.salesmanName || 'Not Assigned';
-        const formattedDeliveryDate = this.formatDisplayDate(deliveryDate);
-        const currentStatus = (alt.status || 'PENDING').replace(/_/g, ' ').toUpperCase();
-
-        const alertTitle = '⚠ PSS DELIVERY ALERT — CRITICAL';
-        const alertMessage = 
-`Bill No: ${billNo}
-PSS Ticket: ${pssTicket}
-
-Customer: ${customerName}
-
-Item: ${itemName}
-Service: ${service}
-
-Assigned Tailor: ${tailorName}
-Salesperson: ${salespersonName}
-
-Delivery Date: ${formattedDeliveryDate}
-Current Status: ${currentStatus}
-
-Delivery is tomorrow.
-Please complete this item on priority.`;
-
-        const recipientUserIds = new Set();
-        adminUsers.forEach(admin => recipientUserIds.add(admin._id.toString()));
-
-        const cleanTailor = (tailorName || '').trim().toLowerCase();
-        const isGenericTailor = !cleanTailor || cleanTailor === 'not assigned' || cleanTailor === 'unassigned' || cleanTailor === 'default tailor';
-
-        if (!isGenericTailor) {
-          const matchedTailors = allStaffUsers.filter(u => {
-            if (u._id.toString() === tailorName) return true;
-            const uName = (u.name || '').trim().toLowerCase();
-            return uName === cleanTailor || uName.includes(cleanTailor) || cleanTailor.includes(uName);
-          });
-          if (matchedTailors.length > 0) {
-            matchedTailors.forEach(t => recipientUserIds.add(t._id.toString()));
-          } else {
-            tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
-          }
-        } else {
-          tailorUsers.forEach(t => recipientUserIds.add(t._id.toString()));
-        }
-
-        const altSalesmanId = alt.saleBillId?.salesmanId;
-        const cleanSalesman = (salespersonName || '').trim().toLowerCase();
-        const isGenericSalesman = !cleanSalesman || cleanSalesman === 'not assigned' || cleanSalesman === 'unassigned';
-
-        let matchedSalespeople = [];
-        if (altSalesmanId) {
-          try {
-            const Salesman = require('../models/masters/Salesman');
-            const salesmanDoc = await Salesman.findById(altSalesmanId).lean().catch(() => null);
-            if (salesmanDoc) {
-              matchedSalespeople = allStaffUsers.filter(u => {
-                if (salesmanDoc.phone && u.phone && String(u.phone).trim() === String(salesmanDoc.phone).trim()) return true;
-                if (salesmanDoc.email && u.email && u.email.toLowerCase() === salesmanDoc.email.toLowerCase()) return true;
-                const uName = (u.name || '').trim().toLowerCase();
-                const sName = (salesmanDoc.name || '').trim().toLowerCase();
-                return uName === sName || (sName && (uName.includes(sName) || sName.includes(uName)));
-              });
-            }
-          } catch (e) {}
-        }
-
-        if (matchedSalespeople.length === 0 && !isGenericSalesman) {
-          matchedSalespeople = allStaffUsers.filter(u => {
-            const uName = (u.name || '').trim().toLowerCase();
-            return uName === cleanSalesman || uName.includes(cleanSalesman) || cleanSalesman.includes(uName);
-          });
-        }
-
-        const creatorUserId = alt.createdBy?.toString();
-        if (creatorUserId) recipientUserIds.add(creatorUserId);
-
-        if (matchedSalespeople.length > 0) {
-          matchedSalespeople.forEach(s => recipientUserIds.add(s._id.toString()));
-        } else {
-          salespersonUsers.forEach(s => recipientUserIds.add(s._id.toString()));
-        }
-
-        for (const recipientId of recipientUserIds) {
-          const existingAlert = await Notification.findOne({
-            tenantId,
-            userId: recipientId,
-            entityId: alt._id,
-            category: 'PSS_DEADLINE_TOMORROW',
-            'metadata.deliveryDateStr': tomorrowDateStr
-          });
-
-          if (existingAlert) continue;
-
-          const newNotif = await Notification.create({
+        const key = `${recipientId}_${item._id.toString()}`;
+        if (!existingSet.has(key)) {
+          existingSet.add(key);
+          docsToCreate.push({
             tenantId,
             userId: recipientId,
             title: alertTitle,
@@ -457,36 +940,111 @@ Please complete this item on priority.`;
             type: 'CRITICAL',
             priority: 'Critical',
             category: 'PSS_DEADLINE_TOMORROW',
-            entityId: alt._id,
+            entityId: item._id,
             metadata: {
-              alterationId: alt._id,
+              pssmItemId: item._id,
+              pssmId: pssm._id,
               deliveryDateStr: tomorrowDateStr,
               billNo,
-              alterationNo: pssTicket,
+              pssmNo: pssTicket,
               customerName,
               itemName,
               service,
               tailorName,
               salespersonName,
-              status: alt.status
+              status: item.status
             },
             isRead: false,
             resolved: false
           });
-
-          this.emitSocketNotification(recipientId, newNotif, tenantId);
-          alertsCreated++;
         }
       }
-    } catch (err) {
-      console.error('[NotificationService] Error checking Alteration records for deadline:', err.message);
     }
 
-    return { checked: activeItems.length, alertsCreated };
+    if (docsToCreate.length > 0) {
+      const created = await Notification.insertMany(docsToCreate);
+      created.forEach(n => this.emitSocketNotification(n.userId, n, tenantId));
+      return created.length;
+    }
+    return 0;
   }
 
   /**
-   * Real-time status update: Marks deadline alert as resolved when an item becomes ready/collected
+   * Master Enterprise Alert Auditor: Runs all 7 business alert monitors + deadline check in a single coordinated pass
+   */
+  static async runEnterpriseAlertAudits(tenantId) {
+    if (!tenantId) return { checked: 0, alertsCreated: 0 };
+
+    try {
+      // 1. Fetch active PSS items and legacy Alterations
+      const [pssmItemsRaw, legacyAlterations] = await Promise.all([
+        PSSMItem.find({ tenantId, isDeleted: { $ne: true } }).populate('pssmId').lean(),
+        require('../models/alteration/Alteration').find({ tenantId, isDeleted: { $ne: true } }).lean().catch(() => [])
+      ]);
+
+      const activeItems = [...pssmItemsRaw];
+      const pssmNumbers = new Set(pssmItemsRaw.map(p => p.pssmId?.pssmNo).filter(Boolean));
+
+      legacyAlterations.forEach(alt => {
+        if (pssmNumbers.has(alt.alterationNo)) return;
+        activeItems.push({
+          _id: alt._id,
+          pssmId: {
+            _id: alt._id,
+            pssmNo: alt.alterationNo,
+            billNo: alt.invoiceNumber || 'N/A',
+            customerName: alt.customerName || 'Customer',
+            customerPhone: alt.customerPhone || '',
+            tailorName: alt.tailorName || 'Ajay',
+            salesmanName: alt.salesmanName || ''
+          },
+          pieceName: alt.pieceName || 'Garment Item',
+          productName: alt.productName || 'Garment Item',
+          serviceType: alt.serviceType || 'Alteration',
+          assignedTo: alt.tailorName || 'Ajay',
+          status: alt.status,
+          expectedDeliveryDate: alt.expectedDeliveryDate,
+          createdAt: alt.createdAt,
+          reAlterationRequired: Boolean(alt.reAlterationRequired)
+        });
+      });
+
+      // 2. Fetch admin users & staff users
+      const [adminUsers, allStaffUsers, salesmenDocs] = await Promise.all([
+        this.getAdminUsers(tenantId),
+        this.getAllStaffUsers(tenantId),
+        Salesman.find({ tenantId, isDeleted: false }).lean().catch(() => [])
+      ]);
+
+      let totalAlertsCreated = 0;
+
+      // Run all 7 alerts + deadline check concurrently
+      const results = await Promise.allSettled([
+        this.checkAndGenerateRepeatReAlterAlerts(tenantId, adminUsers, activeItems),
+        this.checkAndGenerateTailorCapacityAlerts(tenantId, adminUsers, allStaffUsers, activeItems),
+        this.checkAndGenerateCounterPendingAlerts(tenantId, adminUsers, activeItems),
+        this.checkAndGenerateReAlterRateAlerts(tenantId, adminUsers, allStaffUsers, activeItems),
+        this.checkAndGenerateDelayIncreasedAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, activeItems),
+        this.checkAndGenerateMessageFailedAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, activeItems),
+        this.checkAndGenerateComplaintPendingAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, activeItems),
+        this.checkAndGeneratePSSDeadlineAlerts(tenantId, adminUsers, allStaffUsers, salesmenDocs, activeItems)
+      ]);
+
+      results.forEach(r => {
+        if (r.status === 'fulfilled' && typeof r.value === 'number') {
+          totalAlertsCreated += r.value;
+        }
+      });
+
+      return { checked: activeItems.length, alertsCreated: totalAlertsCreated };
+    } catch (err) {
+      console.error('[NotificationService] Error in runEnterpriseAlertAudits:', err.message);
+      return { checked: 0, alertsCreated: 0 };
+    }
+  }
+
+  /**
+   * Real-time status update: Marks alerts as resolved when an item becomes ready/collected
    */
   static async resolveAlertsForPSSItem(pssmItemId, tenantId, newStatus) {
     if (!pssmItemId) return;
@@ -494,7 +1052,7 @@ Please complete this item on priority.`;
       await Notification.updateMany(
         {
           entityId: pssmItemId,
-          category: 'PSS_DEADLINE_TOMORROW',
+          category: { $in: ['PSS_DEADLINE_TOMORROW', 'COUNTER_PENDING_ENTRY', 'CUSTOMER_COMPLAINT_PENDING'] },
           resolved: false,
           ...(tenantId ? { tenantId } : {})
         },
@@ -513,15 +1071,15 @@ Please complete this item on priority.`;
   }
 
   /**
-   * Runs the deadline check globally across all active tenants (e.g. background cron)
+   * Runs the alert audit globally across all active tenants (e.g. background cron)
    */
   static async runGlobalPSSDeadlineCheck() {
     try {
       const distinctTenants = await PSSM.distinct('tenantId');
       for (const tenantId of distinctTenants) {
         if (tenantId) {
-          await this.checkAndGeneratePSSDeadlineAlerts(tenantId).catch(err => {
-            console.error(`[NotificationService] Error checking deadline alerts for tenant ${tenantId}:`, err.message);
+          await this.runEnterpriseAlertAudits(tenantId).catch(err => {
+            console.error(`[NotificationService] Error running audits for tenant ${tenantId}:`, err.message);
           });
         }
       }
@@ -531,12 +1089,12 @@ Please complete this item on priority.`;
   }
 
   /**
-   * Retrieves notifications for a given user, optionally running the deadline check first
+   * Retrieves notifications for a given user, running the active audits first
    */
   static async getUserNotifications(userId, tenantId) {
     if (tenantId) {
-      // Run passive check to ensure tomorrow's alerts are fresh and deduplicated
-      await this.checkAndGeneratePSSDeadlineAlerts(tenantId).catch(() => {});
+      // Run passive check to ensure all 7 enterprise alert categories are fresh and deduplicated
+      await this.runEnterpriseAlertAudits(tenantId).catch(() => {});
     }
 
     const notifications = await Notification.find({

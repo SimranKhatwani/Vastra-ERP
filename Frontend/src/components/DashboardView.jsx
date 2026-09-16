@@ -1658,7 +1658,7 @@ export const DashboardView = ({
                   </h4>
                   <p className="text-xs text-red-800 mt-0.5">
                     {activeTailorStats.isOverloaded
-                      ? `अगर किसी Tailor की capacity 90% cross हो जाए: ${activeTailorStats.tailorName} has reached ${activeTailorStats.capacityUtilization}% capacity with ${activeTailorStats.inProgress} active in-progress items. Please redistribute or reassign pending tickets!`
+                      ? `${activeTailorStats.tailorName} has reached ${activeTailorStats.capacityUtilization}% capacity with ${activeTailorStats.inProgress} active in-progress items. Please redistribute or reassign pending tickets!`
                       : capacityAlerts.map(a => `${a.tailorName} (${a.capacityUtilization}%)`).join(", ") + " have crossed 90% capacity!"}
                   </p>
                 </div>

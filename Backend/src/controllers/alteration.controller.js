@@ -123,6 +123,7 @@ class AlterationController {
       success: true,
       statusCode: 200,
       data: dashboard,
+      metrics: dashboard.metrics || [],
       summary: dashboard.summary,
       message: 'Alteration dashboard metrics fetched.'
     });

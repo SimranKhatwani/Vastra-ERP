@@ -1323,7 +1323,7 @@ export const ArticulationView = ({
       const res = await api.get(`/employee-alteration-performance?${queryParams.toString()}`);
       const data = res.data;
       if (data.success) {
-        setPerformanceData(data);
+        setPerformanceData(data.data || data);
       }
     } catch (err) {
       console.error("Failed to fetch employee performance:", err);
@@ -4589,48 +4589,56 @@ export const ArticulationView = ({
 
             {/* TAILOR PERFORMANCE CARDS GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {(performanceData?.metrics || (defaultTailors || []).map((t, idx) => {
-                if (!t) return null;
-                const tailorAlts = alterationRecords.filter(a => a.tailorName === t.name);
-                const assignedCount = tailorAlts.length || t.jobs || 0;
-                const completedCount = tailorAlts.filter(a => a.status === 'Delivered' || a.status === 'Ready for Delivery').length;
-                const pendingCount = tailorAlts.filter(a => a.status === 'Pending' || a.status === 'Assigned').length;
-                const inProgressCount = tailorAlts.filter(a => a.status === 'In Progress').length;
-                const readyForDeliveryCount = tailorAlts.filter(a => a.status === 'Ready for Delivery').length;
-                const delayedCount = tailorAlts.filter(a => a.deliveryDate && a.deliveryDate < new Date().toISOString().split('T')[0] && a.status !== 'Delivered').length;
-                const completionPct = assignedCount ? Math.round((completedCount / assignedCount) * 100) : 100;
-                const availabilityStatus = t?.availability || (inProgressCount >= 5 ? 'Busy' : 'Available');
+              {loadingPerformance ? (
+                <div className="col-span-full py-16 flex flex-col items-center justify-center gap-3 bg-white rounded-3xl border border-slate-200 shadow-xs">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                  <p className="text-xs font-bold text-slate-600">Loading Employee Alteration Performance...</p>
+                </div>
+              ) : (
+                (performanceData?.metrics || (defaultTailors || []).map((t, idx) => {
+                  if (!t) return null;
+                  const tailorAlts = alterationRecords.filter(a => a.tailorName === t.name);
+                  const isFinished = (st) => ['delivered', 'ready for delivery', 'ready for pickup', 'ready', 'completed', 'collected', 'closed', 'cancelled'].includes(String(st || '').toLowerCase().trim());
+                  const assignedCount = tailorAlts.length || t.jobs || 0;
+                  const completedCount = tailorAlts.filter(a => isFinished(a.status)).length;
+                  const pendingCount = tailorAlts.filter(a => !isFinished(a.status) && (a.status === 'Pending' || a.status === 'Assigned')).length;
+                  const inProgressCount = tailorAlts.filter(a => a.status === 'In Progress').length;
+                  const readyForDeliveryCount = tailorAlts.filter(a => a.status === 'Ready for Delivery' || a.status === 'Ready').length;
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const delayedCount = tailorAlts.filter(a => !isFinished(a.status) && a.deliveryDate && a.deliveryDate < todayStr).length;
+                  const completionPct = assignedCount ? Math.round((completedCount / assignedCount) * 100) : 100;
+                  const availabilityStatus = t?.availability || (inProgressCount >= 5 ? 'Busy' : 'Available');
 
-                let performanceIndicator = 'Good';
-                if (completionPct >= 85 && delayedCount === 0) performanceIndicator = 'Excellent';
-                else if (completionPct >= 65) performanceIndicator = 'Good';
-                else if (completionPct >= 45) performanceIndicator = 'Average';
-                else performanceIndicator = 'Needs Attention';
+                  let performanceIndicator = 'Good';
+                  if (completionPct >= 85 && delayedCount === 0) performanceIndicator = 'Excellent';
+                  else if (completionPct >= 65) performanceIndicator = 'Good';
+                  else if (completionPct >= 45) performanceIndicator = 'Average';
+                  else performanceIndicator = 'Needs Attention';
 
-                return {
-                  employeeId: `EMP-TR-${101 + idx}`,
-                  employeeName: t?.name || 'Ajay',
-                  designation: 'Master Tailor',
-                  assignedCount,
-                  completedCount,
-                  pendingCount,
-                  inProgressCount,
-                  readyForDeliveryCount,
-                  delayedCount,
-                  todayWork: Math.floor(assignedCount * 0.4),
-                  weeklyWork: Math.floor(assignedCount * 0.7),
-                  monthlyWork: assignedCount,
-                  completionPct,
-                  avgCompletionTimeHrs: 4.2,
-                  lastCompletedDate: 'Today',
-                  availabilityStatus,
-                  performanceIndicator
-                };
-              })).map((tailor) => {
-                const indicatorBg =
-                  tailor.performanceIndicator === 'Excellent' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                    tailor.performanceIndicator === 'Good' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
-                      tailor.performanceIndicator === 'Average' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-rose-100 text-rose-800 border-rose-200';
+                  return {
+                    employeeId: `EMP-TR-${101 + idx}`,
+                    employeeName: t?.name || 'Ajay',
+                    designation: 'Master Tailor',
+                    assignedCount,
+                    completedCount,
+                    pendingCount,
+                    inProgressCount,
+                    readyForDeliveryCount,
+                    delayedCount,
+                    todayWork: Math.floor(assignedCount * 0.4),
+                    weeklyWork: Math.floor(assignedCount * 0.7),
+                    monthlyWork: assignedCount,
+                    completionPct,
+                    avgCompletionTimeHrs: 4.2,
+                    lastCompletedDate: 'Today',
+                    availabilityStatus,
+                    performanceIndicator
+                  };
+                })).map((tailor) => {
+                  const indicatorBg =
+                    tailor.performanceIndicator === 'Excellent' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                      tailor.performanceIndicator === 'Good' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
+                        tailor.performanceIndicator === 'Average' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-rose-100 text-rose-800 border-rose-200';
 
                 const statusBg =
                   tailor.availabilityStatus === 'Available' ? 'bg-emerald-500' :
@@ -4715,7 +4723,7 @@ export const ArticulationView = ({
 
                   </div>
                 );
-              })}
+              }))}
             </div>
 
           </div>
