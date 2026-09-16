@@ -350,7 +350,24 @@ class AlterationService {
   }
 
   static async updateStatus(alterationId, status, userId, tenantId, measurements, alterationDetails, extraData = {}) {
-    let alteration = await Alteration.findOne({ _id: alterationId, tenantId });
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(alterationId) && String(alterationId).length === 24;
+
+    let alteration = null;
+    if (isValidId) {
+      alteration = await Alteration.findOne({ _id: alterationId, tenantId });
+    }
+    if (!alteration) {
+      alteration = await Alteration.findOne({
+        tenantId,
+        $or: [
+          { alterationNo: alterationId },
+          { alterationBarcode: alterationId },
+          { tailorInvoiceNo: alterationId }
+        ]
+      });
+    }
+
     if (alteration) {
       const oldStatus = alteration.status;
       const normalizedOldStatus = String(oldStatus || '').toUpperCase().replace(/[\s-]+/g, '_');
@@ -569,34 +586,67 @@ class AlterationService {
       return alteration;
     }
 
-    // Support PSSMItem updates seamlessly from ArticulationView
+    // Support PSSMItem updates seamlessly from ArticulationView & Tailor Dashboard
     const PSSMItem = require('../models/PSSM/PSSMItem');
+    const PSSM = require('../models/PSSM/PSSM');
     const PSSMService = require('./pssm.service');
-    const pssmItem = await PSSMItem.findOne({ _id: alterationId, tenantId });
+
+    let pssmItem = null;
+    if (isValidId) {
+      pssmItem = await PSSMItem.findOne({ _id: alterationId, tenantId });
+    }
+    if (!pssmItem) {
+      pssmItem = await PSSMItem.findOne({
+        tenantId,
+        $or: [
+          { tailorInvoiceNo: alterationId },
+          { alterationBarcode: alterationId },
+          { barcode: alterationId },
+          { uniqueCode: alterationId }
+        ]
+      });
+    }
+    if (!pssmItem) {
+      const pssmDoc = await PSSM.findOne({
+        tenantId,
+        $or: [
+          ...(isValidId ? [{ _id: alterationId }] : []),
+          { pssmNo: alterationId },
+          { billBarcode: alterationId },
+          { billNo: alterationId }
+        ]
+      });
+      if (pssmDoc) {
+        pssmItem = await PSSMItem.findOne({ pssmId: pssmDoc._id, tenantId });
+      }
+    }
+
     if (pssmItem) {
-      const activeMeasurements = measurements || pssmItem.measurements;
-      const hasMeas = activeMeasurements && typeof activeMeasurements === 'object' && Object.keys(activeMeasurements).length > 0 && Object.values(activeMeasurements).some(v => v !== null && v !== '' && v !== undefined);
+      const activeMeasurements = measurements || pssmItem.measurements || {};
 
       let nextPssmStatus = pssmItem.status;
-      if (status === 'Pending' || status === 'PENDING_ASSIGNMENT') {
+      const normStatusIn = String(status || '').toUpperCase().trim().replace(/[\s-]+/g, '_');
+
+      if (normStatusIn === 'PENDING' || normStatusIn === 'PENDING_ASSIGNMENT' || normStatusIn === 'RECEIVED') {
         nextPssmStatus = 'PENDING_ASSIGNMENT';
-      } else if (['In Cutting', 'In Stitching', 'In Progress', 'Assigned', 'IN_PROGRESS', 'ASSIGNED'].includes(status)) {
-        if (!hasMeas) {
-          throw new ApiError(400, 'Measurements are required before starting work. Please enter measurements first.');
-        }
-        nextPssmStatus = status === 'In Cutting' ? 'IN_CUTTING' : (status === 'In Stitching' ? 'IN_STITCHING' : 'IN_PROGRESS');
-      } else if (status === 'In Trial' || status === 'Ready for Trial') {
+      } else if (normStatusIn === 'IN_CUTTING' || normStatusIn === 'CUTTING') {
+        nextPssmStatus = 'IN_CUTTING';
+      } else if (['IN_STITCHING', 'STITCHING', 'IN_PROGRESS', 'ASSIGNED'].includes(normStatusIn)) {
+        nextPssmStatus = 'IN_STITCHING';
+      } else if (['IN_TRIAL', 'READY_FOR_TRIAL', 'TRIAL'].includes(normStatusIn)) {
         nextPssmStatus = 'IN_TRIAL';
-      } else if (status === 'Re-Alteration') {
+      } else if (['RE_ALTERATION', 'REALTERATION', 'REWORK'].includes(normStatusIn)) {
         nextPssmStatus = 'RE_ALTERATION';
-      } else if (status === 'Quality Check') {
+      } else if (['QUALITY_CHECK', 'QC', 'QA'].includes(normStatusIn)) {
         nextPssmStatus = 'QUALITY_CHECK';
-      } else if (status === 'Ready' || status === 'Ready for Delivery' || status === 'READY' || status === 'COMPLETED') {
+      } else if (['READY', 'READY_FOR_DELIVERY', 'READY_FOR_PICKUP', 'COMPLETED'].includes(normStatusIn)) {
         nextPssmStatus = 'READY';
-      } else if (status === 'Delivered' || status === 'COLLECTED' || status === 'DELIVERED') {
+      } else if (['DELIVERED', 'COLLECTED', 'CLOSED'].includes(normStatusIn)) {
         nextPssmStatus = 'COLLECTED';
-      } else if (status === 'Cancelled' || status === 'CLOSED') {
+      } else if (['CANCELLED', 'CANCELED'].includes(normStatusIn)) {
         nextPssmStatus = 'CLOSED';
+      } else if (status) {
+        nextPssmStatus = status;
       }
 
       await PSSMService.updateItemStatus(
@@ -611,7 +661,7 @@ class AlterationService {
       return { _id: pssmItem._id, status: status || nextPssmStatus, measurements: activeMeasurements };
     }
 
-    throw new ApiError(404, 'Alteration record not found.');
+    throw new ApiError(404, 'Alteration or PSSM tailoring record not found.');
   }
 
   static async getAlterations(query = {}, tenantId) {

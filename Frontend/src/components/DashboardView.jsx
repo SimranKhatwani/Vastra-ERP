@@ -244,10 +244,46 @@ export const DashboardView = ({
     }
   }, []);
 
-  const handleUpdateTailorJobStatus = async (jobId, newStatus) => {
+  const handleUpdateTailorJobStatus = async (jobId, newStatus, job = null) => {
     try {
       setUpdatingJobId(jobId);
-      await api.patch(`/alterations/${jobId}/status`, { status: newStatus });
+
+      // Normalize status string for API and UI
+      const targetApiStatus = (newStatus === 'In Progress' || newStatus === 'In Stitching' || newStatus === 'IN STITCHING')
+        ? 'In Stitching'
+        : (newStatus === 'Ready' || newStatus === 'Ready for Delivery' || newStatus === 'READY')
+          ? 'Ready'
+          : newStatus;
+
+      // 1. Optimistic UI update for immediate instant button feedback
+      setTailorJobs(prev => (prev || []).map(j => {
+        const jId = j._id || j.id || j.pssmItemId;
+        if (jId === jobId || j.alterationId === jobId || j.ticketNo === jobId) {
+          return {
+            ...j,
+            status: targetApiStatus,
+            rawStatus: targetApiStatus === 'In Stitching' ? 'IN_STITCHING' : targetApiStatus === 'Ready' ? 'READY' : targetApiStatus
+          };
+        }
+        return j;
+      }));
+
+      // 2. Dispatch API call to status endpoint
+      try {
+        await api.patch(`/alterations/${jobId}/status`, {
+          status: targetApiStatus,
+          reason: `Tailor Workbench Quick Action: Marked as ${targetApiStatus}`
+        });
+      } catch (err) {
+        // Fallback for PSSM items if direct alteration route failed
+        const pssmTargetId = job?.pssmItemId || job?._id || jobId;
+        await api.patch(`/pssm/items/${pssmTargetId}/status`, {
+          status: targetApiStatus === 'In Stitching' ? 'IN_STITCHING' : targetApiStatus === 'Ready' ? 'READY' : targetApiStatus,
+          reason: `Tailor Workbench Quick Action: Marked as ${targetApiStatus}`
+        });
+      }
+
+      // 3. Refresh tailor queues & dashboard metrics
       await fetchTailorJobs();
       const res = await api.get(`/alterations/dashboard?dateRange=${altSummaryDate}`);
       if (res.data?.success && res.data?.data) {
@@ -257,8 +293,12 @@ export const DashboardView = ({
         if (d.allTailorsSummary) setAllTailorsSummary(d.allTailorsSummary);
         if (d.capacityAlerts) setCapacityAlerts(d.capacityAlerts);
       }
+      if (typeof fetchSalesmanDashboard === 'function') {
+        fetchSalesmanDashboard(false);
+      }
     } catch (err) {
-      console.error("Failed to update job status", err);
+      console.error("Failed to update tailor job status:", err);
+      await fetchTailorJobs();
     } finally {
       setUpdatingJobId(null);
     }
@@ -2017,13 +2057,12 @@ export const DashboardView = ({
                     <th className="px-5 py-4 font-semibold">Service Type</th>
                     <th className="px-5 py-4 font-semibold">Delivery Date</th>
                     <th className="px-5 py-4 font-semibold">Status</th>
-                    <th className="px-5 py-4 font-semibold text-right">Quick Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80 text-slate-700">
                   {myAssignedJobs.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="px-5 py-12 text-center text-slate-400">
+                      <td colSpan="6" className="px-5 py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center gap-2">
                           <Scissors className="w-8 h-8 text-slate-300" />
                           <p className="font-bold text-slate-600 text-sm">No active jobs on your table right now</p>
@@ -2033,9 +2072,13 @@ export const DashboardView = ({
                     </tr>
                   ) : (
                     myAssignedJobs.map((job, idx) => {
-                      const isOverdue = job.deliveryDate && job.deliveryDate < new Date().toISOString().split('T')[0] && job.status !== 'Delivered';
+                      const isOverdue = job.deliveryDate && job.deliveryDate < new Date().toISOString().split('T')[0] && job.status !== 'Delivered' && job.status !== 'DELIVERED';
                       const isToday = job.deliveryDate === new Date().toISOString().split('T')[0];
-                      const isUpdating = updatingJobId === (job._id || job.id);
+
+                      const normStatus = String(job.status || job.rawStatus || '').toUpperCase().trim().replace(/[-\s]/g, '_');
+                      const isInProgress = ['IN_PROGRESS', 'IN_STITCHING', 'IN_CUTTING', 'STITCHING', 'CUTTING', 'IN_TRIAL', 'TRIAL', 'RE_ALTERATION', 'QUALITY_CHECK'].includes(normStatus);
+                      const isReady = ['READY', 'READY_FOR_DELIVERY', 'READY_FOR_PICKUP', 'COMPLETED'].includes(normStatus);
+                      const isDelivered = ['DELIVERED', 'COLLECTED', 'CLOSED'].includes(normStatus);
 
                       return (
                         <tr key={job._id || job.id || idx} className="hover:bg-slate-50/80 transition-colors">
@@ -2070,44 +2113,18 @@ export const DashboardView = ({
                           </td>
                           <td className="px-5 py-4">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${job.status === 'Ready for Delivery' || job.status === 'READY'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : job.status === 'In Progress'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : job.status === 'Delivered'
-                                    ? 'bg-slate-100 text-slate-700'
-                                    : 'bg-indigo-100 text-indigo-800'
-                                }`}
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                isReady
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : isInProgress
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : isDelivered
+                                      ? 'bg-slate-100 text-slate-700'
+                                      : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              }`}
                             >
-                              {job.status || 'Pending'}
+                              {isReady ? 'READY' : isInProgress ? (normStatus.includes('CUTTING') ? 'IN CUTTING' : 'IN STITCHING') : isDelivered ? 'DELIVERED' : (job.status || 'PENDING')}
                             </span>
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            {job.status === 'In Progress' ? (
-                              <button
-                                onClick={() => handleUpdateTailorJobStatus(job._id || job.id, 'Ready for Delivery')}
-                                disabled={isUpdating}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Mark Ready ✓</span>
-                              </button>
-                            ) : job.status === 'Ready for Delivery' || job.status === 'READY' ? (
-                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                                Ready for Pickup
-                              </span>
-                            ) : job.status === 'Delivered' ? (
-                              <span className="text-xs font-bold text-slate-400">Completed</span>
-                            ) : (
-                              <button
-                                onClick={() => handleUpdateTailorJobStatus(job._id || job.id, 'In Progress')}
-                                disabled={isUpdating}
-                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
-                              >
-                                <Clock className="w-3.5 h-3.5" />
-                                <span>Start Work ➔</span>
-                              </button>
-                            )}
                           </td>
                         </tr>
                       );
