@@ -450,6 +450,13 @@ export default function App() {
           }
         } catch (e) { }
 
+        try {
+          const resExpenses = await api.get(`/expenses`);
+          if (resExpenses.data?.success && Array.isArray(resExpenses.data.data)) {
+            setExpenses(resExpenses.data.data.map(exp => ({ ...exp, id: exp._id || exp.id })));
+          }
+        } catch (e) { }
+
         // Fetch purchase management data (non-blocking, best-effort)
         try {
           const [resVendors, resGRNs, resInvoicesP, resReturns, resPending, resOutstanding] = await Promise.all([

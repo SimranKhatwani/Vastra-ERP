@@ -49,6 +49,7 @@ router.use('/billing', billingRoutes);
 router.use('/invoices', billingRoutes);
 router.use('/customers', customerRoutes);
 router.use('/ledger', ledgerRoutes);
+router.use('/expenses', require('./expense.routes'));
 router.use('/alterations', alterationRoutes);
 router.use('/pssm', pssmRoutes);
 router.use('/tailoring-jobs', tailoringJobRoutes);
