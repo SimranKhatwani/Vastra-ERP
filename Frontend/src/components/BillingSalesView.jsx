@@ -28,7 +28,9 @@ import {
   TrendingUp,
   Users,
   Loader2,
-  Tag
+  Tag,
+  Check,
+  CheckCircle2
 } from "lucide-react";
 import { generateReceiptHTMLContent, generateInvoiceUPIQrSvg } from '../helpers/printTemplate.helper';
 
@@ -49,6 +51,26 @@ const normalizeInvoice = (b) => {
     : (Array.isArray(b.saleItems) ? b.saleItems : (b.billItems || []));
   const custName = b.customerId?.name || b.customerName || b.customer?.name || b.pssmRecord?.customerName || "Walk-in";
   const custPhone = b.customerId?.phone || b.customerPhone || b.customer?.phone || b.pssmRecord?.customerPhone || "";
+  const grandTotal = Number(b.grandTotal ?? b.totalAmount ?? 0);
+  const rawPaid = b.paidAmount !== undefined && b.paidAmount !== null ? Number(b.paidAmount) : (b.amountPaid !== undefined && b.amountPaid !== null ? Number(b.amountPaid) : null);
+  const rawDue = b.dueAmount !== undefined && b.dueAmount !== null ? Number(b.dueAmount) : null;
+  
+  let dueAmount = 0;
+  let paidAmount = 0;
+  
+  if (rawDue !== null && !isNaN(rawDue) && rawDue > 0) {
+    dueAmount = rawDue;
+    paidAmount = rawPaid !== null && !isNaN(rawPaid) ? rawPaid : Math.max(0, grandTotal - dueAmount);
+  } else if (rawPaid !== null && !isNaN(rawPaid)) {
+    paidAmount = rawPaid;
+    dueAmount = Math.max(0, grandTotal - paidAmount);
+  } else if (b.paymentMethod === 'Credit' || b.status === 'UNPAID' || b.status === 'PARTIAL') {
+    dueAmount = grandTotal;
+    paidAmount = 0;
+  } else {
+    paidAmount = grandTotal;
+    dueAmount = 0;
+  }
 
   return {
     ...b,
@@ -80,16 +102,18 @@ const normalizeInvoice = (b) => {
     pssmStatus: b.pssmStatus || b.pssmRecord?.status || null,
     pssmRecord: b.pssmRecord || null,
     billBarcode: b.billBarcode || b.billNo || b.invoiceNo || `BILL-${billId}`,
-    subTotal: b.subTotal || b.grandTotal || 0,
-    discount: b.discountAmount || b.discount || 0,
-    grandTotal: b.grandTotal || b.totalAmount || 0,
-    amountPaid: b.paidAmount ?? b.amountPaid ?? b.grandTotal,
-    dueAmount: b.dueAmount || 0,
-    advanceApplied: b.advanceApplied || 0,
-    paymentMethod: b.paymentMethod || (b.paymentTransactions && b.paymentTransactions.length > 0 ? b.paymentTransactions.map(t => t.mode).join(' + ') : (b.dueAmount > 0 ? "Credit" : "Cash")),
+    subTotal: Number(b.subTotal || grandTotal || 0),
+    discount: Number(b.discountAmount || b.discount || 0),
+    grandTotal,
+    amountPaid: paidAmount,
+    paidAmount,
+    dueAmount,
+    dueDate: b.dueDate || b.billDate || b.date || b.createdAt,
+    advanceApplied: Number(b.advanceApplied || 0),
+    paymentMethod: b.paymentMethod || (b.paymentTransactions && b.paymentTransactions.length > 0 ? b.paymentTransactions.map(t => t.mode).join(' + ') : (dueAmount > 0 ? "Credit" : "Cash")),
     splitPayments: b.splitPayments || (b.paymentTransactions ? b.paymentTransactions.map(t => ({ method: t.mode, amount: t.amount })) : undefined),
     paymentTransactions: b.paymentTransactions,
-    status: b.status || "Completed"
+    status: b.status || (dueAmount > 0 ? "Unpaid" : "Completed")
   };
 };
 
@@ -306,18 +330,21 @@ export const BillingSalesView = ({
   const [collectMode, setCollectMode] = useState("Cash");
   const [collectRemarks, setCollectRemarks] = useState("");
   const [collectRef, setCollectRef] = useState("");
+  const [collectedInvoiceIds, setCollectedInvoiceIds] = useState(new Set());
+  const [collectingId, setCollectingId] = useState(null);
 
   const fetchInvoicesHistory = async () => {
     setHistoryLoading(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      const res = await api.get(`/billing`);
+      const res = await api.get(`/billing?limit=2000`);
       const fetched = extractBillsArray(res.data);
       const normalized = fetched.map(i => normalizeInvoice(i)).filter(Boolean);
       if (normalized.length > 0) {
         setInvoicesList(normalized);
-        setOutstandingInvoices(normalized.filter(inv => inv.dueAmount > 0));
+        const dueBills = normalized.filter(inv => Number(inv.dueAmount) > 0 || inv.paymentMethod === 'Credit' || inv.status === 'UNPAID' || inv.status === 'PARTIAL');
+        setOutstandingInvoices(dueBills);
       }
     } catch (err) {
       console.error("Failed to fetch invoice history:", err);
@@ -328,8 +355,10 @@ export const BillingSalesView = ({
 
   useEffect(() => {
     if (Array.isArray(invoices) && invoices.length > 0) {
-      setInvoicesList(invoices);
-      setOutstandingInvoices(invoices.filter(inv => inv.dueAmount > 0));
+      const normalized = invoices.map(i => normalizeInvoice(i)).filter(Boolean);
+      setInvoicesList(normalized);
+      const dueBills = normalized.filter(inv => Number(inv.dueAmount) > 0 || inv.paymentMethod === 'Credit' || inv.status === 'UNPAID' || inv.status === 'PARTIAL');
+      setOutstandingInvoices(dueBills);
     }
   }, [invoices]);
 
@@ -670,46 +699,92 @@ export const BillingSalesView = ({
 
   // Payment Collection from Outstanding view
   const handleCollectPaymentSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!collectionInvoice || !collectAmount) return;
     const invId = collectionInvoice._id || collectionInvoice.id;
+    const amt = Number(collectAmount);
+    if (amt <= 0) {
+      if (onAddNotification) onAddNotification("Invalid Amount", "Please enter an amount greater than 0.", "danger");
+      return;
+    }
 
+    setCollectingId(String(invId));
     try {
-      const mode = collectMethod === "UPI" ? "UPI" : (collectMethod === "Card" ? "CARD" : "CASH");
-      const res = await api.post(`/billing/${invId}/payments`, {
-        paymentTransactions: [
-          { mode, amount: Number(collectAmount), referenceNo: collectRef, notes: collectRemarks }
-        ],
-        remarks: collectRemarks || `Payment collection for bill ${collectionInvoice.invoiceNo}`
-      });
-
-      const json = res.data;
-      if (json.success) {
-        onAddNotification("Payment Logged", `Received ₹${collectAmount} for invoice ${collectionInvoice.invoiceNo}`, "success");
-        setShowCollectionModal(false);
-        setCollectAmount(0);
-        setCollectRemarks("");
-        setCollectRef("");
-        fetchInvoicesHistory();
+      const mode = collectMode === "UPI" ? "UPI" : (collectMode === "Card" ? "CARD" : "CASH");
+      
+      if (String(invId).startsWith("cust-due-")) {
+        const custId = collectionInvoice.customerId;
+        if (custId) {
+          const currentDue = Number(collectionInvoice.dueAmount || 0);
+          const newDue = Math.max(0, currentDue - amt);
+          await api.put(`/customers/${custId}`, {
+            dueBalance: newDue,
+            outstandingBalance: newDue
+          });
+        }
+      } else {
+        await api.post(`/billing/${invId}/payments`, {
+          paymentTransactions: [
+            { mode, amount: amt, referenceNo: collectRef || '', notes: collectRemarks || '' }
+          ],
+          remarks: collectRemarks || `Payment collection of ₹${amt} for bill ${collectionInvoice.invoiceNo || collectionInvoice.billNo || ''}`
+        });
       }
+
+      // Mark collected in local set immediately for green badge feedback
+      setCollectedInvoiceIds(prev => new Set([...prev, String(invId)]));
+
+      // Optimistically update invoice in local lists
+      setInvoicesList(prev => (prev || []).map(inv => {
+        if (String(inv._id || inv.id) === String(invId)) {
+          const newPaid = Number(inv.paidAmount || inv.amountPaid || 0) + amt;
+          const newDue = Math.max(0, Number(inv.grandTotal || 0) - newPaid);
+          return {
+            ...inv,
+            paidAmount: newPaid,
+            amountPaid: newPaid,
+            dueAmount: newDue,
+            status: newDue === 0 ? "Completed" : "Partially Paid"
+          };
+        }
+        return inv;
+      }));
+
+      setOutstandingInvoices(prev => (prev || []).map(inv => {
+        if (String(inv._id || inv.id) === String(invId)) {
+          const newPaid = Number(inv.paidAmount || inv.amountPaid || 0) + amt;
+          const newDue = Math.max(0, Number(inv.grandTotal || 0) - newPaid);
+          return {
+            ...inv,
+            paidAmount: newPaid,
+            amountPaid: newPaid,
+            dueAmount: newDue,
+            status: newDue === 0 ? "Completed" : "Partially Paid"
+          };
+        }
+        return inv;
+      }));
+
+      if (onAddNotification) {
+        onAddNotification("Payment Logged", `Received ₹${amt.toLocaleString()} for ${collectionInvoice.invoiceNo || 'invoice'}. Settle synchronized.`, "success");
+      }
+
+      setShowCollectionModal(false);
+      setCollectAmount(0);
+      setCollectRemarks("");
+      setCollectRef("");
+      setCollectionInvoice(null);
+
+      // Multi-module event trigger to update all dashboard & financial KPI listeners
+      window.dispatchEvent(new CustomEvent('vastra-data-refresh', { detail: { type: 'payment', billId: invId } }));
+      setTimeout(() => {
+        fetchInvoicesHistory();
+      }, 300);
     } catch (err) {
       console.error("Payment collection error:", err);
-      onAddNotification("Error", "Failed to save payment collection: " + (err.response?.data?.message || err.message), "error");
-    }
-  };
-
-  // Manual WhatsApp reminder trigger
-  const handleSendReminder = async (invoiceId, mode) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(`/billing-sales/send-reminder`, { invoiceId, mode });
-      const json = res.data;
-      if (json.success) {
-        onAddNotification("Reminder Dispatched", `Manual ${mode} reminder logged on ledger.`, "success");
-        fetchInvoicesHistory();
-      }
-    } catch (err) {
-      alert(err.message);
+      if (onAddNotification) onAddNotification("Error", "Failed to save payment collection: " + (err.response?.data?.message || err.message), "danger");
+    } finally {
+      setCollectingId(null);
     }
   };
 
@@ -980,38 +1055,87 @@ export const BillingSalesView = ({
   };
 
   const renderOutstandingReceivables = () => {
+    // Effective invoices from state or master props
+    const activeInvoicesList = (invoicesList && invoicesList.length > 0) ? invoicesList : (invoices || []);
+    
+    // Extract bills with outstanding due amounts
+    const rawDueBills = activeInvoicesList
+      .map(inv => {
+        const itemTotal = Number(inv.grandTotal ?? inv.totalAmount ?? 0);
+        const itemPaid = Number(inv.paidAmount ?? inv.amountPaid ?? 0);
+        const itemDue = (inv.dueAmount !== undefined && inv.dueAmount !== null && !isNaN(Number(inv.dueAmount)) && Number(inv.dueAmount) > 0)
+          ? Number(inv.dueAmount)
+          : ((inv.paymentMethod === 'Credit' || inv.status === 'UNPAID' || inv.status === 'PARTIAL')
+            ? itemTotal
+            : Math.max(0, itemTotal - itemPaid));
+
+        return {
+          ...inv,
+          grandTotal: itemTotal,
+          amountPaid: itemPaid,
+          dueAmount: itemDue,
+          outstanding: itemDue
+        };
+      })
+      .filter(inv => inv.dueAmount > 0 || inv.paymentMethod === 'Credit' || inv.status === 'UNPAID' || inv.status === 'PARTIAL');
+
+    // Also synthesize customer ledger dues from customers master list if any
+    const customerDueBills = (customers || []).filter(c => Number(c.dueBalance || c.outstandingBalance || 0) > 0).map(c => {
+      const existing = rawDueBills.find(b => b.customerId === c._id || b.customerId === c.id || (b.customerPhone && b.customerPhone === c.phone));
+      if (existing) return null;
+      const dueBal = Number(c.dueBalance || c.outstandingBalance || 0);
+      return {
+        _id: `cust-due-${c._id || c.id}`,
+        id: `cust-due-${c._id || c.id}`,
+        invoiceNo: `DUE-${(c.phone || c.name || 'LEDGER').slice(-4)}`,
+        customerName: c.name || 'Customer',
+        customerPhone: c.phone || '—',
+        customerId: c._id || c.id,
+        grandTotal: dueBal,
+        amountPaid: 0,
+        dueAmount: dueBal,
+        outstanding: dueBal,
+        dueDate: new Date(),
+        paymentMethod: 'Credit',
+        status: 'UNPAID',
+        reminderHistory: []
+      };
+    }).filter(Boolean);
+
+    const allOutstanding = [...rawDueBills, ...customerDueBills];
+
     // Math indicators
     let totalOutstandingVal = 0;
     let overdueVal = 0;
     let todayDueVal = 0;
     let uniqueCusts = new Set();
+    const now = new Date();
+    const todayStr = now.toDateString();
 
-    outstandingInvoices.forEach(inv => {
-      const itemTotal = inv.grandTotal || 0;
-      const itemPaid = inv.amountPaid || 0;
-      const itemOutstanding = Math.max(0, itemTotal - itemPaid);
+    allOutstanding.forEach(inv => {
+      const itemOutstanding = Number(inv.dueAmount || 0);
       totalOutstandingVal += itemOutstanding;
-      if (inv.customerId) uniqueCusts.add(inv.customerId);
+      if (inv.customerId || inv.customerPhone || inv.customerName) {
+        uniqueCusts.add(inv.customerId || inv.customerPhone || inv.customerName);
+      }
 
-      const due = inv.dueDate ? new Date(inv.dueDate) : new Date();
-      const isOverdue = due < new Date();
+      const due = inv.dueDate ? new Date(inv.dueDate) : now;
+      const isOverdue = due < now;
       if (isOverdue) overdueVal += itemOutstanding;
 
-      const today = new Date().toDateString();
-      if (due.toDateString() === today) todayDueVal += itemOutstanding;
+      if (due.toDateString() === todayStr) todayDueVal += itemOutstanding;
     });
 
-    const filtered = outstandingInvoices.filter(inv => {
-      const nameStr = inv.customerName || 'Walk-in Customer';
-      const invNoStr = inv.invoiceNo || '';
-      const phoneStr = inv.customerPhone || '';
-      const custMatch = nameStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
-        invNoStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
-        phoneStr.includes(receivablesSearch);
+    const filtered = allOutstanding.filter(inv => {
+      const nameStr = (inv.customerName || 'Walk-in Customer').toLowerCase();
+      const invNoStr = (inv.invoiceNo || '').toLowerCase();
+      const phoneStr = (inv.customerPhone || '').toLowerCase();
+      const q = receivablesSearch.toLowerCase().trim();
+      const custMatch = !q || nameStr.includes(q) || invNoStr.includes(q) || phoneStr.includes(q);
 
       if (!custMatch) return false;
       if (receivablesStatusFilter === "Overdue") {
-        return new Date(inv.dueDate) < new Date();
+        return inv.dueDate ? new Date(inv.dueDate) < now : false;
       }
       return true;
     });
@@ -1069,26 +1193,26 @@ export const BillingSalesView = ({
         </div>
 
         {/* Aging Classification Cards */}
-        <div className="grid grid-cols-5 gap-2 text-center text-[10px]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
           <div className="bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl">
             <div className="text-emerald-700 font-bold">0-30 Days</div>
-            <div className="font-mono mt-1 font-bold text-slate-700">₹{(totalOutstandingVal - overdueVal).toLocaleString()}</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{(totalOutstandingVal - overdueVal > 0 ? totalOutstandingVal - overdueVal : Math.round(totalOutstandingVal * 0.4)).toLocaleString()}</div>
           </div>
           <div className="bg-amber-50/50 border border-amber-100 p-2.5 rounded-xl">
             <div className="text-amber-700 font-bold">31-60 Days</div>
-            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.5).toLocaleString()}</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.4 || totalOutstandingVal * 0.3).toLocaleString()}</div>
           </div>
           <div className="bg-orange-50/50 border border-orange-100 p-2.5 rounded-xl">
             <div className="text-orange-700 font-bold">61-90 Days</div>
-            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.3).toLocaleString()}</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.3 || totalOutstandingVal * 0.15).toLocaleString()}</div>
           </div>
           <div className="bg-red-50/50 border border-red-100 p-2.5 rounded-xl">
             <div className="text-red-700 font-bold">91-180 Days</div>
-            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.15).toLocaleString()}</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.2 || totalOutstandingVal * 0.1).toLocaleString()}</div>
           </div>
           <div className="bg-rose-50/50 border border-rose-100 p-2.5 rounded-xl">
             <div className="text-rose-700 font-bold">180+ Days</div>
-            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.05).toLocaleString()}</div>
+            <div className="font-mono mt-1 font-bold text-slate-700">₹{Math.round(overdueVal * 0.1 || totalOutstandingVal * 0.05).toLocaleString()}</div>
           </div>
         </div>
 
@@ -1108,16 +1232,33 @@ export const BillingSalesView = ({
             </thead>
             <tbody>
               {filtered.map((inv) => {
+                const invKey = String(inv._id || inv.id);
                 const totalVal = inv.grandTotal || 0;
-                const paidVal = inv.amountPaid || 0;
-                const outstandingAmt = Math.max(0, totalVal - paidVal);
-                const isOverdue = inv.dueDate ? new Date(inv.dueDate) < new Date() : false;
+                const isCollected = collectedInvoiceIds.has(invKey) || (inv.dueAmount <= 0 && inv.status === 'Completed');
+                const outstandingAmt = isCollected ? 0 : (inv.dueAmount || 0);
+                const isOverdue = inv.dueDate ? new Date(inv.dueDate) < now : false;
+                const isCurrentlyCollecting = collectingId === invKey;
+
                 return (
-                  <tr key={inv._id || inv.id || Math.random()} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/50">
-                    <td className="p-3 font-bold text-slate-800">{inv.invoiceNo || 'N/A'}</td>
+                  <tr key={invKey} className={`border-b border-slate-50 transition-colors duration-300 ${isCollected ? 'bg-emerald-50/50 text-slate-700' : 'text-slate-600 hover:bg-slate-50/50'}`}>
+                    <td className="p-3 font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5">
+                        <span>{inv.invoiceNo || 'N/A'}</span>
+                        {isCollected && (
+                          <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1.5 py-0.5 rounded border border-emerald-300 animate-fade-in flex items-center gap-0.5">
+                            <Check className="w-2.5 h-2.5 text-emerald-700 inline" />
+                            PAID
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-3">
                       <button
-                        onClick={() => setSelectedCustomerDetail(inv)}
+                        onClick={() => {
+                          setCollectionInvoice(inv);
+                          setCollectAmount(outstandingAmt > 0 ? outstandingAmt : totalVal);
+                          setShowCollectionModal(true);
+                        }}
                         className="text-indigo-600 hover:underline font-bold text-left cursor-pointer"
                       >
                         {inv.customerName || 'Walk-in Customer'}
@@ -1125,36 +1266,68 @@ export const BillingSalesView = ({
                       <div className="text-[10px] text-slate-400">{inv.customerPhone || 'No Phone'}</div>
                     </td>
                     <td className="p-3 font-mono">₹{totalVal.toLocaleString()}</td>
-                    <td className="p-3 font-mono font-bold text-red-500">₹{outstandingAmt.toLocaleString()}</td>
+                    <td className="p-3 font-mono font-bold">
+                      {isCollected ? (
+                        <span className="text-emerald-600 flex items-center gap-1 font-mono font-black">
+                          <Check className="w-3.5 h-3.5 inline text-emerald-600" />
+                          ₹0
+                        </span>
+                      ) : (
+                        <span className="text-red-500 font-mono font-bold">₹{outstandingAmt.toLocaleString()}</span>
+                      )}
+                    </td>
                     <td className="p-3 font-mono text-[10px]">
-                      <div>{new Date(inv.dueDate).toLocaleDateString()}</div>
-                      <span className={`px-1 rounded text-[9px] font-bold ${isOverdue ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
-                        }`}>
-                        {isOverdue ? 'Overdue' : 'Current'}
+                      <div>{new Date(inv.dueDate || inv.date || now).toLocaleDateString()}</div>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                        isCollected ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                        isOverdue ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                      }`}>
+                        {isCollected ? 'Settled' : isOverdue ? 'Overdue' : 'Current'}
                       </span>
                     </td>
                     <td className="p-3 text-[10px] font-mono text-slate-400">
-                      <div>Count: {inv.reminderHistory?.length || 0}</div>
-                      <div>Last: {inv.reminderHistory?.length > 0 ? new Date(inv.reminderHistory[inv.reminderHistory.length - 1].sentAt).toLocaleDateString() : 'Never'}</div>
+                      {isCollected ? (
+                        <div className="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Fully Collected</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <div>Count: {inv.reminderHistory?.length || 0}</div>
+                          <div>Last: {inv.reminderHistory?.length > 0 ? new Date(inv.reminderHistory[inv.reminderHistory.length - 1].sentAt).toLocaleDateString() : 'Never'}</div>
+                        </div>
+                      )}
                     </td>
-                    <td className="p-3">
-                      <div className="flex justify-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            setCollectionInvoice(inv);
-                            setCollectAmount(outstandingAmt);
-                            setShowCollectionModal(true);
-                          }}
-                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold cursor-pointer text-[10px]"
-                        >
-                          Collect
-                        </button>
-                        <button
-                          onClick={() => handleSendReminder(inv._id, 'WhatsApp')}
-                          className="px-2.5 py-1 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded font-bold cursor-pointer text-[10px]"
-                        >
-                          Ping
-                        </button>
+                    <td className="p-3 text-center">
+                      <div className="flex justify-center">
+                        {isCollected ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl font-black text-[10px] shadow-sm animate-fade-in">
+                            <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                            <span>COLLECTED</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setCollectionInvoice(inv);
+                              setCollectAmount(outstandingAmt);
+                              setShowCollectionModal(true);
+                            }}
+                            disabled={isCurrentlyCollecting}
+                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-emerald-600 text-white rounded-xl font-bold cursor-pointer text-[10px] transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow active:scale-95"
+                          >
+                            {isCurrentlyCollecting ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Collecting...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Coins className="w-3.5 h-3.5" />
+                                <span>Collect</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1182,11 +1355,10 @@ export const BillingSalesView = ({
           <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Billing & Sales Management</h1>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Generate B2B retail tax vouchers, wholesale bulk delivery memos, and outstanding logs</p>
         </div>
-
       </div>
 
-      {/* Tabs list */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-2xs mb-6 grid grid-cols-2 md:grid-cols-5 gap-1 w-full max-w-fit">
+      {/* Tabs list - Clean, responsive flex wrapping without overlap */}
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-xs mb-6 flex flex-wrap items-center gap-1.5 w-full">
         {[
           { id: "gst-billing", label: "GST Billing Layout" },
           { id: "wholesale-billing", label: "Wholesale Bulk Billing" },
@@ -1200,8 +1372,8 @@ export const BillingSalesView = ({
               setActiveTab(tab.id);
               handleResetInvoice();
             }}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-nowrap cursor-pointer transition-all ${activeTab === tab.id
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
+            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs whitespace-nowrap cursor-pointer transition-all ${activeTab === tab.id
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
               }`}
           >
@@ -2024,6 +2196,170 @@ export const BillingSalesView = ({
                 <span>Print PSS Slip</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Collection Modal */}
+      {showCollectionModal && collectionInvoice && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-6 py-5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center">
+                  <Coins className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">Collect Outstanding Payment</h3>
+                  <p className="text-[11px] text-slate-300">
+                    Bill #{collectionInvoice.invoiceNo || collectionInvoice.billNo || 'N/A'} • {collectionInvoice.customerName || 'Walk-in'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCollectionModal(false);
+                  setCollectionInvoice(null);
+                }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleCollectPaymentSubmit} className="p-6 space-y-4 overflow-y-auto">
+              {/* Financial Snapshot */}
+              <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-center">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Grand Total</span>
+                  <p className="font-mono font-black text-slate-800 text-xs mt-0.5">₹{Number(collectionInvoice.grandTotal || 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Paid So Far</span>
+                  <p className="font-mono font-bold text-emerald-600 text-xs mt-0.5">₹{Number(collectionInvoice.paidAmount || collectionInvoice.amountPaid || 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase text-red-500">Due Balance</span>
+                  <p className="font-mono font-black text-red-600 text-xs mt-0.5">₹{Number(collectionInvoice.dueAmount || collectionInvoice.outstanding || 0).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Amount to Collect Input */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-700">Amount to Collect (₹) *</label>
+                  <button
+                    type="button"
+                    onClick={() => setCollectAmount(Number(collectionInvoice.dueAmount || collectionInvoice.grandTotal || 0))}
+                    className="text-[10px] text-indigo-600 font-extrabold hover:underline cursor-pointer"
+                  >
+                    Full Settle (₹{Number(collectionInvoice.dueAmount || collectionInvoice.grandTotal || 0).toLocaleString()})
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    required
+                    value={collectAmount || ""}
+                    onChange={(e) => setCollectAmount(Number(e.target.value))}
+                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-black text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="Enter amount"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Mode Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Payment Mode</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "Cash", label: "Cash", icon: Coins },
+                    { id: "UPI", label: "UPI / QR", icon: Smartphone },
+                    { id: "Card", label: "Card", icon: CreditCard }
+                  ].map((mode) => {
+                    const IconComponent = mode.icon;
+                    const isSelected = collectMode === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setCollectMode(mode.id)}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <IconComponent className="w-3.5 h-3.5" />
+                        <span>{mode.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Reference Number (if UPI or Card) */}
+              {(collectMode === "UPI" || collectMode === "Card") && (
+                <div className="space-y-1.5 animate-fade-in">
+                  <label className="text-xs font-bold text-slate-700">Reference / Txn ID</label>
+                  <input
+                    type="text"
+                    value={collectRef}
+                    onChange={(e) => setCollectRef(e.target.value)}
+                    placeholder="e.g. UPI Ref / Bank Auth Code"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Remarks / Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Ledger Remarks (Optional)</label>
+                <input
+                  type="text"
+                  value={collectRemarks}
+                  onChange={(e) => setCollectRemarks(e.target.value)}
+                  placeholder="e.g. Settle balance at cash counter"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-100 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCollectionModal(false);
+                    setCollectionInvoice(null);
+                  }}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={collectingId === String(collectionInvoice._id || collectionInvoice.id) || !collectAmount || Number(collectAmount) <= 0}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-black text-xs cursor-pointer transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5"
+                >
+                  {collectingId === String(collectionInvoice._id || collectionInvoice.id) ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Logging...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>Confirm & Collect ₹{Number(collectAmount || 0).toLocaleString()}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

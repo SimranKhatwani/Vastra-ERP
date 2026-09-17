@@ -82,8 +82,9 @@ const DEFAULT_ROLE_CONFIGS = {
   },
   accountant: {
     allowedModules: [
-      "dashboard", "financial-management", "accounts-treasury", "accounting",
-      "reports", "attendance-dashboard"
+      "dashboard", "summary-dashboard", "purchase", "goods-return", "financial-management",
+      "accounts-treasury", "accounting", "reports", "customers", "vendor-communication",
+      "staff-activity", "attendance-dashboard"
     ],
     moduleAccessLevels: {},
     tabPermissions: {}

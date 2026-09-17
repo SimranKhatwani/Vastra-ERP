@@ -318,9 +318,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   // ---------------------------------------------------------------------------
   const loadDashboard = async () => {
     try {
-      const res = await fetch(`${API}/dashboard`, { headers: authHeaders() });
+      const res = await api.get('/financial/dashboard');
       const data = res.data;
-      if (data.success) setSummary(data);
+      if (data?.success) setSummary(data);
     } catch (e) {
       console.error(e);
     }
@@ -328,9 +328,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadCustomerLedgers = async () => {
     try {
-      const res = await fetch(`${API}/customer-ledger`, { headers: authHeaders() });
+      const res = await api.get('/financial/customer-ledger');
       const data = res.data;
-      if (data.success) setCustomerLedgers(data.data);
+      if (data?.success) setCustomerLedgers(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -338,9 +338,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadVendorLedgers = async () => {
     try {
-      const res = await fetch(`${API}/vendor-ledger`, { headers: authHeaders() });
+      const res = await api.get('/financial/vendor-ledger');
       const data = res.data;
-      if (data.success) setVendorLedgers(data.data);
+      if (data?.success) setVendorLedgers(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -348,9 +348,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadCashBook = async () => {
     try {
-      const res = await fetch(`${API}/cash-book`, { headers: authHeaders() });
+      const res = await api.get('/financial/cash-book');
       const data = res.data;
-      if (data.success) setCashBook(data);
+      if (data?.success) setCashBook(data);
     } catch (e) {
       console.error(e);
     }
@@ -358,9 +358,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadBankBook = async () => {
     try {
-      const res = await fetch(`${API}/bank-book`, { headers: authHeaders() });
+      const res = await api.get('/financial/bank-book');
       const data = res.data;
-      if (data.success) setBankBook(data);
+      if (data?.success) setBankBook(data);
     } catch (e) {
       console.error(e);
     }
@@ -368,9 +368,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadExpenses = async () => {
     try {
-      const res = await fetch(`${API}/expenses`, { headers: authHeaders() });
+      const res = await api.get('/financial/expenses');
       const data = res.data;
-      if (data.success) setExpenses(data.data);
+      if (data?.success) setExpenses(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -378,9 +378,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadIncomes = async () => {
     try {
-      const res = await fetch(`${API}/incomes`, { headers: authHeaders() });
+      const res = await api.get('/financial/incomes');
       const data = res.data;
-      if (data.success) setIncomes(data.data);
+      if (data?.success) setIncomes(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -388,9 +388,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadPayments = async () => {
     try {
-      const res = await fetch(`${API}/payments`, { headers: authHeaders() });
+      const res = await api.get('/financial/payments');
       const data = res.data;
-      if (data.success) setPayments(data.data);
+      if (data?.success) setPayments(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -398,9 +398,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
 
   const loadReceipts = async () => {
     try {
-      const res = await fetch(`${API}/receipts`, { headers: authHeaders() });
+      const res = await api.get('/financial/receipts');
       const data = res.data;
-      if (data.success) setReceipts(data.data);
+      if (data?.success) setReceipts(data.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -412,9 +412,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       if (plPreset === "custom" && plCustomDates.start && plCustomDates.end) {
         query = `?startDate=${plCustomDates.start}&endDate=${plCustomDates.end}`;
       }
-      const res = await fetch(`${API}/profit-loss${query}`, { headers: authHeaders() });
+      const res = await api.get(`/financial/profit-loss${query}`);
       const data = res.data;
-      if (data.success) setProfitLoss(data);
+      if (data?.success) setProfitLoss(data);
     } catch (e) {
       console.error(e);
     }
@@ -502,13 +502,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
     }
     try {
       const payload = { ...expenseForm, amount: amt, gst: Number(expenseForm.gst || 0) };
-      const res = await fetch(`${API}/expenses`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
+      const res = await api.post('/financial/expenses', payload);
       const data = res.data;
-      if (data.success) {
+      if (data?.success) {
         onAddNotification?.("Expense Added", `Expense of ₹${fmt(amt)} recorded.`, "success");
         setShowExpenseModal(false);
         setExpenseForm({
@@ -525,10 +521,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         });
         refreshAll();
       } else {
-        onAddNotification?.("Error", data.message, "danger");
+        onAddNotification?.("Error", data?.message || "Failed to record expense", "danger");
       }
     } catch (err) {
-      onAddNotification?.("Error", err.message, "danger");
+      onAddNotification?.("Error", err.response?.data?.message || err.message, "danger");
     }
   };
 
@@ -541,13 +537,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
     }
     try {
       const payload = { ...incomeForm, amount: amt };
-      const res = await fetch(`${API}/incomes`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
+      const res = await api.post('/financial/incomes', payload);
       const data = res.data;
-      if (data.success) {
+      if (data?.success) {
         onAddNotification?.("Income Logged", `Income of ₹${fmt(amt)} added.`, "success");
         setShowIncomeModal(false);
         setIncomeForm({
@@ -560,10 +552,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         });
         refreshAll();
       } else {
-        onAddNotification?.("Error", data.message, "danger");
+        onAddNotification?.("Error", data?.message || "Failed to log income", "danger");
       }
     } catch (err) {
-      onAddNotification?.("Error", err.message, "danger");
+      onAddNotification?.("Error", err.response?.data?.message || err.message, "danger");
     }
   };
 
@@ -576,13 +568,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
     }
     try {
       const payload = { ...paymentForm, amount: amt };
-      const res = await fetch(`${API}/payments`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
+      const res = await api.post('/financial/payments', payload);
       const data = res.data;
-      if (data.success) {
+      if (data?.success) {
         onAddNotification?.("Payment Disbursed", `Payment of ₹${fmt(amt)} logged.`, "success");
         setShowPaymentModal(false);
         setPaymentForm({
@@ -598,10 +586,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         });
         refreshAll();
       } else {
-        onAddNotification?.("Error", data.message, "danger");
+        onAddNotification?.("Error", data?.message || "Failed to record payment", "danger");
       }
     } catch (err) {
-      onAddNotification?.("Error", err.message, "danger");
+      onAddNotification?.("Error", err.response?.data?.message || err.message, "danger");
     }
   };
 
@@ -614,14 +602,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
     }
     try {
       const payload = { ...receiptForm, amount: amt };
-      const res = await fetch(`${API}/receipts`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
+      const res = await api.post('/financial/receipts', payload);
       const data = res.data;
-      if (data.success) {
-        onAddNotification?.("Receipt Issued", `Receipt ${data.data.receiptNo} created for ₹${fmt(amt)}.`, "success");
+      if (data?.success) {
+        onAddNotification?.("Receipt Issued", `Receipt ${data.data?.receiptNo || 'RCP'} created for ₹${fmt(amt)}.`, "success");
         setShowReceiptModal(false);
         setReceiptForm({
           customerName: "",
@@ -635,10 +619,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         });
         refreshAll();
       } else {
-        onAddNotification?.("Error", data.message, "danger");
+        onAddNotification?.("Error", data?.message || "Failed to create receipt", "danger");
       }
     } catch (err) {
-      onAddNotification?.("Error", err.message, "danger");
+      onAddNotification?.("Error", err.response?.data?.message || err.message, "danger");
     }
   };
 
@@ -651,13 +635,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
     }
     try {
       const payload = { ...cashBankForm, amount: amt };
-      const res = await fetch(`${API}/cash-bank-adjustment`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
+      const res = await api.post('/financial/cash-bank-adjustment', payload);
       const data = res.data;
-      if (data.success) {
+      if (data?.success) {
         onAddNotification?.("Adjustment Saved", `${cashBankForm.type} adjustment of ₹${fmt(amt)} recorded.`, "success");
         setShowCashBankModal(false);
         setCashBankForm({

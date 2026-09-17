@@ -3,6 +3,11 @@ const ApiResponse = require('../helpers/ApiResponse');
 const ReportService = require('../services/report.service');
 
 class ReportController {
+  static getDashboardAnalytics = asyncHandler(async (req, res) => {
+    const data = await ReportService.getDashboardAnalytics(req.tenantId);
+    return res.status(200).json(new ApiResponse(200, data, 'Enterprise dashboard analytics generated.'));
+  });
+
   static getSalesReport = asyncHandler(async (req, res) => {
     const { startDate, endDate } = req.query;
     const report = await ReportService.getSalesReport(startDate, endDate, req.tenantId);
@@ -15,9 +20,55 @@ class ReportController {
     return res.status(200).json(new ApiResponse(200, report, 'Purchase report generated.'));
   });
 
+  static getVendorReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getVendorReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Vendor report generated.'));
+  });
+
   static getStockReport = asyncHandler(async (req, res) => {
-    const report = await ReportService.getInventoryReport(req.tenantId);
-    return res.status(200).json(new ApiResponse(200, report, 'Stock summary report generated.'));
+    const type = req.query.type || req.query.reportType || req.params.type;
+    const report = await ReportService.getInventoryReport(type, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Inventory report generated.'));
+  });
+
+  static getStockAgingReport = asyncHandler(async (req, res) => {
+    const report = await ReportService.getInventoryReport('stock_aging', req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Stock aging report generated.'));
+  });
+
+  static getFastMovingReport = asyncHandler(async (req, res) => {
+    const report = await ReportService.getInventoryReport('fast_moving', req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Fast moving products report generated.'));
+  });
+
+  static getSlowMovingReport = asyncHandler(async (req, res) => {
+    const report = await ReportService.getInventoryReport('slow_moving', req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Slow moving products report generated.'));
+  });
+
+  static getEmployeePerformanceReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getEmployeePerformanceReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Employee performance report generated.'));
+  });
+
+  static getAttendanceReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getAttendanceReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Attendance report generated.'));
+  });
+
+  static getFinancialSummaryReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getFinancialSummaryReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Financial summary report generated.'));
+  });
+
+  static getExpensesReport = asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getExpensesReport(startDate, endDate, req.tenantId);
+    return res.status(200).json(new ApiResponse(200, report, 'Expenses report generated.'));
   });
 
   static getGSTReport = asyncHandler(async (req, res) => {

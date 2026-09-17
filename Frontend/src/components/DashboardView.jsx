@@ -443,7 +443,7 @@ export const DashboardView = ({
     const userObj = currentUser?.user || currentUser || {};
     const userRole = (userObj.role || currentUser?.role || '').toLowerCase();
     const userName = (userObj.name || currentUser?.name || '').toLowerCase();
-    const isStaff = !["admin", "businessadmin", "superadmin"].includes(userRole) && !userName.includes("dhruv");
+    const isStaff = !["admin", "businessadmin", "superadmin", "accountant", "accounts"].includes(userRole) && !userRole.includes("account") && !userName.includes("dhruv");
     if (isStaff) {
       const fetchStaffSummary = async () => {
         try {
@@ -1066,7 +1066,7 @@ export const DashboardView = ({
   const userObj = currentUser?.user || currentUser || {};
   const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
   const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
-  const isStaffView = !["admin", "businessadmin", "superadmin", "tenant_admin", "tenantadmin", "tenant_owner", "tenantowner", "owner"].includes(curRole) && !curRole.includes("admin") && !curRole.includes("owner") && !curName.includes("dhruv");
+  const isStaffView = !["admin", "businessadmin", "superadmin", "tenant_admin", "tenantadmin", "tenant_owner", "tenantowner", "owner", "accountant", "accounts"].includes(curRole) && !curRole.includes("admin") && !curRole.includes("owner") && !curRole.includes("account") && !curName.includes("dhruv");
 
   if (isStaffView) {
     const curId = userObj.id || userObj._id || userObj.employeeId || currentUser?.id || currentUser?._id || currentUser?.employeeId;

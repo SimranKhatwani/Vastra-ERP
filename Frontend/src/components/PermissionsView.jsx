@@ -252,8 +252,9 @@ export const PermissionsView = ({
     },
     accountant: {
       allowedModules: [
-        "dashboard", "purchase", "goods-return", "financial-management",
-        "accounts-treasury", "accounting", "reports", "attendance-dashboard"
+        "dashboard", "summary-dashboard", "purchase", "goods-return", "financial-management",
+        "accounts-treasury", "accounting", "reports", "customers", "vendor-communication",
+        "staff-activity", "attendance-dashboard"
       ],
       moduleAccessLevels: {},
       tabPermissions: {}

@@ -80,6 +80,60 @@ const authenticate = asyncHandler(async (req, res, next) => {
     const role = user.roleId;
     let permissions = role ? role.permissions : [];
 
+    // Define mapping of module names to fine-grained permission tags
+    const moduleToPermissions = {
+      dashboard: ['owner.dashboard', 'search.read', 'barcode.read', 'alteration.read', 'billing.read', 'crm.read', 'ledger.read', 'payment.read', 'user.read', 'vendor.read', 'purchase.read', 'product.read', 'inventory.read_all', 'inventory.read', 'goods_return.read'],
+      'summary-dashboard': ['summary_dashboard.read', 'owner.dashboard', 'alteration.read', 'search.read', 'billing.read', 'crm.read', 'purchase.read'],
+      billing: ['billing.create', 'billing.read', 'billing.cancel', 'billing.discount', 'payment.collect', 'payment.read', 'payment.refund', 'alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete', 'crm.read', 'crm.create', 'user.read', 'product.read'],
+      articulation: ['alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete', 'user.read', 'crm.read'],
+      commissions: ['ledger.read', 'ledger.adjust', 'user.read', 'billing.read'],
+      products: ['product.create', 'product.read', 'product.update', 'product.delete', 'brand.create', 'brand.read', 'brand.update', 'brand.delete', 'category.create', 'category.read', 'category.update', 'category.delete', 'firm.create', 'firm.read', 'firm.update', 'firm.delete', 'warehouse.create', 'warehouse.read', 'warehouse.update', 'warehouse.delete', 'vendor.create', 'vendor.read', 'vendor.update', 'vendor.delete'],
+      inventory: ['inventory.read_all', 'inventory.create', 'inventory.read', 'inventory.update', 'inventory.adjust', 'inventory.transfer', 'inventory.lifecycle.manage', 'product.read'],
+      'stock-management': ['inventory.read_all', 'inventory.read', 'inventory.adjust', 'inventory.transfer', 'product.read'],
+      'billing-sales': ['billing.read', 'payment.read', 'ledger.read', 'crm.read', 'user.read'],
+      'discount-offers': ['billing.discount'],
+      purchase: ['purchase.create', 'purchase.read', 'purchase.update', 'purchase.approve', 'purchase.cancel', 'purchase.read_items', 'vendor.read', 'vendor.create', 'vendor.update', 'product.read'],
+      'vendor-communication': ['vendor.read', 'vendor.update'],
+      'financial-management': ['ledger.read', 'ledger.adjust', 'billing.read', 'payment.read', 'payment.collect', 'payment.refund', 'crm.read', 'purchase.read', 'reports.sales', 'reports.gst', 'user.read', 'vendor.read'],
+      'accounts-treasury': ['payment.read', 'payment.collect', 'payment.refund', 'ledger.read', 'ledger.adjust', 'billing.read', 'crm.read', 'purchase.read', 'user.read', 'vendor.read'],
+      customers: ['crm.create', 'crm.read', 'crm.update', 'crm.delete', 'billing.read', 'ledger.read', 'payment.read'],
+      employees: ['user.read', 'user.create', 'user.update', 'user.delete'],
+      staff: ['user.read', 'user.create', 'user.update', 'user.delete'],
+      accounting: ['ledger.read', 'ledger.adjust', 'payment.read', 'payment.collect', 'payment.refund', 'billing.read', 'crm.read', 'purchase.read', 'reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst', 'user.read', 'vendor.read', 'product.read', 'inventory.read_all', 'inventory.read', 'goods_return.read', 'alteration.read', 'return.read'],
+      reports: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst', 'billing.read', 'purchase.read', 'crm.read', 'ledger.read', 'user.read', 'vendor.read', 'product.read', 'inventory.read_all', 'inventory.read', 'alteration.read', 'return.read', 'payment.read', 'goods_return.read'],
+      'goods-return': ['goods_return.read', 'goods_return.create', 'goods_return.update', 'goods_return.approve', 'goods_return.cancel', 'vendor.read', 'product.read'],
+      permissions: ['role.create', 'role.read', 'role.update', 'role.delete'],
+      'staff-activity': ['audit.read'],
+      'audit-log': ['audit.read'],
+      'attendance-dashboard': ['attendance.read', 'attendance.punch', 'user.read'],
+      'manager-review': ['attendance.approve', 'attendance.review', 'user.read'],
+      'attendance-settings': ['attendance.policy'],
+      settings: ['settings.update']
+    };
+
+    const defaultRoleModules = {
+      admin: ['*'],
+      manager: ['*'],
+      accountant: [
+        'dashboard',
+        'summary-dashboard',
+        'purchase',
+        'goods-return',
+        'financial-management',
+        'accounts-treasury',
+        'accounting',
+        'reports',
+        'customers',
+        'vendor-communication',
+        'staff-activity',
+        'attendance-dashboard'
+      ],
+      salesperson: ['dashboard', 'summary-dashboard', 'billing', 'billing-sales', 'products', 'customers', 'articulation', 'attendance-dashboard'],
+      cashier: ['dashboard', 'billing', 'billing-sales', 'discount-offers', 'customers', 'attendance-dashboard'],
+      tailor: ['dashboard', 'articulation', 'attendance-dashboard'],
+      worker: ['dashboard', 'attendance-dashboard']
+    };
+
     // Sync with custom matrix permissions if set for the tenant
     try {
       const PermissionMatrix = require('../models/PermissionMatrix');
@@ -93,37 +147,6 @@ const authenticate = asyncHandler(async (req, res, next) => {
         // Build dynamic permissions array based on the matrix settings
         const { allowedModules = [], moduleAccessLevels = {}, tabPermissions = {} } = matrix;
         const mappedPermissions = [];
-
-        // Define mapping of module names to fine-grained permission tags
-        const moduleToPermissions = {
-          dashboard: ['owner.dashboard', 'search.read', 'barcode.read', 'alteration.read', 'billing.read', 'crm.read', 'ledger.read', 'payment.read'],
-          'summary-dashboard': ['summary_dashboard.read', 'owner.dashboard', 'alteration.read', 'search.read'],
-          billing: ['billing.create', 'billing.read', 'billing.cancel', 'billing.discount', 'payment.collect', 'payment.read', 'payment.refund', 'alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
-          articulation: ['alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
-          commissions: ['ledger.read', 'ledger.adjust'],
-          products: ['product.create', 'product.read', 'product.update', 'product.delete', 'brand.create', 'brand.read', 'brand.update', 'brand.delete', 'category.create', 'category.read', 'category.update', 'category.delete', 'firm.create', 'firm.read', 'firm.update', 'firm.delete', 'warehouse.create', 'warehouse.read', 'warehouse.update', 'warehouse.delete', 'vendor.create', 'vendor.read', 'vendor.update', 'vendor.delete'],
-          inventory: ['inventory.read_all', 'inventory.create', 'inventory.read', 'inventory.update', 'inventory.adjust', 'inventory.transfer', 'inventory.lifecycle.manage'],
-          'stock-management': ['inventory.read_all', 'inventory.read', 'inventory.adjust', 'inventory.transfer'],
-          'billing-sales': ['billing.read', 'payment.read', 'ledger.read'],
-          'discount-offers': ['billing.discount'],
-          purchase: ['purchase.create', 'purchase.read', 'purchase.update', 'purchase.approve', 'purchase.cancel', 'purchase.read_items'],
-          'vendor-communication': ['vendor.read', 'vendor.update'],
-          'financial-management': ['ledger.read', 'ledger.adjust', 'billing.read', 'payment.read', 'crm.read', 'purchase.read', 'reports.sales', 'reports.gst'],
-          'accounts-treasury': ['payment.read', 'ledger.read', 'billing.read', 'crm.read'],
-          customers: ['crm.create', 'crm.read', 'crm.update', 'crm.delete'],
-          employees: ['user.read', 'user.create', 'user.update', 'user.delete'],
-          staff: ['user.read', 'user.create', 'user.update', 'user.delete'],
-          accounting: ['ledger.read', 'payment.read', 'billing.read', 'crm.read', 'purchase.read', 'reports.sales', 'reports.gst'],
-          reports: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst', 'billing.read', 'purchase.read', 'crm.read', 'ledger.read'],
-          'goods-return': ['goods_return.read', 'goods_return.create', 'goods_return.update', 'goods_return.cancel'],
-          permissions: ['role.create', 'role.read', 'role.update', 'role.delete'],
-          'staff-activity': ['audit.read'],
-          'audit-log': ['audit.read'],
-          'attendance-dashboard': ['attendance.read', 'attendance.punch'],
-          'manager-review': ['attendance.approve', 'attendance.review'],
-          'attendance-settings': ['attendance.policy'],
-          settings: ['settings.update']
-        };
 
         // Combine base allowed modules and explicit levels
         const activeModules = new Set(allowedModules);
@@ -168,6 +191,21 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
         if (mappedPermissions.length > 0) {
           permissions = [...new Set(mappedPermissions)];
+        }
+      } else {
+        // No custom matrix saved in DB yet — apply standard default role permissions
+        if (normalizedRoleName === 'admin' || normalizedRoleName === 'manager') {
+          permissions = ['*'];
+        } else {
+          const defaultMods = defaultRoleModules[normalizedRoleName] || ['dashboard', 'attendance-dashboard'];
+          const mappedPermissions = [];
+          defaultMods.forEach(mod => {
+            const perms = moduleToPermissions[mod] || [];
+            mappedPermissions.push(...perms);
+          });
+          if (mappedPermissions.length > 0) {
+            permissions = [...new Set([...permissions, ...mappedPermissions])];
+          }
         }
       }
     } catch (e) {

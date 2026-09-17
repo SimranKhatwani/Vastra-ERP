@@ -748,6 +748,10 @@ export default function App() {
           "accounts-treasury",
           "accounting",
           "reports",
+          "customers",
+          "vendor-communication",
+          "staff-activity",
+          "attendance-dashboard"
         ];
         break;
       default:
@@ -2201,6 +2205,14 @@ export default function App() {
               <AccountingView
                 expenses={expenses}
                 invoices={invoices}
+                products={products}
+                purchaseOrders={purchaseOrders}
+                purchaseInvoices={purchaseInvoices}
+                vendors={vendors}
+                customers={customers}
+                employees={employees}
+                currentUser={currentUser}
+                setActiveModule={setActiveModule}
                 onAddExpense={handleAddExpense}
                 onAddNotification={addToastNotification}
               />
@@ -2213,6 +2225,8 @@ export default function App() {
                 products={products}
                 employees={employees}
                 customers={customers}
+                expenses={expenses}
+                currentUser={currentUser}
                 setActiveModule={setActiveModule}
                 onAddNotification={addToastNotification}
               />
