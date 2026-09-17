@@ -526,8 +526,9 @@ class SummaryDashboardService {
     });
 
     let targetSalesmanId = salesmanId;
-    if (!targetSalesmanId && currentUser && currentUser.role?.toLowerCase() === 'salesperson') {
-      const match = validSalesmenDocs.find(s => s.userId?.toString() === currentUser.id || s._id?.toString() === currentUser.id || s.name?.toLowerCase() === currentUser.name?.toLowerCase());
+    if (!targetSalesmanId && currentUser && ['salesperson', 'sales', 'worker', 'staff'].includes(currentUser.role?.toLowerCase())) {
+      const match = (salesmenDocs || []).find(s => s.userId?.toString() === currentUser.id || s._id?.toString() === currentUser.id || s.name?.toLowerCase() === currentUser.name?.toLowerCase()) ||
+                    (allStaffUsers || []).find(u => u._id?.toString() === currentUser.id || u.name?.toLowerCase() === currentUser.name?.toLowerCase());
       if (match) targetSalesmanId = match._id.toString();
     }
 
@@ -538,15 +539,17 @@ class SummaryDashboardService {
         return i.delegatedTo === 'Counter Salesman' || pssm.delegatedTo === 'Counter Salesman';
       });
     } else if (targetSalesmanId && targetSalesmanId !== 'ALL') {
-      const selectedStaff = validSalesmenDocs.find(s => s._id.toString() === targetSalesmanId);
-      const staffName = selectedStaff?.name?.toLowerCase().trim();
+      const selectedStaff = (validSalesmenDocs || []).find(s => s._id.toString() === targetSalesmanId) ||
+                            (salesmenDocs || []).find(s => s._id.toString() === targetSalesmanId) ||
+                            (allStaffUsers || []).find(u => u._id.toString() === targetSalesmanId);
+      const staffName = selectedStaff?.name?.toLowerCase().trim() || (currentUser?.name || '').toLowerCase().trim();
 
       filteredItems = allItems.filter(i => {
         const pssm = i.pssmId || {};
-        const iSalesId = i.salesmanId?.toString();
-        const pSalesId = pssm.salesmanId?.toString();
-        const iSalesName = (i.salesmanName || '').toLowerCase().trim();
-        const pSalesName = (pssm.salesmanName || '').toLowerCase().trim();
+        const iSalesId = (i.salesmanId || i.workerId || i.employeeId)?.toString();
+        const pSalesId = (pssm.salesmanId || pssm.workerId || pssm.employeeId)?.toString();
+        const iSalesName = (i.salesmanName || i.workerName || i.employeeName || '').toLowerCase().trim();
+        const pSalesName = (pssm.salesmanName || pssm.workerName || pssm.employeeName || '').toLowerCase().trim();
 
         return (iSalesId === targetSalesmanId || pSalesId === targetSalesmanId || (staffName && (iSalesName === staffName || pSalesName === staffName)));
       });

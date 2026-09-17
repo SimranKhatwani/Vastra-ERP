@@ -477,7 +477,7 @@ export const DashboardView = ({
     const userObj = currentUser?.user || currentUser || {};
     const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
     const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
-    const isTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker', 'karigar'].some(r => curRole.includes(r));
+    const isTailor = ['tailor', 'mastertailor', 'alterationmaster', 'darji', 'karigar', 'stitcher'].some(r => curRole.includes(r)) && !['worker', 'floorworker', 'productionworker', 'salesperson', 'salesman'].some(r => curRole.includes(r));
     if (isTailor && curName && tailorSummaries.length > 0 && selectedTailorFilter === "All Tailors") {
       const match = tailorSummaries.find(t => {
         const tName = (t.tailorName || '').toLowerCase().trim();
@@ -1132,12 +1132,13 @@ export const DashboardView = ({
 
     const rawRoleStr = (currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || staffApiStats?.designation || staffApiStats?.role || '').toLowerCase();
 
-    // Tailors have a dedicated Tailor Workload, Capacity & Delivery Dashboard
-    const isTailor = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker', 'karigar'].some(r => rawRoleStr.includes(r));
+    // Tailors have a dedicated Tailor Workload, Capacity & Delivery Dashboard (ONLY actual tailors)
+    const isTailor = ['tailor', 'mastertailor', 'alterationmaster', 'darji', 'karigar'].some(r => rawRoleStr.includes(r)) && !['worker', 'floorworker', 'productionworker', 'salesperson', 'salesman', 'sales'].some(r => rawRoleStr.includes(r));
     const isManager = ['manager', 'store manager', 'operations manager', 'floor manager', 'production manager'].some(r => rawRoleStr.includes(r) || curRole.includes(r));
-    const isSalesperson = ['salesperson', 'sales', 'sales executive'].some(r => rawRoleStr.includes(r)) && !isTailor && !isManager;
-    const hideCommissionUI = !isSalesperson;
-    const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || 'Staff';
+    const isWorker = ['worker', 'floorworker', 'productionworker', 'store worker', 'helper'].some(r => rawRoleStr.includes(r));
+    const isSalesperson = (['salesperson', 'sales', 'sales executive', 'salesman'].some(r => rawRoleStr.includes(r)) || isWorker) && !isTailor && !isManager;
+    const hideCommissionUI = false;
+    const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || (isWorker ? 'Worker' : 'Salesperson');
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
 
