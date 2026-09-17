@@ -96,7 +96,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
         // Define mapping of module names to fine-grained permission tags
         const moduleToPermissions = {
-          dashboard: ['owner.dashboard', 'search.read', 'barcode.read', 'alteration.read'],
+          dashboard: ['owner.dashboard', 'search.read', 'barcode.read', 'alteration.read', 'billing.read', 'crm.read', 'ledger.read', 'payment.read'],
           'summary-dashboard': ['summary_dashboard.read', 'owner.dashboard', 'alteration.read', 'search.read'],
           billing: ['billing.create', 'billing.read', 'billing.cancel', 'billing.discount', 'payment.collect', 'payment.read', 'payment.refund', 'alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
           articulation: ['alteration.create', 'alteration.read', 'alteration.update', 'alteration.complete'],
@@ -108,13 +108,13 @@ const authenticate = asyncHandler(async (req, res, next) => {
           'discount-offers': ['billing.discount'],
           purchase: ['purchase.create', 'purchase.read', 'purchase.update', 'purchase.approve', 'purchase.cancel', 'purchase.read_items'],
           'vendor-communication': ['vendor.read', 'vendor.update'],
-          'financial-management': ['ledger.read', 'ledger.adjust'],
-          'accounts-treasury': ['payment.read', 'ledger.read'],
+          'financial-management': ['ledger.read', 'ledger.adjust', 'billing.read', 'payment.read', 'crm.read', 'purchase.read', 'reports.sales', 'reports.gst'],
+          'accounts-treasury': ['payment.read', 'ledger.read', 'billing.read', 'crm.read'],
           customers: ['crm.create', 'crm.read', 'crm.update', 'crm.delete'],
           employees: ['user.read', 'user.create', 'user.update', 'user.delete'],
           staff: ['user.read', 'user.create', 'user.update', 'user.delete'],
-          accounting: ['ledger.read', 'payment.read'],
-          reports: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst'],
+          accounting: ['ledger.read', 'payment.read', 'billing.read', 'crm.read', 'purchase.read', 'reports.sales', 'reports.gst'],
+          reports: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.gst', 'billing.read', 'purchase.read', 'crm.read', 'ledger.read'],
           'goods-return': ['goods_return.read', 'goods_return.create', 'goods_return.update', 'goods_return.cancel'],
           permissions: ['role.create', 'role.read', 'role.update', 'role.delete'],
           'staff-activity': ['audit.read'],

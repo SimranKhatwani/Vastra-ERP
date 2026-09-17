@@ -51,7 +51,16 @@ import {
   ShieldCheck,
   Star,
   BarChart3,
-  Target
+  Target,
+  Wallet,
+  CreditCard,
+  Landmark,
+  ArrowUpRight,
+  ArrowDownRight,
+  Scale,
+  PiggyBank,
+  FileSpreadsheet,
+  Filter
 } from "lucide-react";
 import { MiniAreaChart, PremiumBarChart, DonutChart } from "./Charts";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -152,6 +161,9 @@ export const DashboardView = ({
   const [dbStaffList, setDbStaffList] = React.useState([]);
   const [dbEmployeesList, setDbEmployeesList] = React.useState([]);
   const [dbInvoicesList, setDbInvoicesList] = React.useState([]);
+  const [dbExpensesList, setDbExpensesList] = React.useState([]);
+  const [dbCustomersList, setDbCustomersList] = React.useState([]);
+  const [dbPurchaseOrdersList, setDbPurchaseOrdersList] = React.useState([]);
   const [staffApiStats, setStaffApiStats] = React.useState(null);
   const [tailorJobs, setTailorJobs] = React.useState([]);
   const [loadingTailorJobs, setLoadingTailorJobs] = React.useState(false);
@@ -159,7 +171,7 @@ export const DashboardView = ({
   const [managerMetrics, setManagerMetrics] = React.useState(null);
   const [managerTailorSearch, setManagerTailorSearch] = React.useState("");
 
-  // Salesperson Ownership Dashboard states
+  const [accountantPeriod, setAccountantPeriod] = React.useState("this_month");
   const [salesmanDashboardData, setSalesmanDashboardData] = React.useState(null);
   const [loadingSalesmanDashboard, setLoadingSalesmanDashboard] = React.useState(false);
   const [salesmanScanBarcode, setSalesmanScanBarcode] = React.useState("");
@@ -321,15 +333,33 @@ export const DashboardView = ({
           return null;
         };
 
-        const [staffData, empsData, invsData] = await Promise.all([
+        const [staffData, empsData, invsData, expsData, custsData, posData] = await Promise.all([
           fetchQuietly("/staff"),
           fetchQuietly("/employees"),
-          fetchQuietly("/invoices")
+          fetchQuietly("/billing?limit=5000"),
+          fetchQuietly("/expenses"),
+          fetchQuietly("/customers"),
+          fetchQuietly("/purchase-orders")
         ]);
 
         if (staffData) setDbStaffList(staffData);
         if (empsData) setDbEmployeesList(empsData);
-        if (invsData) setDbInvoicesList(invsData);
+        if (invsData) {
+          const rawInvs = Array.isArray(invsData) ? invsData : (invsData.bills || invsData.invoices || []);
+          setDbInvoicesList(rawInvs);
+        }
+        if (expsData) {
+          const rawExps = Array.isArray(expsData) ? expsData : (expsData.expenses || []);
+          setDbExpensesList(rawExps);
+        }
+        if (custsData) {
+          const rawCusts = Array.isArray(custsData) ? custsData : (custsData.customers || []);
+          setDbCustomersList(rawCusts);
+        }
+        if (posData) {
+          const rawPos = Array.isArray(posData) ? posData : (posData.bills || posData.orders || []);
+          setDbPurchaseOrdersList(rawPos);
+        }
       } catch (err) {
         // Quietly handle background fetch errors
       }
@@ -1132,15 +1162,562 @@ export const DashboardView = ({
 
     const rawRoleStr = (currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || staffApiStats?.designation || staffApiStats?.role || '').toLowerCase();
 
-    // Tailors have a dedicated Tailor Workload, Capacity & Delivery Dashboard (ONLY actual tailors)
-    const isTailor = ['tailor', 'mastertailor', 'alterationmaster', 'darji', 'karigar'].some(r => rawRoleStr.includes(r)) && !['worker', 'floorworker', 'productionworker', 'salesperson', 'salesman', 'sales'].some(r => rawRoleStr.includes(r));
-    const isManager = ['manager', 'store manager', 'operations manager', 'floor manager', 'production manager'].some(r => rawRoleStr.includes(r) || curRole.includes(r));
-    const isWorker = ['worker', 'floorworker', 'productionworker', 'store worker', 'helper'].some(r => rawRoleStr.includes(r));
-    const isSalesperson = (['salesperson', 'sales', 'sales executive', 'salesman'].some(r => rawRoleStr.includes(r)) || isWorker) && !isTailor && !isManager;
+    // Specific role detections
+    const isAccountant = ['accountant', 'accounts', 'ca', 'finance', 'bookkeeper', 'audit', 'tax'].some(r => rawRoleStr.includes(r) || curRole.includes(r));
+    const isTailor = ['tailor', 'mastertailor', 'alterationmaster', 'darji', 'karigar'].some(r => rawRoleStr.includes(r)) && !['worker', 'floorworker', 'productionworker', 'salesperson', 'salesman', 'sales', 'accountant'].some(r => rawRoleStr.includes(r));
+    const isManager = ['manager', 'store manager', 'operations manager', 'floor manager', 'production manager'].some(r => rawRoleStr.includes(r) || curRole.includes(r)) && !isAccountant;
+    const isWorker = ['worker', 'floorworker', 'productionworker', 'store worker', 'helper'].some(r => rawRoleStr.includes(r)) && !isAccountant;
+    const isSalesperson = (['salesperson', 'sales', 'sales executive', 'salesman'].some(r => rawRoleStr.includes(r)) || isWorker) && !isTailor && !isManager && !isAccountant;
     const hideCommissionUI = false;
-    const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || (isWorker ? 'Worker' : 'Salesperson');
+    const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || (isAccountant ? 'Accountant' : isWorker ? 'Worker' : 'Salesperson');
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
+
+    // =========================================================================
+    // 💼 ACCOUNTANT / FINANCIAL DASHBOARD
+    // =========================================================================
+    if (isAccountant) {
+      const isDateInSelectedPeriod = (dateVal, period) => {
+        if (!dateVal) return period === 'all';
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return period === 'all';
+
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        if (period === 'today') {
+          return d >= todayStart && d <= todayEnd;
+        }
+        if (period === 'yesterday') {
+          const yStart = new Date(todayStart);
+          yStart.setDate(yStart.getDate() - 1);
+          const yEnd = new Date(todayEnd);
+          yEnd.setDate(yEnd.getDate() - 1);
+          return d >= yStart && d <= yEnd;
+        }
+        if (period === 'this_week') {
+          const dayOfWeek = todayStart.getDay();
+          const distanceToMonday = (dayOfWeek + 6) % 7;
+          const mondayStart = new Date(todayStart);
+          mondayStart.setDate(mondayStart.getDate() - distanceToMonday);
+          return d >= mondayStart;
+        }
+        if (period === 'last_7_days') {
+          const past7 = new Date(todayStart);
+          past7.setDate(past7.getDate() - 7);
+          return d >= past7;
+        }
+        if (period === 'this_month') {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+          return d >= startOfMonth;
+        }
+        if (period === 'last_30_days') {
+          const past30 = new Date(todayStart);
+          past30.setDate(past30.getDate() - 30);
+          return d >= past30;
+        }
+        if (period === 'this_quarter') {
+          const qMonth = Math.floor(now.getMonth() / 3) * 3;
+          const startOfQuarter = new Date(now.getFullYear(), qMonth, 1, 0, 0, 0, 0);
+          return d >= startOfQuarter;
+        }
+        if (period === 'this_year') {
+          const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+          return d >= startOfYear;
+        }
+        return true; // 'all'
+      };
+
+      const periodLabels = {
+        today: "Today",
+        yesterday: "Yesterday",
+        this_week: "This Week",
+        last_7_days: "Last 7 Days",
+        this_month: "This Month",
+        last_30_days: "Last 30 Days",
+        this_quarter: "This Quarter",
+        this_year: "This Financial Year",
+        all: "All Time (Historical)"
+      };
+
+      const effectiveInvoices = (invoices && invoices.length > 0) ? invoices : (dbInvoicesList || []);
+      const effectiveExpenses = (expenses && expenses.length > 0) ? expenses : (dbExpensesList || []);
+      const effectiveCustomers = (customers && customers.length > 0) ? customers : (dbCustomersList || []);
+      const effectivePurchaseOrders = (purchaseOrders && purchaseOrders.length > 0) ? purchaseOrders : (dbPurchaseOrdersList || []);
+
+      const filteredInvoices = (effectiveInvoices || []).filter(inv => isDateInSelectedPeriod(inv.createdAt || inv.billDate || inv.date, accountantPeriod));
+      const filteredExpenses = (effectiveExpenses || []).filter(exp => isDateInSelectedPeriod(exp.createdAt || exp.date, accountantPeriod));
+
+      const totalGrossRevenue = filteredInvoices.reduce((sum, inv) => sum + (Number(inv.grandTotal) || 0), 0);
+      const todayInvoices = (effectiveInvoices || []).filter(inv => toDateStr(inv.createdAt || inv.billDate || inv.date) === todayStr);
+      const todayGrossRevenue = todayInvoices.reduce((sum, inv) => sum + (Number(inv.grandTotal) || 0), 0);
+      const totalBillsCount = filteredInvoices.length;
+      const todayBillsCount = todayInvoices.length;
+
+      const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+
+      const netOperatingProfit = totalGrossRevenue - totalExpensesAmount;
+      const profitMarginPct = totalGrossRevenue > 0 ? Math.round((netOperatingProfit / totalGrossRevenue) * 100) : 0;
+
+      const totalReceivables = (effectiveCustomers || []).reduce((sum, cust) => sum + (Number(cust.outstandingBalance) || 0), 0) ||
+        filteredInvoices.filter(inv => inv.paymentMethod === 'Credit' || inv.status === 'UNPAID' || inv.status === 'PARTIAL').reduce((sum, inv) => sum + (Number(inv.grandTotal) || 0), 0);
+      const pendingReceivablesCount = (effectiveCustomers || []).filter(c => Number(c.outstandingBalance) > 0).length || filteredInvoices.filter(i => i.paymentMethod === 'Credit').length;
+
+      const totalPayables = (effectivePurchaseOrders || []).filter(po => po.paymentStatus !== 'Paid' && po.status !== 'CANCELLED').reduce((sum, po) => sum + (Number(po.totalAmount || po.grandTotal) || 0), 0);
+      const pendingPayablesCount = (effectivePurchaseOrders || []).filter(po => po.paymentStatus !== 'Paid' && po.status !== 'CANCELLED').length;
+
+      const totalCustomerAdvances = (effectiveCustomers || []).reduce((sum, cust) => sum + (Number(cust.prepaidAdvance || cust.walletAdvance) || 0), 0);
+
+      let cashTotal = 0;
+      let upiTotal = 0;
+      let cardTotal = 0;
+      let creditTotal = 0;
+      let bankTotal = 0;
+
+      filteredInvoices.forEach(inv => {
+        const amt = Number(inv.grandTotal) || 0;
+        const mode = (inv.paymentMethod || '').toLowerCase();
+        if (mode.includes('cash')) cashTotal += amt;
+        else if (mode.includes('upi') || mode.includes('qr') || mode.includes('gpay') || mode.includes('phonepe') || mode.includes('paytm')) upiTotal += amt;
+        else if (mode.includes('card') || mode.includes('pos') || mode.includes('debit') || mode.includes('credit card')) cardTotal += amt;
+        else if (mode.includes('credit') || mode.includes('udhaar') || mode.includes('ledger') || mode.includes('pending')) creditTotal += amt;
+        else bankTotal += amt;
+      });
+
+      const totalCollectedModes = (cashTotal + upiTotal + cardTotal + creditTotal + bankTotal) || 1;
+      const cashPct = Math.round((cashTotal / totalCollectedModes) * 100);
+      const upiPct = Math.round((upiTotal / totalCollectedModes) * 100);
+      const cardPct = Math.round((cardTotal / totalCollectedModes) * 100);
+      const creditPct = Math.round((creditTotal / totalCollectedModes) * 100);
+      const bankPct = Math.round((bankTotal / totalCollectedModes) * 100);
+
+      const expenseCatMap = {};
+      filteredExpenses.forEach(exp => {
+        const cat = exp.category || 'General Operations';
+        expenseCatMap[cat] = (expenseCatMap[cat] || 0) + (Number(exp.amount) || 0);
+      });
+      const expenseCategories = Object.entries(expenseCatMap)
+        .map(([category, amount]) => ({
+          category,
+          amount,
+          pct: totalExpensesAmount > 0 ? Math.round((amount / totalExpensesAmount) * 100) : 0
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const recentTransactions = [
+        ...filteredInvoices.slice(0, 15).map(inv => ({
+          id: inv.billNo || inv.invoiceNo || inv._id,
+          type: 'INCOME',
+          title: `Sales Invoice #${inv.billNo || inv.invoiceNo || 'INV'}`,
+          party: inv.customerName || inv.customer?.name || 'Walk-in Customer',
+          date: inv.createdAt || inv.billDate || inv.date,
+          amount: inv.grandTotal || 0,
+          paymentMethod: inv.paymentMethod || 'Cash',
+          status: inv.paymentMethod === 'Credit' ? 'UNPAID' : 'PAID',
+        })),
+        ...filteredExpenses.slice(0, 15).map(exp => ({
+          id: exp.voucherNo || exp._id,
+          type: 'EXPENSE',
+          title: `Expense: ${exp.category || 'Voucher'}`,
+          party: exp.vendor || exp.payee || exp.description || 'Operating Cost',
+          date: exp.createdAt || exp.date,
+          amount: exp.amount || 0,
+          paymentMethod: exp.paymentMethod || 'Bank / Cash',
+          status: exp.status || 'PAID',
+        }))
+      ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 15);
+
+      return (
+        <div className="space-y-6 animate-fade-in pb-12" id="accountant-dashboard-view-root">
+          {/* Welcome Header & Period Controls */}
+          <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-mono border border-emerald-500/30 capitalize">
+                    Accountant Portal
+                  </span>
+                  <span className="text-slate-400 text-xs font-mono">
+                    Financial Command Center
+                  </span>
+                </div>
+                <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+                  Welcome back, {currentUser.name || userObj.name || "Bhavesh"}
+                </h1>
+                <p className="text-sm text-slate-300">
+                  Real-time financial telemetry, cashflow metrics, daily ledger reconciliations, and expense summaries.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Period Dropdown Selector */}
+                <div className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 shadow-inner">
+                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs text-slate-300 font-bold">Timeframe:</span>
+                  <select
+                    value={accountantPeriod}
+                    onChange={(e) => setAccountantPeriod(e.target.value)}
+                    className="bg-slate-900 text-white text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer font-mono"
+                  >
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="this_week">This Week (Mon-Today)</option>
+                    <option value="last_7_days">Last 7 Days</option>
+                    <option value="this_month">This Month</option>
+                    <option value="last_30_days">Last 30 Days</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time (Historical)</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab("accounting")}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-md"
+                >
+                  <Landmark className="w-4 h-4" />
+                  <span>General Ledger ➔</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab("financial-management")}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-md"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>Expense Hub</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Period Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-800">
+              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mr-1">
+                Quick Filter:
+              </span>
+              {[
+                { id: "today", label: "Today" },
+                { id: "yesterday", label: "Yesterday" },
+                { id: "this_week", label: "This Week" },
+                { id: "this_month", label: "This Month" },
+                { id: "last_30_days", label: "Last 30 Days" },
+                { id: "this_year", label: "This Year" },
+                { id: "all", label: "All Time" },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setAccountantPeriod(p.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    accountantPeriod === p.id
+                      ? "bg-emerald-500 text-slate-950 shadow-xs"
+                      : "bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/60"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+
+              <div className="ml-auto text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-3 py-1 rounded-lg">
+                Active: <strong>{periodLabels[accountantPeriod] || accountantPeriod}</strong> ({filteredInvoices.length} Bills, {filteredExpenses.length} Vouchers)
+              </div>
+            </div>
+          </div>
+
+          {/* Core Financial KPIs Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            {/* 1. Total Billed Revenue */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gross Billed Sales</span>
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-slate-900 font-sans">
+                  ₹{Number(totalGrossRevenue || 0).toLocaleString("en-IN")}
+                </div>
+                <p className="text-[10px] text-emerald-700 font-medium mt-1">
+                  Today: ₹{Number(todayGrossRevenue || 0).toLocaleString("en-IN")} ({todayBillsCount} bills)
+                </p>
+              </div>
+            </div>
+
+            {/* 2. Total Operational Expenses */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Expenses</span>
+                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                  <Receipt className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-rose-600 font-sans">
+                  ₹{Number(totalExpensesAmount || 0).toLocaleString("en-IN")}
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium mt-1">
+                  {filteredExpenses.length} recorded vouchers
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Net Operating Profit */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all bg-gradient-to-br from-white to-indigo-50/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Net Operating Profit</span>
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-indigo-900 font-sans">
+                  ₹{Number(netOperatingProfit || 0).toLocaleString("en-IN")}
+                </div>
+                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md inline-block mt-1">
+                  {profitMarginPct}% Operating Margin
+                </span>
+              </div>
+            </div>
+
+            {/* 4. Outstanding Receivables */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-amber-200/90 flex flex-col justify-between hover:shadow-md transition-all bg-gradient-to-br from-white to-amber-50/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Receivables (Dues)</span>
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-amber-900 font-sans">
+                  ₹{Number(totalReceivables || 0).toLocaleString("en-IN")}
+                </div>
+                <p className="text-[10px] text-amber-700 font-medium mt-1">
+                  {pendingReceivablesCount} accounts with balance
+                </p>
+              </div>
+            </div>
+
+            {/* 5. Accounts Payable */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Payables (Vendor POs)</span>
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                  <Layers className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-slate-800 font-sans">
+                  ₹{Number(totalPayables || 0).toLocaleString("en-IN")}
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium mt-1">
+                  {pendingPayablesCount} wholesale orders pending
+                </p>
+              </div>
+            </div>
+
+            {/* 6. Customer Advance Deposits */}
+            <div className="bg-white p-5 rounded-2xl shadow-xs border border-purple-200/90 flex flex-col justify-between hover:shadow-md transition-all bg-gradient-to-br from-white to-purple-50/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Customer Advances</span>
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-black text-purple-900 font-sans">
+                  ₹{Number(totalCustomerAdvances || 0).toLocaleString("en-IN")}
+                </div>
+                <p className="text-[10px] text-purple-600 font-medium mt-1">
+                  Prepaid wallet &amp; orders advance
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Financial Breakdown & Cashflow Distribution (2 Columns) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Payment Inflow Mode Distribution */}
+            <div className="lg:col-span-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-indigo-600" />
+                  <span>Payment Inflows &amp; Collection Breakdown</span>
+                </h3>
+                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                  {totalBillsCount} Total Invoices
+                </span>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                {[
+                  { label: "Cash Collections", amount: cashTotal, pct: cashPct, color: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50" },
+                  { label: "UPI & QR Payments", amount: upiTotal, pct: upiPct, color: "bg-indigo-500", text: "text-indigo-700", bg: "bg-indigo-50" },
+                  { label: "POS Card Swipes", amount: cardTotal, pct: cardPct, color: "bg-blue-500", text: "text-blue-700", bg: "bg-blue-50" },
+                  { label: "Bank & Net Banking Transfers", amount: bankTotal, pct: bankPct, color: "bg-purple-500", text: "text-purple-700", bg: "bg-purple-50" },
+                  { label: "Credit / Udhaar / Outstanding", amount: creditTotal, pct: creditPct, color: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50" },
+                ].map((item, idx) => (
+                  <div key={idx} className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700 flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${item.color}`}></span>
+                        {item.label}
+                      </span>
+                      <div className="flex items-center gap-2 font-mono">
+                        <span className="font-extrabold text-slate-900">₹{Number(item.amount || 0).toLocaleString("en-IN")}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${item.bg} ${item.text}`}>{item.pct}%</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${Math.max(item.pct, 0)}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Operating Expense Distribution */}
+            <div className="lg:col-span-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-rose-600" />
+                  <span>Expense Cost Centers &amp; Overheads</span>
+                </h3>
+                <span className="text-xs font-mono font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-100">
+                  ₹{Number(totalExpensesAmount || 0).toLocaleString("en-IN")} Total
+                </span>
+              </div>
+
+              {expenseCategories.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 space-y-2">
+                  <Receipt className="w-8 h-8 mx-auto text-slate-300" />
+                  <p className="text-xs font-bold text-slate-600">No expense vouchers recorded yet</p>
+                  <button
+                    onClick={() => setActiveTab("financial-management")}
+                    className="text-xs text-indigo-600 font-bold hover:underline"
+                  >
+                    + Record First Operating Expense
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  {expenseCategories.slice(0, 5).map((cat, idx) => {
+                    const colors = ["bg-rose-500", "bg-amber-500", "bg-indigo-500", "bg-blue-500", "bg-purple-500"];
+                    const colorClass = colors[idx % colors.length];
+                    return (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700 flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${colorClass}`}></span>
+                            {cat.category}
+                          </span>
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="font-extrabold text-slate-900">₹{Number(cat.amount || 0).toLocaleString("en-IN")}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">{cat.pct}%</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className={`h-full ${colorClass} rounded-full transition-all duration-500`} style={{ width: `${Math.max(cat.pct, 0)}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Live General Ledger Stream (Incomes & Expense Vouchers) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center gap-2 bg-slate-50/50">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-indigo-600 rounded-full inline-block"></span>
+                  <span>Financial Transactions &amp; General Ledger Stream</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Latest chronological audit of sales revenues, operating expenses, and payment disbursements.
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveTab("accounting")}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+              >
+                <span>View Full General Ledger</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-x-auto text-xs">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200/80 text-[11px] tracking-wider font-mono">
+                  <tr>
+                    <th className="p-3.5">Ref / Voucher ID</th>
+                    <th className="p-3.5">Date</th>
+                    <th className="p-3.5">Transaction Type</th>
+                    <th className="p-3.5">Party / Account</th>
+                    <th className="p-3.5">Payment Method</th>
+                    <th className="p-3.5 text-center">Status</th>
+                    <th className="p-3.5 text-right">Amount (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-sans">
+                  {recentTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="p-8 text-center text-slate-400">
+                        <div className="flex flex-col items-center gap-2">
+                          <Landmark className="w-8 h-8 text-slate-300" />
+                          <p className="font-bold text-slate-600 text-xs">No financial records logged yet</p>
+                          <p className="text-[11px] text-slate-400">Invoices and expense vouchers will stream here automatically.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    recentTransactions.map((tx, idx) => (
+                      <tr key={tx.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3.5 font-mono font-bold text-indigo-700">
+                          {tx.id}
+                        </td>
+                        <td className="p-3.5 text-slate-500 font-medium">
+                          {tx.date ? new Date(tx.date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today'}
+                        </td>
+                        <td className="p-3.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                            tx.type === 'INCOME'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}>
+                            {tx.type === 'INCOME' ? '▲ SALES REVENUE' : '▼ OPERATING EXPENSE'}
+                          </span>
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-800 max-w-xs truncate">
+                          {tx.party}
+                        </td>
+                        <td className="p-3.5 font-mono text-slate-600 text-[11px]">
+                          {tx.paymentMethod}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                            tx.status === 'PAID'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {tx.status}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-black text-sm">
+                          <span className={tx.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}>
+                            {tx.type === 'INCOME' ? '+' : '-'}₹{Number(tx.amount || 0).toLocaleString("en-IN")}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     // =========================================================================
     // 👔 MANAGER DASHBOARD (Software बताए & Tailor Performance)
