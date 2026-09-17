@@ -2,63 +2,73 @@ import React, { useState } from "react";
 import { Globe } from "lucide-react";
 
 export const IntegrationsView = ({ onAddNotification }) => {
-  const [integrations, setIntegrations] = useState([
-    {
-      id: "i-1",
-      name: "Shopify Storefront Sync",
-      type: "E-Commerce",
-      logo: "S",
-      connected: true,
-      commission: 1.5,
-      revenue: 350000,
-      desc: "Sync custom physical inventories directly to Shopify storefront stock listings.",
-    },
-    {
-      id: "i-2",
-      name: "Razorpay Gateway",
-      type: "Payments PG",
-      logo: "R",
-      connected: true,
-      commission: 2.0,
-      revenue: 120000,
-      desc: "Accept direct credit cards, debit cards, UPI, and split net banking transfers in checkout lines.",
-    },
-    {
-      id: "i-3",
-      name: "Delhivery Shipping",
-      type: "Logistics Courier",
-      logo: "D",
-      connected: false,
-      commission: 0.5,
-      revenue: 0,
-      desc: "Automate tracking slips generation, forward bookings, and courier handovers.",
-    },
-    {
-      id: "i-4",
-      name: "Tally Accounting Sync",
-      type: "Enterprise ERP",
-      logo: "T",
-      connected: false,
-      commission: 1.0,
-      revenue: 0,
-      desc: "Reconcile day-end ledger cashbooks directly into corporate Tally books.",
-    },
-  ]);
+  const [integrations, setIntegrations] = useState(() => {
+    const saved = localStorage.getItem("vastra_integrations");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [
+      {
+        id: "i-1",
+        name: "Shopify Storefront Sync",
+        type: "E-Commerce",
+        logo: "S",
+        connected: false,
+        commission: 0,
+        revenue: 0,
+        desc: "Sync custom physical inventories directly to Shopify storefront stock listings.",
+      },
+      {
+        id: "i-2",
+        name: "Razorpay Gateway",
+        type: "Payments PG",
+        logo: "R",
+        connected: false,
+        commission: 0,
+        revenue: 0,
+        desc: "Accept direct credit cards, debit cards, UPI, and split net banking transfers in checkout lines.",
+      },
+      {
+        id: "i-3",
+        name: "Delhivery Shipping",
+        type: "Logistics Courier",
+        logo: "D",
+        connected: false,
+        commission: 0,
+        revenue: 0,
+        desc: "Automate tracking slips generation, forward bookings, and courier handovers.",
+      },
+      {
+        id: "i-4",
+        name: "Tally Accounting Sync",
+        type: "Enterprise ERP",
+        logo: "T",
+        connected: false,
+        commission: 0,
+        revenue: 0,
+        desc: "Reconcile day-end ledger cashbooks directly into corporate Tally books.",
+      },
+    ];
+  });
 
   const toggleConnection = (id, name, currentState) => {
-    setIntegrations((prev) =>
-      prev.map((item) =>
+    setIntegrations((prev) => {
+      const updated = prev.map((item) =>
         item.id === id ? { ...item, connected: !item.connected } : item,
-      ),
-    );
+      );
+      localStorage.setItem("vastra_integrations", JSON.stringify(updated));
+      return updated;
+    });
 
-    onAddNotification(
-      "Integrations Controller",
-      currentState
-        ? `Severed active synchronization hooks for ${name}.`
-        : `Established secure REST hooks for ${name}.`,
-      currentState ? "warning" : "success",
-    );
+    if (typeof onAddNotification === "function") {
+      onAddNotification(
+        "Integrations Controller",
+        currentState
+          ? `Severed active synchronization hooks for ${name}.`
+          : `Established secure REST hooks for ${name}.`,
+        currentState ? "warning" : "success",
+      );
+    }
   };
 
   return (
@@ -70,7 +80,7 @@ export const IntegrationsView = ({ onAddNotification }) => {
           <span>SaaS Extension Marketplace</span>
         </h3>
         <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
-          Unlock commercial SaaS potentials by bridging your GarmentFlow ERP
+          Unlock commercial SaaS potentials by bridging your Vastra ERP
           directly to global e-commerce systems, logistics couriers, and
           payments gateways.
         </p>

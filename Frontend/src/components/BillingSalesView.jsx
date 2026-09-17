@@ -261,9 +261,9 @@ export const BillingSalesView = ({
         // Update invoices state in real-time
         setInvoices(prev => (prev || []).map(i => {
           const isMatch = (i.invoiceNo && (i.invoiceNo === pssSlipModalData.originalInvoiceNo || i.invoiceNo === pssSlipModalData.billBarcode)) ||
-                          (i.billNo && (i.billNo === pssSlipModalData.originalInvoiceNo || i.billNo === pssSlipModalData.billBarcode)) ||
-                          (i.billBarcode && (i.billBarcode === pssSlipModalData.billBarcode || i.billBarcode === pssSlipModalData.originalInvoiceNo)) ||
-                          (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipModalData.pssmNo));
+            (i.billNo && (i.billNo === pssSlipModalData.originalInvoiceNo || i.billNo === pssSlipModalData.billBarcode)) ||
+            (i.billBarcode && (i.billBarcode === pssSlipModalData.billBarcode || i.billBarcode === pssSlipModalData.originalInvoiceNo)) ||
+            (i.pssmNo && (i.pssmNo === pssm.pssmNo || i.pssmNo === pssSlipModalData.pssmNo));
           if (isMatch) {
             return {
               ...i,
@@ -486,7 +486,7 @@ export const BillingSalesView = ({
       } else if (r.offerType === 'Product') {
         cart.forEach(item => {
           const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
-          const match = (r.applicableProducts || []).some(p => 
+          const match = (r.applicableProducts || []).some(p =>
             p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
             p.toLowerCase().trim() === (item.name || '').toLowerCase().trim() ||
             p.toLowerCase().trim() === (item.sku || '').toLowerCase().trim() ||
@@ -583,8 +583,8 @@ export const BillingSalesView = ({
 
   // Check Credit Limits and request supervisor override if needed
   const activeCustomer = customers.find(c => c._id === selectedCustomerId || c.id === selectedCustomerId);
-  const isCreditExceeded = activeCustomer && 
-    paymentMethod === "Credit" && 
+  const isCreditExceeded = activeCustomer &&
+    paymentMethod === "Credit" &&
     ((activeCustomer.outstandingBalance || 0) + grandTotal > (activeCustomer.creditLimit || 50000));
 
   // Authorize Credit limit override
@@ -593,7 +593,7 @@ export const BillingSalesView = ({
     try {
       const token = localStorage.getItem("token");
       const res = await api.post(`/discounts/approve`, {
-          approvalId: new mongoose.Types.ObjectId()
+        approvalId: new mongoose.Types.ObjectId()
       });
       const data = res.data;
       if (data.success) {
@@ -810,19 +810,18 @@ export const BillingSalesView = ({
                               </div>
                               <div className="flex items-center gap-1 text-[11px]">
                                 <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
-                                <span className={`font-black uppercase px-1.5 py-0.2 rounded text-[9px] border ${
-                                  displayStatus === 'CLOSED'
+                                <span className={`font-black uppercase px-1.5 py-0.2 rounded text-[9px] border ${displayStatus === 'CLOSED'
                                     ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
                                     : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                    : displayStatus === 'PARTIALLY_COLLECTED'
-                                    ? 'bg-teal-100 text-teal-800 border-teal-300'
-                                    : displayStatus === 'PARTIALLY_READY'
-                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                    : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
-                                    ? 'bg-purple-100 text-purple-800 border-purple-300'
-                                    : 'bg-amber-100 text-amber-800 border-amber-300'
-                                }`}>
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : displayStatus === 'PARTIALLY_COLLECTED'
+                                        ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                        : displayStatus === 'PARTIALLY_READY'
+                                          ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                          : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
+                                            ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                                  }`}>
                                   {displayStatus.replace(/_/g, ' ')}
                                 </span>
                               </div>
@@ -842,9 +841,8 @@ export const BillingSalesView = ({
                     <td className="p-3 font-mono">₹{(inv.amountPaid || 0).toLocaleString()}</td>
                     <td className="p-3 font-mono font-bold text-slate-800">₹{(inv.grandTotal || 0).toLocaleString()}</td>
                     <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>
                         {inv.status}
                       </span>
                     </td>
@@ -994,7 +992,7 @@ export const BillingSalesView = ({
       const itemOutstanding = Math.max(0, itemTotal - itemPaid);
       totalOutstandingVal += itemOutstanding;
       if (inv.customerId) uniqueCusts.add(inv.customerId);
-      
+
       const due = inv.dueDate ? new Date(inv.dueDate) : new Date();
       const isOverdue = due < new Date();
       if (isOverdue) overdueVal += itemOutstanding;
@@ -1010,7 +1008,7 @@ export const BillingSalesView = ({
       const custMatch = nameStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
         invNoStr.toLowerCase().includes(receivablesSearch.toLowerCase()) ||
         phoneStr.includes(receivablesSearch);
-      
+
       if (!custMatch) return false;
       if (receivablesStatusFilter === "Overdue") {
         return new Date(inv.dueDate) < new Date();
@@ -1055,17 +1053,15 @@ export const BillingSalesView = ({
           <div className="flex gap-2">
             <button
               onClick={() => setReceivablesStatusFilter("All")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                receivablesStatusFilter === "All" ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${receivablesStatusFilter === "All" ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
             >
               All Receivables
             </button>
             <button
               onClick={() => setReceivablesStatusFilter("Overdue")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                receivablesStatusFilter === "Overdue" ? "bg-red-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${receivablesStatusFilter === "Overdue" ? "bg-red-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
             >
               Overdue Only
             </button>
@@ -1132,15 +1128,14 @@ export const BillingSalesView = ({
                     <td className="p-3 font-mono font-bold text-red-500">₹{outstandingAmt.toLocaleString()}</td>
                     <td className="p-3 font-mono text-[10px]">
                       <div>{new Date(inv.dueDate).toLocaleDateString()}</div>
-                      <span className={`px-1 rounded text-[9px] font-bold ${
-                        isOverdue ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
-                      }`}>
+                      <span className={`px-1 rounded text-[9px] font-bold ${isOverdue ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
                         {isOverdue ? 'Overdue' : 'Current'}
                       </span>
                     </td>
                     <td className="p-3 text-[10px] font-mono text-slate-400">
                       <div>Count: {inv.reminderHistory?.length || 0}</div>
-                      <div>Last: {inv.reminderHistory?.length > 0 ? new Date(inv.reminderHistory[inv.reminderHistory.length-1].sentAt).toLocaleDateString() : 'Never'}</div>
+                      <div>Last: {inv.reminderHistory?.length > 0 ? new Date(inv.reminderHistory[inv.reminderHistory.length - 1].sentAt).toLocaleDateString() : 'Never'}</div>
                     </td>
                     <td className="p-3">
                       <div className="flex justify-center gap-1.5">
@@ -1187,14 +1182,7 @@ export const BillingSalesView = ({
           <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Billing & Sales Management</h1>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Generate B2B retail tax vouchers, wholesale bulk delivery memos, and outstanding logs</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleResetInvoice}
-            className="px-3 py-2 border border-red-200 hover:bg-red-50 text-red-700 bg-white rounded-xl font-bold flex items-center gap-1 cursor-pointer"
-          >
-            <span>Clear Voucher (Ctrl+N)</span>
-          </button>
-        </div>
+
       </div>
 
       {/* Tabs list */}
@@ -1212,11 +1200,10 @@ export const BillingSalesView = ({
               setActiveTab(tab.id);
               handleResetInvoice();
             }}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-nowrap cursor-pointer transition-all ${
-              activeTab === tab.id
+            className={`px-4 py-2.5 rounded-xl font-extrabold text-nowrap cursor-pointer transition-all ${activeTab === tab.id
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
-            }`}
+              }`}
           >
             {tab.label}
           </button>
@@ -1229,10 +1216,10 @@ export const BillingSalesView = ({
 
       {activeTab !== "invoice-history" && activeTab !== "outstanding-receivables" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-        
+
           {/* LEFT COLUMN: PRODUCT SELECTION & CART TABLE */}
           <div className="lg:col-span-2 space-y-6">
-            
+
             {/* Fast Lookup scan box */}
             <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row gap-3">
@@ -1861,14 +1848,13 @@ export const BillingSalesView = ({
                   return (
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Overall Status:</span>
-                      <span className={`font-black uppercase px-2 py-0.5 rounded-lg text-[10px] border ${
-                        displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
-                        displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                        displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
-                        displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                        displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
-                        'bg-amber-100 text-amber-800 border-amber-200'
-                      }`}>
+                      <span className={`font-black uppercase px-2 py-0.5 rounded-lg text-[10px] border ${displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
+                          displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                            displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                              displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                                  'bg-amber-100 text-amber-800 border-amber-200'
+                        }`}>
                         {displayStatus.replace(/_/g, ' ')}
                       </span>
                     </div>
@@ -1900,18 +1886,16 @@ export const BillingSalesView = ({
                   const isReady = it.status === 'READY';
                   const isCollected = it.status === 'COLLECTED';
                   return (
-                    <div key={i} className={`border rounded-xl p-2.5 space-y-1.5 transition-all ${
-                      isCollected ? 'bg-slate-50/80 border-slate-200' :
-                      isReady ? 'bg-emerald-50/70 border-emerald-300' :
-                      'bg-slate-50 border-slate-200'
-                    }`}>
+                    <div key={i} className={`border rounded-xl p-2.5 space-y-1.5 transition-all ${isCollected ? 'bg-slate-50/80 border-slate-200' :
+                        isReady ? 'bg-emerald-50/70 border-emerald-300' :
+                          'bg-slate-50 border-slate-200'
+                      }`}>
                       <div className="flex justify-between items-start gap-2">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-slate-900">{i + 1}. {it.name}</span>
-                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
-                              (it.gender || 'Gents') === 'Ladies' ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-blue-100 text-blue-700 border-blue-300'
-                            }`}>{it.gender || 'Gents'}</span>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${(it.gender || 'Gents') === 'Ladies' ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-blue-100 text-blue-700 border-blue-300'
+                              }`}>{it.gender || 'Gents'}</span>
                             <span className="bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded text-[9px] uppercase inline-block">{it.serviceType}</span>
                           </div>
                         </div>
@@ -1923,11 +1907,10 @@ export const BillingSalesView = ({
                             </span>
                           ) : (
                             <>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                isReady ? 'bg-emerald-600 text-white border-emerald-700' :
-                                it.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
-                                'bg-amber-100 text-amber-800 border-amber-200'
-                              }`}>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${isReady ? 'bg-emerald-600 text-white border-emerald-700' :
+                                  it.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                    'bg-amber-100 text-amber-800 border-amber-200'
+                                }`}>
                                 {(it.status || 'PENDING').replace(/_/g, ' ')}
                               </span>
                               {it._id && (
@@ -2031,7 +2014,7 @@ export const BillingSalesView = ({
                     height: 100,
                     padding: 1
                   });
-                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.qr-wrap{text-align:center;margin-top:14px;padding-top:8px;border-top:1px dashed #000}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}</div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k,v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; const itemAltBarcode = it.alterationBarcode || it.tailorInvoiceNo || (it.barcode && String(it.barcode).startsWith('TI-') ? it.barcode : null) || (d.pssmNo ? `${d.pssmNo}-${i + 1}` : null); const itemBarcodeSvg = itemAltBarcode ? generateCode128SvgString(itemAltBarcode, { width: 1.4, height: 34, displayValue: false, margin: 2, background: '#ffffff', lineColor: '#000000' }) : ''; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}${it.trialRequired !== undefined ? '<b>Trial Req:</b> ' + (it.trialRequired ? 'YES' : 'NO') + (it.trialDate ? ' (Trial Date: ' + (new Date(it.trialDate).toLocaleDateString('en-IN') || it.trialDate) + ')' : '') + '<br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo || 'Pending'}${itemAltBarcode ? `<div style="text-align:center;margin:6px 0;padding:4px;border:1px dashed #000;background:#fafafa"><div style="font-size:8px;font-weight:bold;color:#444;margin-bottom:2px">GARMENT ALTERATION BARCODE</div><div style="display:inline-block;max-width:100%;background:#fff">${itemBarcodeSvg}</div><div style="font-size:10px;font-weight:900;font-family:monospace;letter-spacing:1px;margin-top:2px">${itemAltBarcode}</div></div>` : ''}</div>`; }).join('')}<div class="qr-wrap"><div style="font-size:9px;font-weight:bold;color:#333;margin-bottom:4px;letter-spacing:0.5px">ALTERATION TRACKING QR CODE</div><div style="display:inline-block;background:#fff;padding:4px;border:1px solid #ccc;border-radius:4px"><div style="width:100px;height:100px;margin:0 auto">${pssmQrSvg}</div></div><p style="margin:4px 0 2px;font-size:11px;font-weight:bold;font-family:monospace">PSSM: ${d.pssmNo}</p><p style="font-size:9.5px;margin-top:2px;font-style:italic;color:#666">*** Scan to view live alteration status &amp; product progress ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PSS Slip ${d.pssmNo}</title><style>body{font-family:'Courier New',monospace;color:#000;padding:16px;max-width:380px;margin:0 auto;line-height:1.4}h2{margin:0}.section{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px;font-size:11px}.bold{font-weight:bold}.badge{background:#000;color:#fff;padding:3px 8px;font-weight:bold;display:inline-block;margin-top:4px}.qr-wrap{text-align:center;margin-top:14px;padding-top:8px;border-top:1px dashed #000}.opt-charge{font-style:italic;color:#555;font-size:10px}</style></head><body><div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px"><h2>POST SALES SERVICE SLIP</h2><p style="margin:2px 0;font-size:11px">Date: <b>${d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</b></p><p style="margin:2px 0;font-size:11px">Original Bill No: <b>${d.originalInvoiceNo}</b></p><div class="badge">PSS Ticket: ${d.pssmNo}</div>${(() => { const itemTIs = (d.items || []).map(i => i.tailorInvoiceNo).filter(Boolean); const allTIs = Array.from(new Set([d.tailorInvoiceNo, ...itemTIs].filter(Boolean))).join(', '); return allTIs ? `<p style="margin:2px 0;font-size:11px;font-weight:bold">Tailor Invoice No: ${allTIs}</p>` : ''; })()}</div><div class="section"><b>Customer Name:</b> ${d.customerName}<br/><b>Mobile Number:</b> ${d.customerPhone || 'N/A'}<br/>${d.alternatePhone ? '<b>Alt Phone:</b> ' + d.alternatePhone + '<br/>' : ''}${d.whatsappNumber ? '<b>WhatsApp:</b> ' + d.whatsappNumber + '<br/>' : ''}<b>Salesman:</b> ${d.salesmanName}<br/><b>Priority:</b> ${d.priority}<br/>${d.deliveryDate ? '<b>Expected Delivery Date:</b> ' + new Date(d.deliveryDate).toLocaleDateString('en-IN') + '<br/>' : ''}${d.trialRequired !== undefined ? '<b>Trial Required:</b> ' + (d.trialRequired ? 'YES' : 'NO') + (d.trialDate ? ' (Trial Date: ' + (new Date(d.trialDate).toLocaleDateString('en-IN') || d.trialDate) + ')' : '') + '<br/>' : ''}<b>Advance Paid:</b> ₹${d.advancePaid || 0}<br/><b>Balance Due:</b> ₹${d.balanceDue || 0}<br/><b>Overall Status:</b> <span style="font-weight:bold;text-transform:uppercase">${printOverallStatus.replace(/_/g, ' ')}</span><br/>${d.specialInstructions ? '<b>Special Instructions:</b> ' + d.specialInstructions + '<br/>' : ''}</div>${(d.items || []).map((it, i) => { const isAlt = String(it.serviceType || '').toLowerCase().includes('alteration'); const mObj = it.measurements || {}; const ins = mObj.inseam || mObj.innerLegLength || mObj.Inseam || mObj['Inner Leg Length'] || ''; const mStr = Object.entries(mObj).map(([k, v]) => `${k}: ${v}"`).join(', '); const charge = it.charge || d.totalCharges; const itemAltBarcode = it.alterationBarcode || it.tailorInvoiceNo || (it.barcode && String(it.barcode).startsWith('TI-') ? it.barcode : null) || (d.pssmNo ? `${d.pssmNo}-${i + 1}` : null); const itemBarcodeSvg = itemAltBarcode ? generateCode128SvgString(itemAltBarcode, { width: 1.4, height: 34, displayValue: false, margin: 2, background: '#ffffff', lineColor: '#000000' }) : ''; return `<div class="section"><b>${i + 1}. Garment: ${it.name}</b><br/><b>Gents / Ladies:</b> ${it.gender || 'Gents'}<br/><b>Bill No &amp; Unique Code:</b> ${d.originalInvoiceNo} / ${it.uniqueCode || it.barcode || 'N/A'}<br/><b>Size &amp; Color:</b> ${it.size} / ${it.color}<br/><b>Service:</b> ${it.serviceType}<br/>${isAlt && it.tailorInvoiceNo ? '<b>Tailor Invoice No:</b> ' + it.tailorInvoiceNo + '<br/>' : ''}${isAlt ? '<b>Tailoring Charges:</b> ' + (charge > 0 ? '₹' + charge : '<span class="opt-charge">N/A (optional)</span>') + '<br/>' : ''}${isAlt && mStr ? '<b>Measurements:</b> ' + mStr + '<br/>' : ''}${isAlt && ins ? '<b>Inseam / Inner Leg Length:</b> <b>' + ins + '"</b><br/>' : ''}${it.trialRequired !== undefined ? '<b>Trial Req:</b> ' + (it.trialRequired ? 'YES' : 'NO') + (it.trialDate ? ' (Trial Date: ' + (new Date(it.trialDate).toLocaleDateString('en-IN') || it.trialDate) + ')' : '') + '<br/>' : ''}<b>Status:</b> ${it.status === 'COLLECTED' ? '<span style="color:#15803d;font-weight:bold">[COLLECTED]</span>' : (it.status || 'PENDING')}<br/><b>Assigned To:</b> ${it.assignedTo || 'Pending'}${itemAltBarcode ? `<div style="text-align:center;margin:6px 0;padding:4px;border:1px dashed #000;background:#fafafa"><div style="font-size:8px;font-weight:bold;color:#444;margin-bottom:2px">GARMENT ALTERATION BARCODE</div><div style="display:inline-block;max-width:100%;background:#fff">${itemBarcodeSvg}</div><div style="font-size:10px;font-weight:900;font-family:monospace;letter-spacing:1px;margin-top:2px">${itemAltBarcode}</div></div>` : ''}</div>`; }).join('')}<div class="qr-wrap"><div style="font-size:9px;font-weight:bold;color:#333;margin-bottom:4px;letter-spacing:0.5px">ALTERATION TRACKING QR CODE</div><div style="display:inline-block;background:#fff;padding:4px;border:1px solid #ccc;border-radius:4px"><div style="width:100px;height:100px;margin:0 auto">${pssmQrSvg}</div></div><p style="margin:4px 0 2px;font-size:11px;font-weight:bold;font-family:monospace">PSSM: ${d.pssmNo}</p><p style="font-size:9.5px;margin-top:2px;font-style:italic;color:#666">*** Scan to view live alteration status &amp; product progress ***</p></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
                   const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'text/html;charset=utf-8' }));
                   window.open(url, '_blank');
                 }}

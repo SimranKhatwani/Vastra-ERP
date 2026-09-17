@@ -116,7 +116,7 @@ export const StaffCommissionPanel = ({ role: initialRole, onAddNotification }) =
               <b>Payment Mode:</b> ${invoice.paymentMethod}<br>
               <b>Status:</b> ${invoice.status.toUpperCase()}<br>
               Thank you for shopping with us!<br>
-              Powered by GarmentFlow SaaS ERP
+              Powered by Vastra ERP
             </div>
           </body>
           </html>

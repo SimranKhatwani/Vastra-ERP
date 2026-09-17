@@ -566,7 +566,7 @@ export const ProductManagementView = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "garmentflow_stock_catalog.csv");
+    link.setAttribute("download", "vastra_stock_catalog.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -580,7 +580,7 @@ export const ProductManagementView = ({
   const handleImportCSV = () => {
     onAddNotification(
       "CSV Loader",
-      "Reading schema of garmentflow_import_template.xlsx...",
+      "Reading schema of vastra_import_template.xlsx...",
       "info",
     );
     onAddNotification(
