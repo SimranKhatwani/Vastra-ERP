@@ -2042,6 +2042,7 @@ export default function App() {
 
             {activeModule === "articulation" && (
               <ArticulationView
+                currentUser={currentUser}
                 customers={customers}
                 employees={employees}
                 products={products}

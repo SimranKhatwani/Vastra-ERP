@@ -169,6 +169,7 @@ const formatReportDateTime = (d) => {
 };
 
 export const ArticulationView = ({
+  currentUser = {},
   customers = [],
   employees = [],
   products = [],
@@ -180,6 +181,67 @@ export const ArticulationView = ({
   autoStartAlteration = false,
   clearAutoStartAlteration = () => { }
 }) => {
+  // ─── AUTHENTICATION & ROLE-BASED TAILOR SCOPING ───
+  const userObj = currentUser?.user || currentUser || (typeof window !== 'undefined' && localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : {}) || {};
+  const curRole = (userObj.role || currentUser?.role || '').toLowerCase();
+  const curName = (userObj.name || currentUser?.name || '').toLowerCase().trim();
+  const curId = String(userObj._id || userObj.id || userObj.employeeId || currentUser?._id || currentUser?.id || '');
+
+  // Check if logged in user has administrative privileges across all workshops
+  const isAdmin = ["admin", "businessadmin", "superadmin", "tenant_admin", "tenantadmin", "tenant_owner", "tenantowner", "owner", "manager"].some(r => curRole.includes(r)) || curName.includes("admin") || curName.includes("dhruv");
+
+  // Determine if the logged-in user is a tailor profile (e.g. Ajay, master tailor, etc.)
+  const isTailorUser = !isAdmin;
+
+  // Resolve tailor's canonical display name
+  const currentTailorName = useMemo(() => {
+    const matchedEmp = (employees || []).find(e => {
+      const eName = (e.name || '').toLowerCase().trim();
+      const eId = String(e._id || e.id || '');
+      return eName === curName || (curId && eId === curId) || (curName.includes("ajay") && eName.includes("ajay"));
+    });
+    return matchedEmp?.name || userObj.name || currentUser?.name || (curName.includes("ajay") ? "Ajay" : "Tailor");
+  }, [employees, curName, curId, userObj, currentUser]);
+
+  // Delivery & Tailor Dashboard state
+  const [selectedTailorFilter, setSelectedTailorFilter] = useState(() => (isTailorUser ? currentTailorName : "All Tailors"));
+
+  // Synchronize filter when tailor user profile is active
+  useEffect(() => {
+    if (isTailorUser && currentTailorName) {
+      setSelectedTailorFilter(currentTailorName);
+    }
+  }, [isTailorUser, currentTailorName]);
+
+  // Active scope: if tailor user, strictly locked to currentTailorName; if admin, uses selectedTailorFilter
+  const activeTailorScope = isTailorUser ? currentTailorName : (selectedTailorFilter !== "All Tailors" ? selectedTailorFilter : null);
+
+  // Helper function to check if a job ticket/record is assigned to the active tailor scope
+  const isJobAssignedToScopedTailor = (item) => {
+    if (!item) return false;
+    if (!activeTailorScope) return true; // Admin viewing "All Tailors"
+
+    const tLower = activeTailorScope.toLowerCase().trim();
+    const tFirst = tLower.split(" ")[0];
+
+    const itemTailor = (item.tailorName || item.assignedTo || item.assignedTailor || item.employeeName || '').toLowerCase().trim();
+    const itemTailorId = String(item.tailorId || item.assignedToId || item.employeeId || '');
+
+    if (itemTailor === tLower) return true;
+    if (tFirst.length >= 3 && (itemTailor.includes(tFirst) || tLower.includes(itemTailor.split(" ")[0]))) return true;
+    if (curId && itemTailorId && itemTailorId === curId) return true;
+
+    // Check multi-item assignments
+    if (Array.isArray(item.items) && item.items.some(it => {
+      const itTailor = (it.assignedTo || it.tailorName || '').toLowerCase().trim();
+      return itTailor === tLower || (tFirst.length >= 3 && (itTailor.includes(tFirst) || tLower.includes(itTailor.split(" ")[0])));
+    })) {
+      return true;
+    }
+
+    return false;
+  };
+
   // ─── CORE SYSTEM DATA SOURCES ───
   const defaultCustomers = useMemo(() => {
     if (customers && customers.length > 0) return customers;
@@ -255,12 +317,19 @@ export const ArticulationView = ({
   const [alterationsLoading, setAlterationsLoading] = useState(false);
   const [alterationsLoadError, setAlterationsLoadError] = useState("");
 
-  const alterationRecordsWithSequence = useMemo(() => {
+  // Scoped alteration records based on tailor profile
+  const scopedAlterationRecords = useMemo(() => {
     if (!alterationRecords || !Array.isArray(alterationRecords)) return [];
+    if (!activeTailorScope) return alterationRecords;
+    return alterationRecords.filter(isJobAssignedToScopedTailor);
+  }, [alterationRecords, activeTailorScope]);
+
+  const alterationRecordsWithSequence = useMemo(() => {
+    if (!scopedAlterationRecords || !Array.isArray(scopedAlterationRecords)) return [];
 
     // 1. Group records by saleBillId or invoiceNumber
     const groups = {};
-    alterationRecords.forEach(record => {
+    scopedAlterationRecords.forEach(record => {
       if (!record) return;
       const billId = record.saleBillId || record.invoiceId || record.invoiceNumber || 'unknown';
       if (!groups[billId]) groups[billId] = [];
@@ -273,7 +342,7 @@ export const ArticulationView = ({
     }
 
     // 3. Assign the sequence to each record
-    return alterationRecords.map(record => {
+    return scopedAlterationRecords.map(record => {
       if (!record) return record;
       const billId = record.saleBillId || record.invoiceId || record.invoiceNumber || 'unknown';
       if (billId === 'unknown') {
@@ -286,9 +355,18 @@ export const ArticulationView = ({
         alterationSequence: `${index + 1}/${group.length}`
       };
     });
-  }, [alterationRecords]);
+  }, [scopedAlterationRecords]);
+
   const [pendingAlterations, setPendingAlterations] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
+
+  // Scoped pending alterations queue
+  const scopedPendingAlterations = useMemo(() => {
+    if (!pendingAlterations || !Array.isArray(pendingAlterations)) return [];
+    if (!activeTailorScope) return pendingAlterations;
+    return pendingAlterations.filter(it => isJobAssignedToScopedTailor(it));
+  }, [pendingAlterations, activeTailorScope]);
+
   const [alterationsFilterStatus, setAlterationsFilterStatus] = useState(initialFilterStatus || "All");
   const [alterationSearchQuery, setAlterationSearchQuery] = useState("");
   const [alterationsFilterType, setAlterationsFilterType] = useState("All");
@@ -313,11 +391,10 @@ export const ArticulationView = ({
   const [tailorSummaries, setTailorSummaries] = useState([]);
   const [allTailorsSummary, setAllTailorsSummary] = useState(null);
   const [capacityAlerts, setCapacityAlerts] = useState([]);
-  const [selectedTailorFilter, setSelectedTailorFilter] = useState("All Tailors");
   const [serviceWisePending, setServiceWisePending] = useState(null);
 
   const activeTailorStats = useMemo(() => {
-    if (selectedTailorFilter === "All Tailors") {
+    if (selectedTailorFilter === "All Tailors" && !isTailorUser) {
       return (
         allTailorsSummary || {
           tailorName: "All Master Tailors",
@@ -333,10 +410,11 @@ export const ArticulationView = ({
         }
       );
     }
-    const found = (tailorSummaries || []).find(t => t.tailorName === selectedTailorFilter);
+    const targetTailor = isTailorUser ? currentTailorName : selectedTailorFilter;
+    const found = (tailorSummaries || []).find(t => t.tailorName?.toLowerCase() === targetTailor?.toLowerCase());
     return (
       found || {
-        tailorName: selectedTailorFilter,
+        tailorName: targetTailor,
         assignedItems: 0,
         inProgress: 0,
         ready: 0,
@@ -348,7 +426,7 @@ export const ArticulationView = ({
         isOverloaded: false
       }
     );
-  }, [selectedTailorFilter, tailorSummaries, allTailorsSummary]);
+  }, [selectedTailorFilter, tailorSummaries, allTailorsSummary, isTailorUser, currentTailorName]);
 
   const [dashboardSummaryData, setDashboardSummaryData] = useState(null);
 
@@ -368,7 +446,7 @@ export const ArticulationView = ({
     let ready = 0;
     let delivered = 0;
 
-    (alterationRecords || []).forEach(alt => {
+    (scopedAlterationRecords || []).forEach(alt => {
       const createdDateStr = alt.createdAt ? new Date(alt.createdAt).toISOString().split('T')[0] : '';
       const delDateStr = alt.deliveryDate || (alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate).toISOString().split('T')[0] : '');
       const st = (alt.status || 'Pending').toLowerCase().trim();
@@ -417,20 +495,20 @@ export const ArticulationView = ({
     });
 
     return {
-      total: alterationRecords?.length || 0,
-      todaysJobs: dashboardSummaryData?.todaysJobs ?? todaysJobs,
-      dueToday: dashboardSummaryData?.dueToday ?? dueToday,
-      overdue: dashboardSummaryData?.overdue ?? overdue,
-      pending: dashboardSummaryData?.pending ?? pending,
-      inCutting: dashboardSummaryData?.inCutting ?? inCutting,
-      inStitching: dashboardSummaryData?.inStitching ?? inStitching,
-      inTrial: dashboardSummaryData?.inTrial ?? inTrial,
-      reAlteration: dashboardSummaryData?.reAlteration ?? reAlteration,
-      qualityCheck: dashboardSummaryData?.qualityCheck ?? qualityCheck,
-      ready: dashboardSummaryData?.ready ?? ready,
-      delivered: dashboardSummaryData?.delivered ?? delivered
+      total: scopedAlterationRecords?.length || 0,
+      todaysJobs: (!activeTailorScope && dashboardSummaryData?.todaysJobs) ?? todaysJobs,
+      dueToday: (!activeTailorScope && dashboardSummaryData?.dueToday) ?? dueToday,
+      overdue: (!activeTailorScope && dashboardSummaryData?.overdue) ?? overdue,
+      pending: (!activeTailorScope && dashboardSummaryData?.pending) ?? pending,
+      inCutting: (!activeTailorScope && dashboardSummaryData?.inCutting) ?? inCutting,
+      inStitching: (!activeTailorScope && dashboardSummaryData?.inStitching) ?? inStitching,
+      inTrial: (!activeTailorScope && dashboardSummaryData?.inTrial) ?? inTrial,
+      reAlteration: (!activeTailorScope && dashboardSummaryData?.reAlteration) ?? reAlteration,
+      qualityCheck: (!activeTailorScope && dashboardSummaryData?.qualityCheck) ?? qualityCheck,
+      ready: (!activeTailorScope && dashboardSummaryData?.ready) ?? ready,
+      delivered: (!activeTailorScope && dashboardSummaryData?.delivered) ?? delivered
     };
-  }, [alterationRecords, dashboardSummaryData]);
+  }, [scopedAlterationRecords, dashboardSummaryData, activeTailorScope]);
 
   // --- NEW ALTERATION WIZARD STATE ---
   const COG_ITEM_DEFAULT = () => ({
@@ -576,12 +654,25 @@ export const ArticulationView = ({
   const [selectedCollectionItemIds, setSelectedCollectionItemIds] = useState([]);
 
   const tailorOptions = useMemo(() => {
+    let list = [];
     if (employees && employees.length > 0) {
-      const dbTailors = employees.filter(e => (e.designation || e.role || "").toLowerCase() === "tailor" || (e.role || "").toLowerCase() === "tailor");
-      if (dbTailors.length > 0) return dbTailors.map(t => t.name);
+      const isTailorRole = (e) => {
+        const des = (e.designation || "").toLowerCase();
+        const rol = (e.role || "").toLowerCase();
+        return des.includes("tailor") || rol.includes("tailor") || des.includes("karigar") || rol.includes("karigar") || des.includes("darzi") || rol.includes("darzi") || des.includes("stitcher") || rol.includes("stitcher");
+      };
+      const dbTailors = employees.filter(isTailorRole);
+      if (dbTailors.length > 0) list = dbTailors.map(t => t.name);
+      else list = employees.map(e => e.name);
+    } else {
+      list = defaultTailors.map(t => t.name);
     }
-    return defaultTailors.map(t => t.name);
-  }, [employees, defaultTailors]);
+    const unique = Array.from(new Set(list.filter(Boolean)));
+    if (isTailorUser && currentTailorName && !unique.includes(currentTailorName)) {
+      unique.unshift(currentTailorName);
+    }
+    return unique.length > 0 ? unique : ["Ajay", "Ramesh", "Sunil", "Prakash"];
+  }, [employees, defaultTailors, isTailorUser, currentTailorName]);
 
   // --- TAILOR EDIT MODAL STATE FOR EXISTING TICKETS ---
   const [editingTailorAlt, setEditingTailorAlt] = useState(null);
@@ -1368,7 +1459,7 @@ export const ArticulationView = ({
   const filteredTailoringRows = useMemo(() => {
     const rawRows = (tailoringReportData?.data && tailoringReportData.data.length > 0)
       ? tailoringReportData.data
-      : (alterationRecords || []).map(a => ({
+      : (scopedAlterationRecords || []).map(a => ({
           _id: a._id,
           id: a._id,
           alterationId: a.alterationId || a.alterationNo,
@@ -1401,6 +1492,9 @@ export const ArticulationView = ({
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
     return rows.filter((row) => {
+      // Strictly enforce tailor scope
+      if (!isJobAssignedToScopedTailor(row)) return false;
+
       const rowDate = row.jobDate || row.createdAt || row.lastJobDate;
       const date = rowDate ? new Date(rowDate) : null;
       const matchesDate = filterDateRange === "All" || (
@@ -1439,7 +1533,7 @@ export const ArticulationView = ({
 
       return matchesDate && matchesEmployee && matchesStatus && matchesPriority && matchesSearch;
     });
-  }, [tailoringReportData, alterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority, reportSearchQuery]);
+  }, [tailoringReportData, scopedAlterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority, reportSearchQuery, activeTailorScope]);
 
   const filteredTailoringSummary = useMemo(() => {
     const rows = filteredTailoringRows;
@@ -1486,13 +1580,13 @@ export const ArticulationView = ({
       };
       return (aliases[normalize(filterStatus)] || [normalize(filterStatus)]).includes(status);
     };
-    return (alterationRecords || []).filter((record) => (
+    return (scopedAlterationRecords || []).filter((record) => (
       dateInRange(record.createdAt || record.jobDate || record.deliveryDate) &&
       (filterEmployee === 'All' || normalize(record.tailorName) === normalize(filterEmployee)) &&
       statusMatches(record.status) &&
       (filterPriority === 'All' || normalize(record.priority) === normalize(filterPriority))
     ));
-  }, [alterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority]);
+  }, [scopedAlterationRecords, filterDateRange, filterEmployee, filterStatus, filterPriority]);
 
   const getServiceWhatsAppMessage = (target) => {
     if (!target) return "";
@@ -2766,6 +2860,50 @@ export const ArticulationView = ({
               <span className="tracking-wide uppercase">Employee Alteration Tracking</span>
             </button>
           </div>
+
+          {/* Profile Scope Indicator / Admin Selector */}
+          {isTailorUser ? (
+            <div className="mt-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-rose-500/15 border border-amber-300 px-4 py-2 rounded-xl text-xs shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="font-extrabold text-amber-950 uppercase tracking-wide">
+                  ✂️ Tailor Workbench Profile: <span className="text-amber-800 underline font-black">{currentTailorName}</span>
+                </span>
+                <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Personal Work Scoped
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-900 font-semibold">
+                Showing all alteration tickets, queues, categories, metrics & performance assigned to {currentTailorName}.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                <span className="font-extrabold uppercase tracking-wide text-[11px] text-indigo-200">
+                  Workshop Scope:
+                </span>
+                <span className="text-slate-300 font-bold text-[11px]">
+                  {selectedTailorFilter === "All Tailors" ? "Overall Workshop (All Tailors)" : `Filtered: ${selectedTailorFilter}`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="admin-tailor-scope-select" className="text-[10px] font-bold uppercase text-slate-400">Filter Tailor:</label>
+                <select
+                  id="admin-tailor-scope-select"
+                  value={selectedTailorFilter}
+                  onChange={(e) => setSelectedTailorFilter(e.target.value)}
+                  className="bg-slate-800 text-white border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer"
+                >
+                  <option value="All Tailors">All Tailors (Global Workshop)</option>
+                  {tailorOptions.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2791,7 +2929,7 @@ export const ArticulationView = ({
                         Incoming Alterations from Billed Sales
                       </h3>
                       <span className="bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">
-                        {pendingAlterations.length} Pending
+                        {scopedPendingAlterations.length} Pending
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium mt-0.5">
@@ -2806,8 +2944,8 @@ export const ArticulationView = ({
                     <span className="text-[10px] font-black uppercase text-slate-400 px-1.5">Category:</span>
                     {['All', 'Gents', 'Ladies'].map(gf => {
                       const count = gf === 'All'
-                        ? pendingAlterations.length
-                        : pendingAlterations.filter(it => (it.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(it.productName || '') ? 'Ladies' : 'Gents')) === gf).length;
+                        ? scopedPendingAlterations.length
+                        : scopedPendingAlterations.filter(it => (it.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(it.productName || '') ? 'Ladies' : 'Gents')) === gf).length;
                       const isAct = altGenderFilter === gf;
                       return (
                         <button
@@ -2846,13 +2984,13 @@ export const ArticulationView = ({
                 </div>
               </div>
 
-              {pendingAlterations.length === 0 ? (
+              {scopedPendingAlterations.length === 0 ? (
                 <div className="bg-white/80 border border-dashed border-amber-200 rounded-2xl p-4 text-center text-xs text-slate-400">
                   No pending alterations from recent bills. Garments marked in POS will automatically appear here.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                  {pendingAlterations
+                  {scopedPendingAlterations
                     .filter(item => {
                       if (altGenderFilter !== "All" && (item.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(item.productName || '') ? 'Ladies' : 'Gents')) !== altGenderFilter) {
                         return false;
@@ -3252,8 +3390,8 @@ export const ArticulationView = ({
                   ].map((src) => {
                     const isAct = altSourceFilter === src.id;
                     const count = src.id === "All"
-                      ? alterationRecords.length
-                      : alterationRecords.filter(a => (a.sourceType || (a.invoiceNumber === 'CUSTOMER-OWN-GARMENT' ? 'CUSTOMER_OWN_GARMENT' : 'SHOWROOM_PURCHASE')) === src.id).length;
+                      ? scopedAlterationRecords.length
+                      : scopedAlterationRecords.filter(a => (a.sourceType || (a.invoiceNumber === 'CUSTOMER-OWN-GARMENT' ? 'CUSTOMER_OWN_GARMENT' : 'SHOWROOM_PURCHASE')) === src.id).length;
                     return (
                       <button
                         key={src.id}
@@ -3279,8 +3417,8 @@ export const ArticulationView = ({
                   {["All", "Gents", "Ladies"].map((g) => {
                     const isAct = altGenderFilter === g;
                     const count = g === "All"
-                      ? alterationRecords.length
-                      : alterationRecords.filter(a => (a.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(a.productName || '') ? 'Ladies' : 'Gents')) === g).length;
+                      ? scopedAlterationRecords.length
+                      : scopedAlterationRecords.filter(a => (a.gender || (/(lady|women|saree|kurti|lehenga|suit|skirt|blouse|frock|gown)/i.test(a.productName || '') ? 'Ladies' : 'Gents')) === g).length;
                     return (
                       <button
                         key={g}
@@ -4634,7 +4772,16 @@ export const ArticulationView = ({
                     availabilityStatus,
                     performanceIndicator
                   };
-                })).map((tailor) => {
+                }))
+                .filter(Boolean)
+                .filter(tailor => {
+                  if (!activeTailorScope) return true;
+                  const tLower = activeTailorScope.toLowerCase().trim();
+                  const tFirst = tLower.split(" ")[0];
+                  const name = (tailor.employeeName || tailor.name || '').toLowerCase().trim();
+                  return name === tLower || (tFirst.length >= 3 && (name.includes(tFirst) || tLower.includes(name.split(" ")[0])));
+                })
+                .map((tailor) => {
                   const indicatorBg =
                     tailor.performanceIndicator === 'Excellent' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
                       tailor.performanceIndicator === 'Good' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
