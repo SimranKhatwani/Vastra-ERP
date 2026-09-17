@@ -548,7 +548,7 @@ class PSSMService {
     const effectiveSalesmanId = targetSalesmanDoc?._id || query.salesmanId;
 
     const isAdminUser = Boolean(userDoc?.isTenantOwner || userDoc?.isSuperAdmin || ['admin', 'superadmin', 'businessadmin', 'tenantadmin', 'owner', 'tenantowner'].some(r => userRoleName.includes(r)));
-    const isSalespersonScoped = Boolean(query.salesmanId || query.salesmanName || (!isAdminUser && (userRoleName.includes('sales') || userDesig.includes('sales') || Boolean(targetSalesmanDoc))));
+    const isSalespersonScoped = Boolean(query.salesmanId || query.salesmanName || !isAdminUser);
 
     // Resolve all matching Salesman documents and aliases
     const matchedSalesmanDocs = await Salesman.find({
@@ -657,10 +657,21 @@ class PSSMService {
       const resolvedTailor = item.assignedTo || pssm.tailorName || 'In-House Karigar';
       const rawStatus = item.status || pssm.status || 'PENDING_ASSIGNMENT';
 
-      const key = `${resolvedBillNo}_${resolvedBarcode}_${item._id}`;
-      existingItemKeys.add(key);
+      const billIdStr = (saleBill._id || item.saleBillId || pssm.saleBillId)?.toString();
+      const pssmIdStr = (pssm._id || item.pssmId)?.toString();
+      const itemIdStr = item._id.toString();
+
+      existingItemKeys.add(itemIdStr);
+      if (pssmIdStr) existingItemKeys.add(pssmIdStr);
+      if (billIdStr) existingItemKeys.add(billIdStr);
+      if (resolvedBillNo && resolvedBillNo !== 'N/A') existingItemKeys.add(resolvedBillNo);
       if (pssm.pssmNo) existingItemKeys.add(pssm.pssmNo);
       if (resolvedBarcode) existingItemKeys.add(resolvedBarcode);
+      if (item.barcode) existingItemKeys.add(item.barcode);
+      if (item.uniqueCode) existingItemKeys.add(item.uniqueCode);
+      if (item.alterationBarcode) existingItemKeys.add(item.alterationBarcode);
+      if (item.tailorInvoiceNo) existingItemKeys.add(item.tailorInvoiceNo);
+      if (pssm.billBarcode) existingItemKeys.add(pssm.billBarcode);
 
       allUnifiedItems.push({
         id: item._id,
@@ -695,9 +706,29 @@ class PSSMService {
       });
     }
 
-    // 2. Map Alterations (Legacy / Direct)
+    // 2. Map Alterations (Legacy / Direct) - only include unique alterations not in PSSM
     for (const alt of alterations) {
-      if (existingItemKeys.has(alt.alterationNo)) continue;
+      const altIdStr = alt._id.toString();
+      const altBillIdStr = (alt.saleBillId?._id || alt.saleBillId)?.toString();
+      const altBillNo = alt.saleBillId?.billNo || alt.invoiceNumber;
+
+      const isAltDuplicate =
+        existingItemKeys.has(altIdStr) ||
+        (alt.alterationNo && existingItemKeys.has(alt.alterationNo)) ||
+        (alt.barcode && existingItemKeys.has(alt.barcode)) ||
+        (alt.tailorInvoiceNo && existingItemKeys.has(alt.tailorInvoiceNo)) ||
+        (alt.alterationBarcode && existingItemKeys.has(alt.alterationBarcode)) ||
+        (altBillIdStr && existingItemKeys.has(altBillIdStr)) ||
+        (altBillNo && altBillNo !== 'N/A' && existingItemKeys.has(altBillNo));
+
+      if (isAltDuplicate) continue;
+
+      existingItemKeys.add(altIdStr);
+      if (alt.alterationNo) existingItemKeys.add(alt.alterationNo);
+      if (alt.barcode) existingItemKeys.add(alt.barcode);
+      if (altBillIdStr) existingItemKeys.add(altBillIdStr);
+      if (altBillNo && altBillNo !== 'N/A') existingItemKeys.add(altBillNo);
+
       const saleBill = alt.saleBillId || {};
       const expDate = alt.expectedDeliveryDate ? new Date(alt.expectedDeliveryDate) : null;
       const sId = alt.salesmanId || saleBill.salesmanId;
@@ -740,9 +771,28 @@ class PSSMService {
       });
     }
 
-    // 3. Map Tailoring Jobs
+    // 3. Map Tailoring Jobs - only include unique tailoring jobs not in PSSM or Alterations
     for (const tj of tailoringJobs) {
-      if (existingItemKeys.has(tj.tailorInvoiceNo)) continue;
+      const tjIdStr = tj._id.toString();
+      const tjPssmItemIdStr = (tj.pssmItemId?._id || tj.pssmItemId)?.toString();
+      const tjBillIdStr = (tj.saleBillId?._id || tj.saleBillId)?.toString();
+      const tjBillNo = tj.billNo || tj.saleBillId?.billNo;
+
+      const isTjDuplicate =
+        existingItemKeys.has(tjIdStr) ||
+        (tjPssmItemIdStr && existingItemKeys.has(tjPssmItemIdStr)) ||
+        (tj.tailorInvoiceNo && existingItemKeys.has(tj.tailorInvoiceNo)) ||
+        (tj.barcode && existingItemKeys.has(tj.barcode)) ||
+        (tjBillIdStr && existingItemKeys.has(tjBillIdStr)) ||
+        (tjBillNo && tjBillNo !== 'N/A' && existingItemKeys.has(tjBillNo));
+
+      if (isTjDuplicate) continue;
+
+      existingItemKeys.add(tjIdStr);
+      if (tj.tailorInvoiceNo) existingItemKeys.add(tj.tailorInvoiceNo);
+      if (tjBillIdStr) existingItemKeys.add(tjBillIdStr);
+      if (tjBillNo && tjBillNo !== 'N/A') existingItemKeys.add(tjBillNo);
+
       const saleBill = tj.saleBillId || {};
       const expDate = tj.expectedDeliveryDate ? new Date(tj.expectedDeliveryDate) : null;
       const sId = tj.salesmanId || saleBill.salesmanId;
@@ -785,28 +835,73 @@ class PSSMService {
       });
     }
 
-    // Helper: Verify if item was assigned by, created by, sold by, or assigned to this salesperson
+    // Helper: Verify if item was assigned by, created by, sold by, or assigned to this staff member / worker / salesperson
+    const isWorkerRole = ['worker', 'tailor', 'mastertailor', 'karigar', 'darji', 'fitter', 'stitcher'].some(r => userRoleName.includes(r) || userDesig.includes(r) || (userDoc?.name || '').toLowerCase().includes('tony'));
+    const isPureSalesperson = !isWorkerRole && (['salesperson', 'salesman', 'sales'].some(r => userRoleName.includes(r) || userDesig.includes(r)) || !isAdminUser);
+
+    const matchesName = (targetName) => {
+      if (!targetName) return false;
+      const cleanTarget = String(targetName).toLowerCase().trim();
+      if (!cleanTarget || ['in-house karigar', 'in house karigar', 'unassigned', 'n/a', 'standard', 'counter'].includes(cleanTarget)) {
+        return false;
+      }
+      for (const allowed of allowedSalesmanNames) {
+        if (!allowed) continue;
+        if (cleanTarget === allowed) return true;
+        const targetTokens = cleanTarget.split(/[\s\-_/.]+/).filter(t => t.length >= 3);
+        const allowedTokens = allowed.split(/[\s\-_/.]+/).filter(t => t.length >= 3);
+        if (targetTokens.some(t => allowedTokens.includes(t))) return true;
+      }
+      return false;
+    };
+
     const isItemOwnedBySalesperson = (item) => {
       if (!isSalespersonScoped) return true;
 
-      // 1. Candidate ID matches
+      if (isPureSalesperson) {
+        // Pure salesperson only sees items where they are the salesperson, creator, or reassigned salesperson
+        const candidateIds = [
+          item.salesmanId?.toString(),
+          item.reassignedFromSalesmanId?.toString(),
+          item.createdBy?.toString(),
+          item.employeeId?.toString()
+        ].filter(Boolean);
+
+        if (candidateIds.some(id => allowedSalesmanIds.has(id))) return true;
+
+        const candidateNames = [
+          item.salesmanName,
+          item.reassignedFromSalesmanName,
+          item.employeeName
+        ].filter(Boolean);
+
+        return candidateNames.some(matchesName);
+      }
+
+      // Worker or Tailor or Admin scoped
       const candidateIds = [
+        item.workerId?.toString(),
+        item.assignedToId?.toString(),
+        item.tailorId?.toString(),
         item.salesmanId?.toString(),
+        item.reassignedFromSalesmanId?.toString(),
         item.createdBy?.toString(),
-        item.reassignedFromSalesmanId?.toString()
+        item.employeeId?.toString()
       ].filter(Boolean);
 
       if (candidateIds.some(id => allowedSalesmanIds.has(id))) return true;
 
-      // 2. Candidate Name matches
       const candidateNames = [
+        item.workerName,
+        item.assignedTailor,
+        item.assignedTo,
+        item.tailorName,
         item.salesmanName,
-        item.reassignedFromSalesmanName
-      ].filter(Boolean).map(n => String(n).toLowerCase().trim());
+        item.reassignedFromSalesmanName,
+        item.employeeName
+      ].filter(Boolean);
 
-      if (candidateNames.some(name => allowedSalesmanNames.has(name))) return true;
-
-      return false;
+      return candidateNames.some(matchesName);
     };
 
     // Filter active dataset strictly by salesperson ownership

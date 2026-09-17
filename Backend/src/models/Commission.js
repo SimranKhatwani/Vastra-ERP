@@ -52,6 +52,10 @@ const commissionSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  customerName: {
+    type: String,
+    trim: true
+  },
   productName: {
     type: String,
     trim: true,

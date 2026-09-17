@@ -103,6 +103,7 @@ class CommissionService {
           sourceId: saleBill._id,
           saleItemId: item._id,
           invoiceNo: saleBill.billNo,
+          customerName: saleBill.customerId?.name || saleBill.customerName || 'Walk-in Customer',
           productName: item.barcode || 'Garment Item',
           quantity: item.quantity || 1,
           netAmountBasis: price,
@@ -182,6 +183,7 @@ class CommissionService {
         sourceType: 'Alteration',
         sourceId: alteration._id,
         invoiceNo: alteration.alterationNo,
+        customerName: alteration.customerName || alteration.customerId?.name || 'Valued Customer',
         productName: 'Garment Alteration Work',
         quantity: 1,
         netAmountBasis: charges,
@@ -324,6 +326,7 @@ class CommissionService {
                   sourceId: bill._id,
                   saleItemId: item._id,
                   invoiceNo: bill.billNo,
+                  customerName: bill.customerId?.name || bill.customerName || 'Walk-in Customer',
                   productName: product.itemName || product.name || item.barcode || 'Garment Item',
                   quantity: item.quantity || 1,
                   netAmountBasis: price,
@@ -348,14 +351,24 @@ class CommissionService {
       tenantId,
       isDeleted: false,
       tailorName: { $ne: null, $ne: '' }
-    }).lean();
+    })
+      .populate('customerId')
+      .populate('saleBillId')
+      .lean();
 
     for (const alt of alterations) {
       const nameKey = String(alt.tailorName || '').toLowerCase().trim();
       // Skip admins, empty, and fake names
       if (adminNames.has(nameKey) || nameKey.includes('ramesh')) continue;
 
-      const charges = alt.totalCharges || 0;
+      const altSaleBill = alt.saleBillId || {};
+      const charges = Number(
+        alt.totalCharges ||
+        alt.charge ||
+        altSaleBill.grandTotal ||
+        altSaleBill.totalAmount ||
+        0
+      );
       if (charges <= 0 && (!alt.commissionAmount || alt.commissionAmount <= 0)) {
         continue;
       }
@@ -396,6 +409,7 @@ class CommissionService {
               sourceType: 'Alteration',
               sourceId: alt._id,
               invoiceNo: alt.alterationNo,
+              customerName: alt.customerName || alt.customerId?.name || altSaleBill.customerName || 'Valued Customer',
               productName: 'Garment Alteration Work',
               quantity: 1,
               netAmountBasis: charges,

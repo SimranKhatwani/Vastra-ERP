@@ -762,7 +762,8 @@ class AlterationService {
         remarks: alt.remarks || firstItem.instructions || '',
         specialInstructions: alt.remarks || firstItem.instructions || '',
         customAlterationText: alt.remarks || '',
-        totalCharges: alt.totalCharges || 0,
+        totalCharges: Number(alt.totalCharges || (alt.saleBillId ? (alt.saleBillId.grandTotal || alt.saleBillId.totalAmount || 0) : 0)),
+        charge: Number(alt.totalCharges || (alt.saleBillId ? (alt.saleBillId.grandTotal || alt.saleBillId.totalAmount || 0) : 0)),
         items,
         createdAt: alt.createdAt,
         createdBy: alt.createdBy

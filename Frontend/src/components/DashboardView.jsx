@@ -181,9 +181,21 @@ export const DashboardView = ({
   const [salesmanPendingSearch, setSalesmanPendingSearch] = React.useState("");
   const [isAbsentSyncing, setIsAbsentSyncing] = React.useState(false);
 
+  const fetchStaffSummary = React.useCallback(async () => {
+    try {
+      const res = await api.get(`/dashboard/staff-summary`);
+      if (res.data?.success && res.data?.data) {
+        setStaffApiStats(res.data.data);
+      }
+    } catch (err) {
+      // Quietly handle staff summary fetch errors
+    }
+  }, []);
+
   const fetchSalesmanDashboard = React.useCallback(async (showLoading = false) => {
     try {
       if (showLoading) setLoadingSalesmanDashboard(true);
+      fetchStaffSummary();
       const res = await api.get('/pssm/salesman-dashboard');
       if (res.data?.success && res.data?.data) {
         setSalesmanDashboardData(res.data.data);
@@ -193,7 +205,7 @@ export const DashboardView = ({
     } finally {
       if (showLoading) setLoadingSalesmanDashboard(false);
     }
-  }, []);
+  }, [fetchStaffSummary]);
 
   const handleScanCompleteBarcode = async (barcodeToScan) => {
     const code = (barcodeToScan || salesmanScanBarcode || "").trim();
@@ -440,26 +452,8 @@ export const DashboardView = ({
     fetchManualAdjustments();
 
     // Fetch Staff Summary stats directly from Backend API
-    const userObj = currentUser?.user || currentUser || {};
-    const userRole = (userObj.role || currentUser?.role || '').toLowerCase();
-    const userName = (userObj.name || currentUser?.name || '').toLowerCase();
-    const isStaff = !["admin", "businessadmin", "superadmin", "accountant", "accounts"].includes(userRole) && !userRole.includes("account") && !userName.includes("dhruv");
-    if (isStaff) {
-      const fetchStaffSummary = async () => {
-        try {
-          const token = localStorage.getItem("token");
-          const res = await api.get(`/dashboard/staff-summary`);
-          const data = res.data;
-          if (data.success && data.data) {
-            setStaffApiStats(data.data);
-          }
-        } catch (err) {
-          // Quietly handle staff summary fetch errors
-        }
-      };
-      fetchStaffSummary();
-    }
-  }, [currentUser]);
+    fetchStaffSummary();
+  }, [currentUser, fetchStaffSummary]);
 
   React.useEffect(() => {
     const fetchAlterationDashboardData = async () => {
@@ -1102,20 +1096,26 @@ export const DashboardView = ({
     const myEmpId = myEmployeeRecord._id || myEmployeeRecord.id || curId;
     const myEmpName = (myEmployeeRecord.name || userObj.name || currentUser?.name || '').toLowerCase().trim();
 
-    // 2. Filter all invoices assigned to this staff member strictly by ObjectId or exact name match
-    const myInvoices = allInvoicesRecords.filter(inv => {
-      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId;
-      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || '').toLowerCase().trim();
+    // 2. Filter all invoices and tailoring jobs assigned to this staff member
+    const mySaleInvoices = allInvoicesRecords.filter(inv => {
+      const invEmpId = inv.employeeId || inv.salespersonId || inv.workerId || inv.tailorId || inv.staffId || inv.createdBy;
+      const invEmpName = (inv.salespersonName || inv.employeeName || inv.workerName || inv.tailorName || inv.staffName || '').toLowerCase().trim();
 
       const idMatch = myEmpId && invEmpId && String(myEmpId) === String(invEmpId);
-      const nameMatch = myEmpName && invEmpName && invEmpName === myEmpName;
+      const nameMatch = myEmpName && invEmpName && (
+        invEmpName === myEmpName ||
+        (curFirstName && curFirstName.length >= 3 && (invEmpName.includes(curFirstName) || curFirstName.includes(invEmpName.split(" ")[0])))
+      );
 
       // Also match items array strictly by ObjectId or exact name match
       const itemMatch = (inv.items || []).some(item => {
-        const itemSpId = item.salespersonId || item.workerId || item.employeeId;
-        const itemSpName = (item.salespersonName || item.workerName || item.employeeName || '').toLowerCase().trim();
+        const itemSpId = item.salespersonId || item.workerId || item.employeeId || item.tailorId || item.assignedTo;
+        const itemSpName = (item.salespersonName || item.workerName || item.employeeName || item.tailorName || item.assignedTo || '').toLowerCase().trim();
         const itemIdMatch = myEmpId && itemSpId && String(myEmpId) === String(itemSpId);
-        const itemNameMatch = myEmpName && itemSpName && itemSpName === myEmpName;
+        const itemNameMatch = myEmpName && itemSpName && (
+          itemSpName === myEmpName ||
+          (curFirstName && curFirstName.length >= 3 && (itemSpName.includes(curFirstName) || curFirstName.includes(itemSpName.split(" ")[0])))
+        );
         return itemIdMatch || itemNameMatch;
       });
 
@@ -1128,28 +1128,75 @@ export const DashboardView = ({
     // Determine if this user is a worker for fallback rate
     const userDesig = (staffApiStats?.designation || currentUser?.designation || myEmployeeRecord?.designation || '').toLowerCase();
     const userRoleStr = (staffApiStats?.role || currentUser?.role || '').toLowerCase();
-    const isWorkerUser = ['worker', 'tailor', 'fitter', 'stitcher'].some(w => userDesig.includes(w) || userRoleStr.includes(w));
+    const isWorkerUser = ['worker', 'tailor', 'fitter', 'stitcher', 'floorworker', 'productionworker'].some(w => userDesig.includes(w) || userRoleStr.includes(w) || curName.includes('tony'));
     const fallbackCommRate = isWorkerUser ? 0.5 : 1.5;
-    const commRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : fallbackCommRate;
+    const commRate = (!isNaN(parsedRate) && parsedRate > 0) ? parsedRate : fallbackCommRate;
+
+    const myTailorInvoices = (tailorJobs || []).filter(job => {
+      const tName = (job.tailorName || job.workerName || job.assignedTo || '').toLowerCase().trim();
+      const tId = job.tailorId || job.workerId || job.assignedToId || job.createdBy;
+      const idMatch = myEmpId && tId && String(myEmpId) === String(tId);
+      const nameMatch = myEmpName && tName && (
+        tName === myEmpName ||
+        (curFirstName && curFirstName.length >= 3 && (tName.includes(curFirstName) || curFirstName.includes(tName.split(" ")[0])))
+      );
+      return idMatch || nameMatch;
+    }).map(job => {
+      const itemsSum = (job.items || []).reduce((acc, it) => acc + (Number(it.finalPrice || it.sellingPrice || it.price || 0) * (it.quantity || 1)), 0);
+      const rawGrandTotal = Number(
+        job.totalCharges ||
+        job.charge ||
+        job.saleBill?.grandTotal ||
+        job.saleBill?.totalAmount ||
+        job.saleBillId?.grandTotal ||
+        job.saleBillId?.totalAmount ||
+        itemsSum ||
+        (job.commissionAmount ? Number((job.commissionAmount / (commRate / 100)).toFixed(2)) : 0) ||
+        0
+      );
+      const effectiveTotal = rawGrandTotal > 0 ? rawGrandTotal : (job.commissionAmount ? Number((job.commissionAmount * 200).toFixed(2)) : 0);
+      const effectiveComm = job.commissionAmount !== undefined && job.commissionAmount > 0
+        ? job.commissionAmount
+        : Number((effectiveTotal * (commRate / 100)).toFixed(2));
+
+      return {
+        id: job._id || job.id,
+        _id: job._id || job.id,
+        invoiceNo: job.alterationNo || job.tailorInvoiceNo || `ALT-${(job._id || job.id || '').toString().slice(-4)}`,
+        billNo: job.alterationNo || job.tailorInvoiceNo || `ALT-${(job._id || job.id || '').toString().slice(-4)}`,
+        customerName: job.customerName || 'Walk-in Customer',
+        customerPhone: job.customerPhone || '',
+        paymentMethod: 'Tailoring Service',
+        grandTotal: effectiveTotal,
+        totalAmount: effectiveTotal,
+        commissionAmount: effectiveComm,
+        date: job.createdAt || job.date || new Date(),
+        createdAt: job.createdAt || job.date || new Date(),
+        status: job.status || 'Completed'
+      };
+    });
+
+    const myInvoices = (mySaleInvoices.length > 0 && myTailorInvoices.length === 0)
+      ? mySaleInvoices
+      : [...mySaleInvoices, ...myTailorInvoices];
 
     // 4. Exact Sales & Commission Achieved (100% Real DB matching)
     const invoiceSales = myInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-    const myTotalSales = staffApiStats?.totalSales ?? (
-      typeof myEmployeeRecord?.monthlySales === 'number' && myEmployeeRecord.monthlySales > 0
-        ? myEmployeeRecord.monthlySales
-        : invoiceSales
-    );
+    const myTotalSales = (staffApiStats?.totalSales !== undefined && staffApiStats?.totalSales > 0)
+      ? staffApiStats.totalSales
+      : (invoiceSales > 0 ? invoiceSales : (typeof myEmployeeRecord?.monthlySales === 'number' && myEmployeeRecord.monthlySales > 0 ? myEmployeeRecord.monthlySales : 0));
 
-    const rawCommEarned = staffApiStats?.commissionAmount ?? myEmployeeRecord?.commissionEarned ?? currentUser?.commissionEarned;
-    const myCommission = typeof rawCommEarned === 'number' && rawCommEarned >= 0
+    const rawCommEarned = (staffApiStats?.commissionAmount !== undefined && staffApiStats?.commissionAmount > 0)
+      ? staffApiStats.commissionAmount
+      : (myEmployeeRecord?.commissionEarned ?? currentUser?.commissionEarned);
+
+    const myCommission = typeof rawCommEarned === 'number' && rawCommEarned > 0
       ? rawCommEarned
       : Math.round(myTotalSales * (commRate / 100) * 100) / 100;
 
-    const totalBillsCount = staffApiStats?.invoiceCount ?? (
-      typeof myEmployeeRecord?.totalInvoices === 'number' && myEmployeeRecord.totalInvoices > 0
-        ? myEmployeeRecord.totalInvoices
-        : myInvoices.length
-    );
+    const totalBillsCount = (staffApiStats?.invoiceCount !== undefined && staffApiStats?.invoiceCount > 0)
+      ? staffApiStats.invoiceCount
+      : (myInvoices.length > 0 ? myInvoices.length : (typeof myEmployeeRecord?.totalInvoices === 'number' && myEmployeeRecord.totalInvoices > 0 ? myEmployeeRecord.totalInvoices : 0));
 
     const displayInvoicesList = (staffApiStats?.invoices && staffApiStats.invoices.length > 0)
       ? staffApiStats.invoices
@@ -1157,8 +1204,12 @@ export const DashboardView = ({
 
     const myTodayInvoices = displayInvoicesList.filter(inv => toDateStr(inv.createdAt || inv.date) === todayStr);
     const rawTodaySales = myTodayInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-    const myTodaySales = staffApiStats?.todaySales ?? rawTodaySales;
-    const myTodayBillsCount = staffApiStats?.todayBillsCount ?? myTodayInvoices.length;
+    const myTodaySales = (staffApiStats?.todaySales !== undefined && staffApiStats?.todaySales > 0)
+      ? staffApiStats.todaySales
+      : rawTodaySales;
+    const myTodayBillsCount = (staffApiStats?.todayBillsCount !== undefined && staffApiStats?.todayBillsCount > 0)
+      ? staffApiStats.todayBillsCount
+      : myTodayInvoices.length;
 
     const rawRoleStr = (currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || staffApiStats?.designation || staffApiStats?.role || '').toLowerCase();
 
@@ -1166,12 +1217,89 @@ export const DashboardView = ({
     const isAccountant = ['accountant', 'accounts', 'ca', 'finance', 'bookkeeper', 'audit', 'tax'].some(r => rawRoleStr.includes(r) || curRole.includes(r));
     const isTailor = ['tailor', 'mastertailor', 'alterationmaster', 'darji', 'karigar'].some(r => rawRoleStr.includes(r)) && !['worker', 'floorworker', 'productionworker', 'salesperson', 'salesman', 'sales', 'accountant'].some(r => rawRoleStr.includes(r));
     const isManager = ['manager', 'store manager', 'operations manager', 'floor manager', 'production manager'].some(r => rawRoleStr.includes(r) || curRole.includes(r)) && !isAccountant;
-    const isWorker = ['worker', 'floorworker', 'productionworker', 'store worker', 'helper'].some(r => rawRoleStr.includes(r)) && !isAccountant;
+    const isWorker = ['worker', 'floorworker', 'productionworker', 'store worker', 'helper'].some(r => rawRoleStr.includes(r) || curRole.includes(r) || curName.includes('tony')) && !isAccountant;
     const isSalesperson = (['salesperson', 'sales', 'sales executive', 'salesman'].some(r => rawRoleStr.includes(r)) || isWorker) && !isTailor && !isManager && !isAccountant;
     const hideCommissionUI = false;
     const effectiveDisplayRole = currentUser?.designation || currentUser?.role || myEmployeeRecord?.designation || myEmployeeRecord?.role || (isAccountant ? 'Accountant' : isWorker ? 'Worker' : 'Salesperson');
 
     const myAttendanceRate = staffApiStats?.attendanceRate || myEmployeeRecord?.attendanceRate || currentUser?.attendanceRate || 95;
+
+    // Helper: Scoping check for alteration/PSSM items
+    const isItemAssignedToCurStaff = (item) => {
+      if (!item) return false;
+      if (["admin", "businessadmin", "superadmin", "tenant_admin", "owner"].includes(curRole) || curName.includes("dhruv")) {
+        return true;
+      }
+      const isPureSalesUser = !isWorker && ['salesperson', 'salesman', 'sales'].some(r => rawRoleStr.includes(r) || curRole.includes(r));
+
+      let staffNames = [];
+      let staffIds = [];
+
+      if (isPureSalesUser) {
+        // Pure salesperson only sees items where they are the salesperson, creator, or reassigned salesperson
+        staffNames = [
+          item.salesmanName,
+          item.reassignedFromSalesmanName,
+          item.employeeName
+        ];
+        staffIds = [
+          item.salesmanId,
+          item.reassignedFromSalesmanId,
+          item.createdBy,
+          item.employeeId
+        ];
+      } else {
+        // Worker / Tailor / General Staff
+        staffNames = [
+          item.workerName,
+          item.assignedTailor,
+          item.assignedTo,
+          item.tailorName,
+          item.salesmanName,
+          item.reassignedFromSalesmanName,
+          item.employeeName
+        ];
+        staffIds = [
+          item.workerId,
+          item.assignedToId,
+          item.tailorId,
+          item.salesmanId,
+          item.reassignedFromSalesmanId,
+          item.createdBy,
+          item.employeeId
+        ];
+      }
+
+      const cleanStaffNames = staffNames.filter(Boolean).map(n => String(n).toLowerCase().trim());
+      const cleanStaffIds = staffIds.filter(Boolean).map(String);
+
+      const idMatches = [curId, myEmpId].filter(Boolean).some(id => cleanStaffIds.includes(String(id)));
+
+      const nameMatches = [curName, myEmpName, curFirstName].filter(Boolean).some(n => {
+        const cleanN = String(n).toLowerCase().trim();
+        return cleanStaffNames.some(sn => {
+          if (!sn || ['in-house karigar', 'in house karigar', 'unassigned', 'n/a', 'standard'].includes(sn)) return false;
+          if (sn === cleanN) return true;
+          const targetTokens = sn.split(/[\s\-_/.]+/).filter(t => t.length >= 3);
+          const allowedTokens = cleanN.split(/[\s\-_/.]+/).filter(t => t.length >= 3);
+          return targetTokens.some(t => allowedTokens.includes(t));
+        });
+      });
+
+      return idMatches || nameMatches;
+    };
+
+    // Helper: Deduplicate staff service/alteration items by bill number + barcode/ticket
+    const dedupeStaffItems = (items = []) => {
+      const seen = new Set();
+      return (items || []).filter(it => {
+        if (!it) return false;
+        const key = `${it.billNo || ''}_${it.barcode || it.ticketNo || it.id || it._id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
 
     // =========================================================================
     // 💼 ACCOUNTANT / FINANCIAL DASHBOARD
@@ -2225,7 +2353,7 @@ export const DashboardView = ({
           </div>
 
           {/* 🚨 CRITICAL TOMORROW DELIVERY ALERT BANNER FOR TAILORS */}
-          {((deliveryDashboard?.tomorrowDelivery ?? 0) > 0 || (notifications || []).some(n => (n.category === 'PSS_DEADLINE_TOMORROW' || (n.priority === 'Critical' && /deadline|tomorrow/i.test((n.title || '') + (n.message || '')))) && !n.resolved)) && (
+          {(Number(deliveryDashboard?.tomorrowDelivery || 0) > 0) && (
             <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md animate-pulse">
               <div className="flex items-start sm:items-center gap-3.5">
                 <div className="p-3 bg-red-100 text-red-700 rounded-2xl border border-red-200 shrink-0">
@@ -2237,7 +2365,7 @@ export const DashboardView = ({
                       ⚠ PSS DELIVERY ALERT — CRITICAL
                     </h4>
                     <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
-                      {deliveryDashboard?.tomorrowDelivery ?? 1} Due Tomorrow
+                      {deliveryDashboard.tomorrowDelivery} Due Tomorrow
                     </span>
                   </div>
                   <p className="text-xs text-red-900 mt-1 font-medium leading-relaxed">
@@ -2769,7 +2897,7 @@ export const DashboardView = ({
         </div>
 
         {/* 🚨 CRITICAL TOMORROW DELIVERY ALERT BANNER FOR SALESPERSONS */}
-        {((deliveryDashboard?.tomorrowDelivery ?? 0) > 0 || (notifications || []).some(n => (n.category === 'PSS_DEADLINE_TOMORROW' || (n.priority === 'Critical' && /deadline|tomorrow/i.test((n.title || '') + (n.message || '')))) && !n.resolved)) && (
+        {(Number(deliveryDashboard?.tomorrowDelivery || 0) > 0) && (
           <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md animate-pulse">
             <div className="flex items-start sm:items-center gap-3.5">
               <div className="p-3 bg-red-100 text-red-700 rounded-2xl border border-red-200 shrink-0">
@@ -2781,7 +2909,7 @@ export const DashboardView = ({
                     ⚠ PSS DELIVERY ALERT — CRITICAL
                   </h4>
                   <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
-                    {deliveryDashboard?.tomorrowDelivery ?? 1} Due Tomorrow
+                    {deliveryDashboard.tomorrowDelivery} Due Tomorrow
                   </span>
                 </div>
                 <p className="text-xs text-red-900 mt-1 font-medium leading-relaxed">
@@ -2996,110 +3124,123 @@ export const DashboardView = ({
           )}
 
           {/* 1. Summary KPI Cards (6 Cards) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-            {/* Total Assigned Services */}
-            <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Assigned</span>
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <Layers className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl font-black text-slate-900 font-sans">
-                  {salesmanDashboardData?.summary?.totalAssignedServices ?? 0}
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Assigned services</p>
-              </div>
-            </div>
+          {(() => {
+            const rawPending = dedupeStaffItems(salesmanDashboardData?.pendingList || []);
+            const scopedPending = rawPending.filter(isItemAssignedToCurStaff);
+            const totalAssignedServices = scopedPending.length > 0 ? scopedPending.length : (salesmanDashboardData?.summary?.totalAssignedServices ?? 0);
+            const pendingCount = scopedPending.length > 0 ? scopedPending.filter(i => !i.isReady && i.status !== 'Delivered' && i.status !== 'Collected').length : (salesmanDashboardData?.summary?.pending ?? 0);
+            const readyCount = scopedPending.length > 0 ? scopedPending.filter(i => i.isReady || i.status === 'READY' || i.status === 'Ready for Delivery').length : (salesmanDashboardData?.summary?.ready ?? 0);
+            const deliveredCount = salesmanDashboardData?.summary?.delivered ?? 0;
+            const overdueCount = scopedPending.length > 0 ? scopedPending.filter(i => i.isOverdue).length : (salesmanDashboardData?.summary?.overdue ?? 0);
+            const reAlterCount = scopedPending.length > 0 ? scopedPending.filter(i => /re-alter|realter|trial|repair|urgent|high/i.test((i.priority || '') + ' ' + (i.serviceType || ''))).length : (salesmanDashboardData?.summary?.reAlterCases ?? 0);
 
-            {/* Pending */}
-            <div className="bg-white p-4 rounded-2xl shadow-xs border border-amber-200/80 bg-gradient-to-br from-white to-amber-50/40 flex flex-col justify-between hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Pending</span>
-                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
-                  <Clock className="w-4 h-4" />
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                {/* Total Assigned Services */}
+                <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200/90 flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Assigned</span>
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl font-black text-slate-900 font-sans">
+                      {totalAssignedServices}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Assigned services</p>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl font-black text-amber-900 font-sans">
-                  {salesmanDashboardData?.summary?.pending ?? 0}
-                </div>
-                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Need scan / in-work</p>
-              </div>
-            </div>
 
-            {/* Ready */}
-            <div className="bg-white p-4 rounded-2xl shadow-xs border border-emerald-200/80 bg-gradient-to-br from-white to-emerald-50/40 flex flex-col justify-between hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Ready</span>
-                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
-                  <CheckCircle2 className="w-4 h-4" />
+                {/* Pending */}
+                <div className="bg-white p-4 rounded-2xl shadow-xs border border-amber-200/80 bg-gradient-to-br from-white to-amber-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Pending</span>
+                    <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl font-black text-amber-900 font-sans">
+                      {pendingCount}
+                    </div>
+                    <p className="text-[10px] text-amber-600 font-medium mt-0.5">Need scan / in-work</p>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl font-black text-emerald-800 font-sans">
-                  {salesmanDashboardData?.summary?.ready ?? 0}
-                </div>
-                <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Ready for pickup</p>
-              </div>
-            </div>
 
-            {/* Delivered */}
-            <div className="bg-white p-4 rounded-2xl shadow-xs border border-blue-200/80 bg-gradient-to-br from-white to-blue-50/40 flex flex-col justify-between hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Delivered</span>
-                <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
-                  <Truck className="w-4 h-4" />
+                {/* Ready */}
+                <div className="bg-white p-4 rounded-2xl shadow-xs border border-emerald-200/80 bg-gradient-to-br from-white to-emerald-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Ready</span>
+                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl font-black text-emerald-800 font-sans">
+                      {readyCount}
+                    </div>
+                    <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Ready for pickup</p>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-2">
-                <div className="text-2xl font-black text-blue-900 font-sans">
-                  {salesmanDashboardData?.summary?.delivered ?? 0}
-                </div>
-                <p className="text-[10px] text-blue-600 font-medium mt-0.5">Handed over</p>
-              </div>
-            </div>
 
-            {/* Overdue */}
-            <div className={`p-4 rounded-2xl shadow-xs border flex flex-col justify-between hover:shadow-md transition-all ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0
-              ? 'bg-red-50 border-red-300 ring-2 ring-red-400/30'
-              : 'bg-white border-slate-200/80'
-              }`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-500'
-                  }`}>Overdue</span>
-                <div className={`p-2 rounded-xl ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'bg-red-200 text-red-800' : 'bg-slate-100 text-slate-500'
+                {/* Delivered */}
+                <div className="bg-white p-4 rounded-2xl shadow-xs border border-blue-200/80 bg-gradient-to-br from-white to-blue-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Delivered</span>
+                    <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                      <Truck className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl font-black text-blue-900 font-sans">
+                      {deliveredCount}
+                    </div>
+                    <p className="text-[10px] text-blue-600 font-medium mt-0.5">Handed over</p>
+                  </div>
+                </div>
+
+                {/* Overdue */}
+                <div className={`p-4 rounded-2xl shadow-xs border flex flex-col justify-between hover:shadow-md transition-all ${overdueCount > 0
+                  ? 'bg-red-50 border-red-300 ring-2 ring-red-400/30'
+                  : 'bg-white border-slate-200/80'
                   }`}>
-                  <AlertTriangle className="w-4 h-4" />
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-bold uppercase tracking-wider ${overdueCount > 0 ? 'text-red-700' : 'text-slate-500'
+                      }`}>Overdue</span>
+                    <div className={`p-2 rounded-xl ${overdueCount > 0 ? 'bg-red-200 text-red-800' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className={`text-2xl font-black font-sans ${overdueCount > 0 ? 'text-red-700' : 'text-slate-900'
+                      }`}>
+                      {overdueCount}
+                    </div>
+                    <p className={`text-[10px] font-medium mt-0.5 ${overdueCount > 0 ? 'text-red-600 font-bold' : 'text-slate-400'
+                      }`}>Past delivery date</p>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-2">
-                <div className={`text-2xl font-black font-sans ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-700' : 'text-slate-900'
-                  }`}>
-                  {salesmanDashboardData?.summary?.overdue ?? 0}
-                </div>
-                <p className={`text-[10px] font-medium mt-0.5 ${(salesmanDashboardData?.summary?.overdue ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-slate-400'
-                  }`}>Past delivery date</p>
-              </div>
-            </div>
 
-            {/* Re-Alter Cases */}
-            <div className="bg-white p-4 rounded-2xl shadow-xs border border-purple-200/80 bg-gradient-to-br from-white to-purple-50/40 flex flex-col justify-between hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Re-Alter Cases</span>
-                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
-                  <Scissors className="w-4 h-4" />
+                {/* Re-Alter Cases */}
+                <div className="bg-white p-4 rounded-2xl shadow-xs border border-purple-200/80 bg-gradient-to-br from-white to-purple-50/40 flex flex-col justify-between hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Re-Alter Cases</span>
+                    <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                      <Scissors className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-2xl font-black text-purple-900 font-sans">
+                      {reAlterCount}
+                    </div>
+                    <p className="text-[10px] text-purple-600 font-medium mt-0.5">Urgent rework</p>
+                  </div>
                 </div>
               </div>
-              <div className="mt-2">
-                <div className="text-2xl font-black text-purple-900 font-sans">
-                  {salesmanDashboardData?.summary?.reAlterCases ?? 0}
-                </div>
-                <p className="text-[10px] text-purple-600 font-medium mt-0.5">Urgent rework</p>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* 2. Daily Follow-up List (Salesman सुबह Login करते ही देखे) */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
@@ -3128,7 +3269,7 @@ export const DashboardView = ({
                   <PhoneCall className="w-3.5 h-3.5 text-indigo-600" />
                   <span>आज किस Customer को Call करना है</span>
                   <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-mono">
-                    {(salesmanDashboardData?.followUp?.callToday || []).length}
+                    {(dedupeStaffItems(salesmanDashboardData?.followUp?.callToday || []).filter(isItemAssignedToCurStaff)).length}
                   </span>
                 </button>
 
@@ -3142,7 +3283,7 @@ export const DashboardView = ({
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   <span>कौन Ready है</span>
                   <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-mono">
-                    {(salesmanDashboardData?.followUp?.readyForPickup || []).length}
+                    {(dedupeStaffItems(salesmanDashboardData?.followUp?.readyForPickup || []).filter(isItemAssignedToCurStaff)).length}
                   </span>
                 </button>
 
@@ -3156,7 +3297,7 @@ export const DashboardView = ({
                   <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
                   <span>कौन Overdue है</span>
                   <span className="px-1.5 py-0.2 bg-red-100 text-red-800 rounded-full text-[10px] font-mono">
-                    {(salesmanDashboardData?.followUp?.overdue || []).length}
+                    {(dedupeStaffItems(salesmanDashboardData?.followUp?.overdue || []).filter(isItemAssignedToCurStaff)).length}
                   </span>
                 </button>
 
@@ -3170,7 +3311,7 @@ export const DashboardView = ({
                   <Clock className="w-3.5 h-3.5 text-amber-600" />
                   <span>कौन Delivery लेने नहीं आया</span>
                   <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px] font-mono">
-                    {(salesmanDashboardData?.followUp?.didNotPickUp || []).length}
+                    {(dedupeStaffItems(salesmanDashboardData?.followUp?.didNotPickUp || []).filter(isItemAssignedToCurStaff)).length}
                   </span>
                 </button>
               </div>
@@ -3192,7 +3333,7 @@ export const DashboardView = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(() => {
-                    const currentList = salesmanDashboardData?.followUp?.[activeFollowupTab] || [];
+                    const currentList = dedupeStaffItems(salesmanDashboardData?.followUp?.[activeFollowupTab] || []).filter(isItemAssignedToCurStaff);
                     if (currentList.length === 0) {
                       return (
                         <tr>
@@ -3395,7 +3536,7 @@ export const DashboardView = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(() => {
-                    const rawList = salesmanDashboardData?.pendingList || [];
+                    const rawList = dedupeStaffItems(salesmanDashboardData?.pendingList || []).filter(isItemAssignedToCurStaff);
                     const filtered = rawList.filter(item => {
                       if (!salesmanPendingSearch) return true;
                       const q = salesmanPendingSearch.toLowerCase();
@@ -3596,8 +3737,14 @@ export const DashboardView = ({
                     </td>
                   </tr>
                 ) : (
-                  displayInvoicesList.slice(0, 15).map((inv, idx) => {
-                    const itemComm = Math.floor((inv.grandTotal || 0) * (commRate / 100));
+                  displayInvoicesList.slice(0, 25).map((inv, idx) => {
+                    const rawComm = inv.commissionAmount !== undefined && inv.commissionAmount > 0
+                      ? inv.commissionAmount
+                      : Number(((inv.grandTotal || 0) * (commRate / 100)).toFixed(2));
+                    const itemCommStr = Number(rawComm).toLocaleString("en-IN", {
+                      minimumFractionDigits: Number(rawComm) % 1 !== 0 ? 2 : 0,
+                      maximumFractionDigits: 2
+                    });
                     return (
                       <tr
                         key={inv.id || inv._id || idx}
@@ -3634,7 +3781,7 @@ export const DashboardView = ({
                             </span>
                           ) : (
                             <span className="font-black text-emerald-600 font-mono">
-                              +₹{Number(itemComm || 0).toLocaleString("en-IN")}
+                              +₹{itemCommStr}
                             </span>
                           )}
                         </td>
