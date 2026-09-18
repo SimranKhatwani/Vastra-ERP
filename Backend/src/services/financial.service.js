@@ -176,48 +176,139 @@ class FinancialService {
    */
   static async getCashBook(tenantId) {
     const tId = new mongoose.Types.ObjectId(tenantId);
-    const [bills, expenses] = await Promise.all([
-      SaleBill.find({ tenantId: tId, status: { $ne: 'CANCELLED' } }).lean(),
-      Expense.find({ tenantId: tId }).lean()
+    const Payment = require('../models/payments/Payment');
+    const PaymentTransaction = require('../models/payments/PaymentTransaction');
+
+    const [bills, expenses, customers] = await Promise.all([
+      SaleBill.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }],
+        status: { $ne: 'CANCELLED' }
+      }).sort({ createdAt: 1 }).lean(),
+      Expense.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }]
+      }).sort({ createdAt: 1 }).lean(),
+      Customer.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }]
+      }).lean()
     ]);
 
+    const custMap = new Map(customers.map(c => [c._id.toString(), c.name]));
+    const billIds = bills.map(b => b._id);
+    const billNumbers = bills.map(b => b.billNo).filter(Boolean);
+
+    const payments = (billIds.length > 0 || billNumbers.length > 0) ? await Payment.find({
+      $or: [
+        { saleBillId: { $in: billIds } },
+        { receiptNo: { $in: billNumbers.map(n => `PAY-${n}`) } },
+        { receiptNo: { $in: billNumbers } }
+      ]
+    }).lean() : [];
+
+    const paymentIds = payments.map(p => p._id);
+    const transactions = paymentIds.length > 0 ? await PaymentTransaction.find({
+      paymentId: { $in: paymentIds }
+    }).lean() : [];
+
+    const txByBill = new Map();
+    payments.forEach(p => {
+      const bId = p.saleBillId?.toString();
+      const txs = transactions.filter(t => t.paymentId?.toString() === p._id.toString());
+      if (bId) txByBill.set(bId, txs);
+      if (p.receiptNo) {
+        const bNo = p.receiptNo.startsWith('PAY-') ? p.receiptNo.substring(4) : p.receiptNo;
+        txByBill.set(bNo, txs);
+        txByBill.set(p.receiptNo, txs);
+      }
+    });
+
     const data = [];
-    let totalCashIn = 0;
-    let totalCashOut = 0;
 
     // Cash Inflows from Sales
     bills.forEach(b => {
-      const mode = (b.paymentMethod || '').toLowerCase();
-      if (mode.includes('cash') || !b.paymentMethod) {
-        const amt = Number(b.grandTotal) || 0;
-        totalCashIn += amt;
-        data.push({
-          date: b.billDate || b.createdAt,
-          type: 'In',
-          category: 'Sales Cash Collection',
-          description: `Bill #${b.billNo || b._id} - ${b.customerName || 'Walk-in'}`,
-          refNo: b.billNo || `INV-${b._id}`,
-          amount: amt
+      const bIdStr = b._id.toString();
+      const rawTxs = txByBill.get(bIdStr) || txByBill.get(b.billNo) || b.paymentTransactions || (b.splitPayments ? b.splitPayments.map(s => ({ mode: s.method || s.mode, amount: s.amount })) : []);
+      const bTxs = Array.isArray(rawTxs) ? rawTxs : [];
+      const cashTxs = bTxs.filter(t => (t.mode || t.method || '').toUpperCase() === 'CASH');
+      const custName = b.customerName || (b.customerId ? custMap.get(b.customerId.toString()) : null) || 'Walk-in';
+
+      if (cashTxs.length > 0) {
+        cashTxs.forEach(ctx => {
+          const amt = Number(ctx.amount) || 0;
+          if (amt > 0) {
+            data.push({
+              date: b.billDate || b.createdAt,
+              type: 'Cash In',
+              category: 'Sales Cash Collection',
+              description: `Bill #${b.billNo || b._id} - ${custName}${bTxs.length > 1 ? ` (Split: ${bTxs.map(t => t.mode || t.method).join(' + ')})` : ''}`,
+              refNo: b.billNo || `INV-${b._id}`,
+              amount: amt,
+              hasReturn: b.hasReturn,
+              hasExchange: b.hasExchange,
+              status: b.status
+            });
+          }
         });
+      } else if (bTxs.length === 0) {
+        const mode = (b.paymentMethod || '').toLowerCase();
+        // If mode mentions cash and not pure credit
+        if (mode.includes('cash') || (!b.paymentMethod && mode !== 'credit')) {
+          const advance = Number(b.advanceApplied) || 0;
+          const amt = Math.max(0, Number(b.amountPaid ?? b.paidAmount ?? b.grandTotal ?? 0) - advance);
+          if (amt > 0) {
+            data.push({
+              date: b.billDate || b.createdAt,
+              type: 'Cash In',
+              category: 'Sales Cash Collection',
+              description: `Bill #${b.billNo || b._id} - ${custName}`,
+              refNo: b.billNo || `INV-${b._id}`,
+              amount: amt,
+              hasReturn: b.hasReturn,
+              hasExchange: b.hasExchange,
+              status: b.status
+            });
+          }
+        }
       }
     });
 
     // Cash Outflows from Expenses
     expenses.forEach(e => {
       const mode = (e.paymentMethod || '').toLowerCase();
-      if (mode.includes('cash')) {
+      if (mode.includes('cash') || !e.paymentMethod) {
         const amt = Number(e.amount) || 0;
-        totalCashOut += amt;
-        data.push({
-          date: e.date || e.createdAt,
-          type: 'Out',
-          category: e.category || 'General Operating Expense',
-          description: e.description || e.vendorName || 'Operating Expense',
-          refNo: e.voucherNo || `VOUCH-${e._id}`,
-          amount: amt
-        });
+        if (amt > 0) {
+          data.push({
+            date: e.date || e.createdAt,
+            type: 'Cash Out',
+            category: e.category || 'Expense Payout',
+            description: e.description || e.vendorName || 'Operating Expense',
+            refNo: e.voucherNo || `VOUCH-${e._id}`,
+            amount: amt
+          });
+        }
       }
     });
+
+    // Chronological sort to compute running balance
+    data.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let running = 0;
+    let totalCashIn = 0;
+    let totalCashOut = 0;
+
+    data.forEach(item => {
+      if (item.type === 'Cash In') {
+        running += item.amount;
+        totalCashIn += item.amount;
+      } else {
+        running -= item.amount;
+        totalCashOut += item.amount;
+      }
+      item.runningBalance = running;
+    });
+
+    // Return newest first for display
+    data.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return {
       success: true,
@@ -226,7 +317,7 @@ class FinancialService {
         totalCashOut,
         closingBalance: totalCashIn - totalCashOut
       },
-      data: data.sort((a, b) => new Date(b.date) - new Date(a.date))
+      data
     };
   }
 
@@ -235,59 +326,189 @@ class FinancialService {
    */
   static async getBankBook(tenantId) {
     const tId = new mongoose.Types.ObjectId(tenantId);
-    const [bills, expenses] = await Promise.all([
-      SaleBill.find({ tenantId: tId, status: { $ne: 'CANCELLED' } }).lean(),
-      Expense.find({ tenantId: tId }).lean()
+    const Payment = require('../models/payments/Payment');
+    const PaymentTransaction = require('../models/payments/PaymentTransaction');
+
+    const [bills, expenses, customers, ledgerEntries] = await Promise.all([
+      SaleBill.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }],
+        status: { $ne: 'CANCELLED' }
+      }).sort({ createdAt: 1 }).lean(),
+      Expense.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }]
+      }).sort({ createdAt: 1 }).lean(),
+      Customer.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }]
+      }).lean(),
+      CustomerLedger.find({
+        $or: [{ tenantId: tId }, { tenantId: tenantId.toString() }]
+      }).lean()
     ]);
 
-    const data = [];
-    let totalBankIn = 0;
-    let totalBankOut = 0;
+    const custMap = new Map(customers.map(c => [c._id.toString(), c.name]));
+    const billIds = bills.map(b => b._id);
+    const billNumbers = bills.map(b => b.billNo).filter(Boolean);
 
-    // Bank Inflows (UPI, Cards, Net Banking)
-    bills.forEach(b => {
-      const mode = (b.paymentMethod || '').toLowerCase();
-      if (mode.includes('upi') || mode.includes('card') || mode.includes('bank') || mode.includes('qr') || mode.includes('pos')) {
-        const amt = Number(b.grandTotal) || 0;
-        totalBankIn += amt;
-        data.push({
-          date: b.billDate || b.createdAt,
-          type: 'In',
-          mode: b.paymentMethod || 'UPI / Bank',
-          accountName: 'HDFC Main Store Account',
-          description: `Bill #${b.billNo || b._id} - ${b.customerName || 'Walk-in'}`,
-          refNo: b.billNo || `INV-${b._id}`,
-          amount: amt
+    const pointsRedeemedByBill = new Map();
+    ledgerEntries.forEach(l => {
+      const bId = l.referenceBillId?.toString();
+      if (bId && (l.type === 'LOYALTY' || (l.remarks && l.remarks.toLowerCase().includes('redeem')))) {
+        const pts = Math.abs(Number(l.amount) || 0);
+        pointsRedeemedByBill.set(bId, (pointsRedeemedByBill.get(bId) || 0) + pts);
+      }
+      if (l.remarks) {
+        billNumbers.forEach(bNo => {
+          if (l.remarks.includes(bNo)) {
+            const pts = Math.abs(Number(l.amount) || 0);
+            pointsRedeemedByBill.set(bNo, (pointsRedeemedByBill.get(bNo) || 0) + pts);
+          }
         });
       }
     });
 
-    // Bank Outflows (Bank transfers, Online Vendor Settlements)
+    const payments = (billIds.length > 0 || billNumbers.length > 0) ? await Payment.find({
+      $or: [
+        { saleBillId: { $in: billIds } },
+        { receiptNo: { $in: billNumbers.map(n => `PAY-${n}`) } },
+        { receiptNo: { $in: billNumbers } }
+      ]
+    }).lean() : [];
+
+    const paymentIds = payments.map(p => p._id);
+    const transactions = paymentIds.length > 0 ? await PaymentTransaction.find({
+      paymentId: { $in: paymentIds }
+    }).lean() : [];
+
+    const txByBill = new Map();
+    payments.forEach(p => {
+      const bId = p.saleBillId?.toString();
+      const txs = transactions.filter(t => t.paymentId?.toString() === p._id.toString());
+      if (bId) txByBill.set(bId, txs);
+      if (p.receiptNo) {
+        const bNo = p.receiptNo.startsWith('PAY-') ? p.receiptNo.substring(4) : p.receiptNo;
+        txByBill.set(bNo, txs);
+        txByBill.set(p.receiptNo, txs);
+      }
+    });
+
+    const BANK_MODES = ['UPI', 'CARD', 'BANK', 'QR', 'POS', 'NET_BANKING', 'NETBANKING', 'NEFT', 'RTGS', 'CHEQUE', 'ONLINE'];
+    const NON_BANK_MODES = ['POINTS', 'POINT', 'LOYALTY', 'LOYALTY_PTS', 'LOYALTY_POINTS', 'POINTS_REDEEM', 'ADVANCE', 'CREDIT', 'DUE', 'CREDIT_NOTE', 'GIFT_VOUCHER', 'VOUCHER', 'CASH'];
+
+    const isBankMode = (modeStr) => {
+      const m = (modeStr || '').toUpperCase().trim();
+      if (NON_BANK_MODES.some(nb => m === nb || m.startsWith(`${nb}_`))) return false;
+      return BANK_MODES.some(bm => m === bm || m.includes(bm));
+    };
+
+    const data = [];
+
+    // Bank / UPI / Digital Inflows from Sales
+    bills.forEach(b => {
+      const bIdStr = b._id.toString();
+      const rawTxs = txByBill.get(bIdStr) || txByBill.get(b.billNo) || b.transactions || b.paymentTransactions || b.splitPayments || (b.paymentDetails && (b.paymentDetails.transactions || b.paymentDetails.splitPayments)) || [];
+      const bTxs = Array.isArray(rawTxs) ? rawTxs : [];
+
+      // Only include valid bank/digital transactions (strictly exclude non-bank modes like POINTS, ADVANCE, CREDIT_NOTE, DUE)
+      const bankTxs = bTxs.filter(t => isBankMode(t.mode || t.method || t.paymentMode || t.name || t.type));
+      const custName = b.customerName || (b.customerId ? custMap.get(b.customerId.toString()) : null) || 'Walk-in';
+
+      if (bankTxs.length > 0) {
+        bankTxs.forEach(btx => {
+          const amt = Number(btx.amount || btx.value || 0);
+          if (amt > 0) {
+            const rawMode = (btx.mode || btx.method || btx.paymentMode || 'UPI').toUpperCase();
+            const mode = rawMode.includes('CARD') ? 'Card' : (rawMode.includes('UPI') ? 'UPI' : (rawMode.includes('CHEQUE') ? 'Cheque' : 'UPI'));
+            data.push({
+              date: b.billDate || b.createdAt,
+              type: 'Deposit',
+              mode: mode,
+              bankAccountName: 'HDFC Main Store Account',
+              party: custName,
+              remarks: `Bill #${b.billNo || b._id}${bTxs.length > 1 ? ` (Split: ${bTxs.map(t => t.mode || t.method).join(' + ')})` : ''}`,
+              refNo: b.billNo || `INV-${b._id}`,
+              amount: amt,
+              hasReturn: b.hasReturn,
+              hasExchange: b.hasExchange,
+              status: b.status
+            });
+          }
+        });
+      } else if (bTxs.length === 0) {
+        const mode = (b.paymentMethod || '').toUpperCase();
+        if (BANK_MODES.some(m => mode.includes(m))) {
+          const advance = Number(b.advanceApplied) || 0;
+          const points = pointsRedeemedByBill.get(bIdStr) || pointsRedeemedByBill.get(b.billNo) || Number(b.loyaltyPointsUsed || b.pointsRedeemed || 0);
+          const amt = Math.max(0, Number(b.amountPaid ?? b.paidAmount ?? b.grandTotal ?? 0) - advance - points);
+          if (amt > 0) {
+            data.push({
+              date: b.billDate || b.createdAt,
+              type: 'Deposit',
+              mode: mode.includes('CARD') ? 'Card' : (mode.includes('UPI') ? 'UPI' : (b.paymentMethod || 'UPI')),
+              bankAccountName: 'HDFC Main Store Account',
+              party: custName,
+              remarks: `Bill #${b.billNo || b._id}${points > 0 || mode.includes('POINTS') ? ` (Split: ${b.paymentMethod || 'UPI + POINTS'})` : ''}`,
+              refNo: b.billNo || `INV-${b._id}`,
+              amount: amt,
+              hasReturn: b.hasReturn,
+              hasExchange: b.hasExchange,
+              status: b.status
+            });
+          }
+        }
+      }
+    });
+
+    // Bank Outflows from Expenses
     expenses.forEach(e => {
       const mode = (e.paymentMethod || '').toLowerCase();
-      if (!mode.includes('cash')) {
+      if (!mode.includes('cash') && mode.length > 0) {
         const amt = Number(e.amount) || 0;
-        totalBankOut += amt;
-        data.push({
-          date: e.date || e.createdAt,
-          type: 'Out',
-          mode: e.paymentMethod || 'Bank Transfer',
-          accountName: e.bankAccountName || 'HDFC Main Store Account',
-          description: e.description || e.vendorName || 'Operating Expense',
-          refNo: e.voucherNo || `VOUCH-${e._id}`,
-          amount: amt
-        });
+        if (amt > 0) {
+          data.push({
+            date: e.date || e.createdAt,
+            type: 'Withdrawal',
+            mode: e.paymentMethod || 'Bank Transfer',
+            bankAccountName: e.bankAccountName || 'HDFC Main Store Account',
+            party: e.vendorName || e.payeeName || 'Vendor',
+            remarks: e.description || e.category || 'Operating Expense',
+            refNo: e.voucherNo || `VOUCH-${e._id}`,
+            amount: amt
+          });
+        }
       }
     });
+
+    // Chronological sort to compute running balance
+    data.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let running = 0;
+    let totalDeposits = 0;
+    let totalWithdrawals = 0;
+
+    data.forEach(item => {
+      if (item.type === 'Deposit') {
+        running += item.amount;
+        totalDeposits += item.amount;
+      } else {
+        running -= item.amount;
+        totalWithdrawals += item.amount;
+      }
+      item.runningBalance = running;
+    });
+
+    // Return newest first for display
+    data.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return {
       success: true,
       summary: {
-        totalBankIn,
-        totalBankOut,
-        closingBalance: totalBankIn - totalBankOut
+        totalDeposits,
+        totalWithdrawals,
+        totalBankIn: totalDeposits,
+        totalBankOut: totalWithdrawals,
+        closingBalance: totalDeposits - totalWithdrawals
       },
-      data: data.sort((a, b) => new Date(b.date) - new Date(a.date))
+      data
     };
   }
 

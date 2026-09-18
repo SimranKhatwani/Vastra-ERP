@@ -148,7 +148,7 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
   const [payments, setPayments] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [profitLoss, setProfitLoss] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Modals & Form States
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -241,7 +241,10 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
         const matchCat = (row.category || "").toLowerCase().includes(q);
         if (!matchDesc && !matchRef && !matchCat) return false;
       }
-      if (cashTypeFilter !== "All" && row.type !== cashTypeFilter) return false;
+      if (cashTypeFilter !== "All") {
+        if (cashTypeFilter === "Cash In" && row.type !== "Cash In" && row.type !== "In") return false;
+        if (cashTypeFilter === "Cash Out" && row.type !== "Cash Out" && row.type !== "Out") return false;
+      }
       if (cashCategoryFilter !== "All" && row.category !== cashCategoryFilter) return false;
       return true;
     });
@@ -257,13 +260,16 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       const q = bankSearch.toLowerCase().trim();
       if (q) {
         const matchParty = (row.party || "").toLowerCase().includes(q);
-        const matchAccount = (row.bankAccountName || "").toLowerCase().includes(q);
+        const matchAccount = (row.bankAccountName || row.accountName || "").toLowerCase().includes(q);
         const matchRef = (row.refNo || "").toLowerCase().includes(q);
-        const matchRemarks = (row.remarks || "").toLowerCase().includes(q);
+        const matchRemarks = (row.remarks || row.description || "").toLowerCase().includes(q);
         const matchMode = (row.mode || "").toLowerCase().includes(q);
         if (!matchParty && !matchAccount && !matchRef && !matchRemarks && !matchMode) return false;
       }
-      if (bankTypeFilter !== "All" && row.type !== bankTypeFilter) return false;
+      if (bankTypeFilter !== "All") {
+        if (bankTypeFilter === "Deposit" && row.type !== "Deposit" && row.type !== "In") return false;
+        if (bankTypeFilter === "Withdrawal" && row.type !== "Withdrawal" && row.type !== "Out") return false;
+      }
       if (bankModeFilter !== "All" && row.mode !== bankModeFilter) return false;
       return true;
     });
@@ -954,9 +960,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {activeTab === "cash-book" && (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
-            <KPICard icon={ArrowUpRight} label="Total Cash In" value={`₹${fmt(cashBook?.summary?.totalCashIn)}`} color="green" />
-            <KPICard icon={ArrowDownRight} label="Total Cash Out" value={`₹${fmt(cashBook?.summary?.totalCashOut)}`} color="red" />
-            <KPICard icon={Wallet} label="Net Cash Balance" value={`₹${fmt(cashBook?.summary?.closingBalance)}`} color="amber" />
+            <KPICard icon={ArrowUpRight} label="Total Cash In" value={loading ? "..." : `₹${fmt(cashBook?.summary?.totalCashIn)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Cash Out" value={loading ? "..." : `₹${fmt(cashBook?.summary?.totalCashOut)}`} color="red" />
+            <KPICard icon={Wallet} label="Net Cash Balance" value={loading ? "..." : `₹${fmt(cashBook?.summary?.closingBalance)}`} color="amber" />
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
@@ -1035,36 +1041,46 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredCashBookData.map((row, i) => {
-                  const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || row.category === "Sales Refund";
-                  const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
-                  return (
-                    <tr key={i} className="hover:bg-slate-50/50">
-                      <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
-                      <td className="p-3 font-mono font-bold text-slate-800">
-                        {row.refNo}
-                        {isRet && (
-                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
-                            ↩ RETURNED
-                          </span>
-                        )}
-                        {isEx && (
-                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            🔁 EXCHANGED
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <Badge label={row.category} color={row.category === "Sales Refund" ? "red" : "indigo"} />
-                      </td>
-                      <td className="p-3 text-slate-600">{row.description}</td>
-                      <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Cash In" ? `₹${fmt(row.amount)}` : "—"}</td>
-                      <td className="p-3 text-right font-mono text-red-600">{row.type === "Cash Out" ? `₹${fmt(row.amount)}` : "—"}</td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
-                    </tr>
-                  );
-                })}
-                {!filteredCashBookData.length && (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="p-12 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="w-5 h-5 animate-spin text-amber-500" />
+                        <span className="text-xs font-semibold text-slate-500">Loading Cash Book data...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredCashBookData.length > 0 ? (
+                  filteredCashBookData.map((row, i) => {
+                    const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || row.category === "Sales Refund";
+                    const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
+                    return (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                        <td className="p-3 font-mono font-bold text-slate-800">
+                          {row.refNo}
+                          {isRet && (
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                              ↩ RETURNED
+                            </span>
+                          )}
+                          {isEx && (
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              🔁 EXCHANGED
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <Badge label={row.category} color={row.category === "Sales Refund" ? "red" : "indigo"} />
+                        </td>
+                        <td className="p-3 text-slate-600">{row.description}</td>
+                        <td className="p-3 text-right font-mono text-emerald-600">{(row.type === "Cash In" || row.type === "In") ? `₹${fmt(row.amount)}` : "—"}</td>
+                        <td className="p-3 text-right font-mono text-red-600">{(row.type === "Cash Out" || row.type === "Out") ? `₹${fmt(row.amount)}` : "—"}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance !== undefined ? row.runningBalance : row.amount)}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-400">
                       {cashBook?.data?.length ? "No cash entries matching search/filter." : "No cash transactions logged."}
@@ -1083,9 +1099,9 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
       {activeTab === "bank-book" && (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
-            <KPICard icon={ArrowUpRight} label="Total Deposits" value={`₹${fmt(bankBook?.summary?.totalDeposits)}`} color="green" />
-            <KPICard icon={ArrowDownRight} label="Total Withdrawals" value={`₹${fmt(bankBook?.summary?.totalWithdrawals)}`} color="red" />
-            <KPICard icon={CreditCard} label="Bank Balance" value={`₹${fmt(bankBook?.summary?.closingBalance)}`} color="blue" />
+            <KPICard icon={ArrowUpRight} label="Total Deposits" value={loading ? "..." : `₹${fmt(bankBook?.summary?.totalDeposits ?? bankBook?.summary?.totalBankIn)}`} color="green" />
+            <KPICard icon={ArrowDownRight} label="Total Withdrawals" value={loading ? "..." : `₹${fmt(bankBook?.summary?.totalWithdrawals ?? bankBook?.summary?.totalBankOut)}`} color="red" />
+            <KPICard icon={CreditCard} label="Bank Balance" value={loading ? "..." : `₹${fmt(bankBook?.summary?.closingBalance)}`} color="blue" />
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-xs">
@@ -1162,35 +1178,45 @@ export const FinancialView = ({ mode = "financial", onAddNotification, currentUs
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredBankBookData.map((row, i) => {
-                  const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || (row.remarks || "").toLowerCase().includes("return");
-                  const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
-                  return (
-                    <tr key={i} className="hover:bg-slate-50/50">
-                      <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
-                      <td className="p-3 font-mono font-bold text-slate-800">
-                        {row.refNo}
-                        {isRet && (
-                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
-                            ↩ RETURNED
-                          </span>
-                        )}
-                        {isEx && (
-                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            🔁 EXCHANGED
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 text-slate-600 font-semibold">{row.bankAccountName}</td>
-                      <td className="p-3"><Badge label={row.mode} color="blue" /></td>
-                      <td className="p-3 text-slate-600">{row.party} — {row.remarks}</td>
-                      <td className="p-3 text-right font-mono text-emerald-600">{row.type === "Deposit" ? `₹${fmt(row.amount)}` : "—"}</td>
-                      <td className="p-3 text-right font-mono text-red-600">{row.type === "Withdrawal" ? `₹${fmt(row.amount)}` : "—"}</td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance)}</td>
-                    </tr>
-                  );
-                })}
-                {!filteredBankBookData.length && (
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="p-12 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                        <span className="text-xs font-semibold text-slate-500">Loading Bank Book data...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredBankBookData.length > 0 ? (
+                  filteredBankBookData.map((row, i) => {
+                    const isRet = row.hasReturn || row.status === "Returned" || row.status === "Partially Returned" || (row.remarks || "").toLowerCase().includes("return");
+                    const isEx = row.hasExchange || row.status === "Exchanged" || row.status === "Partially Exchanged";
+                    return (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        <td className="p-3 text-slate-500">{fmtDate(row.date)}</td>
+                        <td className="p-3 font-mono font-bold text-slate-800">
+                          {row.refNo}
+                          {isRet && (
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                              ↩ RETURNED
+                            </span>
+                          )}
+                          {isEx && (
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              🔁 EXCHANGED
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-600 font-semibold">{row.bankAccountName || row.accountName || "HDFC Main Store Account"}</td>
+                        <td className="p-3"><Badge label={row.mode || "UPI"} color="blue" /></td>
+                        <td className="p-3 text-slate-600">{row.party ? (row.remarks ? `${row.party} — ${row.remarks}` : row.party) : (row.remarks || row.description || "—")}</td>
+                        <td className="p-3 text-right font-mono text-emerald-600">{(row.type === "Deposit" || row.type === "In") ? `₹${fmt(row.amount)}` : "—"}</td>
+                        <td className="p-3 text-right font-mono text-red-600">{(row.type === "Withdrawal" || row.type === "Out") ? `₹${fmt(row.amount)}` : "—"}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-800">₹{fmt(row.runningBalance !== undefined ? row.runningBalance : row.amount)}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-slate-400">
                       {bankBook?.data?.length ? "No bank entries matching search/filter." : "No bank transactions logged."}
