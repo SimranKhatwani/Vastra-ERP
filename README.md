@@ -59,3 +59,4 @@ This will output optimized static assets into the `dist` directory, ready to be 
 ## License
 
 This project is proprietary and intended for Vastra ERP Billing users.
+Designed and Developed by Requin Solutions Pvt. Ltd.
