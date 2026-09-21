@@ -276,9 +276,9 @@ class PTImportService {
         const rawBillDate = getVal(row, 'Bill date', 'Bill Date', 'billDate');
         const billDate = rawBillDate ? new Date(rawBillDate) : new Date();
 
-        const vendorName = String(getVal(row, 'Party', 'Party Name', 'vendor name', 'Vendor', 'vendor', 'Vendor Name', 'Supplier') || 'K.R CHHABRA AND CO.').trim();
-        const vendorCode = String(getVal(row, 'Vendor Code', 'vendorCode', 'Vendor code') || vendorName.substring(0, 8).toUpperCase()).trim();
-        const vendorGst = String(getVal(row, 'Vendor GST', 'vendorGst', 'Vendor GSTIN') || '').trim();
+        const vendorName = String(getVal(row, 'vendorName', 'Party', 'Party Name', 'vendor name', 'Vendor', 'vendor', 'Vendor Name', 'Supplier', 'PARTY') || 'Wholesaler / Vendor').trim();
+        const vendorCode = String(getVal(row, 'Vendor Code', 'vendorCode', 'Vendor code', 'VENDOR CODE') || vendorName.substring(0, 8).toUpperCase()).trim();
+        const vendorGst = String(getVal(row, 'Vendor GST', 'vendorGst', 'Vendor GSTIN', 'GST NUMBER', 'GSTIN', 'gstin') || '').trim();
 
         const firmName = String(getVal(row, 'Firm', 'firm', 'Firm Name', 'Company') || '').trim();
         const brandName = String(getVal(row, 'Brand', 'brand', 'Brand Name') || 'GENERIC BRAND').trim();
@@ -722,11 +722,6 @@ class PTImportService {
               }
               if (updated) {
                 await product.save({ session });
-                await InventoryPiece.updateMany(
-                  { productId: product._id, tenantId },
-                  { $set: { purchaseRate: product.purchaseRate, wspAfterGST: product.wspAfterGST, mrp: product.defaultMRP } },
-                  { session }
-                );
               }
             }
             productCache.set(productKey, product);

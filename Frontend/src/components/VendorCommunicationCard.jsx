@@ -613,7 +613,7 @@ export default function VendorCommunicationCard({ currentUser }) {
   const [vendorList, setVendorList] = useState([]);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [hubData, setHubData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [viewMode, setViewMode] = useState('list');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1272,56 +1272,66 @@ export default function VendorCommunicationCard({ currentUser }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-sm">
-                  {filteredVendors.map((v) => (
-                    <tr
-                      key={v._id}
-                      onClick={() => handleSelectVendor(v._id)}
-                      className="hover:bg-indigo-50/30 transition cursor-pointer group"
-                    >
-                      <td className="p-4 font-mono font-bold text-slate-500">{v.vendorCode}</td>
-                      <td className="p-4 font-bold text-indigo-600 group-hover:text-indigo-800 group-hover:underline text-[15px]">
-                        {v.name}
-                      </td>
-                      <td className="p-4 text-slate-600">
-                        <div>{v.phone}</div>
-                        <div className="text-xs text-slate-400 font-normal">{v.email}</div>
-                      </td>
-                      <td className="p-4 text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[280px]" title={v.address}>
-                        {v.address}
-                      </td>
-                      <td className="p-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleSelectVendor(v._id)}
-                            className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 font-bold rounded-lg transition text-xs flex items-center shadow-sm"
-                            title="View Profile"
-                          >
-                            Profile ➜
-                          </button>
-                          <button
-                            onClick={(e) => handleEditVendorClick(e, v)}
-                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition shadow-sm border border-transparent hover:border-indigo-100"
-                            title="Edit Vendor"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDeleteVendor(e, v._id)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition shadow-sm border border-transparent hover:border-red-100"
-                            title="Delete Vendor"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="p-16 text-center text-indigo-600 font-bold">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+                          <span className="text-sm font-semibold text-slate-600">Loading Vendor Cards...</span>
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {filteredVendors.length === 0 && (
+                  ) : filteredVendors.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-10 text-center text-slate-400 italic font-bold">
-                        No vendors found matching your search.
+                      <td colSpan={5} className="p-12 text-center text-slate-400 italic font-bold">
+                        {searchQuery ? "No vendors found matching your search." : "No vendor communication cards present."}
                       </td>
                     </tr>
+                  ) : (
+                    filteredVendors.map((v) => (
+                      <tr
+                        key={v._id}
+                        onClick={() => handleSelectVendor(v._id)}
+                        className="hover:bg-indigo-50/30 transition cursor-pointer group"
+                      >
+                        <td className="p-4 font-mono font-bold text-slate-500">{v.vendorCode || '—'}</td>
+                        <td className="p-4 font-bold text-indigo-600 group-hover:text-indigo-800 group-hover:underline text-[15px]">
+                          {v.name}
+                        </td>
+                        <td className="p-4 text-slate-600">
+                          <div>{v.phone || '—'}</div>
+                          <div className="text-xs text-slate-400 font-normal">{v.email || '—'}</div>
+                        </td>
+                        <td className="p-4 text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[280px]" title={v.address}>
+                          {v.address || '—'}
+                        </td>
+                        <td className="p-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleSelectVendor(v._id)}
+                              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 font-bold rounded-lg transition text-xs flex items-center shadow-sm"
+                              title="View Profile"
+                            >
+                              Profile ➜
+                            </button>
+                            <button
+                              onClick={(e) => handleEditVendorClick(e, v)}
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition shadow-sm border border-transparent hover:border-indigo-100"
+                              title="Edit Vendor"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteVendor(e, v._id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition shadow-sm border border-transparent hover:border-red-100"
+                              title="Delete Vendor"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -1393,20 +1403,22 @@ export default function VendorCommunicationCard({ currentUser }) {
                     <div className="flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-black text-slate-800">{vendor.name}</h2>
-                        <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{vendor.vendorCode || 'VND-2026-001'}</span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${vendor.isActive !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                          {vendor.isActive !== false ? 'Active Supplier' : 'Inactive'}
+                        <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{vendor?.vendorCode || ''}</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${vendor?.isActive !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                          {vendor?.isActive !== false ? 'Active Supplier' : 'Inactive'}
                         </span>
                         <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {vendor.rating || 4.8}
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {vendor?.rating || '5.0'}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 font-medium">{vendor.businessName || 'Garment Manufacturing & Supply Co.'}</p>
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {(vendor.brandsSupplied && vendor.brandsSupplied.length > 0 ? vendor.brandsSupplied : ['Raymond', 'Linen Club']).map((b, i) => (
-                          <span key={i} className="bg-white text-slate-700 border border-slate-200 text-[10px] px-2 py-0.5 rounded font-bold font-mono">{b}</span>
-                        ))}
-                      </div>
+                      {vendor?.businessName ? <p className="text-xs text-slate-500 font-medium">{vendor.businessName}</p> : null}
+                      {vendor?.brandsSupplied && vendor.brandsSupplied.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {vendor.brandsSupplied.map((b, i) => (
+                            <span key={i} className="bg-white text-slate-700 border border-slate-200 text-[10px] px-2 py-0.5 rounded font-bold font-mono">{b}</span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
                       <button onClick={() => handleOpenShareModal('Call')} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5 shadow-sm transition">

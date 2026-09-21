@@ -1160,23 +1160,29 @@ export const PurchaseView = ({
   const [editingPO, setEditingPO] = useState(null);
   const [viewingPO, setViewingPO] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isLoadingPOs, setIsLoadingPOs] = useState(true);
 
   // Permanently sync & fetch PT Import History and Purchase Bills directly from Database on mount
   React.useEffect(() => {
+    let isMounted = true;
     const fetchPOHistory = async () => {
       try {
+        setIsLoadingPOs(true);
         const res = await api.get('/purchase-orders');
         const dataOrBills = Array.isArray(res.data?.data)
           ? res.data.data
           : (Array.isArray(res.data?.data?.bills) ? res.data.data.bills : []);
-        if (dataOrBills.length > 0 && setPurchaseOrders) {
+        if (isMounted && setPurchaseOrders) {
           setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
         }
       } catch (err) {
         console.warn("Could not refetch purchase orders on PurchaseView mount:", err);
+      } finally {
+        if (isMounted) setIsLoadingPOs(false);
       }
     };
     fetchPOHistory();
+    return () => { isMounted = false; };
   }, [setPurchaseOrders]);
 
   // Audit Tracking
@@ -1503,12 +1509,24 @@ export const PurchaseView = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                    {filteredPOs.length === 0 ? (
+                    {isLoadingPOs ? (
+                      <tr>
+                        <td colSpan={8} className="py-16 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-3">
+                            <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+                            <div>
+                              <p className="font-bold text-sm text-slate-800">Loading PT Files & Purchase History...</p>
+                              <p className="text-xs text-slate-400 mt-0.5">Please wait while earlier PT files and purchase orders are being retrieved</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredPOs.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="py-12 text-center text-slate-400">
                           <FileText className="w-10 h-10 mx-auto mb-2 opacity-30 text-indigo-500" />
                           <p className="font-bold text-sm text-slate-600">No Procurement POs or PT Vouchers found</p>
-                          <p className="text-xs mt-1">Import a 27-column PT File or click "Manual Entry" above to generate a new purchase voucher.</p>
+                          <p className="text-xs mt-1">Import a PT File or click "Manual Entry" above to generate a new purchase voucher.</p>
                         </td>
                       </tr>
                     ) : (
