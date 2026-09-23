@@ -399,9 +399,9 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
       <tr class="item-row">
         <td class="col-sn">${index + 1}</td>
         <td class="col-code">
-          <div>B- ${item.barcode || 'N/A'}</div>
-          <div>U- ${item.uniqueCode || item.barcode || 'N/A'}</div>
-          <div>D- ${item.sku || item.designNo || item.itemCode || 'N/A'}</div>
+          <div>B- ${item.barcode || item.barcodeNo || item.inventoryPieceId?.barcode || item.pieceBarcode || 'N/A'}</div>
+          <div>U- ${item.uniqueCode || item.inventoryPieceId?.uniqueCode || item.barcode || 'N/A'}</div>
+          <div>D- ${item.designNo || item.sku || item.itemCode || item.inventoryPieceId?.productId?.designNo || item.productId?.designNo || item.designNumber || item.product?.designNo || 'N/A'}</div>
         </td>
         <td class="col-product">
           ${item.name || item.itemName}

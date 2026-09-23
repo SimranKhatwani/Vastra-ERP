@@ -680,6 +680,9 @@ class BillingService {
         inventoryPieceId: piece._id || item.inventoryPieceId,
         barcode: item.barcode || piece.barcode || '',
         uniqueCode: item.uniqueCode || piece.uniqueCode || piece.barcode || '',
+        designNo: product.designNo || piece.designNo || item.designNo || '',
+        sku: product.sku || product.designNo || item.sku || '',
+        itemCode: product.itemCode || item.itemCode || '',
         name: product.itemName || product.name || 'Garment Item',
         itemName: product.itemName || product.name || 'Garment Item',
         size: piece.size || product.size || 'FS',
@@ -896,6 +899,22 @@ class BillingService {
 
     const remainingAmount = Math.max(0, bill.grandTotal - advanceApplied - previouslyPaidAmount);
 
+    const enrichedItems = (items || []).map(item => {
+      const itmObj = item.toObject ? item.toObject() : { ...item };
+      const piece = itmObj.inventoryPieceId || {};
+      const product = piece.productId || {};
+      return {
+        ...itmObj,
+        designNo: product.designNo || piece.designNo || itmObj.designNo || '',
+        sku: product.sku || product.designNo || itmObj.sku || '',
+        itemCode: product.itemCode || itmObj.itemCode || '',
+        name: itmObj.name || product.itemName || product.name || 'Garment Item',
+        itemName: itmObj.itemName || product.itemName || product.name || 'Garment Item',
+        size: itmObj.size || piece.size || product.size || 'FS',
+        color: itmObj.color || piece.primaryColor || product.color || 'Standard'
+      };
+    });
+
     return {
       bill: {
         ...bill.toObject(),
@@ -903,7 +922,7 @@ class BillingService {
         hasPSSM: Boolean(pssm),
         pssmRecord: pssm || null
       },
-      items,
+      items: enrichedItems,
       alteration,
       pssmData: pssm ? { pssm, items: pssmItems } : null,
       payment: payments[0] || null,
