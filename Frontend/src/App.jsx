@@ -1518,6 +1518,66 @@ export default function App() {
     // { id: "attendance-settings", label: "Attendance Policy", icon: Settings },
   ];
 
+  // Filter accessible module IDs based on current RBAC permissions
+  const accessibleModuleIds = React.useMemo(() => {
+    const allowed = getAccessibleModules(currentUser?.role, currentUser?.designation, currentUser);
+    return modulesList.filter((mod) => allowed.includes(mod.id)).map((mod) => mod.id);
+  }, [currentUser?.role, currentUser?.designation, permissionMatrix, employees.length]);
+
+  // Global Tab / Shift+Tab Navigation between Modules in a Continuous Loop
+  React.useEffect(() => {
+    const handleModuleTabNavigation = (e) => {
+      // Only trigger on Tab key
+      if (e.key !== "Tab") return;
+
+      const activeEl = document.activeElement;
+      const tagName = (activeEl?.tagName || "").toUpperCase();
+      const isTextarea = tagName === "TEXTAREA";
+
+      // If a modal or dialog is open, allow tabbing inside the modal
+      const isModalOpen = Boolean(
+        document.querySelector('[role="dialog"]') ||
+        document.querySelector('.fixed.inset-0.z-\\[') ||
+        document.querySelector('[aria-modal="true"]') ||
+        document.getElementById("posItemSearchModal") ||
+        document.getElementById("product-search-modal") ||
+        document.getElementById("payment-modal") ||
+        document.getElementById("adjustment-modal")
+      );
+
+      if (!isTextarea && !isModalOpen && accessibleModuleIds.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (activeEl && typeof activeEl.blur === "function") {
+          activeEl.blur();
+        }
+
+        const currentIndex = accessibleModuleIds.indexOf(activeModule);
+        let nextIndex;
+        if (currentIndex === -1) {
+          nextIndex = 0;
+        } else if (e.shiftKey) {
+          // Shift + Tab -> Navigate to Previous Module in Loop
+          nextIndex = (currentIndex - 1 + accessibleModuleIds.length) % accessibleModuleIds.length;
+        } else {
+          // Tab -> Navigate to Next Module in Loop
+          nextIndex = (currentIndex + 1) % accessibleModuleIds.length;
+        }
+
+        const targetModule = accessibleModuleIds[nextIndex];
+        setActiveModule(targetModule);
+        const targetNavEl = document.getElementById(`nav-module-${targetModule}`);
+        if (targetNavEl) {
+          targetNavEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleModuleTabNavigation, true);
+    return () => window.removeEventListener("keydown", handleModuleTabNavigation, true);
+  }, [activeModule, accessibleModuleIds]);
+
   // Toast Overlay Renderer - Smooth premium notifications
   const renderToasts = () => (
     <div className="fixed bottom-5 right-5 z-[9999] space-y-2.5 max-w-sm w-full pointer-events-none">
@@ -1652,11 +1712,14 @@ export default function App() {
                 return (
                   <button
                     key={mod.id}
-                    onClick={() => {
+                    id={`nav-module-${mod.id}`}
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget?.blur();
                       setActiveModule(mod.id);
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
-                      ? "bg-indigo-50 text-indigo-700"
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 select-none ${isActive
+                      ? "bg-indigo-50 text-indigo-700 ring-2 ring-indigo-500/40 shadow-xs"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       }`}
                     title={mod.label}

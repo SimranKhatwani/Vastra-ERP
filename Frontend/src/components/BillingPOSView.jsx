@@ -5052,12 +5052,12 @@ export const BillingPOSView = ({
       } else {
         focusPosColumn("itemName");
       }
-    } else if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+    } else if (e.key === "ArrowRight") {
       if (e.target.selectionStart === e.target.value.length || !barcodeInput) {
         e.preventDefault();
         focusPosColumn("itemName");
       }
-    } else if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !barcodeInput)) {
+    } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !barcodeInput)) {
       if (e.target.selectionStart === 0 || !barcodeInput) {
         e.preventDefault();
         focusPosColumn("itemCode");
@@ -5073,12 +5073,12 @@ export const BillingPOSView = ({
       } else {
         focusPosColumn("designNo");
       }
-    } else if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+    } else if (e.key === "ArrowRight") {
       if (e.target.selectionStart === e.target.value.length || !itemSearchInputText) {
         e.preventDefault();
         focusPosColumn("designNo");
       }
-    } else if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !itemSearchInputText)) {
+    } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !itemSearchInputText)) {
       if (e.target.selectionStart === 0 || !itemSearchInputText) {
         e.preventDefault();
         focusPosColumn("barcode");
@@ -5206,14 +5206,14 @@ export const BillingPOSView = ({
       setIsDesignNoDropdownOpen(false);
       return;
     }
-    if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !designNoSearchInput)) {
+    if (e.key === "ArrowLeft" || (e.key === "Backspace" && !designNoSearchInput)) {
       if (!isDesignNoDropdownOpen && (e.target.selectionStart === 0 || !designNoSearchInput)) {
         e.preventDefault();
         focusPosColumn("itemName");
         return;
       }
     }
-    if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+    if (e.key === "ArrowRight") {
       if (!isDesignNoDropdownOpen && (e.target.selectionStart === e.target.value.length || !designNoSearchInput)) {
         e.preventDefault();
         focusPosColumn("itemCode");
@@ -5248,14 +5248,14 @@ export const BillingPOSView = ({
       handleOpenItemSearchModal();
       return;
     }
-    if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !itemCodeSearchInput)) {
+    if (e.key === "ArrowLeft" || (e.key === "Backspace" && !itemCodeSearchInput)) {
       if (e.target.selectionStart === 0 || !itemCodeSearchInput) {
         e.preventDefault();
         focusPosColumn("designNo");
         return;
       }
     }
-    if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+    if (e.key === "ArrowRight") {
       if (e.target.selectionStart === e.target.value.length || !itemCodeSearchInput) {
         e.preventDefault();
         focusPosColumn("barcode");

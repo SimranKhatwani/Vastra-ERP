@@ -19,3 +19,9 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Suppress default browser button focus rings to prevent stuck focus rectangles */
+button:focus,
+button:focus-visible {
+  outline: none !important;
+}
