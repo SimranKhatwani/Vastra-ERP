@@ -398,8 +398,14 @@ class PTImportService {
           }
         }
 
-        let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE') || '').trim();
+        let barcode = String(getVal(row, 'Barcode', 'barcode', 'BARCODE', 'Barcode No', 'Barcode no', 'BARCODE NO') || '').trim();
+        if (!barcode) {
+          barcode = generateBarcode(tenantId, 'VST');
+        }
         let uniqueCode = String(getVal(row, 'Unique Code', 'uniqueCode', 'UNIQUE CODE') || '').trim();
+        if (!uniqueCode) {
+          uniqueCode = generateUniqueCode(designNo, size, rowNum);
+        }
         let ipn = String(getVal(row, 'IPN', 'ipn', 'IPN No') || '').trim();
         const batch = String(getVal(row, 'Batch', 'batch', 'BATCH', 'Batch No', 'Batch No.', 'BATCH NO', 'BATCH NO.', 'Batch Number', 'BATCH NUMBER', 'Lot No', 'Lot No.', 'LOT NO', 'Lot', 'LOT', 'Lot Number', 'BATCH_NO', 'Batch_No', 'Batch#') || '').trim();
         const counter = String(getVal(row, 'Counter', 'counter', 'COUNTER', 'Counter No', 'Counter No.', 'COUNTER NO', 'COUNTER NO.', 'Counter Number', 'COUNTER NUMBER', 'Counter Name', 'COUNTER NAME', 'COUNTER_NO', 'Cntr', 'CNTR') || '').trim();

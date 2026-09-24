@@ -25,20 +25,48 @@ class ProductService {
 
   static async searchBilling(queryStr, tenantId) {
     if (!queryStr) {
-      const { products } = await this.getProducts({ limit: 100 }, tenantId);
+      const { products } = await this.getProducts({ limit: 1000 }, tenantId);
       return products;
     }
     const q = queryStr.trim();
-    const { products } = await this.getProducts({ search: q, limit: 100 }, tenantId);
+    const { products } = await this.getProducts({ search: q, limit: 1000 }, tenantId);
+
+    // In addition, if no direct products found, search pieces directly
+    if (!products || products.length === 0) {
+      const InventoryPiece = require('../models/InventoryPiece');
+      const pieces = await InventoryPiece.find({
+        tenantId,
+        isDeleted: false,
+        $or: [
+          { barcode: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { uniqueCode: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { ipn: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+        ]
+      }).populate('productId');
+
+      const pieceProductIds = pieces.map(pc => pc.productId?._id || pc.productId).filter(Boolean);
+      if (pieceProductIds.length > 0) {
+        const { products: extraProducts } = await this.getProducts({ limit: 1000 }, tenantId);
+        return extraProducts.filter(p => pieceProductIds.some(id => id.toString() === (p._id || p.id).toString()));
+      }
+    }
+
+    const qLower = q.toLowerCase();
     return products.filter(p =>
-      (p.itemName && p.itemName.toLowerCase().includes(q.toLowerCase())) ||
-      (p.name && p.name.toLowerCase().includes(q.toLowerCase())) ||
-      (p.itemCode && p.itemCode.toLowerCase().includes(q.toLowerCase())) ||
-      (p.designNo && p.designNo.toLowerCase().includes(q.toLowerCase())) ||
-      (p.sku && p.sku.toLowerCase().includes(q.toLowerCase())) ||
-      (p.barcode && String(p.barcode).toLowerCase().includes(q.toLowerCase())) ||
-      (p.uniqueCode && String(p.uniqueCode).toLowerCase().includes(q.toLowerCase())) ||
-      (p.ipn && String(p.ipn).toLowerCase().includes(q.toLowerCase()))
+      (p.itemName && p.itemName.toLowerCase().includes(qLower)) ||
+      (p.name && p.name.toLowerCase().includes(qLower)) ||
+      (p.itemCode && p.itemCode.toLowerCase().includes(qLower)) ||
+      (p.designNo && p.designNo.toLowerCase().includes(qLower)) ||
+      (p.sku && p.sku.toLowerCase().includes(qLower)) ||
+      (p.barcode && String(p.barcode).toLowerCase().includes(qLower)) ||
+      (p.uniqueCode && String(p.uniqueCode).toLowerCase().includes(qLower)) ||
+      (p.ipn && String(p.ipn).toLowerCase().includes(qLower)) ||
+      (p.batch && String(p.batch).toLowerCase().includes(qLower)) ||
+      (p.counter && String(p.counter).toLowerCase().includes(qLower)) ||
+      (p.pieces && p.pieces.some(pc => 
+        String(pc.barcode || '').toLowerCase().includes(qLower) || 
+        String(pc.uniqueCode || '').toLowerCase().includes(qLower)
+      ))
     );
   }
 
@@ -58,17 +86,43 @@ class ProductService {
     if (query.gender) filter.gender = query.gender;
 
     if (query.search) {
-      const searchRegex = new RegExp(query.search, 'i');
+      const searchTrimmed = String(query.search).trim();
+      const searchRegex = new RegExp(searchTrimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+      // Also find piece-level matches (barcode, uniqueCode, ipn, batch, counter, designNo)
+      const InventoryPiece = require('../models/InventoryPiece');
+      const pieceProductIds = await InventoryPiece.find({
+        tenantId,
+        isDeleted: false,
+        $or: [
+          { barcode: searchRegex },
+          { uniqueCode: searchRegex },
+          { ipn: searchRegex },
+          { batch: searchRegex },
+          { counter: searchRegex },
+          { designNo: searchRegex },
+          { primaryColor: searchRegex },
+          { size: searchRegex }
+        ]
+      }).distinct('productId');
+
       filter.$or = [
         { itemName: searchRegex },
         { itemCode: searchRegex },
         { designNo: searchRegex },
-        { subItem: searchRegex }
+        { subItem: searchRegex },
+        { barcode: searchRegex },
+        { sku: searchRegex },
+        { color: searchRegex },
+        { primaryColor: searchRegex },
+        { batch: searchRegex },
+        { counter: searchRegex },
+        { _id: { $in: pieceProductIds } }
       ];
     }
 
     const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 20;
+    const limit = parseInt(query.limit) || 2000;
     const skip = (page - 1) * limit;
 
     const products = await Product.find(filter)
@@ -148,9 +202,23 @@ class ProductService {
       const pieceGRQty = pPieces.filter(pc => pc.status === 'GOODS_RETURNED' || pc.returned === true).length;
       const inGRQty = Math.max(sumGRItemsQty, pieceGRQty);
       
+      const resolvedStock = pPieces.length > 0 
+        ? calculatedStock 
+        : Math.max(1, Number(pObj.availableStock ?? pObj.stock ?? 100));
+
       const computedStatus = inGRQty > 0 
         ? `IN GR (${inGRQty} Pcs)` 
-        : (calculatedStock > 0 ? 'In Stock' : 'Out of Stock');
+        : (resolvedStock > 0 ? 'In Stock' : 'Out of Stock');
+
+      // Auto-assign persistent barcode if missing
+      const resolvedBarcode = (pObj.barcode && pObj.barcode.trim()) 
+        || (pPieces[0]?.barcode && pPieces[0].barcode.trim()) 
+        || (pObj.itemCode && pObj.itemCode.trim()) 
+        || `VST${pStr.slice(-6).toUpperCase()}`;
+
+      if (!pObj.barcode && resolvedBarcode) {
+        Product.updateOne({ _id: p._id, barcode: { $in: ['', null] } }, { $set: { barcode: resolvedBarcode } }).exec().catch(() => {});
+      }
 
       return {
         ...pObj,
@@ -161,15 +229,15 @@ class ProductService {
         hsn: pObj.hsnId?.hsnCode || 'N/A',
         gst: pObj.gstId?.rate || 0,
         imageUrl: pObj.imageUrl || '',
-        stock: calculatedStock,
-        availableStock: calculatedStock,
+        stock: resolvedStock,
+        availableStock: resolvedStock,
         inGRQty,
         goodsReturnedQuantity: inGRQty,
         status: computedStatus,
         soldQuantity: pPieces.filter(pc => pc.status === 'SOLD').length || Number(pObj.soldQuantity || 0),
         totalPieces: pPieces.length,
-        barcode: pObj.barcode || pPieces[0]?.barcode || '',
-        uniqueCode: pPieces[0]?.uniqueCode || '',
+        barcode: resolvedBarcode,
+        uniqueCode: pPieces[0]?.uniqueCode || resolvedBarcode,
         ipn: pPieces[0]?.ipn || '',
         batch: pPieces[0]?.batch || pObj.batch || '',
         counter: pPieces[0]?.counter || pObj.counter || '',
@@ -254,15 +322,23 @@ class ProductService {
   }
 
   static async getByDesignNo(designNo, tenantId) {
-    const product = await Product.findOne({ designNo, tenantId, isDeleted: false })
-      .populate('brandId categoryId subCategoryId hsnId gstId');
+    const cleanDesign = String(designNo || '').trim();
+    const product = await Product.findOne({
+      designNo: new RegExp('^' + cleanDesign.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'),
+      tenantId,
+      isDeleted: false
+    }).populate('brandId categoryId subCategoryId hsnId gstId firmId');
     if (!product) throw new ApiError(404, 'Product with this design number not found.');
     return product;
   }
 
   static async getByItemCode(itemCode, tenantId) {
-    const product = await Product.findOne({ itemCode, tenantId, isDeleted: false })
-      .populate('brandId categoryId subCategoryId hsnId gstId');
+    const cleanCode = String(itemCode || '').trim();
+    const product = await Product.findOne({
+      itemCode: new RegExp('^' + cleanCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'),
+      tenantId,
+      isDeleted: false
+    }).populate('brandId categoryId subCategoryId hsnId gstId firmId');
     if (!product) throw new ApiError(404, 'Product with this item code not found.');
     return product;
   }

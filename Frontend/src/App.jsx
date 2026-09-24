@@ -376,7 +376,7 @@ export default function App() {
 
         // Fetch products independently
         try {
-          const resProducts = await api.get(`/products`);
+          const resProducts = await api.get(`/products?limit=5000`);
           const dataProducts = resProducts.data;
           if (dataProducts && dataProducts.success) {
             const rawList = Array.isArray(dataProducts.data) ? dataProducts.data : (dataProducts.data?.products || []);
@@ -1086,7 +1086,7 @@ export default function App() {
             const [resInvoices, resCustomers, resProducts] = await Promise.all([
               api.get(`/billing?limit=500`),
               api.get(`/customers`),
-              api.get(`/products`)
+              api.get(`/products?limit=5000`)
             ]);
 
             const fetchedInvoices = extractBillsArray(resInvoices.data);
@@ -1176,7 +1176,7 @@ export default function App() {
         try {
           const [resPOs, resProducts, resSuppliers] = await Promise.all([
             api.get(`/purchase-orders`),
-            api.get(`/products`),
+            api.get(`/products?limit=5000`),
             api.get(`/suppliers`)
           ]);
           if (resProducts.data?.success) {
@@ -1216,7 +1216,7 @@ export default function App() {
         try {
           const [resPOs, resProducts, resSuppliers] = await Promise.all([
             api.get(`/purchase-orders`),
-            api.get(`/products`),
+            api.get(`/products?limit=5000`),
             api.get(`/suppliers`)
           ]);
 
@@ -1259,7 +1259,7 @@ export default function App() {
         setPurchaseOrders((prev) => prev.map(p => p.id === id ? { ...data.data, id: data.data._id } : p));
 
         const [resProducts, resSuppliers] = await Promise.all([
-          api.get(`/products`),
+          api.get(`/products?limit=5000`),
           api.get(`/suppliers`)
         ]);
 
@@ -1291,7 +1291,7 @@ export default function App() {
         setPurchaseOrders((prev) => prev.filter(p => p.id !== id));
 
         const [resProducts, resSuppliers] = await Promise.all([
-          api.get(`/products`),
+          api.get(`/products?limit=5000`),
           api.get(`/suppliers`)
         ]);
 

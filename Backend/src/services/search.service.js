@@ -11,15 +11,79 @@ class SearchService {
    * Search by barcode — returns inventory piece with full product details
    */
   static async searchByBarcode(barcode, tenantId) {
-    const piece = await InventoryPiece.findOne({ barcode, tenantId, isDeleted: false })
+    const cleanBarcode = String(barcode || '').trim();
+    if (!cleanBarcode) {
+      throw new ApiError(400, 'Barcode query parameter is required.');
+    }
+
+    const barcodeRegex = new RegExp('^' + cleanBarcode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+
+    let piece = await InventoryPiece.findOne({
+      tenantId,
+      isDeleted: false,
+      $or: [
+        { barcode: barcodeRegex },
+        { uniqueCode: barcodeRegex },
+        { ipn: barcodeRegex }
+      ]
+    })
       .populate({
         path: 'productId',
-        populate: { path: 'brandId categoryId gstId hsnId' }
+        populate: { path: 'brandId categoryId gstId hsnId firmId' }
       })
       .populate('warehouseId firmId purchaseBillId');
 
     if (!piece) {
-      throw new ApiError(404, `No results found for barcode '${barcode}'.`);
+      // Check partial barcode match on piece
+      piece = await InventoryPiece.findOne({
+        tenantId,
+        isDeleted: false,
+        barcode: new RegExp(cleanBarcode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      })
+      .populate({
+        path: 'productId',
+        populate: { path: 'brandId categoryId gstId hsnId firmId' }
+      })
+      .populate('warehouseId firmId purchaseBillId');
+    }
+
+    if (!piece) {
+      // Check Product collection directly
+      let product = null;
+      if (mongoose.Types.ObjectId.isValid(cleanBarcode)) {
+        product = await Product.findOne({ _id: cleanBarcode, tenantId, isDeleted: false })
+          .populate('brandId categoryId gstId hsnId firmId');
+      }
+
+      if (!product) {
+        product = await Product.findOne({
+          tenantId,
+          isDeleted: false,
+          $or: [
+            { barcode: barcodeRegex },
+            { itemCode: barcodeRegex },
+            { designNo: barcodeRegex },
+            { barcode: new RegExp(cleanBarcode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+            { designNo: new RegExp(cleanBarcode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+            { itemName: new RegExp(cleanBarcode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+          ]
+        }).populate('brandId categoryId gstId hsnId firmId');
+      }
+
+      if (!product && (cleanBarcode.toLowerCase().startsWith('prd-') || cleanBarcode.toLowerCase().startsWith('prod-'))) {
+        const hexSuffix = cleanBarcode.replace(/^prd-|^prod-/i, '').trim().toLowerCase();
+        if (hexSuffix.length >= 4) {
+          const allProducts = await Product.find({ tenantId, isDeleted: false })
+            .populate('brandId categoryId gstId hsnId firmId');
+          product = allProducts.find(p => p._id.toString().toLowerCase().endsWith(hexSuffix));
+        }
+      }
+
+      if (product) {
+        return { type: 'product', result: product };
+      }
+
+      throw new ApiError(404, `No results found for barcode '${cleanBarcode}'.`);
     }
 
     return { type: 'inventory_piece', result: piece };

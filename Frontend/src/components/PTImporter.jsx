@@ -247,10 +247,16 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const brand = getVal("brand");
       const ipn = getVal("ipn");
       const designNo = getVal("designNo");
-      const barcode = getVal("barcode");
+      let barcode = getVal("barcode");
+      if (!barcode || !String(barcode).trim()) {
+        const timeHex = Date.now().toString().slice(-6);
+        const randomDigits = Math.floor(1000 + Math.random() * 9000);
+        const suffix = String(idx + 1).padStart(2, '0');
+        barcode = `VST${timeHex}${randomDigits}${suffix}`.slice(0, 15);
+      }
       const itemName = getVal("itemName");
       const subCategory = getVal("subCategory");
-      const itemCode = getVal("itemCode") || (designNo ? `ITEM-${designNo}` : "");
+      const itemCode = getVal("itemCode") || (designNo ? `ITEM-${designNo}` : (barcode ? `ITEM-${barcode}` : ""));
       const quantity = getNum("quantity") || 1;
       const batch = getVal("batch");
       const counter = getVal("counter");
@@ -281,7 +287,12 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const irnNo = getVal("irnNo");
       const state = getVal("state");
       const stateCode = getVal("stateCode");
-      const uniqueCode = getVal("uniqueCode");
+      let uniqueCode = getVal("uniqueCode");
+      if (!uniqueCode || !String(uniqueCode).trim()) {
+        const timeHex = Date.now().toString(36).slice(-3).toUpperCase();
+        const randPart = Math.random().toString(36).slice(2, 5).toUpperCase();
+        uniqueCode = `UC-${timeHex}${randPart}`;
+      }
 
       let itemImage = getVal("itemImage");
       // Check if image was extracted for this row

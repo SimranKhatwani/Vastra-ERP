@@ -129,7 +129,7 @@ export const ProductManagementView = ({
     const fetchLiveProducts = async () => {
       setIsFetching(true);
       try {
-        const res = await api.get(`/products`);
+        const res = await api.get(`/products?limit=5000`);
         if (res.data?.success && isMounted) {
           const raw = Array.isArray(res.data.data) ? res.data.data : (res.data.data?.products || []);
           setLocalProducts(raw.map(p => ({ ...p, id: p._id || p.id })));
@@ -141,7 +141,16 @@ export const ProductManagementView = ({
       }
     };
     fetchLiveProducts();
-    return () => { isMounted = false; };
+
+    const handleDataRefresh = () => {
+      fetchLiveProducts();
+    };
+    window.addEventListener("vastra-data-refresh", handleDataRefresh);
+
+    return () => { 
+      isMounted = false; 
+      window.removeEventListener("vastra-data-refresh", handleDataRefresh);
+    };
   }, [products]);
 
   // Helper for safe string conversions
@@ -252,6 +261,8 @@ export const ProductManagementView = ({
           ? `IN GR (${inGRQty} Pcs)` 
           : ((p.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'));
 
+    const allPieceBarcodes = Array.isArray(p.pieces) ? p.pieces.map(pc => safeStr(pc.barcode || pc.uniqueCode)).filter(Boolean) : [];
+
     return {
       ...p,
       id: p._id || p.id,
@@ -285,6 +296,7 @@ export const ProductManagementView = ({
     };
   }).filter((p) => {
       const searchLower = searchQuery.toLowerCase().trim();
+      const pieceBarcodes = Array.isArray(p.pieces) ? p.pieces.map(pc => safeStr(pc.barcode || pc.uniqueCode).toLowerCase()) : [];
       const matchesSearch =
         !searchQuery ||
         safeStr(p.name).toLowerCase().includes(searchLower) ||
@@ -293,7 +305,10 @@ export const ProductManagementView = ({
         safeStr(p.designNo).toLowerCase().includes(searchLower) ||
         safeStr(p.barcode).toLowerCase().includes(searchLower) ||
         safeStr(p.uniqueCode).toLowerCase().includes(searchLower) ||
-        safeStr(p.ipn).toLowerCase().includes(searchLower);
+        safeStr(p.ipn).toLowerCase().includes(searchLower) ||
+        safeStr(p.batch).toLowerCase().includes(searchLower) ||
+        safeStr(p.counter).toLowerCase().includes(searchLower) ||
+        pieceBarcodes.some(b => b.includes(searchLower));
 
       const matchesCat =
         selectedCategory === "All" || safeStr(p.category).toLowerCase() === selectedCategory.toLowerCase();
@@ -450,8 +465,9 @@ export const ProductManagementView = ({
     setFormItemCode(prod.itemCode || '');
     setFormCategory(prod.category);
     setFormBrand(prod.brand);
-    setFormSKU(prod.sku);
-    setFormBarcode(prod.barcode);
+    const resolvedBarcode = prod.barcode || prod.pieces?.[0]?.barcode || (prod.itemCode ? `VST-${prod.itemCode.replace(/^ITEM-/i, '')}` : (prod.designNo ? `VST-${prod.designNo}` : ''));
+    setFormSKU(prod.sku || prod.itemCode || resolvedBarcode);
+    setFormBarcode(prod.barcode || resolvedBarcode);
     setFormUniqueCode(prod.uniqueCode || '');
     setFormIPN(prod.ipn || '');
     setFormBatch(prod.batch || prod.pieces?.[0]?.batch || '');
