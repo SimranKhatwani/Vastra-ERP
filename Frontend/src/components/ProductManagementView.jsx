@@ -397,6 +397,7 @@ export const ProductManagementView = ({
     setFormColor("");
     setFormSize("M");
     setFormBatch("");
+    setFormCounter("");
     setFormDescription("");
     setFormVariants([]);
     setFormPurchasePrice(0);
@@ -414,6 +415,7 @@ export const ProductManagementView = ({
   const [formUniqueCode, setFormUniqueCode] = useState("");
   const [formIPN, setFormIPN] = useState("");
   const [formBatch, setFormBatch] = useState("");
+  const [formCounter, setFormCounter] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formSecondaryColor, setFormSecondaryColor] = useState("");
   const [formCompany, setFormCompany] = useState("");
@@ -453,6 +455,7 @@ export const ProductManagementView = ({
     setFormUniqueCode(prod.uniqueCode || '');
     setFormIPN(prod.ipn || '');
     setFormBatch(prod.batch || prod.pieces?.[0]?.batch || '');
+    setFormCounter(prod.counter || prod.pieces?.[0]?.counter || '');
     setFormDescription(prod.description || (prod.batch ? `Batch: ${prod.batch}` : ''));
     setFormColor(prod.primaryColor || prod.color || '');
     setFormSecondaryColor(prod.secondaryColor || '');
@@ -485,6 +488,7 @@ export const ProductManagementView = ({
         color: formColor || "Classic White",
         size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
         batch: formBatch,
+        counter: formCounter,
         purchasePrice: formPurchasePrice,
         purchaseRate: formPurchasePrice,
         wspAfterGST: formWSP,
@@ -520,6 +524,7 @@ export const ProductManagementView = ({
           color: formColor,
           size: formCategory.toLowerCase().includes("saree") ? "FS" : formSize,
           batch: formBatch,
+          counter: formCounter,
           description: formDescription || (formBatch ? `Batch: ${formBatch}` : ''),
           purchasePrice: formPurchasePrice,
           purchaseRate: formPurchasePrice,
@@ -869,6 +874,11 @@ export const ProductManagementView = ({
                               {p.batch && (
                                 <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
                                   Batch: {p.batch}
+                                </span>
+                              )}
+                              {p.counter && (
+                                <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
+                                  Counter: {p.counter}
                                 </span>
                               )}
                               <p className="font-bold text-slate-800 leading-tight">
@@ -1299,6 +1309,19 @@ export const ProductManagementView = ({
                           }
                         }}
                         placeholder="e.g. BATCH-01"
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">
+                        Counter (PT File)
+                      </label>
+                      <input
+                        type="text"
+                        value={formCounter}
+                        onChange={(e) => setFormCounter(e.target.value)}
+                        placeholder="e.g. C-1 / Counter 1"
                         className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-700"
                       />
                     </div>

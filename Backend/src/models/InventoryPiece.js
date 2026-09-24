@@ -48,6 +48,11 @@ const inventoryPieceSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  counter: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   ipn: { // Item Piece Number
     type: String,
     trim: true

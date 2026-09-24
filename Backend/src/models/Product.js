@@ -91,6 +91,11 @@ const productSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  counter: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   hsnId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'HSN'

@@ -20,6 +20,7 @@ const FIELDS_TO_MAP = [
   { key: "itemCode", label: "Item Code", required: false, synonyms: ["item code", "code", "sku", "product code"] },
   { key: "quantity", label: "Total Qty", required: true, synonyms: ["total qty.", "total qty", "qty", "qty.", "quantity", "pcs", "total quantity"] },
   { key: "batch", label: "Batch", required: false, synonyms: ["batch", "batch no", "batch no.", "batch number", "lot", "lot no", "lot number", "lot no."] },
+  { key: "counter", label: "Counter", required: false, synonyms: ["counter", "counter no", "counter no.", "counter number", "counter name", "cntr", "cntr no", "cntr no.", "counter_no", "counter code"] },
   { key: "topBottomSet", label: "Group 1 (Top/Bottom/Set)", required: false, synonyms: ["group 1 (top/bottom/set)", "group 1(top/bottom/set)", "group 1", "group1", "top/bottom/set", "top bottom set", "set type", "group", "type"] },
   { key: "gender", label: "Gender", required: false, synonyms: ["gender", "sex", "category gender"] },
   { key: "colorPrimary", label: "Color (P)", required: false, synonyms: ["color (p)", "color(p)", "colour (p)", "colour(p)", "primary color", "primary colour", "color", "colour", "shade", "shade no", "shade no.", "col", "clr", "colour name", "color name", "color_p", "colour_p"] },
@@ -42,6 +43,42 @@ const FIELDS_TO_MAP = [
   { key: "stateCode", label: "State Code", required: false, synonyms: ["state code", "pos code"] },
   { key: "uniqueCode", label: "Unique Code", required: false, synonyms: ["unique code"] },
   { key: "itemImage", label: "Item Image", required: false, synonyms: ["item image", "image", "photo", "picture", "item photo", "design image"] }
+];
+
+const EDITABLE_COLUMNS = [
+  'serialNumber',
+  'billNo',
+  'billDate',
+  'vendorName',
+  'vendorGst',
+  'vendorCode',
+  'brand',
+  'ipn',
+  'designNo',
+  'barcode',
+  'itemName',
+  'subCategory',
+  'itemCode',
+  'quantity',
+  'batch',
+  'counter',
+  'topBottomSet',
+  'gender',
+  'colorPrimary',
+  'colorSecondary',
+  'size',
+  'purchaseRate',
+  'gstOnPurchase',
+  'typeOfGst',
+  'gstStatus',
+  'wspAfterGst',
+  'mrp',
+  'gstOnSalePrice',
+  'discountStatus',
+  'discountOnPurchase',
+  'hsnCode',
+  'firm',
+  'uniqueCode'
 ];
 
 const generateObjectId = () => Math.floor(Date.now() / 1000).toString(16) + 'x'.repeat(16).replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
@@ -216,6 +253,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       const itemCode = getVal("itemCode") || (designNo ? `ITEM-${designNo}` : "");
       const quantity = getNum("quantity") || 1;
       const batch = getVal("batch");
+      const counter = getVal("counter");
       const topBottomSet = getVal("topBottomSet");
       const gender = getVal("gender");
       const colorPrimary = getVal("colorPrimary");
@@ -275,6 +313,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         itemCode,
         quantity,
         batch,
+        counter,
         topBottomSet,
         gender,
         colorPrimary,
@@ -337,6 +376,169 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       }
     }
     validateRows(updated);
+  };
+
+  const handleTableKeyDown = (e, rowIndex, colKey) => {
+    const colIndex = EDITABLE_COLUMNS.indexOf(colKey);
+    if (colIndex === -1) return;
+    const totalRows = parsedRows.length;
+    const totalCols = EDITABLE_COLUMNS.length;
+
+    // Enter: Navigate forward to next column (or next row's first column)
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (colIndex < totalCols - 1) {
+        const nextColKey = EDITABLE_COLUMNS[colIndex + 1];
+        const nextEl = document.getElementById(`pt-cell-${rowIndex}-${nextColKey}`);
+        if (nextEl) {
+          nextEl.focus();
+          if (typeof nextEl.select === "function") nextEl.select();
+        }
+      } else if (rowIndex < totalRows - 1) {
+        const nextColKey = EDITABLE_COLUMNS[0];
+        const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${nextColKey}`);
+        if (nextEl) {
+          nextEl.focus();
+          if (typeof nextEl.select === "function") nextEl.select();
+        }
+      }
+      return;
+    }
+
+    // Down Arrow: Move down to same column in next row
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (rowIndex < totalRows - 1) {
+        const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${colKey}`);
+        if (nextEl) {
+          nextEl.focus();
+          if (typeof nextEl.select === "function") nextEl.select();
+        }
+      }
+      return;
+    }
+
+    // Up Arrow: Move up to same column in previous row
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (rowIndex > 0) {
+        const prevEl = document.getElementById(`pt-cell-${rowIndex - 1}-${colKey}`);
+        if (prevEl) {
+          prevEl.focus();
+          if (typeof prevEl.select === "function") prevEl.select();
+        }
+      }
+      return;
+    }
+
+    // Left Arrow: Move backward to previous column (or previous row's last column)
+    if (e.key === "ArrowLeft") {
+      const val = e.target.value ?? "";
+      const isAtStart = e.target.selectionStart === 0 && e.target.selectionEnd === 0;
+      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === val.length;
+      if (isAtStart || isAllSelected || !val) {
+        if (colIndex > 0) {
+          e.preventDefault();
+          const prevColKey = EDITABLE_COLUMNS[colIndex - 1];
+          const prevEl = document.getElementById(`pt-cell-${rowIndex}-${prevColKey}`);
+          if (prevEl) {
+            prevEl.focus();
+            if (typeof prevEl.select === "function") prevEl.select();
+          }
+        } else if (rowIndex > 0) {
+          e.preventDefault();
+          const prevColKey = EDITABLE_COLUMNS[totalCols - 1];
+          const prevEl = document.getElementById(`pt-cell-${rowIndex - 1}-${prevColKey}`);
+          if (prevEl) {
+            prevEl.focus();
+            if (typeof prevEl.select === "function") prevEl.select();
+          }
+        }
+      }
+      return;
+    }
+
+    // Right Arrow: Move forward to next column
+    if (e.key === "ArrowRight") {
+      const val = e.target.value ?? "";
+      const isAtEnd = e.target.selectionStart === val.length;
+      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === val.length;
+      if (isAtEnd || isAllSelected || !val) {
+        if (colIndex < totalCols - 1) {
+          e.preventDefault();
+          const nextColKey = EDITABLE_COLUMNS[colIndex + 1];
+          const nextEl = document.getElementById(`pt-cell-${rowIndex}-${nextColKey}`);
+          if (nextEl) {
+            nextEl.focus();
+            if (typeof nextEl.select === "function") nextEl.select();
+          }
+        } else if (rowIndex < totalRows - 1) {
+          e.preventDefault();
+          const nextColKey = EDITABLE_COLUMNS[0];
+          const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${nextColKey}`);
+          if (nextEl) {
+            nextEl.focus();
+            if (typeof nextEl.select === "function") nextEl.select();
+          }
+        }
+      }
+      return;
+    }
+  };
+
+  const handleExportPTExcel = () => {
+    if (!parsedRows || parsedRows.length === 0) {
+      if (onAddNotification) onAddNotification("Export Info", "No PT rows available to export.", "info");
+      return;
+    }
+    const exportData = parsedRows.map((r, idx) => ({
+      "S.No.": r.serialNumber || (idx + 1),
+      "Bill Number": r.billNo || "",
+      "Bill Date": r.billDate || "",
+      "Vendor Name": r.vendorName || "",
+      "Vendor GST": r.vendorGst || "",
+      "Vendor Code": r.vendorCode || "",
+      "Brand": r.brand || "",
+      "IPN": r.ipn || "",
+      "Design No": r.designNo || "",
+      "Barcode No": r.barcode || "",
+      "Item Name": r.itemName || "",
+      "Sub Item Name": r.subCategory || "",
+      "Item Code": r.itemCode || "",
+      "Total Qty.": r.quantity || 1,
+      "Batch": r.batch || "",
+      "Counter": r.counter || "",
+      "Group 1 (Top/Bottom/Set)": r.topBottomSet || "",
+      "Gender": r.gender || "",
+      "Color (P)": r.colorPrimary || "",
+      "Color (S)": r.colorSecondary || "",
+      "Size": r.size || "",
+      "P. Rate": r.purchaseRate || 0,
+      "GST on Purchase (%)": r.gstOnPurchase || 0,
+      "Type of GST (I/L)": r.typeOfGst || "E",
+      "GST Status": r.gstStatus || "",
+      "WSP After GST": r.wspAfterGst || 0,
+      "MRP": r.mrp || 0,
+      "GST on Sale (%)": r.gstOnSalePrice || 0,
+      "Discount Status": r.discountStatus || "N",
+      "Dis. on Purchase": r.discountOnPurchase || 0,
+      "HSN Code": r.hsnCode || "",
+      "Firm": r.firm || "",
+      "Unique Code": r.uniqueCode || ""
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PT_Data");
+
+    if (vendorDataRows && vendorDataRows.length > 0) {
+      const vWs = XLSX.utils.json_to_sheet(vendorDataRows);
+      XLSX.utils.book_append_sheet(wb, vWs, "Vendor Data");
+    }
+
+    const billNoClean = (parsedRows[0]?.billNo || "Export").replace(/[^a-zA-Z0-9_-]/g, "_");
+    XLSX.writeFile(wb, `PT_File_${billNoClean}.xlsx`);
+    if (onAddNotification) onAddNotification("PT File Exported", `Generated PT file for Bill ${parsedRows[0]?.billNo || ''} with all latest edits.`, "success");
   };
 
   const handleDrop = (e) => {
@@ -725,14 +927,22 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setStep("upload")}
-                className="px-3.5 py-2 text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors shadow-sm"
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors shadow-sm cursor-pointer"
               >
                 Re-upload File
               </button>
               <button
+                onClick={handleExportPTExcel}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Export updated PT spreadsheet with all current edits"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Export PT File</span>
+              </button>
+              <button
                 onClick={handleImportPTFileSubmit}
                 disabled={isSubmitting || parsedRows.filter(r => r.status === "error").length > 0}
-                className={`px-5 py-2 text-xs text-white rounded-lg font-bold shadow transition-all ${isSubmitting || parsedRows.filter(r => r.status === "error").length > 0 ? 'bg-slate-400 cursor-not-allowed opacity-70' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'}`}
+                className={`px-5 py-2 text-xs text-white rounded-lg font-bold shadow transition-all cursor-pointer ${isSubmitting || parsedRows.filter(r => r.status === "error").length > 0 ? 'bg-slate-400 cursor-not-allowed opacity-70' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'}`}
               >
                 {isSubmitting ? 'Compiling & Saving...' : 'Compile & Save Vouchers'}
               </button>
@@ -759,6 +969,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                   <th className="p-3 border-r border-slate-200">Item Code</th>
                   <th className="p-3 border-r border-slate-200">Total Qty.</th>
                   <th className="p-3 border-r border-slate-200">Batch</th>
+                  <th className="p-3 border-r border-slate-200">Counter</th>
                   <th className="p-3 border-r border-slate-200">Group 1 (Top/Bottom/Set)</th>
                   <th className="p-3 border-r border-slate-200">Gender</th>
                   <th className="p-3 border-r border-slate-200">Color (P)</th>
@@ -793,257 +1004,331 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-serialNumber`}
                         value={r.serialNumber || (i + 1)}
                         onChange={(e) => handleRowChange(i, 'serialNumber', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'serialNumber')}
                         className="w-14 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none bg-slate-50"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-billNo`}
                         value={r.billNo}
                         onChange={(e) => handleRowChange(i, 'billNo', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'billNo')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs font-semibold focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-billDate`}
                         type="date"
                         value={r.billDate}
                         onChange={(e) => handleRowChange(i, 'billDate', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'billDate')}
                         className="w-28 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-vendorName`}
                         value={r.vendorName}
                         onChange={(e) => handleRowChange(i, 'vendorName', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'vendorName')}
                         className="w-36 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none font-medium"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-vendorGst`}
                         value={r.vendorGst || ''}
                         onChange={(e) => handleRowChange(i, 'vendorGst', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'vendorGst')}
                         className="w-36 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="GSTIN"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-vendorCode`}
                         value={r.vendorCode || ''}
                         onChange={(e) => handleRowChange(i, 'vendorCode', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'vendorCode')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none font-mono"
                         placeholder="Vendor Code"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-brand`}
                         value={r.brand || ''}
                         onChange={(e) => handleRowChange(i, 'brand', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'brand')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="Brand"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-ipn`}
                         value={r.ipn || ''}
                         onChange={(e) => handleRowChange(i, 'ipn', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'ipn')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                         placeholder="IPN"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-designNo`}
                         value={r.designNo || ''}
                         onChange={(e) => handleRowChange(i, 'designNo', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'designNo')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs font-medium focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-barcode`}
                         value={r.barcode || ''}
                         onChange={(e) => handleRowChange(i, 'barcode', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'barcode')}
                         className="w-28 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="Barcode"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-itemName`}
                         value={r.itemName || ''}
                         onChange={(e) => handleRowChange(i, 'itemName', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'itemName')}
                         className="w-32 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-subCategory`}
                         value={r.subCategory || ''}
                         onChange={(e) => handleRowChange(i, 'subCategory', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'subCategory')}
                         className="w-28 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="Sub Item"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-itemCode`}
                         value={r.itemCode || ''}
                         onChange={(e) => handleRowChange(i, 'itemCode', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'itemCode')}
                         className="w-28 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="Item Code"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-quantity`}
                         type="number"
                         value={r.quantity}
                         onChange={(e) => handleRowChange(i, 'quantity', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'quantity')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center font-bold focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-batch`}
                         value={r.batch || ''}
                         onChange={(e) => handleRowChange(i, 'batch', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'batch')}
                         className="w-36 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="Batch"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-counter`}
+                        value={r.counter || ''}
+                        onChange={(e) => handleRowChange(i, 'counter', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'counter')}
+                        className="w-28 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                        placeholder="Counter"
+                      />
+                    </td>
+                    <td className="p-1.5 border-r border-slate-100">
+                      <input
+                        id={`pt-cell-${i}-topBottomSet`}
                         value={r.topBottomSet || ''}
                         onChange={(e) => handleRowChange(i, 'topBottomSet', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'topBottomSet')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                         placeholder="set / top / etc"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-gender`}
                         value={r.gender || ''}
                         onChange={(e) => handleRowChange(i, 'gender', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'gender')}
                         className="w-20 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                         placeholder="Gender"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-colorPrimary`}
                         value={r.colorPrimary || ''}
                         onChange={(e) => handleRowChange(i, 'colorPrimary', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'colorPrimary')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="Color (P)"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-colorSecondary`}
                         value={r.colorSecondary || ''}
                         onChange={(e) => handleRowChange(i, 'colorSecondary', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'colorSecondary')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="Color (S)"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-size`}
                         value={r.size || ''}
                         onChange={(e) => handleRowChange(i, 'size', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'size')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                         placeholder="Size"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-purchaseRate`}
                         type="number"
                         step="any"
                         value={r.purchaseRate}
                         onChange={(e) => handleRowChange(i, 'purchaseRate', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'purchaseRate')}
                         className="w-20 p-1.5 border border-slate-200 rounded text-xs font-semibold focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-gstOnPurchase`}
                         type="number"
                         step="any"
                         value={r.gstOnPurchase}
                         onChange={(e) => handleRowChange(i, 'gstOnPurchase', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'gstOnPurchase')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-typeOfGst`}
                         value={r.typeOfGst || 'E'}
                         onChange={(e) => handleRowChange(i, 'typeOfGst', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'typeOfGst')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center font-bold focus:border-indigo-500 focus:outline-none"
                         placeholder="E / I / L"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-gstStatus`}
                         value={r.gstStatus || ''}
                         onChange={(e) => handleRowChange(i, 'gstStatus', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'gstStatus')}
                         className="w-32 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="GST Status"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-wspAfterGst`}
                         type="number"
                         step="any"
                         value={r.wspAfterGst}
                         onChange={(e) => handleRowChange(i, 'wspAfterGst', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'wspAfterGst')}
                         className="w-20 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-mrp`}
                         type="number"
                         step="any"
                         value={r.mrp}
                         onChange={(e) => handleRowChange(i, 'mrp', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'mrp')}
                         className="w-20 p-1.5 border border-slate-200 rounded text-xs font-semibold text-emerald-700 focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-gstOnSalePrice`}
                         type="number"
                         step="any"
                         value={r.gstOnSalePrice}
                         onChange={(e) => handleRowChange(i, 'gstOnSalePrice', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'gstOnSalePrice')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-discountStatus`}
                         value={r.discountStatus || 'N'}
                         onChange={(e) => handleRowChange(i, 'discountStatus', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'discountStatus')}
                         className="w-16 p-1.5 border border-slate-200 rounded text-xs text-center font-bold focus:border-indigo-500 focus:outline-none"
                         placeholder="N/B/A"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-discountOnPurchase`}
                         type="number"
                         step="any"
                         value={r.discountOnPurchase}
                         onChange={(e) => handleRowChange(i, 'discountOnPurchase', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'discountOnPurchase')}
                         className="w-20 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-hsnCode`}
                         value={r.hsnCode || ''}
                         onChange={(e) => handleRowChange(i, 'hsnCode', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'hsnCode')}
                         className="w-24 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="HSN"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-firm`}
                         value={r.firm || ''}
                         onChange={(e) => handleRowChange(i, 'firm', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'firm')}
                         className="w-40 p-1.5 border border-slate-200 rounded text-xs focus:border-indigo-500 focus:outline-none"
                         placeholder="Firm"
                       />
                     </td>
                     <td className="p-1.5 border-r border-slate-100">
                       <input
+                        id={`pt-cell-${i}-uniqueCode`}
                         value={r.uniqueCode || ''}
                         onChange={(e) => handleRowChange(i, 'uniqueCode', e.target.value)}
+                        onKeyDown={(e) => handleTableKeyDown(e, i, 'uniqueCode')}
                         className="w-28 p-1.5 border border-slate-200 rounded text-xs font-mono focus:border-indigo-500 focus:outline-none"
                         placeholder="Unique Code"
                       />
@@ -1106,15 +1391,14 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
             </div>
           )}
         </div>
-      )}
-
-      {step === "success" && createdVoucher && (
+      )}      {step === "success" && createdVoucher && (
         <InvoiceViewer
           createdVoucher={createdVoucher}
           invoiceRef={invoiceRef}
           handlePrint={() => window.print()}
           handleDownloadHTML={handleDownloadHTML}
           handleWhatsAppShare={handleWhatsAppShare}
+          handleExportPTExcel={handleExportPTExcel}
           onClose={() => {
             // Full reset so the user can import the same or a new PT file immediately
             setStep("upload");
@@ -1131,7 +1415,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   );
 };
 
-export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, onClose }) => {
+export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, handleExportPTExcel, onClose }) => {
   // Audit Tracking
   React.useEffect(() => {
     if (createdVoucher && (createdVoucher.billNo || createdVoucher._id)) {
@@ -1295,7 +1579,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
 
   const formattedAddress = formatVendorAddress(vendorAddress, vendorCity, vendorState, vendorPincode, vendorPhone);
 
-  // Details of Receiver / Billed To (Populated from Vendor Card data)
+  // Details of Receiver | Billed To (Populated from Vendor Card data)
   const receiverName = vendorName || voucher.firmName || voucher.firm || "";
   const receiverGst = vendorGst || voucher.firmGst || "";
   const receiverAddress = formattedAddress || vendorAddress || voucher.firmAddress || "";
@@ -1577,10 +1861,16 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
         </div>
       </div>
 
-      <div className="mt-8 flex justify-center gap-4 no-print pb-8">
+      <div className="mt-8 flex flex-wrap justify-center gap-4 no-print pb-8">
         <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
           Print
         </button>
+        {handleExportPTExcel && (
+          <button onClick={handleExportPTExcel} className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold flex items-center gap-2 shadow transition-all">
+            <Download className="w-4 h-4" />
+            Download PT File (Excel)
+          </button>
+        )}
         <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
           Download HTML
         </button>
@@ -1594,3 +1884,4 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     </div>
   );
 };
+

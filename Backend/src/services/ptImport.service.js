@@ -402,6 +402,7 @@ class PTImportService {
         let uniqueCode = String(getVal(row, 'Unique Code', 'uniqueCode', 'UNIQUE CODE') || '').trim();
         let ipn = String(getVal(row, 'IPN', 'ipn', 'IPN No') || '').trim();
         const batch = String(getVal(row, 'Batch', 'batch', 'BATCH', 'Batch No', 'Batch No.', 'BATCH NO', 'BATCH NO.', 'Batch Number', 'BATCH NUMBER', 'Lot No', 'Lot No.', 'LOT NO', 'Lot', 'LOT', 'Lot Number', 'BATCH_NO', 'Batch_No', 'Batch#') || '').trim();
+        const counter = String(getVal(row, 'Counter', 'counter', 'COUNTER', 'Counter No', 'Counter No.', 'COUNTER NO', 'COUNTER NO.', 'Counter Number', 'COUNTER NUMBER', 'Counter Name', 'COUNTER NAME', 'COUNTER_NO', 'Cntr', 'CNTR') || '').trim();
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
         const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
@@ -631,6 +632,7 @@ class PTImportService {
                 topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
                 description: batch ? `Batch: ${batch}` : (normalizedSubItem ? `${itemName} - ${normalizedSubItem}` : itemName),
                 batch: batch || '',
+                counter: counter || '',
                 defaultMRP: mrp,
                 purchaseRate: purchaseRate || 0,
                 wspAfterGST: wspAfterGST || 0,
@@ -718,6 +720,11 @@ class PTImportService {
                 product.description = `Batch: ${batch}`;
                 product.markModified('batch');
                 product.markModified('description');
+                updated = true;
+              }
+              if (counter && product.counter !== counter) {
+                product.counter = counter;
+                product.markModified('counter');
                 updated = true;
               }
               if (updated) {
@@ -813,6 +820,7 @@ class PTImportService {
               barcode: pieceBarcode,
               uniqueCode,
               batch,
+              counter,
               ipn,
               primaryColor,
               secondaryColor,

@@ -70,6 +70,7 @@ export const PublicProductInfoModal = () => {
             uniqueCode: item.uniqueCode || "N/A",
             ipn: item.ipn || "N/A",
             batch: item.batch || "",
+            counter: item.counter || "",
             category: item.category || item.categoryId?.name || "FABRIC SUIT",
             brand: item.brand || item.brandId?.name || "Generic",
             barcode: item.barcode || "",
@@ -383,6 +384,18 @@ export const PublicProductInfoModal = () => {
                   readOnly
                   type="text"
                   value={p.batch || "N/A"}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">
+                  Counter (PT File)
+                </label>
+                <input
+                  readOnly
+                  type="text"
+                  value={p.counter || "N/A"}
                   className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono text-slate-700"
                 />
               </div>

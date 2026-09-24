@@ -172,6 +172,7 @@ class ProductService {
         uniqueCode: pPieces[0]?.uniqueCode || '',
         ipn: pPieces[0]?.ipn || '',
         batch: pPieces[0]?.batch || pObj.batch || '',
+        counter: pPieces[0]?.counter || pObj.counter || '',
         description: pObj.description || (pPieces[0]?.batch || pObj.batch ? `Batch: ${pPieces[0]?.batch || pObj.batch}` : ''),
         size: pObj.size || sizes || 'FREE',
         color: pObj.color || pObj.primaryColor || colors || '-',
@@ -365,6 +366,7 @@ class ProductService {
     const uniqueCodeVal = piece?.uniqueCode || allPieces[0]?.uniqueCode || '';
     const ipnVal = piece?.ipn || allPieces[0]?.ipn || '';
     const batchVal = piece?.batch || allPieces[0]?.batch || pObj.batch || '';
+    const counterVal = piece?.counter || allPieces[0]?.counter || pObj.counter || '';
 
     return {
       id: pObj._id || piece?._id,
@@ -380,6 +382,7 @@ class ProductService {
       uniqueCode: uniqueCodeVal,
       ipn: ipnVal,
       batch: batchVal,
+      counter: counterVal,
       category: pObj.categoryId?.name || pObj.category || 'FABRIC SUIT',
       brand: pObj.brandId?.name || pObj.brand || 'Generic',
       barcode: barcodeVal,
@@ -405,6 +408,7 @@ class ProductService {
         uniqueCode: piece.uniqueCode,
         ipn: piece.ipn,
         batch: piece.batch,
+        counter: piece.counter,
         size: piece.size,
         color: piece.primaryColor,
         status: piece.status,
