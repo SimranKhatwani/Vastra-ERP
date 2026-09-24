@@ -1321,6 +1321,29 @@ export const PurchaseView = ({
     }
   };
 
+  const handleEditVoucher = async (po) => {
+    setEditingPO(po);
+    const poId = po._id || po.id;
+    if (poId) {
+      try {
+        const res = await api.get(`/purchase-orders/${poId}`);
+        const data = res.data;
+        if (data?.success && data.data) {
+          const fullVoucher = data.data;
+          setEditingPO(prev => ({
+            ...prev,
+            ...fullVoucher,
+            items: (Array.isArray(fullVoucher.items) && fullVoucher.items.length > 0)
+              ? fullVoucher.items
+              : (prev?.items || prev?.billItems || prev?.products || [])
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not fetch detailed PO from API for editing, using cached voucher:", err);
+      }
+    }
+  };
+
   const filteredPOs = useMemo(() => {
     if (!searchTerm) return purchaseOrders;
     const term = searchTerm.toLowerCase();
@@ -1354,18 +1377,20 @@ export const PurchaseView = ({
 
   if (showManualEntry || editingPO) {
     return (
-      <div className="animate-fade-in pb-12">
-        <ManualPurchaseEntry
-          initialPO={editingPO}
-          isEditMode={!!editingPO}
-          onAddPurchaseOrder={onAddPurchaseOrder}
-          onUpdatePurchaseOrder={onUpdatePurchaseOrder}
-          onAddNotification={onAddNotification}
-          onClose={() => {
-            setShowManualEntry(false);
-            setEditingPO(null);
-          }}
-        />
+      <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-fade-in">
+        <div className="bg-white w-full h-[96vh] max-w-[99vw] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+          <ManualPurchaseEntry
+            initialPO={editingPO}
+            isEditMode={!!editingPO}
+            onAddPurchaseOrder={onAddPurchaseOrder}
+            onUpdatePurchaseOrder={onUpdatePurchaseOrder}
+            onAddNotification={onAddNotification}
+            onClose={() => {
+              setShowManualEntry(false);
+              setEditingPO(null);
+            }}
+          />
+        </div>
       </div>
     );
   }
@@ -1565,7 +1590,7 @@ export const PurchaseView = ({
                                   <Eye className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => setEditingPO(po)}
+                                  onClick={() => handleEditVoucher(po)}
                                   className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
                                   title="Edit Purchase Voucher"
                                 >
