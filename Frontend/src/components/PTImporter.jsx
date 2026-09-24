@@ -1651,43 +1651,117 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
 
   const itemsList = rawItems.map((item, idx) => {
     if (typeof item === "string") {
+      const quantity = Number(voucher.quantity || voucher.qty || 1);
+      const rate = Number(voucher.purchaseRate || voucher.rate || voucher.purchasePrice || 0);
+      let gstPercent = voucher.gstOnPurchase ?? voucher.taxRate ?? voucher.gstPercent ?? voucher.gst ?? 5;
+      if (typeof gstPercent === 'string') {
+        gstPercent = parseFloat(gstPercent.replace('%', '')) || 0;
+      }
+      gstPercent = Number(gstPercent);
+      const taxable = quantity * rate;
+      const gstAmt = (taxable * gstPercent) / 100;
+      const amount = taxable + gstAmt;
       return {
         id: idx,
         name: item,
         hsnCode: "5208",
-        quantity: Number(voucher.quantity || voucher.qty || 1),
-        rate: Number(voucher.purchaseRate || voucher.rate || voucher.purchasePrice || 0),
-        amount: Number(voucher.grandTotal || voucher.subTotal || 0)
+        quantity,
+        rate,
+        gstPercent,
+        gstAmount: gstAmt,
+        taxable,
+        amount
       };
     }
+
     const name = item.name || item.itemName || item.productName || item.title || item.itemCode || (item.designNo ? `Design ${item.designNo}` : `Item #${idx + 1}`);
     const hsnCode = item.hsnCode || item.hsn || item.sac || "5208";
     const quantity = Number(item.quantity ?? item.qty ?? item.count ?? 1);
     const rate = Number(item.purchaseRate ?? item.purchasePrice ?? item.rate ?? item.price ?? item.mrp ?? 0);
-    const amount = Number(item.calculatedTaxable ?? item.totalPrice ?? item.lineTotal ?? item.amount ?? (quantity * rate));
+
+    let gstPercent = item.gstOnPurchase ?? item.taxRate ?? item.gstPercent ?? item.gst ?? 0;
+    if (typeof gstPercent === 'string') {
+      gstPercent = parseFloat(gstPercent.replace('%', '')) || 0;
+    }
+    gstPercent = Number(gstPercent);
+
+    let discAmt = Number(item.discountOnPurchase ?? item.discount ?? 0);
+    let taxable = Number(item.calculatedTaxable ?? (quantity * rate));
+    let gstAmt = Number(item.calculatedGst ?? 0);
+
+    if (!gstAmt && gstPercent > 0) {
+      if (item.typeOfGst?.toUpperCase() === "I") {
+        const baseRate = rate / (1 + (gstPercent / 100));
+        taxable = quantity * baseRate;
+        gstAmt = (quantity * rate) - taxable;
+      } else {
+        gstAmt = (taxable - discAmt) * (gstPercent / 100);
+      }
+    }
+
+    // Amount on bill = Purchase Rate (Taxable) + GST on purchase
+    const amount = Number(item.calculatedTotal ?? item.totalPrice ?? (taxable - discAmt + gstAmt));
+
     return {
       id: idx,
       name,
       hsnCode,
       quantity,
       rate,
+      gstPercent,
+      gstAmount: gstAmt,
+      taxable,
+      discount: discAmt,
       amount
     };
   });
 
   // Financial Calculations
   const totalQty = itemsList.reduce((acc, item) => acc + (item.quantity || 0), 0);
-  const calculatedSubTotal = itemsList.reduce((acc, item) => acc + (item.amount || 0), 0);
+  const totalAmount = itemsList.reduce((acc, item) => acc + (item.amount || 0), 0);
 
-  const subTotal = Number(voucher.subTotal ?? calculatedSubTotal);
-  const rawGrandTotal = Number(voucher.grandTotal ?? voucher.totalAmount ?? voucher.amount ?? (subTotal + (Number(voucher.gstTotal) || 0)));
-  const grandTotal = isNaN(rawGrandTotal) ? subTotal : rawGrandTotal;
+  const grandTotal = totalAmount > 0 ? totalAmount : Number(voucher.grandTotal ?? voucher.totalAmount ?? voucher.amount ?? 0);
 
-  const rawGst = Number(voucher.gstTotal ?? voucher.gst ?? (grandTotal - subTotal));
-  const gstTotal = isNaN(rawGst) ? Math.max(0, grandTotal - subTotal) : rawGst;
+  // Derive GST breakdown percentage from imported item rows
+  const uniqueGstRates = Array.from(new Set(itemsList.map(item => item.gstPercent).filter(p => p > 0)));
+  let cgstRateDisplay = '2.5%';
+  let sgstRateDisplay = '2.5%';
+  let igstRateDisplay = '5%';
+
+  if (uniqueGstRates.length === 1) {
+    const r = uniqueGstRates[0];
+    cgstRateDisplay = `${(r / 2)}%`;
+    sgstRateDisplay = `${(r / 2)}%`;
+    igstRateDisplay = `${r}%`;
+  } else if (uniqueGstRates.length > 1) {
+    cgstRateDisplay = uniqueGstRates.map(r => `${r / 2}%`).join(', ');
+    sgstRateDisplay = uniqueGstRates.map(r => `${r / 2}%`).join(', ');
+    igstRateDisplay = uniqueGstRates.map(r => `${r}%`).join(', ');
+  }
+
   const isInterState = voucher.typeOfGst?.toUpperCase() === "I" || (vendorState && receiverState && vendorState.toLowerCase() !== receiverState.toLowerCase());
-  const cgst = gstTotal / 2;
-  const sgst = gstTotal / 2;
+
+  const onDownloadHTML = handleDownloadHTML || (() => {
+    if (!activeRef.current) return;
+    const content = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invoice - ${invoiceNo}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-white text-black font-sans">
+  ${activeRef.current.innerHTML}
+</body>
+</html>`;
+    const blob = new Blob([content], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Invoice_${String(invoiceNo).replace(/[^a-zA-Z0-9_-]/g, '_')}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 
   const onWhatsAppShare = handleWhatsAppShare || (() => {
     if (!createdVoucher) return;
@@ -1784,7 +1858,8 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
               <th className="border border-black p-1">Description of Goods</th>
               <th className="border border-black p-1 w-16">HSN/SAC</th>
               <th className="border border-black p-1 w-12">Qty.</th>
-              <th className="border border-black p-1 w-12">Rate</th>
+              <th className="border border-black p-1 w-14">Rate</th>
+              <th className="border border-black p-1 w-12">GST</th>
               <th className="border border-black p-1 w-16">Amount</th>
             </tr>
           </thead>
@@ -1796,6 +1871,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
                 <td className="border-x border-black p-1">{item.hsnCode}</td>
                 <td className="border-x border-black p-1">{item.quantity} SET</td>
                 <td className="border-x border-black p-1">{item.rate.toFixed(2)}</td>
+                <td className="border-x border-black p-1">{item.gstPercent > 0 ? `${item.gstPercent}%` : '0%'}</td>
                 <td className="border-x border-black p-1">{item.amount.toFixed(2)}</td>
               </tr>
             ))}
@@ -1803,6 +1879,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
             {[...Array(Math.max(0, 5 - itemsList.length))].map((_, i) => (
               <tr key={`empty-${i}`}>
                 <td className="border-x border-black p-1 text-transparent">.</td>
+                <td className="border-x border-black p-1"></td>
                 <td className="border-x border-black p-1"></td>
                 <td className="border-x border-black p-1"></td>
                 <td className="border-x border-black p-1"></td>
@@ -1816,28 +1893,29 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
               <td colSpan="3" className="border-x border-black p-1 text-right">Total</td>
               <td className="border-x border-black p-1">{totalQty} SET</td>
               <td className="border-x border-black p-1"></td>
-              <td className="border-x border-black p-1">{subTotal.toFixed(2)}</td>
+              <td className="border-x border-black p-1"></td>
+              <td className="border-x border-black p-1">{grandTotal.toFixed(2)}</td>
             </tr>
             {isInterState ? (
               <tr>
-                <td colSpan="5" className="border-x border-black p-1 text-right">IGST</td>
-                <td className="border-x border-black p-1">{gstTotal.toFixed(2)}</td>
+                <td colSpan="6" className="border-x border-black p-1 text-right">IGST</td>
+                <td className="border-x border-black p-1">{igstRateDisplay}</td>
               </tr>
             ) : (
               <>
                 <tr>
-                  <td colSpan="5" className="border-x border-black p-1 text-right">CGST</td>
-                  <td className="border-x border-black p-1">{cgst.toFixed(2)}</td>
+                  <td colSpan="6" className="border-x border-black p-1 text-right">CGST</td>
+                  <td className="border-x border-black p-1">{cgstRateDisplay}</td>
                 </tr>
                 <tr>
-                  <td colSpan="5" className="border-x border-black p-1 text-right">SGST</td>
-                  <td className="border-x border-black p-1">{sgst.toFixed(2)}</td>
+                  <td colSpan="6" className="border-x border-black p-1 text-right">SGST</td>
+                  <td className="border-x border-black p-1">{sgstRateDisplay}</td>
                 </tr>
               </>
             )}
             <tr className="border-t border-black bg-slate-100">
-              <td colSpan="5" className="border-x border-black p-1 text-right text-sm">Grand Total</td>
-              <td className="border-x border-black p-1 text-sm">₹{grandTotal.toFixed(2)}</td>
+              <td colSpan="6" className="border-x border-black p-1 text-right text-sm">Grand Total</td>
+              <td className="border-x border-black p-1 text-sm font-extrabold">₹{grandTotal.toFixed(2)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1871,7 +1949,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
             Download PT File (Excel)
           </button>
         )}
-        <button onClick={handleDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
+        <button onClick={onDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
           Download HTML
         </button>
         <button onClick={onWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
