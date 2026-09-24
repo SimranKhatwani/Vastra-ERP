@@ -2298,6 +2298,79 @@ export const BillingPOSView = ({
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [focusedCustomerIndex, setFocusedCustomerIndex] = useState(-1);
   const [heldBills, setHeldBills] = useState([]);
+  const [historyTimeframe, setHistoryTimeframe] = useState("all");
+  const [historyCustomStart, setHistoryCustomStart] = useState("");
+  const [historyCustomEnd, setHistoryCustomEnd] = useState("");
+  const [isRefreshingHistory, setIsRefreshingHistory] = useState(false);
+
+  const isInvoiceInHistoryTimeframe = (inv, timeframe, customStart, customEnd) => {
+    if (timeframe === 'all') return true;
+    const rawDate = inv.date || inv.billDate || inv.createdAt;
+    if (!rawDate) return true;
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) return true;
+    const now = new Date();
+
+    if (timeframe === 'today') {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+
+    if (timeframe === 'week') {
+      const currentDay = now.getDay();
+      const diffToMonday = (currentDay === 0 ? -6 : 1) - currentDay;
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      return d >= weekStart && d <= weekEnd;
+    }
+
+    if (timeframe === 'month') {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth()
+      );
+    }
+
+    if (timeframe === 'custom') {
+      if (customStart) {
+        const [sYear, sMonth, sDay] = customStart.split('-').map(Number);
+        const cStart = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0);
+        if (d < cStart) return false;
+      }
+      if (customEnd) {
+        const [eYear, eMonth, eDay] = customEnd.split('-').map(Number);
+        const cEnd = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999);
+        if (d > cEnd) return false;
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleRefreshHistory = async () => {
+    setIsRefreshingHistory(true);
+    try {
+      window.dispatchEvent(new CustomEvent('vastra-data-refresh', { detail: { type: 'invoices' } }));
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await api.get('/billing?limit=2000');
+        const fetched = res.data?.data?.bills || res.data?.bills || (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []));
+        if (Array.isArray(fetched) && fetched.length > 0 && typeof setInvoiceList === 'function') {
+          setInvoiceList(fetched);
+        }
+      }
+    } catch (e) {
+      console.warn("Refresh history error:", e);
+    } finally {
+      setTimeout(() => setIsRefreshingHistory(false), 400);
+    }
+  };
 
   // Debounced search term
   const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
@@ -2306,8 +2379,11 @@ export const BillingPOSView = ({
   const filteredHistoryInvoices = useMemo(() => {
     const list = invoiceList || invoices || [];
     const q = (historySearch || "").toLowerCase().trim();
-    if (!q) return list;
     return list.filter((inv) => {
+      if (!isInvoiceInHistoryTimeframe(inv, historyTimeframe, historyCustomStart, historyCustomEnd)) {
+        return false;
+      }
+      if (!q) return true;
       const matchNo = (inv.invoiceNo || "").toLowerCase().includes(q);
       const matchCust = (inv.customerName || "").toLowerCase().includes(q);
       const matchPhone = (inv.customerPhone || "").toLowerCase().includes(q);
@@ -2316,11 +2392,12 @@ export const BillingPOSView = ({
         (item) =>
           (item.name || "").toLowerCase().includes(q) ||
           (item.productCode || "").toLowerCase().includes(q) ||
-          (item.uniqueCode || "").toLowerCase().includes(q)
+          (item.uniqueCode || "").toLowerCase().includes(q) ||
+          (item.designNo || "").toLowerCase().includes(q)
       );
       return matchNo || matchCust || matchPhone || matchPay || matchItems;
     });
-  }, [invoiceList, invoices, historySearch]);
+  }, [invoiceList, invoices, historySearch, historyTimeframe, historyCustomStart, historyCustomEnd]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -6468,17 +6545,62 @@ export const BillingPOSView = ({
 
       {activePOSMode === "history" && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pb-4 border-b border-slate-100">
             <div>
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
                 Historical Billing Logs
               </h3>
               <p className="text-xs text-slate-400">
-                Total processed transactions: {filteredHistoryInvoices.length} invoices
-                {historySearch && ` (filtered from ${invoices.length})`}
+                Showing {filteredHistoryInvoices.length} {filteredHistoryInvoices.length === 1 ? 'invoice' : 'invoices'}
+                {((invoiceList || invoices || []).length > 0) && ` (out of ${(invoiceList || invoices || []).length} total)`}
               </p>
             </div>
-            <div className="flex gap-2">
+
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+              {/* DATE FILTER PILLS */}
+              <div className="bg-slate-100/90 p-1 rounded-xl flex items-center gap-1 border border-slate-200/60 shadow-2xs">
+                {[
+                  { key: 'today', label: 'Today' },
+                  { key: 'week', label: 'This Week' },
+                  { key: 'month', label: 'This Month' },
+                  { key: 'all', label: 'All Time' },
+                  { key: 'custom', label: 'Custom Range' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setHistoryTimeframe(item.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      historyTimeframe === item.key
+                        ? 'bg-white text-slate-800 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* CUSTOM RANGE PICKERS */}
+              {historyTimeframe === 'custom' && (
+                <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs animate-fade-in">
+                  <input
+                    type="date"
+                    value={historyCustomStart}
+                    onChange={(e) => setHistoryCustomStart(e.target.value)}
+                    className="bg-white border border-slate-200 px-2 py-1 rounded-lg font-bold text-slate-700 outline-none text-xs focus:border-indigo-500"
+                  />
+                  <span className="text-slate-400 font-bold text-xs">to</span>
+                  <input
+                    type="date"
+                    value={historyCustomEnd}
+                    onChange={(e) => setHistoryCustomEnd(e.target.value)}
+                    className="bg-white border border-slate-200 px-2 py-1 rounded-lg font-bold text-slate-700 outline-none text-xs focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              {/* SEARCH BAR */}
               <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
@@ -6486,17 +6608,28 @@ export const BillingPOSView = ({
                   placeholder="Search by Unique Code, Invoice #, customer..."
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="bg-slate-50 pl-9 pr-8 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-96 md:w-[450px] border border-slate-200/80"
+                  className="bg-slate-50 pl-9 pr-8 py-1.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-64 md:w-80 border border-slate-200/80"
                 />
                 {historySearch && (
                   <button
                     onClick={() => setHistorySearch("")}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-bold"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
+
+              {/* REFRESH BUTTON */}
+              <button
+                type="button"
+                onClick={handleRefreshHistory}
+                disabled={isRefreshingHistory || isLoadingInvoices}
+                className="p-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center justify-center cursor-pointer font-bold transition-colors shadow-2xs"
+                title="Refresh Invoices"
+              >
+                <RefreshCw className={`w-4 h-4 ${(isRefreshingHistory || isLoadingInvoices) ? 'animate-spin text-indigo-600' : ''}`} />
+              </button>
             </div>
           </div>
 

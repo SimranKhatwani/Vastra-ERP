@@ -188,6 +188,9 @@ export const BillingSalesView = ({
   // Invoice History States & Fetcher
   const [invoicesList, setInvoicesList] = useState([]);
   const [historySearch, setHistorySearch] = useState("");
+  const [historyTimeframe, setHistoryTimeframe] = useState("all");
+  const [historyCustomStart, setHistoryCustomStart] = useState("");
+  const [historyCustomEnd, setHistoryCustomEnd] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pssSlipModalData, setPssSlipModalData] = useState(null);
 
@@ -793,38 +796,154 @@ export const BillingSalesView = ({
     }
   };
 
+  const isInvoiceInTimeframe = (inv, timeframe, customStart, customEnd) => {
+    if (timeframe === 'all') return true;
+    const rawDate = inv.date || inv.billDate || inv.createdAt;
+    if (!rawDate) return true;
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) return true;
+    const now = new Date();
+
+    if (timeframe === 'today') {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+
+    if (timeframe === 'week') {
+      const currentDay = now.getDay();
+      const diffToMonday = (currentDay === 0 ? -6 : 1) - currentDay;
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      return d >= weekStart && d <= weekEnd;
+    }
+
+    if (timeframe === 'month') {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth()
+      );
+    }
+
+    if (timeframe === 'custom') {
+      if (customStart) {
+        const [sYear, sMonth, sDay] = customStart.split('-').map(Number);
+        const cStart = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0);
+        if (d < cStart) return false;
+      }
+      if (customEnd) {
+        const [eYear, eMonth, eDay] = customEnd.split('-').map(Number);
+        const cEnd = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999);
+        if (d > cEnd) return false;
+      }
+      return true;
+    }
+
+    return true;
+  };
+
   const renderInvoiceHistory = () => {
     const filteredInvoices = invoicesList.filter(inv => {
+      if (!isInvoiceInTimeframe(inv, historyTimeframe, historyCustomStart, historyCustomEnd)) {
+        return false;
+      }
       const q = historySearch.toLowerCase().trim();
       if (!q) return true;
       const invNoMatch = (inv.invoiceNo || "").toLowerCase().includes(q);
       const nameMatch = (inv.customerName || "").toLowerCase().includes(q);
       const phoneMatch = (inv.customerPhone || "").includes(q);
-      const codeMatch = inv.items && inv.items.some(item => (item.uniqueCode || "").toLowerCase().includes(q));
+      const codeMatch = inv.items && inv.items.some(item => (item.uniqueCode || "").toLowerCase().includes(q) || (item.name || "").toLowerCase().includes(q) || (item.designNo || "").toLowerCase().includes(q));
       return invNoMatch || nameMatch || phoneMatch || codeMatch;
     });
 
     return (
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 pb-4 border-b border-slate-100">
           <div>
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Invoice History Ledger</h3>
-            <p className="text-[10px] text-slate-400">All registered sales transactions for this tenant.</p>
+            <p className="text-[10px] text-slate-400">
+              Showing {filteredInvoices.length} {filteredInvoices.length === 1 ? 'bill' : 'bills'}
+              {invoicesList.length > 0 && ` (out of ${invoicesList.length} total)`}
+            </p>
           </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Search by Unique Code, Invoice No, Customer..."
-              className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white w-96 md:w-[450px] outline-none font-bold animate-fade-in"
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-            />
+
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+            {/* DATE FILTER PILLS */}
+            <div className="bg-slate-100/90 p-1 rounded-xl flex items-center gap-1 border border-slate-200/60 shadow-2xs">
+              {[
+                { key: 'today', label: 'Today' },
+                { key: 'week', label: 'This Week' },
+                { key: 'month', label: 'This Month' },
+                { key: 'all', label: 'All Time' },
+                { key: 'custom', label: 'Custom Range' },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setHistoryTimeframe(item.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    historyTimeframe === item.key
+                      ? 'bg-white text-slate-800 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {/* CUSTOM RANGE PICKERS */}
+            {historyTimeframe === 'custom' && (
+              <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs animate-fade-in">
+                <input
+                  type="date"
+                  value={historyCustomStart}
+                  onChange={(e) => setHistoryCustomStart(e.target.value)}
+                  className="bg-white border border-slate-200 px-2 py-1 rounded-lg font-bold text-slate-700 outline-none text-xs focus:border-indigo-500"
+                />
+                <span className="text-slate-400 font-bold text-xs">to</span>
+                <input
+                  type="date"
+                  value={historyCustomEnd}
+                  onChange={(e) => setHistoryCustomEnd(e.target.value)}
+                  className="bg-white border border-slate-200 px-2 py-1 rounded-lg font-bold text-slate-700 outline-none text-xs focus:border-indigo-500"
+                />
+              </div>
+            )}
+
+            {/* SEARCH INPUT */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by Unique Code, Invoice No, Customer..."
+                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white w-64 md:w-80 outline-none font-bold animate-fade-in"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+              />
+              {historySearch && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySearch("")}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* REFRESH BUTTON */}
             <button
+              type="button"
               onClick={fetchInvoicesHistory}
-              className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer font-bold"
+              disabled={historyLoading}
+              className="p-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center justify-center cursor-pointer font-bold transition-colors shadow-2xs"
+              title="Refresh Ledger"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Refresh Ledger</span>
+              <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin text-indigo-600' : ''}`} />
             </button>
           </div>
         </div>
