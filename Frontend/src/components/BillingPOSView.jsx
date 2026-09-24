@@ -242,8 +242,42 @@ export const BillingPOSView = ({
     });
   }, [employees]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(() => {
-    return localStorage.getItem("pos_saved_customer_id") || "";
+    try {
+      return localStorage.getItem("pos_saved_customer_id") || "";
+    } catch (e) {
+      return "";
+    }
   });
+  const [activePosColumn, setActivePosColumn] = useState("barcode");
+
+  const focusPosColumn = (colName) => {
+    setActivePosColumn(colName);
+    const doFocus = () => {
+      let el = null;
+      if (colName === "barcode") {
+        el = document.getElementById("posBarcodeInput");
+      } else if (colName === "itemName") {
+        el = document.getElementById("posItemNameInput");
+      } else if (colName === "designNo") {
+        el = document.getElementById("designNoSearchInput");
+      } else if (colName === "itemCode") {
+        el = document.getElementById("itemCodeSearchInput");
+      }
+      if (el) {
+        el.focus();
+        if (typeof el.select === "function") el.select();
+      }
+    };
+    doFocus();
+    requestAnimationFrame(doFocus);
+    setTimeout(doFocus, 25);
+    setTimeout(doFocus, 80);
+  };
+  // Auto-focus Barcode column on mount
+  useEffect(() => {
+    focusPosColumn("barcode");
+  }, []);
+
   const [customerForm, setCustomerForm] = useState(() => {
     try {
       const saved = localStorage.getItem("pos_saved_customer_form");
@@ -610,20 +644,12 @@ export const BillingPOSView = ({
       // Alt + B -> Focus Barcode Input
       if (e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault();
-        const el = document.getElementById('posBarcodeInput');
-        if (el) {
-          el.focus();
-          el.select();
-        }
+        focusPosColumn("barcode");
       }
       // Alt + D -> Focus Design No Input
       if (e.altKey && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
-        const el = document.getElementById('designNoSearchInput');
-        if (el) {
-          el.focus();
-          el.select();
-        }
+        focusPosColumn("designNo");
       }
     };
     window.addEventListener("keydown", handleGlobalShortcuts);
@@ -960,15 +986,7 @@ export const BillingPOSView = ({
 
 
   const handleStartNewBill = () => {
-    setHistoryViewIndex(-1);
-    setCart([]); // This now safely resets payment states via the useEffect
-    setSelectedCustomerId("");
-    setCustomerSearch("");
-    setCouponCode("");
-    setManualDiscountIds([]);
-    setRejectedAutoDiscountIds([]);
-    setSelectedLoyaltyRuleId("");
-    if (onAddNotification) onAddNotification("New Bill", "Fresh POS billing session started.", "info");
+    handleClearBillContext("New Bill", "Everything in the existing bill has been completely erased for a fresh bill.");
   };
 
   // Helper to map PSSM records onto invoice/cart items
@@ -2463,6 +2481,7 @@ export const BillingPOSView = ({
     if (activePOSMode !== "billing") {
       setActivePOSMode("billing");
     }
+    setActivePosColumn("itemCode");
     const focusAction = () => {
       const input = document.getElementById("itemCodeSearchInput");
       if (input) {
@@ -2482,6 +2501,7 @@ export const BillingPOSView = ({
     if (activePOSMode !== "billing") {
       setActivePOSMode("billing");
     }
+    setActivePosColumn("designNo");
     const focusAction = () => {
       const input = document.getElementById("designNoSearchInput");
       if (input) {
@@ -2499,15 +2519,70 @@ export const BillingPOSView = ({
     setTimeout(focusAction, 150);
   };
 
-  // Centralized helper to completely wipe out existing context (cart, loaded invoice, customer, returns)
-  const handleClearBillContext = (notificationTitle = "Clear Bill", notificationMsg = "Context cleared.") => {
+  // Centralized helper to completely wipe out existing context (cart, loaded invoice, customer, returns, discounts, adjustments, inputs, modals)
+  const handleClearBillContext = (notificationTitle = "New Bill", notificationMsg = "Everything in the existing bill has been completely erased for a fresh bill.") => {
+    // 1. Reset cart & items
     setCart([]);
+    
+    // 2. Reset customer details
     setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
     setSelectedCustomerId("");
+    if (typeof setCustomerSearchQuery === "function") setCustomerSearchQuery("");
+    if (typeof setCustomerSearch === "function") setCustomerSearch("");
+
+    // 3. Reset invoice history / loaded bill / returns / exchanges
     setLoadedOriginalInvoice(null);
+    setHistoryViewIndex(-1);
     setReturnActionType(null);
     setReturnedItemIds([]);
+    setExchangeOldItemIdx(null);
+    setExchangeSelectedNewProduct(null);
     setActivePOSMode("billing");
+
+    // 4. Reset discounts, coupons, adjustments & loyalty
+    setCouponCode("");
+    setManualDiscountIds([]);
+    setRejectedAutoDiscountIds([]);
+    setSelectedLoyaltyRuleId("");
+    if (typeof setBillAdjustment === "function") {
+      setBillAdjustment({ type: 'Amount', operation: 'Discount', value: '', amount: 0, reason: '', isApproved: false });
+    }
+
+    // 5. Reset all entry row inputs
+    setBarcodeInput("");
+    setItemNameInput("");
+    setItemSearchInputText("");
+    setDesignNoSearchInput("");
+    setItemCodeSearchInput("");
+    setLastSearchedQuery(null);
+
+    // 6. Close all open dropdowns & modals
+    setIsProductDropdownOpen(false);
+    setIsCustomerDropdownOpen(false);
+    setIsItemDropdownOpen(false);
+    setIsItemCodeDropdownOpen(false);
+    setIsDesignNoDropdownOpen(false);
+    setIsItemSearchModalOpen(false);
+    setShowPaymentModal(false);
+    setShowAlterationModal(false);
+    setShowDueCustomerModal(false);
+    setShowAdjustmentModal(false);
+    setShowDiscountSelectionModal(false);
+    setShowHoldBillModal(false);
+    setShowBillPreviewInvoice(null);
+    setAlterationPromptItem(null);
+    setIsAlterationModeActive(false);
+
+    // 7. Clear persisted localStorage
+    try {
+      localStorage.removeItem("pos_saved_cart");
+      localStorage.removeItem("pos_saved_customer_id");
+      localStorage.removeItem("pos_saved_customer_form");
+    } catch (e) { }
+
+    // 8. Auto-focus Barcode column for immediate new entry
+    focusPosColumn("barcode");
+
     if (onAddNotification) onAddNotification(notificationTitle, notificationMsg, "info");
   };
 
@@ -2567,17 +2642,21 @@ export const BillingPOSView = ({
         alterationPromptItem;
 
       if (
-        e.key === " " &&
-        !isAnyModalOpen &&
-        document.activeElement?.tagName !== "INPUT" &&
-        document.activeElement?.tagName !== "TEXTAREA" &&
-        document.activeElement?.tagName !== "BUTTON"
+        (e.key === " " || e.code === "Space" || e.key === "Spacebar") &&
+        !isAnyModalOpen
       ) {
-        e.preventDefault();
-        e.stopPropagation();
-        setItemNameInput("");
-        handleOpenItemSearchModal();
-        return;
+        const activeTag = document.activeElement?.tagName || "";
+        const activeId = document.activeElement?.id || "";
+        const isTextarea = activeTag === "TEXTAREA";
+        const isCustomerInput = activeId === "mobileSearchInput" || activeId.startsWith("customer");
+
+        if (!isTextarea && !isCustomerInput) {
+          e.preventDefault();
+          e.stopPropagation();
+          setItemNameInput("");
+          handleOpenItemSearchModal();
+          return;
+        }
       }
 
       // If item search modal is open
@@ -2597,6 +2676,7 @@ export const BillingPOSView = ({
         if (e.key === "Escape") {
           e.preventDefault();
           setIsItemSearchModalOpen(false);
+          focusPosColumn("barcode");
           return;
         }
         if (e.key === "ArrowDown") {
@@ -2624,15 +2704,13 @@ export const BillingPOSView = ({
           return;
         }
         if (e.key === "Enter") {
-          if (document.activeElement?.id === "modalItemNameInput") {
-            return;
-          }
           e.preventDefault();
           const activeItem = selectedSearchItem || itemSearchResults[0];
           if (activeItem) {
             handleAddProductToCart(activeItem);
             setItemNameInput("");
             setIsItemSearchModalOpen(false);
+            focusPosColumn("barcode");
           }
           return;
         }
@@ -2849,6 +2927,36 @@ export const BillingPOSView = ({
 
       if (!isTyping && !isAlterationModeActive && !showPaymentModal && !isItemSearchModalOpen && !isAnyModalOpen) {
         const k = (e.key || "").toLowerCase();
+
+        // Enter key navigation
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (activePosColumn === "barcode") focusPosColumn("itemName");
+          else if (activePosColumn === "itemName") focusPosColumn("designNo");
+          else if (activePosColumn === "designNo") focusPosColumn("itemCode");
+          else focusPosColumn("barcode");
+          return;
+        }
+
+        // Left Arrow key navigation
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          if (activePosColumn === "itemCode") focusPosColumn("designNo");
+          else if (activePosColumn === "designNo") focusPosColumn("itemName");
+          else if (activePosColumn === "itemName") focusPosColumn("barcode");
+          else focusPosColumn("itemCode");
+          return;
+        }
+
+        // Right Arrow key navigation
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          if (activePosColumn === "barcode") focusPosColumn("itemName");
+          else if (activePosColumn === "itemName") focusPosColumn("designNo");
+          else if (activePosColumn === "designNo") focusPosColumn("itemCode");
+          else focusPosColumn("barcode");
+          return;
+        }
 
         // Space Key -> Search Product Modal
         if (e.code === "Space" || e.key === " " || e.key === "Spacebar") {
@@ -4932,9 +5040,52 @@ export const BillingPOSView = ({
   };
 
   const handleSmartBarcodeKeyDown = async (e) => {
+    if (e.key === " " && !barcodeInput.trim()) {
+      e.preventDefault();
+      handleOpenItemSearchModal();
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
-      await executeSmartSearch(barcodeInput, setBarcodeInput);
+      if (barcodeInput.trim()) {
+        await executeSmartSearch(barcodeInput, setBarcodeInput);
+      } else {
+        focusPosColumn("itemName");
+      }
+    } else if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+      if (e.target.selectionStart === e.target.value.length || !barcodeInput) {
+        e.preventDefault();
+        focusPosColumn("itemName");
+      }
+    } else if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !barcodeInput)) {
+      if (e.target.selectionStart === 0 || !barcodeInput) {
+        e.preventDefault();
+        focusPosColumn("itemCode");
+      }
+    }
+  };
+
+  const handleItemNameSearchKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (itemSearchInputText.trim()) {
+        handleOpenItemSearchModal();
+      } else {
+        focusPosColumn("designNo");
+      }
+    } else if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+      if (e.target.selectionStart === e.target.value.length || !itemSearchInputText) {
+        e.preventDefault();
+        focusPosColumn("designNo");
+      }
+    } else if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !itemSearchInputText)) {
+      if (e.target.selectionStart === 0 || !itemSearchInputText) {
+        e.preventDefault();
+        focusPosColumn("barcode");
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      handleOpenItemSearchModal();
     }
   };
 
@@ -5023,9 +5174,13 @@ export const BillingPOSView = ({
   };
 
   const handleDesignNoKeyDown = async (e) => {
-    if (e.key === "ArrowDown") {
+    if ((e.key === " " || e.code === "Space") && !designNoSearchInput.trim() && !isDesignNoDropdownOpen) {
       e.preventDefault();
-      setIsDesignNoDropdownOpen(true);
+      handleOpenItemSearchModal();
+      return;
+    }
+    if (e.key === "ArrowDown" && isDesignNoDropdownOpen) {
+      e.preventDefault();
       setDesignNoHighlightedIndex(prev => {
         const next = (prev + 1) % Math.max(1, filteredDesignNoProducts.length);
         setTimeout(() => {
@@ -5035,9 +5190,8 @@ export const BillingPOSView = ({
       });
       return;
     }
-    if (e.key === "ArrowUp") {
+    if (e.key === "ArrowUp" && isDesignNoDropdownOpen) {
       e.preventDefault();
-      setIsDesignNoDropdownOpen(true);
       setDesignNoHighlightedIndex(prev => {
         const next = (prev - 1 + Math.max(1, filteredDesignNoProducts.length)) % Math.max(1, filteredDesignNoProducts.length);
         setTimeout(() => {
@@ -5052,6 +5206,20 @@ export const BillingPOSView = ({
       setIsDesignNoDropdownOpen(false);
       return;
     }
+    if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !designNoSearchInput)) {
+      if (!isDesignNoDropdownOpen && (e.target.selectionStart === 0 || !designNoSearchInput)) {
+        e.preventDefault();
+        focusPosColumn("itemName");
+        return;
+      }
+    }
+    if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+      if (!isDesignNoDropdownOpen && (e.target.selectionStart === e.target.value.length || !designNoSearchInput)) {
+        e.preventDefault();
+        focusPosColumn("itemCode");
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       // If dropdown is open with multiple items and operator hits Enter, select highlighted item
@@ -5061,18 +5229,47 @@ export const BillingPOSView = ({
           handleAddProductToCart(itemToAdd);
           setDesignNoSearchInput("");
           setIsDesignNoDropdownOpen(false);
+          focusPosColumn("barcode");
           if (onAddNotification) onAddNotification("Item Added", `Added ${itemToAdd.itemName || itemToAdd.name || 'Item'} to bill`, "success");
           return;
         }
       }
-      await executeDesignNoSearch(designNoSearchInput);
+      if (designNoSearchInput.trim()) {
+        await executeDesignNoSearch(designNoSearchInput);
+      } else {
+        focusPosColumn("itemCode");
+      }
     }
   };
 
   const handleItemCodeKeyDown = async (e) => {
+    if ((e.key === " " || e.code === "Space") && !itemCodeSearchInput.trim()) {
+      e.preventDefault();
+      handleOpenItemSearchModal();
+      return;
+    }
+    if (e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) || (e.key === "Backspace" && !itemCodeSearchInput)) {
+      if (e.target.selectionStart === 0 || !itemCodeSearchInput) {
+        e.preventDefault();
+        focusPosColumn("designNo");
+        return;
+      }
+    }
+    if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+      if (e.target.selectionStart === e.target.value.length || !itemCodeSearchInput) {
+        e.preventDefault();
+        focusPosColumn("barcode");
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
-      await executeSmartSearch(itemCodeSearchInput, setItemCodeSearchInput);
+      if (itemCodeSearchInput.trim()) {
+        await executeSmartSearch(itemCodeSearchInput, setItemCodeSearchInput);
+        focusPosColumn("barcode");
+      } else {
+        focusPosColumn("barcode");
+      }
     }
   };
 
@@ -5493,12 +5690,20 @@ export const BillingPOSView = ({
                   <thead className="bg-[#f0f0f0] border-b border-slate-400 sticky top-0 z-10 shadow-sm">
                     <tr>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-8 text-[9px]">S.NO.</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Barcode</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-32">Item Name</th>
+                      <th className={`border-r border-slate-400 p-1 text-left w-20 transition-all ${activePosColumn === 'barcode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                        {activePosColumn === 'barcode' ? '▶ Barcode' : 'Barcode'}
+                      </th>
+                      <th className={`border-r border-slate-400 p-1 text-left w-32 transition-all ${activePosColumn === 'itemName' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                        {activePosColumn === 'itemName' ? '▶ Item Name' : 'Item Name'}
+                      </th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-44">Firm</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Sub Item</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Design No.</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-36 min-w-[140px]">Item Code</th>
+                      <th className={`border-r border-slate-400 p-1 text-left w-24 transition-all ${activePosColumn === 'designNo' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                        {activePosColumn === 'designNo' ? '▶ Design No.' : 'Design No.'}
+                      </th>
+                      <th className={`border-r border-slate-400 p-1 text-left w-36 min-w-[140px] transition-all ${activePosColumn === 'itemCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                        {activePosColumn === 'itemCode' ? '▶ Item Code' : 'Item Code'}
+                      </th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Ipn</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-20">Quantity</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Colour (P)</th>
@@ -5762,43 +5967,55 @@ export const BillingPOSView = ({
                     {/* Empty Entry Row */}
                     <tr className="border-b border-slate-300 bg-[#e8f4ff]">
                       <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
-                      <td className="border-r border-slate-300 p-0.5">
-                        <input
-                          id="posBarcodeInput"
-                          type="text"
-                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase shadow-inner"
-                          placeholder="(Alt+B)"
-                          value={barcodeInput}
-                          onChange={(e) => setBarcodeInput(e.target.value)}
-                          onKeyDown={handleSmartBarcodeKeyDown}
-                        />
+                      <td className={`border-r border-slate-300 p-0.5 transition-all ${activePosColumn === 'barcode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'barcode' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posBarcodeInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase shadow-inner transition-all ${
+                              activePosColumn === 'barcode'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                            }`}
+                            placeholder="(Alt+B)"
+                            value={barcodeInput}
+                            onChange={(e) => setBarcodeInput(e.target.value)}
+                            onFocus={() => setActivePosColumn("barcode")}
+                            onKeyDown={handleSmartBarcodeKeyDown}
+                          />
+                        </div>
                       </td>
                       {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
-                      <td ref={itemSearchContainerRef} className="border-r border-slate-300 p-0.5 relative">
-                        <div className="flex items-center bg-white border border-blue-300 shadow-inner">
+                      <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className={`flex items-center bg-white border shadow-inner transition-all ${
+                          activePosColumn === 'itemName'
+                            ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500'
+                            : 'border-blue-300'
+                        }`}>
+                          {activePosColumn === 'itemName' && (
+                            <span className="pl-1 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                          )}
                           <input
+                            id="posItemNameInput"
                             type="text"
-                            className="w-full outline-none p-1 text-xs focus:bg-yellow-100 cursor-pointer placeholder-slate-500 font-semibold"
-                            placeholder="Click to Search Item (F2)..."
+                            className={`w-full outline-none p-1 text-xs placeholder-slate-500 font-semibold ${
+                              activePosColumn === 'itemName' ? 'bg-yellow-50 text-slate-950 font-black' : 'focus:bg-yellow-100'
+                            }`}
+                            placeholder="Search Item (F2)..."
                             value={itemSearchInputText}
-                            onChange={(e) => {
-                              setItemSearchInputText(e.target.value);
-                              handleOpenItemSearchModal();
-                            }}
-                            onClick={() => handleOpenItemSearchModal()}
-                            onFocus={() => handleOpenItemSearchModal()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === "ArrowDown") {
-                                e.preventDefault();
-                                handleOpenItemSearchModal();
-                              }
-                            }}
+                            onChange={(e) => setItemSearchInputText(e.target.value)}
+                            onFocus={() => setActivePosColumn("itemName")}
+                            onKeyDown={handleItemNameSearchKeyDown}
                           />
                           <button
                             type="button"
                             className="px-1.5 py-1 text-slate-500 hover:text-blue-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setActivePosColumn("itemName");
                               handleOpenItemSearchModal();
                             }}
                             title="Open Detailed Item Search List (F2)"
@@ -5940,30 +6157,40 @@ export const BillingPOSView = ({
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
 
                       {/* Design No Search Field */}
-                      <td ref={designNoContainerRef} className="border-r border-slate-300 p-0.5 relative">
-                        <input
-                          id="designNoSearchInput"
-                          type="text"
-                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
-                          placeholder="(Alt+D)"
-                          value={designNoSearchInput}
-                          onChange={(e) => {
-                            setDesignNoSearchInput(e.target.value);
-                            if (e.target.value.trim().length > 0) {
-                              setIsDesignNoDropdownOpen(true);
-                              setDesignNoHighlightedIndex(0);
-                            } else {
-                              setIsDesignNoDropdownOpen(false);
-                            }
-                          }}
-                          onFocus={() => {
-                            if (designNoSearchInput.trim().length > 0) {
-                              setIsDesignNoDropdownOpen(true);
-                              setDesignNoHighlightedIndex(0);
-                            }
-                          }}
-                          onKeyDown={handleDesignNoKeyDown}
-                        />
+                      <td ref={designNoContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'designNo' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'designNo' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="designNoSearchInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${
+                              activePosColumn === 'designNo'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                            }`}
+                            placeholder="(Alt+D)"
+                            value={designNoSearchInput}
+                            onChange={(e) => {
+                              setDesignNoSearchInput(e.target.value);
+                              if (e.target.value.trim().length > 0) {
+                                setIsDesignNoDropdownOpen(true);
+                                setDesignNoHighlightedIndex(0);
+                              } else {
+                                setIsDesignNoDropdownOpen(false);
+                              }
+                            }}
+                            onFocus={() => {
+                              setActivePosColumn("designNo");
+                              if (designNoSearchInput.trim().length > 0) {
+                                setIsDesignNoDropdownOpen(true);
+                                setDesignNoHighlightedIndex(0);
+                              }
+                            }}
+                            onKeyDown={handleDesignNoKeyDown}
+                          />
+                        </div>
 
                         {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
                           <div
@@ -6088,16 +6315,26 @@ export const BillingPOSView = ({
                       </td>
 
                       {/* Item Code Search Field */}
-                      <td ref={itemCodeContainerRef} className="border-r border-slate-300 p-0.5 relative">
-                        <input
-                          id="itemCodeSearchInput"
-                          type="text"
-                          className="w-full bg-white border border-blue-300 outline-none p-1 text-xs focus:bg-yellow-100 font-bold uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner"
-                          placeholder="SEARCH(F4)"
-                          value={itemCodeSearchInput}
-                          onChange={(e) => setItemCodeSearchInput(e.target.value)}
-                          onKeyDown={handleItemCodeKeyDown}
-                        />
+                      <td ref={itemCodeContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'itemCode' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="itemCodeSearchInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${
+                              activePosColumn === 'itemCode'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                            }`}
+                            placeholder="SEARCH(F4)"
+                            value={itemCodeSearchInput}
+                            onChange={(e) => setItemCodeSearchInput(e.target.value)}
+                            onFocus={() => setActivePosColumn("itemCode")}
+                            onKeyDown={handleItemCodeKeyDown}
+                          />
+                        </div>
                       </td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
                       <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
