@@ -2202,6 +2202,7 @@ export default function App() {
                 onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
                 onDeletePurchaseOrder={handleDeletePurchaseOrder}
                 onAddNotification={addToastNotification}
+                currentUser={currentUser}
               />
             )}
 

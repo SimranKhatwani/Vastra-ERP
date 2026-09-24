@@ -7,10 +7,11 @@ import {
   ChevronDown, ChevronUp, X, Save, RefreshCw, IndianRupee,
   ShoppingBag, Truck, ClipboardList, Users, Star, Phone, Mail,
   MapPin, CreditCard, Calendar, ArrowUpRight, ArrowDownRight,
-  FileSpreadsheet, UploadCloud, FilePlus, PackageCheck
+  FileSpreadsheet, UploadCloud, FilePlus, PackageCheck, MessageSquare
 } from "lucide-react";
 import { PTImporter, InvoiceViewer } from "./PTImporter";
 import { ManualPurchaseEntry } from "./ManualPurchaseEntry";
+import VendorCommunicationCard from "./VendorCommunicationCard";
 
 const API = "/purchase";
 const getToken = () => localStorage.getItem("token");
@@ -1153,6 +1154,7 @@ export const PurchaseView = ({
   onUpdatePurchaseOrder,
   onDeletePurchaseOrder,
   onAddNotification,
+  currentUser,
 }) => {
   const [activeTab, setActiveTab] = useState("pos");
   const [showImporter, setShowImporter] = useState(false);
@@ -1237,6 +1239,7 @@ export const PurchaseView = ({
 
   const tabs = [
     { id: "pos", label: "Procurement & Purchase Orders (PO)", icon: FileText },
+    { id: "vendor-card", label: "Vendor Communication Card", icon: MessageSquare },
     { id: "pending", label: "Pending Tracking", icon: Clock },
     { id: "reports", label: "Purchase Reports", icon: BarChart3 },
   ];
@@ -1684,6 +1687,11 @@ export const PurchaseView = ({
 
 
 
+        {activeTab === "vendor-card" && (
+          <div className="pt-1">
+            <VendorCommunicationCard currentUser={currentUser} />
+          </div>
+        )}
         {activeTab === "pending" && <PendingTracking pendingPurchases={pendingPurchases} setPendingPurchases={setPendingPurchases} onAddNotification={onAddNotification} />}
         {activeTab === "reports" && <PurchaseReportsTab purchaseReports={purchaseReports} setPurchaseReports={setPurchaseReports} onAddNotification={onAddNotification} />}
       </div>
