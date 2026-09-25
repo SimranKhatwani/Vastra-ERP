@@ -257,6 +257,8 @@ export const BillingPOSView = ({
       let el = null;
       if (colName === "barcode") {
         el = document.getElementById("posBarcodeInput");
+      } else if (colName === "uniqueCode") {
+        el = document.getElementById("posUniqueCodeInput");
       } else if (colName === "itemName") {
         el = document.getElementById("posItemNameInput");
       } else if (colName === "designNo") {
@@ -531,6 +533,7 @@ export const BillingPOSView = ({
 
   // Inputs
   const [barcodeInput, setBarcodeInput] = useState("");
+  const [uniqueCodeInput, setUniqueCodeInput] = useState("");
   const [itemNameInput, setItemNameInput] = useState("");
   const [itemSearchInputText, setItemSearchInputText] = useState("");
   const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false);
@@ -648,6 +651,11 @@ export const BillingPOSView = ({
       if (e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault();
         focusPosColumn("barcode");
+      }
+      // Alt + U -> Focus Unique Code Input
+      if (e.altKey && (e.key === 'u' || e.key === 'U')) {
+        e.preventDefault();
+        focusPosColumn("uniqueCode");
       }
       // Alt + D -> Focus Design No Input
       if (e.altKey && (e.key === 'd' || e.key === 'D')) {
@@ -2938,7 +2946,8 @@ export const BillingPOSView = ({
         // Enter key navigation
         if (e.key === "Enter") {
           e.preventDefault();
-          if (activePosColumn === "barcode") focusPosColumn("itemName");
+          if (activePosColumn === "barcode") focusPosColumn("uniqueCode");
+          else if (activePosColumn === "uniqueCode") focusPosColumn("itemName");
           else if (activePosColumn === "itemName") focusPosColumn("designNo");
           else if (activePosColumn === "designNo") focusPosColumn("itemCode");
           else focusPosColumn("barcode");
@@ -2950,7 +2959,8 @@ export const BillingPOSView = ({
           e.preventDefault();
           if (activePosColumn === "itemCode") focusPosColumn("designNo");
           else if (activePosColumn === "designNo") focusPosColumn("itemName");
-          else if (activePosColumn === "itemName") focusPosColumn("barcode");
+          else if (activePosColumn === "itemName") focusPosColumn("uniqueCode");
+          else if (activePosColumn === "uniqueCode") focusPosColumn("barcode");
           else focusPosColumn("itemCode");
           return;
         }
@@ -2958,7 +2968,8 @@ export const BillingPOSView = ({
         // Right Arrow key navigation
         if (e.key === "ArrowRight") {
           e.preventDefault();
-          if (activePosColumn === "barcode") focusPosColumn("itemName");
+          if (activePosColumn === "barcode") focusPosColumn("uniqueCode");
+          else if (activePosColumn === "uniqueCode") focusPosColumn("itemName");
           else if (activePosColumn === "itemName") focusPosColumn("designNo");
           else if (activePosColumn === "designNo") focusPosColumn("itemCode");
           else focusPosColumn("barcode");
@@ -5166,17 +5177,252 @@ export const BillingPOSView = ({
       if (barcodeInput.trim()) {
         await executeSmartSearch(barcodeInput, setBarcodeInput);
       } else {
-        focusPosColumn("itemName");
+        focusPosColumn("uniqueCode");
       }
     } else if (e.key === "ArrowRight") {
       if (e.target.selectionStart === e.target.value.length || !barcodeInput) {
         e.preventDefault();
-        focusPosColumn("itemName");
+        focusPosColumn("uniqueCode");
       }
     } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !barcodeInput)) {
       if (e.target.selectionStart === 0 || !barcodeInput) {
         e.preventDefault();
         focusPosColumn("itemCode");
+      }
+    }
+  };
+
+  const executeUniqueCodeSearch = async (inputCode, clearInputFn) => {
+    const q = String(inputCode || "").trim();
+    if (!q) return;
+    const qLower = q.toLowerCase();
+
+    // 1. Check in-memory products & piece unique codes
+    let matchedProduct = null;
+    let matchedPiece = null;
+
+    for (const p of (products || [])) {
+      const pUnique = String(p.uniqueCode || '').toLowerCase();
+      if (pUnique === qLower) {
+        matchedProduct = p;
+        break;
+      }
+      if (Array.isArray(p.pieces)) {
+        const pc = p.pieces.find(item => {
+          const u = String(item.uniqueCode || item.barcode || '').toLowerCase();
+          return u === qLower;
+        });
+        if (pc) {
+          matchedProduct = p;
+          matchedPiece = pc;
+          break;
+        }
+      }
+    }
+
+    if (matchedProduct) {
+      const sPrice = Number(matchedPiece?.sellingPrice || matchedPiece?.price || matchedProduct.mrp || matchedProduct.sellingPrice || matchedProduct.price || 0);
+      const mrpVal = Number(matchedPiece?.mrp || matchedProduct.mrp || matchedProduct.defaultMRP || sPrice);
+      const itemNameVal = matchedProduct.itemName || matchedProduct.name || 'Unnamed Item';
+      const barcodeVal = matchedPiece?.barcode || matchedProduct.barcode || matchedProduct.barcodeNo || '';
+      const uniqueCodeVal = matchedPiece?.uniqueCode || matchedProduct.uniqueCode || q;
+      const designNoVal = matchedProduct.designNo || matchedProduct.sku || '';
+      const itemCodeVal = matchedProduct.itemCode || matchedProduct.productCode || '';
+      const ipnVal = matchedPiece?.ipn || matchedProduct.ipn || '';
+      const colorVal = matchedPiece?.color || matchedProduct.primaryColor || matchedProduct.color || 'Standard';
+      const sizeVal = matchedPiece?.size || matchedProduct.size || 'M';
+      const firmVal = matchedProduct.firmName || matchedProduct.company || (matchedPiece?.firmId?.name) || '';
+      const counterVal = matchedPiece?.counter || matchedProduct.counter || '';
+      const hsnVal = matchedProduct.hsn || matchedProduct.hsnCode || '';
+
+      const newCartItem = {
+        cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        productId: matchedProduct._id || matchedProduct.id,
+        name: itemNameVal,
+        itemName: itemNameVal,
+        barcode: barcodeVal,
+        barcodeNo: barcodeVal,
+        subItem: matchedProduct.subItem || '',
+        firmName: firmVal,
+        company: firmVal,
+        counter: counterVal,
+        designNo: designNoVal,
+        itemCode: itemCodeVal,
+        ipn: ipnVal,
+        sku: matchedProduct.sku || designNoVal,
+        size: sizeVal,
+        color: colorVal,
+        primaryColor: colorVal,
+        secondaryColor: matchedProduct.secondaryColor || '',
+        hsn: hsnVal,
+        mrp: mrpVal,
+        price: mrpVal,
+        sellingPrice: sPrice,
+        discountType: 'amount',
+        discountValue: Number(matchedProduct.discount) || 0,
+        discount: Number(matchedProduct.discount) || 0,
+        customDiscount: Number(matchedProduct.discount) || 0,
+        discountAmount: Number(matchedProduct.discount) || 0,
+        discountPercent: mrpVal > 0 ? ((Number(matchedProduct.discount) || 0) / mrpVal) * 100 : 0,
+        gstPercent: Number(matchedProduct.gstOnSalePrice ?? matchedProduct.gstPercent ?? matchedProduct.gstRate ?? 5),
+        totalPrice: sPrice,
+        quantity: 1,
+        uniqueCode: uniqueCodeVal,
+        hasAlteration: false,
+        alterationRecord: null
+      };
+
+      setCart(prev => [...prev, newCartItem]);
+      if (onAddNotification) onAddNotification("Unique Code Added", `Loaded ${itemNameVal} (${uniqueCodeVal})`, "success");
+      if (typeof clearInputFn === 'function') clearInputFn("");
+      return;
+    }
+
+    // 2. Search previously sold items from local invoices state
+    let foundSoldItem = null;
+    let foundSoldInvoice = null;
+
+    const allInvoices = invoiceList || invoices || [];
+    for (const inv of allInvoices) {
+      const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
+      const matched = invItems.find(itm => {
+        const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || '').toLowerCase();
+        return uCode === qLower;
+      });
+      if (matched) {
+        foundSoldItem = matched;
+        foundSoldInvoice = inv;
+        break;
+      }
+    }
+
+    // 3. Fallback: Search backend sales/billing history API
+    if (!foundSoldItem) {
+      try {
+        const res = await api.get(`/billing?search=${encodeURIComponent(q)}`);
+        const bills = res.data?.data?.bills || res.data?.data || res.data?.bills || [];
+        for (const inv of bills) {
+          const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
+          const matched = invItems.find(itm => {
+            const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || '').toLowerCase();
+            return uCode === qLower;
+          });
+          if (matched) {
+            foundSoldItem = matched;
+            foundSoldInvoice = inv;
+            break;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 4. Fallback: Search PSSM custom piece records
+    if (!foundSoldItem) {
+      try {
+        const pssRes = await api.get(`/pssm?search=${encodeURIComponent(q)}`);
+        const pssItems = pssRes.data?.data || [];
+        const matchedPss = pssItems.find(p => String(p.uniqueCode || p.barcode || '').toLowerCase() === qLower);
+        if (matchedPss) {
+          foundSoldItem = {
+            name: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
+            itemName: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
+            uniqueCode: matchedPss.uniqueCode || q,
+            barcode: matchedPss.barcode || '',
+            price: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
+            mrp: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
+            size: matchedPss.size || 'M',
+            color: matchedPss.color || 'Standard',
+            designNo: matchedPss.pattern || matchedPss.designNo || ''
+          };
+          foundSoldInvoice = { invoiceNo: matchedPss.billNo || matchedPss.invoiceNumber || 'PSSM' };
+        }
+      } catch (e) { }
+    }
+
+    if (foundSoldItem) {
+      const mrpVal = Number(foundSoldItem.mrp || foundSoldItem.price || foundSoldItem.sellingPrice || foundSoldItem.rate || 0);
+      const rateVal = Number(foundSoldItem.rate || foundSoldItem.sellingPrice || foundSoldItem.price || mrpVal);
+      const discVal = Number(foundSoldItem.discount || foundSoldItem.discountValue || foundSoldItem.discountAmount || 0);
+      const itemNameVal = foundSoldItem.itemName || foundSoldItem.name || 'Sold Item';
+      const uniqueCodeVal = foundSoldItem.uniqueCode || q;
+      const barcodeVal = foundSoldItem.barcode || foundSoldItem.barcodeNo || '';
+      const designNoVal = foundSoldItem.designNo || foundSoldItem.sku || '';
+      const invNo = foundSoldInvoice?.invoiceNo || foundSoldInvoice?.billNo || 'Past Bill';
+
+      const recoveredCartItem = {
+        cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        productId: foundSoldItem.productId || foundSoldItem._id || foundSoldItem.id || `sold-${Date.now()}`,
+        name: itemNameVal,
+        itemName: itemNameVal,
+        barcode: barcodeVal,
+        barcodeNo: barcodeVal,
+        uniqueCode: uniqueCodeVal,
+        subItem: foundSoldItem.subItem || '',
+        firmName: foundSoldItem.firmName || foundSoldItem.company || '',
+        company: foundSoldItem.company || foundSoldItem.firmName || '',
+        counter: foundSoldItem.counter || foundSoldItem.counterNo || '',
+        designNo: designNoVal,
+        itemCode: foundSoldItem.itemCode || '',
+        ipn: foundSoldItem.ipn || '',
+        sku: foundSoldItem.sku || designNoVal,
+        size: foundSoldItem.size || 'M',
+        color: foundSoldItem.color || foundSoldItem.primaryColor || 'Standard',
+        primaryColor: foundSoldItem.primaryColor || foundSoldItem.color || 'Standard',
+        secondaryColor: foundSoldItem.secondaryColor || '',
+        hsn: foundSoldItem.hsn || foundSoldItem.hsnCode || '',
+        mrp: mrpVal,
+        price: mrpVal,
+        sellingPrice: rateVal,
+        discountType: foundSoldItem.discountType || 'amount',
+        discountValue: discVal,
+        discount: discVal,
+        customDiscount: discVal,
+        discountAmount: discVal,
+        discountPercent: mrpVal > 0 ? (discVal / mrpVal) * 100 : 0,
+        gstPercent: Number(foundSoldItem.gstPercent ?? foundSoldItem.gstRate ?? 5),
+        totalPrice: rateVal,
+        salesman1: foundSoldItem.salesman1 || foundSoldItem.salespersonName || '',
+        salesman2: foundSoldItem.salesman2 || '',
+        quantity: 1,
+        soldFromInvoiceNo: invNo,
+        hasAlteration: false,
+        alterationRecord: null
+      };
+
+      setCart(prev => [...prev, recoveredCartItem]);
+      if (onAddNotification) {
+        onAddNotification(
+          "Sold Item Retrieved",
+          `Loaded "${itemNameVal}" (${uniqueCodeVal}) from Invoice #${invNo}`,
+          "success"
+        );
+      }
+      if (typeof clearInputFn === 'function') clearInputFn("");
+      return;
+    }
+
+    if (onAddNotification) {
+      onAddNotification("Unique Code Not Found", `No active inventory piece or sold item found for Unique Code "${q}"`, "danger");
+    }
+  };
+
+  const handleUniqueCodeKeyDown = async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (uniqueCodeInput.trim()) {
+        await executeUniqueCodeSearch(uniqueCodeInput, setUniqueCodeInput);
+      } else {
+        focusPosColumn("itemName");
+      }
+    } else if (e.key === "ArrowRight") {
+      if (e.target.selectionStart === e.target.value.length || !uniqueCodeInput) {
+        e.preventDefault();
+        focusPosColumn("itemName");
+      }
+    } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !uniqueCodeInput)) {
+      if (e.target.selectionStart === 0 || !uniqueCodeInput) {
+        e.preventDefault();
+        focusPosColumn("barcode");
       }
     }
   };
@@ -5197,7 +5443,7 @@ export const BillingPOSView = ({
     } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !itemSearchInputText)) {
       if (e.target.selectionStart === 0 || !itemSearchInputText) {
         e.preventDefault();
-        focusPosColumn("barcode");
+        focusPosColumn("uniqueCode");
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -5831,6 +6077,9 @@ export const BillingPOSView = ({
                       <th className={`border-r border-slate-400 p-1 text-left w-20 transition-all ${activePosColumn === 'barcode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
                         {activePosColumn === 'barcode' ? '▶ Barcode' : 'Barcode'}
                       </th>
+                      <th className={`border-r border-slate-400 p-1 text-left w-24 min-w-[105px] transition-all ${activePosColumn === 'uniqueCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                        {activePosColumn === 'uniqueCode' ? '▶ Unique Code' : 'Unique Code'}
+                      </th>
                       <th className={`border-r border-slate-400 p-1 text-left w-32 transition-all ${activePosColumn === 'itemName' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
                         {activePosColumn === 'itemName' ? '▶ Item Name' : 'Item Name'}
                       </th>
@@ -5853,7 +6102,6 @@ export const BillingPOSView = ({
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Amount</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 1</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 2</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-24">Unique Code</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-40">Firm</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-20">Counter</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-16">HSN</th>
@@ -5920,6 +6168,7 @@ export const BillingPOSView = ({
                         >
                           <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all overflow-hidden text-ellipsis whitespace-nowrap" title={item.uniqueCode || ''}>{item.uniqueCode || ''}</td>
                           <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>{nameDisplay}</td>
                           <td className="border-r border-slate-300 p-1 overflow-hidden text-ellipsis whitespace-nowrap" title={subItemDisplay}>{subItemDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={designNoDisplay}>{designNoDisplay}</td>
@@ -6141,7 +6390,6 @@ export const BillingPOSView = ({
                               );
                             })()}
                           </td>
-                          <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all">{item.uniqueCode || ''}</td>
                           <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap overflow-hidden">
                             <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase tracking-tight inline-block shadow-2xs ${firmStyle.badgeClass}`} title={firmDisplay}>
                               {firmDisplay}
@@ -6192,6 +6440,30 @@ export const BillingPOSView = ({
                           />
                         </div>
                       </td>
+
+                      {/* Unique Code Search / Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'uniqueCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'uniqueCode' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posUniqueCodeInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono shadow-inner transition-all ${
+                              activePosColumn === 'uniqueCode'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                            }`}
+                            placeholder="(Alt+U)"
+                            value={uniqueCodeInput}
+                            onChange={(e) => setUniqueCodeInput(e.target.value)}
+                            onFocus={() => setActivePosColumn("uniqueCode")}
+                            onKeyDown={handleUniqueCodeKeyDown}
+                          />
+                        </div>
+                      </td>
+
                       {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
                       <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className={`flex items-center bg-white border shadow-inner transition-all ${
@@ -6758,6 +7030,7 @@ export const BillingPOSView = ({
                     { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
                     { id: "itemCodeSearch", label: "Item Code (F4)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
                     { id: "designNoSearch", label: "Design No (Alt+D)", icon: <Search className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: handleFocusDesignNoSearch },
+                    { id: "uniqueCodeSearch", label: "Unique Code (Alt+U)", icon: <Barcode className="w-5 h-5 text-amber-600 mx-auto" />, onClick: () => focusPosColumn("uniqueCode") },
                     { id: "viewTotals", label: "Cash Summary", icon: <Search className="w-5 h-5 text-blue-600 mx-auto" />, onClick: () => setShowTotalsModal(true) },
                     { id: "prevBill", label: "Previous Bill (<)", icon: <ChevronsLeft className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadPreviousBill },
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
