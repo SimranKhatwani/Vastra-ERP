@@ -2,6 +2,7 @@ import api from '../api/axios';
 import React, { useState, useEffect, useMemo } from "react";
 import { generateCode128SvgString } from '../helpers/barcode128.helper';
 import { generateReceiptHTMLContent, generateAlterationReceiptHTMLContent, generateInvoiceUPIQrSvg } from '../helpers/printTemplate.helper';
+import { maskPhoneNumber } from '../helpers/maskPhone.helper';
 import {
   Search,
   Barcode,
@@ -1105,8 +1106,8 @@ export const BillingPOSView = ({
       lf: '2588'
     });
     setSelectedCustomerId((typeof cust === 'object' && (cust._id || cust.id)) ? (cust._id || cust.id) : '');
-    setCustomerSearchQuery(custPhone || custName || '');
-    setCustomerSearch(custPhone || custName || '');
+    setCustomerSearchQuery(custPhone ? maskPhoneNumber(custPhone) : (custName || ''));
+    setCustomerSearch(custPhone ? maskPhoneNumber(custPhone) : (custName || ''));
     setPaymentMethod(inv.paymentMethod || "Cash");
 
     // 2. Populate Billing Grid with all original items
@@ -5592,10 +5593,20 @@ export const BillingPOSView = ({
                 <div className="flex items-center border border-slate-300 relative bg-white col-span-1 md:col-span-2">
                   <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0">Search Mobile/Name</span>
                   <input type="text" id="mobileSearchInput" className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold"
-                    value={customerSearchQuery || customerForm.phone}
+                    value={
+                      customerSearchQuery !== ""
+                        ? customerSearchQuery
+                        : (selectedCustomerId && customerForm.phone ? maskPhoneNumber(customerForm.phone) : (customerForm.phone || ""))
+                    }
                     onChange={(e) => {
-                      setCustomerSearchQuery(e.target.value);
-                      setCustomerForm(prev => ({ ...prev, phone: e.target.value }));
+                      const val = e.target.value;
+                      setCustomerSearchQuery(val);
+                      if (!val) {
+                        setSelectedCustomerId("");
+                        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+                      } else {
+                        setCustomerForm(prev => ({ ...prev, phone: val }));
+                      }
                       setIsCustomerDropdownOpen(true);
                     }}
                     onFocus={() => setIsCustomerDropdownOpen(true)}
@@ -5604,21 +5615,31 @@ export const BillingPOSView = ({
                   />
                   {isCustomerDropdownOpen && customerSearchQuery && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 shadow-xl max-h-48 overflow-y-auto z-[150]">
-                      {customers.filter(c =>
-                        (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-                        (c.phone || "").includes(customerSearchQuery) ||
-                        (c.id || "").includes(customerSearchQuery)
-                      ).map((c, idx) => (
+                      {customers.filter(c => {
+                        const q = (customerSearchQuery || "").trim().toLowerCase();
+                        const cleanDigits = (customerSearchQuery || "").replace(/\D/g, '');
+                        const cName = (c.name || "").toLowerCase();
+                        const cPhone = (c.phone || c.mobile || "");
+                        const cId = (c.id || c._id || "").toString().toLowerCase();
+                        const custCode = (c.customerId || "").toLowerCase();
+                        return (
+                          cName.includes(q) ||
+                          cPhone.includes(q) ||
+                          (cleanDigits && cPhone.includes(cleanDigits)) ||
+                          cId.includes(q) ||
+                          custCode.includes(q)
+                        );
+                      }).map((c, idx) => (
                         <div key={idx} className="p-1.5 text-[10px] hover:bg-indigo-50 border-b border-slate-100 cursor-pointer"
                           onClick={() => {
                             setCustomerForm({ phone: c.phone || '', name: c.name || '', customerId: c.customerId || '', gstin: c.gstin || c.gstNo || '', lf: '2588' });
                             setSelectedCustomerId(c.id || c._id);
-                            setCustomerSearchQuery(c.phone);
+                            setCustomerSearchQuery(maskPhoneNumber(c.phone) || c.name || '');
                             setIsCustomerDropdownOpen(false);
                             if (onAddNotification) onAddNotification("Customer Loaded", `Loaded ${c.name}'s profile`, "success");
                           }}>
                           <div className="font-bold text-slate-800">{c.name}</div>
-                          <div className="text-slate-500">Phone: {c.phone} {c.gstin ? `| GST: ${c.gstin}` : ''} | Pts: {c.loyaltyPoints || 0}</div>
+                          <div className="text-slate-500">Phone: {maskPhoneNumber(c.phone)} {c.gstin ? `| GST: ${c.gstin}` : ''} | Pts: {c.loyaltyPoints || 0}</div>
                         </div>
                       ))}
                     </div>
@@ -5645,7 +5666,7 @@ export const BillingPOSView = ({
                     type="text"
                     maxLength={10}
                     className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 font-bold font-mono"
-                    value={customerForm.phone}
+                    value={selectedCustomerId && customerForm.phone ? maskPhoneNumber(customerForm.phone) : customerForm.phone}
                     onChange={(e) => {
                       const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
                       handleCustomerPhoneChange({ target: { value: digits } });
@@ -9014,7 +9035,7 @@ export const BillingPOSView = ({
                         className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-slate-700"
                         onClick={() => handleSelectDueCustomer(cust)}
                       >
-                        {cust.name} ({cust.phone})
+                        {cust.name} ({maskPhoneNumber(cust.phone)})
                       </li>
                     ))}
                   </ul>
@@ -9050,7 +9071,7 @@ export const BillingPOSView = ({
                         className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-slate-700 font-mono"
                         onClick={() => handleSelectDueCustomer(cust)}
                       >
-                        {cust.phone} <span className="text-slate-400 font-sans ml-1">- {cust.name}</span>
+                        {maskPhoneNumber(cust.phone)} <span className="text-slate-400 font-sans ml-1">- {cust.name}</span>
                       </li>
                     ))}
                   </ul>
@@ -9104,7 +9125,7 @@ export const BillingPOSView = ({
                   </div>
                   <div>
                     <div className="text-xs text-slate-500 uppercase">Mobile</div>
-                    <div className="font-bold text-slate-800 font-mono">{customerForm.phone || 'N/A'}</div>
+                    <div className="font-bold text-slate-800 font-mono">{maskPhoneNumber(customerForm.phone) || 'N/A'}</div>
                   </div>
                   <div>
                     <div className="text-xs text-slate-500 uppercase">Customer ID</div>
@@ -10306,7 +10327,7 @@ export const BillingPOSView = ({
                           {loadedOriginalInvoice ? `Billed Invoice: ${loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo}` : 'Target Invoice: LIVE'}
                         </span>
                         <span className="text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg border border-emerald-500/30">
-                          {customerForm.name || activeCustomer.name} ({customerForm.phone || activeCustomer.phone || 'Walk-in'})
+                          {customerForm.name || activeCustomer.name} ({maskPhoneNumber(customerForm.phone || activeCustomer.phone) || 'Walk-in'})
                         </span>
                       </div>
                     </div>
@@ -11088,7 +11109,7 @@ export const BillingPOSView = ({
                       >
                         <div>
                           <strong className="text-slate-900 font-bold block">{cust.name}</strong>
-                          <span className="text-[10px] text-slate-500 font-mono">{cust.phone || 'No Phone'}</span>
+                          <span className="text-[10px] text-slate-500 font-mono">{maskPhoneNumber(cust.phone) || 'No Phone'}</span>
                         </div>
                         <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-lg border border-rose-200">
                           Select
@@ -11143,7 +11164,7 @@ export const BillingPOSView = ({
                       >
                         <div>
                           <strong className="text-slate-900 font-bold block">{cust.name}</strong>
-                          <span className="text-[10px] text-slate-500 font-mono">{cust.phone}</span>
+                          <span className="text-[10px] text-slate-500 font-mono">{maskPhoneNumber(cust.phone)}</span>
                         </div>
                         <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-lg border border-rose-200">
                           Select

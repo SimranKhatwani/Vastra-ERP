@@ -1,5 +1,6 @@
 import api from '../api/axios';
 import { generateCode128SvgString } from '../helpers/barcode128.helper';
+import { maskPhoneNumber } from '../helpers/maskPhone.helper';
 import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
@@ -1648,7 +1649,7 @@ export const BillingSalesView = ({
                   >
                     <option value="">-- Choose Customer --</option>
                     {customers.map(c => (
-                      <option key={c._id} value={c._id}>{c.name} ({c.phone})</option>
+                      <option key={c._id} value={c._id}>{c.name} ({maskPhoneNumber(c.phone)})</option>
                     ))}
                   </select>
                 </div>
