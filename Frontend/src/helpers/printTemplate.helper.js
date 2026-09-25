@@ -439,8 +439,17 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         <td class="col-shade">(NIL)</td>
         <td class="col-qty">${(Number(item.quantity)||1).toFixed(2)}</td>
         <td class="col-mrp">${(Number(item.mrp) || Number(item.price) || 0).toFixed(0)}</td>
-        <td class="col-cd">${(Number(item.discountPercent) || 0).toFixed(0)}</td>
-        <td class="col-amount">${(Number(item.totalPrice || item.price) || 0).toFixed(0)}</td>
+        <td class="col-cd">${(() => {
+          if (item.discountType === 'percent') {
+            const val = Number(item.discountValue !== undefined ? item.discountValue : (item.discountPercent || 0));
+            return val > 0 ? `${val.toFixed(0)}%` : '0';
+          }
+          const amtVal = Number(item.discountValue !== undefined ? item.discountValue : (item.discount || item.customDiscount || item.discountAmount || 0));
+          if (amtVal > 0) return `₹${amtVal.toFixed(0)}`;
+          if (Number(item.discountPercent) > 0) return `${Number(item.discountPercent).toFixed(0)}%`;
+          return '0';
+        })()}</td>
+        <td class="col-amount">${(Number(item.totalPrice || (item.sellingPrice ? item.sellingPrice * (item.quantity || 1) : item.price)) || 0).toFixed(0)}</td>
       </tr>
     `;
   }).join('');
@@ -819,7 +828,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
               <th class="col-shade">SHADE</th>
               <th class="col-qty">QTY</th>
               <th class="col-mrp">MRP</th>
-              <th class="col-cd">CD %</th>
+              <th class="col-cd">DISC</th>
               <th class="col-amount">AMOUNT</th>
             </tr>
           </thead>

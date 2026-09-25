@@ -3473,9 +3473,14 @@ export const BillingPOSView = ({
           secondaryColor: secondaryColorVal,
           hsn: hsnVal,
           mrp: mrpVal,
-          price: sPrice,
+          price: mrpVal,
           sellingPrice: sPrice,
+          discountType: 'amount',
+          discountValue: Number(prod.discount) || 0,
           discount: Number(prod.discount) || 0,
+          customDiscount: Number(prod.discount) || 0,
+          discountAmount: Number(prod.discount) || 0,
+          discountPercent: mrpVal > 0 ? ((Number(prod.discount) || 0) / mrpVal) * 100 : 0,
           gstOnSalePrice: Number(prod.gstOnSalePrice ?? prod.gstPercent ?? prod.gstRate ?? 5),
           gstPercent: Number(prod.gstOnSalePrice ?? prod.gstPercent ?? prod.gstRate ?? 5),
           totalPrice: sPrice,
@@ -3595,18 +3600,29 @@ export const BillingPOSView = ({
   };
 
   // Adjust item discount
-  const handleAdjustItemDiscount = (idx, discountPct) => {
+  const handleAdjustItemDiscount = (idx, discountVal, discountType = 'amount') => {
     setCart((prev) => {
       const updated = [...prev];
-      const item = updated[idx];
-      const sub = item.price * item.quantity;
-      const discountAmt = Math.floor(sub * (discountPct / 100));
-      const itemGst = 0;
+      const item = { ...updated[idx] };
+      const mrp = Number(item.mrp || item.price || 0);
+      const qty = Number(item.quantity || 1);
+      const type = discountType || item.discountType || 'amount';
+      const val = Math.max(0, parseFloat(discountVal) || 0);
+
+      let unitDiscount = type === 'percent' ? (mrp * val) / 100 : val;
+      unitDiscount = Math.max(0, Math.min(mrp, unitDiscount));
+      const rate = Math.max(0, mrp - unitDiscount);
 
       updated[idx] = {
         ...item,
-        discount: discountPct,
-        totalPrice: sub - discountAmt,
+        discountType: type,
+        discountValue: val,
+        discount: unitDiscount,
+        customDiscount: unitDiscount,
+        discountAmount: unitDiscount * qty,
+        discountPercent: type === 'percent' ? val : (mrp > 0 ? (unitDiscount / mrp) * 100 : 0),
+        sellingPrice: rate,
+        totalPrice: rate * qty,
       };
       return updated;
     });
@@ -3631,13 +3647,18 @@ export const BillingPOSView = ({
     let discountTotal = 0; // Item level discounts
 
     cart.forEach((item) => {
-      const itemPrice = item.sellingPrice || item.price || 0;
-      const itemDisc = item.customDiscount || item.discount || 0;
-      const sub = itemPrice * item.quantity;
-      const disc = Math.floor(sub * (itemDisc / 100));
+      const qty = Number(item.quantity || 1);
+      const mrp = Number(item.mrp || item.price || 0);
+      const discType = item.discountType || 'amount';
+      const discVal = Number(item.discountValue !== undefined ? item.discountValue : (item.customDiscount || item.discount || 0));
+      let unitDisc = discType === 'percent' ? (mrp * discVal) / 100 : discVal;
+      unitDisc = Math.max(0, Math.min(mrp, unitDisc));
 
-      subTotal += sub;
-      discountTotal += disc;
+      const lineGross = mrp * qty;
+      const lineDisc = unitDisc * qty;
+
+      subTotal += lineGross;
+      discountTotal += lineDisc;
     });
 
     const activeOffers = discountRules.filter(r => {
@@ -3765,9 +3786,14 @@ export const BillingPOSView = ({
 
     const gstSummaryMap = new Map();
     const itemNetAmounts = cart.map((item) => {
-      const itemPrice = Number(item.sellingPrice || item.price || 0);
-      const itemDiscount = Number(item.customDiscount || item.discount || 0);
-      return Math.max(0, itemPrice * Number(item.quantity || 1) - Math.floor(itemPrice * Number(item.quantity || 1) * itemDiscount / 100));
+      const qty = Number(item.quantity || 1);
+      const mrp = Number(item.mrp || item.price || 0);
+      const discType = item.discountType || 'amount';
+      const discVal = Number(item.discountValue !== undefined ? item.discountValue : (item.customDiscount || item.discount || 0));
+      let unitDisc = discType === 'percent' ? (mrp * discVal) / 100 : discVal;
+      unitDisc = Math.max(0, Math.min(mrp, unitDisc));
+      const rate = Math.max(0, mrp - unitDisc);
+      return rate * qty;
     });
     const totalItemNet = itemNetAmounts.reduce((sum, amount) => sum + amount, 0);
     const billAdjustmentAmount = Number(billAdjustment?.amount || 0);
@@ -4262,6 +4288,16 @@ export const BillingPOSView = ({
           const originalItem = newInvoice.items[i] || savedItem;
           return {
             ...savedItem,
+            mrp: originalItem.mrp ?? savedItem.mrp,
+            price: originalItem.price ?? savedItem.price,
+            sellingPrice: originalItem.sellingPrice ?? savedItem.sellingPrice,
+            discountType: originalItem.discountType ?? savedItem.discountType ?? 'amount',
+            discountValue: originalItem.discountValue ?? savedItem.discountValue ?? 0,
+            discount: originalItem.discount ?? savedItem.discount ?? 0,
+            customDiscount: originalItem.customDiscount ?? savedItem.customDiscount ?? 0,
+            discountAmount: originalItem.discountAmount ?? savedItem.discountAmount ?? 0,
+            discountPercent: originalItem.discountPercent ?? savedItem.discountPercent ?? 0,
+            totalPrice: originalItem.totalPrice ?? savedItem.totalPrice,
             gstPercent: originalItem.gstPercent ?? savedItem.gstPercent ?? 0,
             hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
             alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
@@ -5791,7 +5827,7 @@ export const BillingPOSView = ({
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Size</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-24">GST Slab</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-16">MRP</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-right w-16">Discount</th>
+                      <th className="border-r border-slate-400 font-normal p-1 text-center w-28">Discount</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-18">Rate</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Amount</th>
                       <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 1</th>
@@ -5806,13 +5842,24 @@ export const BillingPOSView = ({
                   <tbody>
                     {cart.map((item, idx) => {
                       const qty = item.quantity || 1;
-                      const mrp = item.mrp || item.price || 0;
-                      const disc = item.customDiscount || item.discount || 0;
-                      const rate = item.sellingPrice || (mrp - disc) || 0;
+                      const mrp = Number(item.mrp || item.price || 0);
+                      const discType = item.discountType || 'amount';
+                      const discVal = item.discountValue !== undefined ? item.discountValue : (item.customDiscount || item.discount || 0);
+                      let unitDisc = discType === 'percent' ? (mrp * discVal) / 100 : discVal;
+                      unitDisc = Math.max(0, Math.min(mrp, unitDisc));
+                      const rate = Math.max(0, mrp - unitDisc);
                       const amt = qty * rate;
+                      const disc = unitDisc;
 
                       // Proportional Bill Adjustment per item: (ItemPrice / TotalPrice) × AdjustmentAmount
-                      const cartSubTotal = cart.reduce((acc, ci) => acc + ((ci.sellingPrice || (ci.mrp || ci.price || 0) - (ci.customDiscount || ci.discount || 0)) * (ci.quantity || 1)), 0);
+                      const cartSubTotal = cart.reduce((acc, ci) => {
+                        const cMrp = Number(ci.mrp || ci.price || 0);
+                        const cType = ci.discountType || 'amount';
+                        const cVal = ci.discountValue !== undefined ? ci.discountValue : (ci.customDiscount || ci.discount || 0);
+                        const cUnitDisc = Math.max(0, Math.min(cMrp, cType === 'percent' ? (cMrp * cVal) / 100 : cVal));
+                        const cRate = ci.sellingPrice !== undefined ? ci.sellingPrice : Math.max(0, cMrp - cUnitDisc);
+                        return acc + (cRate * (ci.quantity || 1));
+                      }, 0);
                       let billAdjShare = 0;
                       if (billAdjustment && billAdjustment.amount > 0 && cartSubTotal > 0) {
                         billAdjShare = (amt / cartSubTotal) * billAdjustment.amount;
@@ -5863,6 +5910,7 @@ export const BillingPOSView = ({
                                 const newCart = [...cart];
                                 if (newCart[idx].quantity > 1) {
                                   newCart[idx].quantity -= 1;
+                                  newCart[idx].discountAmount = (newCart[idx].discount || 0) * newCart[idx].quantity;
                                   newCart[idx].totalPrice = newCart[idx].quantity * rate;
                                   setCart(newCart);
                                 }
@@ -5880,6 +5928,7 @@ export const BillingPOSView = ({
                                   }
                                   const newCart = [...cart];
                                   newCart[idx].quantity = requestedQty;
+                                  newCart[idx].discountAmount = (newCart[idx].discount || 0) * requestedQty;
                                   newCart[idx].totalPrice = requestedQty * rate;
                                   setCart(newCart);
                                 }}
@@ -5894,6 +5943,7 @@ export const BillingPOSView = ({
                                 }
                                 const newCart = [...cart];
                                 newCart[idx].quantity += 1;
+                                newCart[idx].discountAmount = (newCart[idx].discount || 0) * newCart[idx].quantity;
                                 newCart[idx].totalPrice = newCart[idx].quantity * rate;
                                 setCart(newCart);
                               }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
@@ -5929,26 +5979,67 @@ export const BillingPOSView = ({
                               onChange={(e) => {
                                 const newCart = [...cart];
                                 const newPrice = parseFloat(e.target.value) || 0;
+                                const curType = newCart[idx].discountType || 'amount';
+                                const curVal = newCart[idx].discountValue !== undefined ? newCart[idx].discountValue : (newCart[idx].customDiscount || newCart[idx].discount || 0);
+                                let newUnitDisc = curType === 'percent' ? (newPrice * curVal) / 100 : curVal;
+                                newUnitDisc = Math.max(0, Math.min(newPrice, newUnitDisc));
+                                const newRate = Math.max(0, newPrice - newUnitDisc);
+
                                 newCart[idx].price = newPrice;
                                 newCart[idx].mrp = newPrice;
-                                const newRate = newPrice - (newCart[idx].customDiscount || newCart[idx].discount || 0);
+                                newCart[idx].discount = newUnitDisc;
+                                newCart[idx].customDiscount = newUnitDisc;
+                                newCart[idx].discountAmount = newUnitDisc * (newCart[idx].quantity || 1);
+                                newCart[idx].discountPercent = curType === 'percent' ? curVal : (newPrice > 0 ? (newUnitDisc / newPrice) * 100 : 0);
                                 newCart[idx].sellingPrice = newRate;
-                                newCart[idx].totalPrice = newCart[idx].quantity * newRate;
+                                newCart[idx].totalPrice = (newCart[idx].quantity || 1) * newRate;
                                 setCart(newCart);
                               }}
                               className="w-14 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
                             />
                           </td>
-                          <td className={`border-r border-slate-300 p-1 text-right ${billAdjShare > 0 ? (isCharge ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold') : ''}`} title={billAdjShare > 0 ? `Item Disc: ₹${disc.toFixed(2)} | Bill Adj (${isCharge ? '+Charge' : '-Disc'}): ₹${billAdjShare.toFixed(2)}` : ''}>
-                            {totalDiscDisplay.toFixed(2)}
+                          <td className="border-r border-slate-300 p-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <select
+                                value={discType}
+                                onChange={(e) => {
+                                  handleAdjustItemDiscount(idx, discVal, e.target.value);
+                                }}
+                                className="bg-white border border-slate-300 rounded px-1 py-0.5 text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                title="Discount Type (₹ Amount or % Percentage)"
+                              >
+                                <option value="amount">₹</option>
+                                <option value="percent">%</option>
+                              </select>
+                              <input
+                                type="number"
+                                min="0"
+                                max={discType === 'percent' ? '100' : mrp}
+                                step={discType === 'percent' ? '1' : '0.01'}
+                                value={discVal === 0 ? '' : discVal}
+                                placeholder="0"
+                                onChange={(e) => {
+                                  handleAdjustItemDiscount(idx, e.target.value, discType);
+                                }}
+                                className="w-12 text-right font-bold text-xs bg-white border border-slate-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-yellow-50"
+                                title={discType === 'percent' ? `Discount: ${discVal}% (₹${unitDisc.toFixed(2)})` : `Discount: ₹${unitDisc.toFixed(2)}`}
+                              />
+                            </div>
+                            {discType === 'percent' && discVal > 0 && (
+                              <div className="text-[9px] text-slate-500 font-semibold text-right pr-1">
+                                = ₹{unitDisc.toFixed(2)}
+                              </div>
+                            )}
                             {billAdjShare > 0 && (
-                              <div className={`text-[8px] leading-tight ${isCharge ? 'text-emerald-500' : 'text-red-400'}`}>
+                              <div className={`text-[8px] leading-tight text-right pr-1 font-bold ${isCharge ? 'text-emerald-500' : 'text-red-500'}`}>
                                 ({isCharge ? '+' : '-'}₹{billAdjShare.toFixed(2)})
                               </div>
                             )}
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-right">{rate.toFixed(2)}</td>
-                          <td className={`border-r border-slate-300 p-1 text-right ${billAdjShare > 0 ? 'font-bold' : ''}`}>{(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}</td>
+                          <td className="border-r border-slate-300 p-1 text-right font-mono font-bold text-slate-800">{rate.toFixed(2)}</td>
+                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold text-slate-800 ${billAdjShare > 0 ? (isCharge ? 'text-emerald-700' : 'text-indigo-700') : ''}`}>
+                            {(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}
+                          </td>
                           <td className="border-r border-slate-300 p-1 relative">
                             {(() => {
                               const val1 = item.salesman1 || '';
