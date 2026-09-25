@@ -810,7 +810,25 @@ export const BillingPOSView = ({
 
   // Payments
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [billNumberSearchQuery, setBillNumberSearchQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
+
+  // Multi-Bill / Uncompleted Drafts State (Slots 1, 2, 3...)
+  const [uncompletedBills, setUncompletedBills] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pos_uncompleted_bills");
+      if (saved) return JSON.parse(saved);
+    } catch (e) { }
+    return [];
+  });
+  const [activeBillSlotIndex, setActiveBillSlotIndex] = useState(0);
+
+  // Sync uncompleted bills to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("pos_uncompleted_bills", JSON.stringify(uncompletedBills));
+    } catch (e) { }
+  }, [uncompletedBills]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isPreparingPayment, setIsPreparingPayment] = useState(false);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
@@ -2538,7 +2556,7 @@ export const BillingPOSView = ({
   const handleClearBillContext = (notificationTitle = "New Bill", notificationMsg = "Everything in the existing bill has been completely erased for a fresh bill.") => {
     // 1. Reset cart & items
     setCart([]);
-    
+
     // 2. Reset customer details
     setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
     setSelectedCustomerId("");
@@ -2594,6 +2612,17 @@ export const BillingPOSView = ({
       localStorage.removeItem("pos_saved_customer_id");
       localStorage.removeItem("pos_saved_customer_form");
     } catch (e) { }
+
+    if (notificationTitle && (notificationTitle.includes("Compiled") || notificationTitle.includes("Success"))) {
+      if (uncompletedBills.length > 1) {
+        const remaining = uncompletedBills.filter((_, i) => i !== activeBillSlotIndex);
+        setUncompletedBills(remaining);
+        setActiveBillSlotIndex(0);
+      } else if (uncompletedBills.length === 1) {
+        setUncompletedBills([]);
+        setActiveBillSlotIndex(0);
+      }
+    }
 
     // 8. Auto-focus Barcode column for immediate new entry
     focusPosColumn("barcode");
@@ -2793,7 +2822,11 @@ export const BillingPOSView = ({
       // F1: New Bill
       if (e.key === "F1") {
         e.preventDefault();
-        handleClearBillContext("New Bill", "Cart cleared for new bill.");
+        if (cart.length > 0 || customerForm.name || customerForm.phone) {
+          handleSaveDraftBill();
+        } else {
+          handleClearBillContext("New Bill", "Cart cleared for new bill.");
+        }
         return;
       }
       // F2: Product Search
@@ -2848,7 +2881,13 @@ export const BillingPOSView = ({
       // F7: Save Bill
       if (e.key === "F7") {
         e.preventDefault();
-        handleCheckoutSubmit();
+        if (showPaymentModal) {
+          handleCheckoutSubmit();
+        } else if (cart.length > 0) {
+          handleSaveDraftBill();
+        } else {
+          handleCheckoutSubmit();
+        }
         return;
       }
       // F8: Hold Bill
@@ -2929,6 +2968,13 @@ export const BillingPOSView = ({
       if (e.altKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         handleFocusDesignNoSearch();
+        return;
+      }
+
+      // Master Shortcut: Alt + X → Delete / Discard Current Bill Slot
+      if (e.altKey && (e.key === "x" || e.key === "X")) {
+        e.preventDefault();
+        handleDeleteCurrentBill();
         return;
       }
 
@@ -3183,7 +3229,7 @@ export const BillingPOSView = ({
 
   const getLiveStock = (prod) => {
     if (!prod) return 0;
-    
+
     // 1. If physical pieces array exists and not empty, calculate exact available pieces
     if (Array.isArray(prod.pieces) && prod.pieces.length > 0) {
       const availPieces = prod.pieces.filter(pc => {
@@ -3885,6 +3931,308 @@ export const BillingPOSView = ({
       taxDetails
     };
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, discountRules, products, activeCustomer, billAdjustment, isGstApplied, gstRateInput, cgstRateInput, sgstRateInput, igstRateInput]);
+
+  // Next live auto-generated invoice number for bill being created
+  const liveInvoiceNumber = useMemo(() => {
+    if (loadedOriginalInvoice) {
+      return loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo || "";
+    }
+    const allInvs = invoiceList || invoices || [];
+    if (allInvs.length > 0) {
+      for (const inv of allInvs) {
+        const invNo = inv?.invoiceNo || inv?.billNo || "";
+        const match = invNo.match(/^(.*?)([A-Za-z_-]+)(\d+)$/);
+        if (match) {
+          const prefix = match[1] + match[2];
+          const numStr = match[3];
+          const nextNum = parseInt(numStr, 10) + 1;
+          const padded = String(nextNum).padStart(numStr.length, '0');
+          return `${prefix}${padded}`;
+        }
+      }
+    }
+    return `NFS-${984 + (uncompletedBills.length || 0)}`;
+  }, [loadedOriginalInvoice, invoiceList, invoices, uncompletedBills.length]);
+
+  // Snapshot current active bill into an object
+  const getCurrentBillSnapshot = () => ({
+    id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    cart: [...cart],
+    customerForm: { ...customerForm },
+    selectedCustomerId,
+    loadedOriginalInvoice: loadedOriginalInvoice ? { ...loadedOriginalInvoice } : null,
+    isGstApplied,
+    gstRateInput,
+    billAdjustment: { ...billAdjustment },
+    savedAt: new Date().toISOString(),
+    grandTotal: grandTotal || 0,
+    itemCount: cart.reduce((a, b) => a + (b.quantity || 1), 0)
+  });
+
+  // Switch to a specific bill slot (0-indexed: 0 -> Bill 1, 1 -> Bill 2, etc.)
+  const handleSwitchBillSlot = (targetIndex) => {
+    if (targetIndex === activeBillSlotIndex) return;
+
+    // 1. Snapshot current active bill
+    const currentSnap = getCurrentBillSnapshot();
+    
+    // 2. Update uncompletedBills array with current snapshot
+    let updatedBills = [...uncompletedBills];
+    while (updatedBills.length <= Math.max(activeBillSlotIndex, targetIndex)) {
+      updatedBills.push({
+        id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        cart: [],
+        customerForm: { phone: '', name: '', customerId: '', gstin: '', lf: '2588' },
+        selectedCustomerId: '',
+        loadedOriginalInvoice: null,
+        isGstApplied: false,
+        gstRateInput: "0",
+        billAdjustment: { amount: 0, operation: 'Discount', type: 'amount' },
+        savedAt: new Date().toISOString(),
+        grandTotal: 0,
+        itemCount: 0
+      });
+    }
+    updatedBills[activeBillSlotIndex] = currentSnap;
+
+    // 3. Load target slot into active state
+    const targetSlot = updatedBills[targetIndex];
+    if (targetSlot) {
+      setCart(targetSlot.cart || []);
+      setCustomerForm(targetSlot.customerForm || { phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+      setSelectedCustomerId(targetSlot.selectedCustomerId || '');
+      setLoadedOriginalInvoice(targetSlot.loadedOriginalInvoice || null);
+      setIsGstApplied(Boolean(targetSlot.isGstApplied));
+      setGstRateInput(targetSlot.gstRateInput !== undefined ? targetSlot.gstRateInput : "0");
+      setBillAdjustment(targetSlot.billAdjustment || { amount: 0, operation: 'Discount', type: 'amount' });
+      setCustomerSearchQuery('');
+      setBillNumberSearchQuery('');
+    }
+
+    setUncompletedBills(updatedBills);
+    setActiveBillSlotIndex(targetIndex);
+    if (onAddNotification) {
+      onAddNotification("Bill Switched", `Switched to Bill #${targetIndex + 1}`, "info");
+    }
+  };
+
+  // Add new bill slot (+) or Save & New Bill
+  const handleAddNewBillSlot = () => {
+    const currentSnap = getCurrentBillSnapshot();
+    const newEmptySlot = {
+      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      cart: [],
+      customerForm: { phone: '', name: '', customerId: '', gstin: '', lf: '2588' },
+      selectedCustomerId: '',
+      loadedOriginalInvoice: null,
+      isGstApplied: false,
+      gstRateInput: "0",
+      billAdjustment: { amount: 0, operation: 'Discount', type: 'amount' },
+      savedAt: new Date().toISOString(),
+      grandTotal: 0,
+      itemCount: 0
+    };
+
+    let updatedBills = [...uncompletedBills];
+    if (updatedBills.length === 0) {
+      updatedBills = [newEmptySlot, currentSnap];
+      setActiveBillSlotIndex(0);
+      setCart([]);
+      setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+      setSelectedCustomerId('');
+      setLoadedOriginalInvoice(null);
+      setCustomerSearchQuery('');
+      setBillNumberSearchQuery('');
+    } else {
+      updatedBills[activeBillSlotIndex] = currentSnap;
+      updatedBills.unshift(newEmptySlot);
+      setActiveBillSlotIndex(0);
+      setCart([]);
+      setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+      setSelectedCustomerId('');
+      setLoadedOriginalInvoice(null);
+      setCustomerSearchQuery('');
+      setBillNumberSearchQuery('');
+    }
+
+    setUncompletedBills(updatedBills);
+    if (onAddNotification) {
+      onAddNotification("New Bill Opened", "Saved previous bill to Queue (#2) and opened clean Bill #1.", "success");
+    }
+  };
+
+  // Save current uncompleted bill and open fresh Bill #1
+  const handleSaveDraftBill = () => {
+    if (cart.length === 0 && !customerForm.name && !customerForm.phone && !loadedOriginalInvoice) {
+      if (onAddNotification) {
+        onAddNotification("Notice", "Current bill is empty.", "info");
+      }
+      return;
+    }
+    handleAddNewBillSlot();
+  };
+
+  // Close / Delete a bill slot
+  const handleCloseCurrentBillSlot = (indexToClose) => {
+    if (uncompletedBills.length <= 1) {
+      setCart([]);
+      setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+      setSelectedCustomerId('');
+      setLoadedOriginalInvoice(null);
+      setCustomerSearchQuery('');
+      setBillNumberSearchQuery('');
+      setUncompletedBills([]);
+      setActiveBillSlotIndex(0);
+      if (onAddNotification) {
+        onAddNotification("Bill Cleared", "Bill cleared from queue.", "info");
+      }
+      return;
+    }
+
+    const updatedBills = uncompletedBills.filter((_, i) => i !== indexToClose);
+    const nextActive = Math.max(0, Math.min(indexToClose, updatedBills.length - 1));
+    const targetSlot = updatedBills[nextActive];
+
+    if (targetSlot) {
+      setCart(targetSlot.cart || []);
+      setCustomerForm(targetSlot.customerForm || { phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+      setSelectedCustomerId(targetSlot.selectedCustomerId || '');
+      setLoadedOriginalInvoice(targetSlot.loadedOriginalInvoice || null);
+      setIsGstApplied(Boolean(targetSlot.isGstApplied));
+      setGstRateInput(targetSlot.gstRateInput !== undefined ? targetSlot.gstRateInput : "0");
+      setBillAdjustment(targetSlot.billAdjustment || { amount: 0, operation: 'Discount', type: 'amount' });
+      setCustomerSearchQuery('');
+      setBillNumberSearchQuery('');
+    }
+
+    setUncompletedBills(updatedBills);
+    setActiveBillSlotIndex(nextActive);
+    if (onAddNotification) {
+      onAddNotification("Bill Discarded", `Bill #${indexToClose + 1} removed from queue. Switched to Bill #${nextActive + 1}.`, "info");
+    }
+  };
+
+  // Delete current active bill from queue (Alt + X)
+  const handleDeleteCurrentBill = () => {
+    if (uncompletedBills.length > 1) {
+      handleCloseCurrentBillSlot(activeBillSlotIndex);
+    } else {
+      handleClearBillContext("Bill Cleared", "Everything in current bill cleared.");
+      setUncompletedBills([]);
+      setActiveBillSlotIndex(0);
+    }
+  };
+
+  // Remove individual cart row (and if cart becomes empty on saved bill, clean slot)
+  const handleRemoveCartItem = (idxToRemove) => {
+    const newCart = cart.filter((_, i) => i !== idxToRemove);
+    if (newCart.length === 0 && uncompletedBills.length > 1) {
+      handleCloseCurrentBillSlot(activeBillSlotIndex);
+      if (onAddNotification) {
+        onAddNotification("Bill Removed", "All items were removed. Bill removed from queue.", "info");
+      }
+    } else {
+      setCart(newCart);
+    }
+  };
+
+  const displayBillSlots = useMemo(() => {
+    if (uncompletedBills.length === 0) {
+      return [{
+        id: 'slot-1',
+        cart,
+        customerForm,
+        selectedCustomerId,
+        loadedOriginalInvoice,
+        grandTotal
+      }];
+    }
+    return uncompletedBills.map((slot, idx) => {
+      if (idx === activeBillSlotIndex) {
+        return {
+          ...slot,
+          cart,
+          customerForm,
+          selectedCustomerId,
+          loadedOriginalInvoice,
+          grandTotal
+        };
+      }
+      return slot;
+    });
+  }, [uncompletedBills, activeBillSlotIndex, cart, customerForm, selectedCustomerId, loadedOriginalInvoice, grandTotal]);
+
+  const executeBillNumberSearch = async (query) => {
+    const q = String(query || "").trim();
+    if (!q) return;
+    const qLower = q.toLowerCase();
+    const cleanDigits = q.replace(/\D/g, '');
+
+    // 1. Search in local invoiceList / invoices
+    const allInvs = invoiceList || invoices || [];
+    const localMatch = allInvs.find(inv => {
+      const invNo = String(inv.invoiceNo || inv.billNo || '').toLowerCase();
+      const invId = String(inv._id || inv.id || '').toLowerCase();
+      const invDigits = invNo.replace(/\D/g, '');
+      return (
+        invNo === qLower ||
+        invNo.includes(qLower) ||
+        (cleanDigits && (invDigits === cleanDigits || invNo.endsWith(cleanDigits))) ||
+        invId === qLower
+      );
+    });
+
+    if (localMatch) {
+      await loadInvoiceIntoPOS(localMatch, null, () => setBillNumberSearchQuery(""));
+      if (onAddNotification) {
+        onAddNotification("Bill Loaded", `Loaded Bill #${localMatch.invoiceNo || localMatch.billNo}`, "success");
+      }
+      return;
+    }
+
+    // 2. Search backend API direct invoice lookup
+    try {
+      const res = await api.get(`/billing/${encodeURIComponent(q)}`);
+      if (res.data?.success && res.data.data) {
+        await loadInvoiceIntoPOS(res.data.data, null, () => setBillNumberSearchQuery(""));
+        if (onAddNotification) {
+          onAddNotification("Bill Loaded", `Loaded Bill #${res.data.data.invoiceNo || res.data.data.billNo}`, "success");
+        }
+        return;
+      }
+    } catch (e) { }
+
+    // 3. Fallback search query on /billing
+    try {
+      const res = await api.get(`/billing?search=${encodeURIComponent(q)}`);
+      const bills = res.data?.data?.bills || res.data?.data || res.data?.bills || [];
+      if (bills.length > 0) {
+        const match = bills.find(b => {
+          const bNo = String(b.invoiceNo || b.billNo || '').toLowerCase();
+          const bDigits = bNo.replace(/\D/g, '');
+          return bNo === qLower || bNo.includes(qLower) || (cleanDigits && (bDigits === cleanDigits || bNo.endsWith(cleanDigits)));
+        }) || bills[0];
+        await loadInvoiceIntoPOS(match, null, () => setBillNumberSearchQuery(""));
+        if (onAddNotification) {
+          onAddNotification("Bill Loaded", `Loaded Bill #${match.invoiceNo || match.billNo}`, "success");
+        }
+        return;
+      }
+    } catch (e) { }
+
+    if (onAddNotification) {
+      onAddNotification("Bill Not Found", `No recorded invoice found for Bill Number "${q}"`, "danger");
+    }
+  };
+
+  const handleBillNumberSearchKeyDown = async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (billNumberSearchQuery.trim()) {
+        await executeBillNumberSearch(billNumberSearchQuery.trim());
+      }
+    }
+  };
 
   const handleOpenPaymentFlow = async () => {
     if (cart.length === 0) {
@@ -5044,7 +5392,7 @@ export const BillingPOSView = ({
           if (loadedOriginalInvoice) setLoadedOriginalInvoice(null);
 
           const qLower = q.toLowerCase();
-          const match = items.find(i => 
+          const match = items.find(i =>
             String(i.barcode || '').toLowerCase() === qLower ||
             String(i.uniqueCode || '').toLowerCase() === qLower ||
             (Array.isArray(i.pieces) && i.pieces.some(pc => String(pc.barcode || pc.uniqueCode || '').toLowerCase() === qLower))
@@ -5822,7 +6170,94 @@ export const BillingPOSView = ({
       {/* THE NEW ENTERPRISE BILLING GRID */}
       {/* LEGACY POS UI REDESIGN */}
       {activePOSMode === "billing" && (
-        <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs relative" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+        <div className="flex-1 flex min-h-0 bg-[#f0f0f0] font-sans text-xs relative overflow-hidden" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+          
+          {/* LEFT UNCOMPLETED BILLS NAVIGATION RAIL (1, 2, 3...) */}
+          <div className="w-8 sm:w-9 bg-[#e4e6ea] border-r border-slate-300 flex flex-col items-center py-1.5 px-0.5 gap-1.5 select-none shrink-0 shadow-inner z-10">
+            <div className="text-[7.5px] font-black uppercase text-slate-500 tracking-wider text-center flex flex-col items-center gap-0.5" title="Uncompleted / Saved Bills Queue">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+              <span className="hidden sm:inline">BILLS</span>
+            </div>
+
+            <div className="w-full h-px bg-slate-300"></div>
+
+            {/* Bill Number Slots: 1, 2, 3... */}
+            <div className="flex flex-col gap-1.5 w-full items-center">
+              {displayBillSlots.map((slot, sIdx) => {
+                const isActive = sIdx === activeBillSlotIndex;
+                const hasItems = slot.cart && slot.cart.length > 0;
+                const slotItemCount = hasItems ? slot.cart.reduce((a, b) => a + (b.quantity || 1), 0) : 0;
+                const slotCustomerName = slot.customerForm?.name || slot.loadedOriginalInvoice?.customerName || (hasItems ? "Walk-in" : "Empty Bill");
+
+                return (
+                  <div key={slot.id || sIdx} className="relative group w-full flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchBillSlot(sIdx)}
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center font-bold font-mono text-[11px] transition-all cursor-pointer relative ${
+                        isActive
+                          ? "bg-gradient-to-b from-blue-600 to-indigo-700 text-white shadow-md ring-2 ring-blue-400 font-black scale-105"
+                          : hasItems
+                          ? "bg-white hover:bg-indigo-50 text-slate-800 border border-slate-300 hover:border-indigo-400 shadow-2xs font-bold"
+                          : "bg-slate-200/80 hover:bg-slate-300/80 text-slate-600 border border-slate-300"
+                      }`}
+                      title={`Bill #${sIdx + 1}: ${slotCustomerName} (${slotItemCount} pcs)`}
+                    >
+                      <span>{sIdx + 1}</span>
+                      {hasItems && !isActive && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 border-2 border-white shadow-xs"></span>
+                      )}
+                      {isActive && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white shadow-xs animate-pulse"></span>
+                      )}
+                    </button>
+
+                    {/* Tooltip on Hover */}
+                    <div className="absolute left-full ml-1.5 top-0 z-[200] hidden group-hover:flex flex-col bg-slate-900 text-white text-[10px] rounded-lg p-2 shadow-2xl min-w-[150px] pointer-events-none border border-slate-700 animate-in fade-in zoom-in-95">
+                      <div className="flex items-center justify-between font-bold border-b border-slate-700 pb-1 mb-1">
+                        <span className="text-blue-300 font-mono">Bill #{sIdx + 1}</span>
+                        <span className={isActive ? "text-emerald-400 font-bold" : "text-slate-400"}>
+                          {isActive ? "ACTIVE" : hasItems ? "SAVED DRAFT" : "EMPTY"}
+                        </span>
+                      </div>
+                      <div className="text-slate-200 truncate font-semibold">{slotCustomerName}</div>
+                      <div className="text-slate-400 flex justify-between mt-0.5">
+                        <span>Items: {slotItemCount} pcs</span>
+                        <span className="font-mono text-amber-300 font-bold">₹{slot.grandTotal ? Number(slot.grandTotal).toFixed(0) : '0'}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add New Bill Slot Button (+) */}
+            <button
+              type="button"
+              onClick={handleAddNewBillSlot}
+              className="w-6 h-6 sm:w-7 sm:h-7 mt-0.5 rounded-lg border border-dashed border-slate-400 hover:border-blue-600 hover:bg-blue-50 text-slate-500 hover:text-blue-600 flex items-center justify-center text-xs font-black transition-all cursor-pointer shadow-2xs"
+              title="Open New Bill Slot (+)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="flex-1"></div>
+
+            {/* Clear/Reset Current Slot */}
+            {uncompletedBills.length > 1 && (
+              <button
+                type="button"
+                onClick={() => handleCloseCurrentBillSlot(activeBillSlotIndex)}
+                className="text-slate-400 hover:text-red-600 p-1 transition-colors cursor-pointer text-[9px] font-bold"
+                title="Discard this uncompleted bill slot"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* MAIN BILLING WORKSPACE */}
+          <div className="flex-1 flex flex-col min-h-0 bg-[#f0f0f0] p-1 font-sans text-xs relative overflow-y-auto">
 
           {/* TOP CUSTOMER INFORMATION PANEL */}
           <div className="bg-[#f0f0f0] border border-slate-400 m-1 flex flex-col shrink-0">
@@ -5969,9 +6404,62 @@ export const BillingPOSView = ({
                   </button>
                 </div>
 
-                {/* Blank Space on Row 2 */}
-                <div className="hidden md:block"></div>
-                <div className="hidden md:block"></div>
+                {/* Bill Number Search / Display Column */}
+                <div className="flex relative items-center border border-slate-300 bg-white col-span-1 md:col-span-2">
+                  <span className="text-[10px] text-slate-600 bg-[#e1e1e1] border-r border-slate-300 p-1 px-2 shrink-0 font-bold text-blue-900 flex items-center gap-1">
+                    <FileText className="w-3 h-3 text-blue-600" />
+                    <span>BILL NO.</span>
+                  </span>
+                  <input
+                    type="text"
+                    id="posBillNumberSearchInput"
+                    className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-extrabold text-blue-950 placeholder:text-slate-600 placeholder:font-bold"
+                    value={billNumberSearchQuery}
+                    onChange={(e) => setBillNumberSearchQuery(e.target.value)}
+                    onKeyDown={handleBillNumberSearchKeyDown}
+                    placeholder={loadedOriginalInvoice ? (loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo) : (liveInvoiceNumber || "Enter Bill No + ↵")}
+                    title="Displays active/generating invoice number. Type previous Bill No & press Enter to search & load."
+                  />
+                  {billNumberSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBillNumberSearchQuery("")}
+                      className="px-1 text-slate-400 hover:text-red-500 cursor-pointer text-[10px]"
+                      title="Clear search query"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  {loadedOriginalInvoice && !billNumberSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoadedOriginalInvoice(null);
+                        setCart([]);
+                        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
+                        setSelectedCustomerId('');
+                      }}
+                      className="px-1.5 py-0.5 text-[9px] bg-red-50 hover:bg-red-100 text-red-600 font-bold border-l border-slate-200 cursor-pointer flex items-center gap-0.5"
+                      title="Clear loaded bill and start fresh"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                      <span>Clear</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (billNumberSearchQuery.trim()) {
+                        executeBillNumberSearch(billNumberSearchQuery.trim());
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border-l border-slate-300 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Search & Load Bill (Enter ↵)"
+                  >
+                    <Search className="w-3 h-3" />
+                    <span>Search</span>
+                  </button>
+                </div>
               </div>
 
               {/* Loaded Original Bill Banner */}
@@ -6162,8 +6650,8 @@ export const BillingPOSView = ({
                             setFocusedAlterationIndex(idx);
                           }}
                           className={`border-b border-slate-200 transition-all cursor-pointer ${firmStyle.rowClass} ${selectedCartRowIndex === idx
-                              ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
-                              : ''
+                            ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
+                            : ''
                             }`}
                         >
                           <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
@@ -6406,10 +6894,12 @@ export const BillingPOSView = ({
                           </td>
                           <td className="border-r border-slate-300 p-1 font-mono text-slate-700 overflow-hidden text-ellipsis whitespace-nowrap" title={hsnDisplay}>{hsnDisplay}</td>
                           <td className="p-1 text-center">
-                            <button onClick={() => {
-                              const newCart = cart.filter((_, i) => i !== idx);
-                              setCart(newCart);
-                            }} className="text-red-500 hover:text-red-700">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCartItem(idx)}
+                              className="text-red-500 hover:text-red-700 cursor-pointer p-0.5 rounded hover:bg-red-50 transition-colors"
+                              title="Delete Item"
+                            >
                               <Trash2 className="w-4 h-4 mx-auto" />
                             </button>
                           </td>
@@ -6427,11 +6917,10 @@ export const BillingPOSView = ({
                           <input
                             id="posBarcodeInput"
                             type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase shadow-inner transition-all ${
-                              activePosColumn === 'barcode'
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase shadow-inner transition-all ${activePosColumn === 'barcode'
                                 ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
                                 : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                            }`}
+                              }`}
                             placeholder="(Alt+B)"
                             value={barcodeInput}
                             onChange={(e) => setBarcodeInput(e.target.value)}
@@ -6450,11 +6939,10 @@ export const BillingPOSView = ({
                           <input
                             id="posUniqueCodeInput"
                             type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono shadow-inner transition-all ${
-                              activePosColumn === 'uniqueCode'
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono shadow-inner transition-all ${activePosColumn === 'uniqueCode'
                                 ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
                                 : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                            }`}
+                              }`}
                             placeholder="(Alt+U)"
                             value={uniqueCodeInput}
                             onChange={(e) => setUniqueCodeInput(e.target.value)}
@@ -6466,20 +6954,18 @@ export const BillingPOSView = ({
 
                       {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
                       <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className={`flex items-center bg-white border shadow-inner transition-all ${
-                          activePosColumn === 'itemName'
+                        <div className={`flex items-center bg-white border shadow-inner transition-all ${activePosColumn === 'itemName'
                             ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500'
                             : 'border-blue-300'
-                        }`}>
+                          }`}>
                           {activePosColumn === 'itemName' && (
                             <span className="pl-1 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
                           )}
                           <input
                             id="posItemNameInput"
                             type="text"
-                            className={`w-full outline-none p-1 text-xs placeholder-slate-500 font-semibold ${
-                              activePosColumn === 'itemName' ? 'bg-yellow-50 text-slate-950 font-black' : 'focus:bg-yellow-100'
-                            }`}
+                            className={`w-full outline-none p-1 text-xs placeholder-slate-500 font-semibold ${activePosColumn === 'itemName' ? 'bg-yellow-50 text-slate-950 font-black' : 'focus:bg-yellow-100'
+                              }`}
                             placeholder="Search Item (F2)..."
                             value={itemSearchInputText}
                             onChange={(e) => setItemSearchInputText(e.target.value)}
@@ -6638,11 +7124,10 @@ export const BillingPOSView = ({
                           <input
                             id="designNoSearchInput"
                             type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${
-                              activePosColumn === 'designNo'
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${activePosColumn === 'designNo'
                                 ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
                                 : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                            }`}
+                              }`}
                             placeholder="(Alt+D)"
                             value={designNoSearchInput}
                             onChange={(e) => {
@@ -6796,11 +7281,10 @@ export const BillingPOSView = ({
                           <input
                             id="itemCodeSearchInput"
                             type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${
-                              activePosColumn === 'itemCode'
+                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${activePosColumn === 'itemCode'
                                 ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
                                 : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                            }`}
+                              }`}
                             placeholder="SEARCH(F4)"
                             value={itemCodeSearchInput}
                             onChange={(e) => setItemCodeSearchInput(e.target.value)}
@@ -7019,15 +7503,27 @@ export const BillingPOSView = ({
                 {/* Action Toolbar */}
                 <div className="flex flex-wrap gap-1 mt-1 bg-white border border-slate-400 p-1 shadow-sm">
                   {[
-                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => handleClearBillContext("New Bill", "Cart cleared for new bill.") },
+                    { id: "newBill", label: "New Bill (F1)", icon: <FileText className="w-5 h-5 text-blue-500 mx-auto" />, onClick: () => {
+                      if (cart.length > 0 || customerForm.name || customerForm.phone) {
+                        handleSaveDraftBill();
+                      } else {
+                        handleClearBillContext("New Bill", "Cart cleared for new bill.");
+                      }
+                    }},
                     { id: "modify", label: "Alteration (Alt+A)", icon: <AlertCircle className="w-5 h-5 text-yellow-500 mx-auto" />, onClick: () => handleOpenAlterationForSelectedProduct() },
                     { id: "payment", label: "Payment (F6)", icon: <CreditCard className="w-5 h-5 text-green-500 mx-auto" />, onClick: handleOpenPaymentFlow },
-                    { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleCheckoutSubmit },
+                    { id: "save", label: "Save (F7)", icon: <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
+                      if (cart.length > 0) {
+                        handleSaveDraftBill();
+                      } else {
+                        handleCheckoutSubmit();
+                      }
+                    }},
                     { id: "print", label: "Print (F9)", icon: <Printer className="w-5 h-5 text-blue-600 mx-auto" />, onClick: handleOpenDraftPreview },
-                    { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: () => handleClearBillContext() },
+                    { id: "delete", label: "Delete (Alt+X)", icon: <Trash2 className="w-5 h-5 text-red-500 mx-auto" />, onClick: handleDeleteCurrentBill },
                     { id: "hold", label: "Hold (F8)", icon: <AlertCircle className="w-5 h-5 text-red-700 mx-auto" />, onClick: handleHoldBill },
                     { id: "customer", label: "Customer (F3)", icon: <User className="w-5 h-5 text-orange-500 mx-auto" />, onClick: () => { document.getElementById("mobileSearchInput")?.focus() } },
-                    { id: "searchItem", label: "Search Item (F2)", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
+                    { id: "searchItem", label: "Search Item", icon: <Search className="w-5 h-5 text-blue-400 mx-auto" />, onClick: () => setIsItemSearchModalOpen(true) },
                     { id: "itemCodeSearch", label: "Item Code (F4)", icon: <Search className="w-5 h-5 text-purple-600 mx-auto" />, onClick: handleFocusItemCodeSearch },
                     { id: "designNoSearch", label: "Design No (Alt+D)", icon: <Search className="w-5 h-5 text-indigo-600 mx-auto" />, onClick: handleFocusDesignNoSearch },
                     { id: "uniqueCodeSearch", label: "Unique Code (Alt+U)", icon: <Barcode className="w-5 h-5 text-amber-600 mx-auto" />, onClick: () => focusPosColumn("uniqueCode") },
@@ -7202,10 +7698,10 @@ export const BillingPOSView = ({
                                     PSS: {item.pssmNo || item.pssmRecord?.pssmNo}
                                   </span>
                                   <span className={`px-1 py-0.2 rounded font-black text-[7.5px] shrink-0 uppercase tracking-wider ${isCollected
-                                      ? 'bg-emerald-600 text-white'
-                                      : pssStatus === 'READY'
-                                        ? 'bg-blue-600 text-white animate-pulse'
-                                        : 'bg-amber-500 text-white'
+                                    ? 'bg-emerald-600 text-white'
+                                    : pssStatus === 'READY'
+                                      ? 'bg-blue-600 text-white animate-pulse'
+                                      : 'bg-amber-500 text-white'
                                     }`}>
                                     {isCollected ? 'COLLECTED' : pssStatus === 'READY' ? 'READY' : (pssStatus === 'IN_PROGRESS' ? 'IN PROGRESS' : (pssStatus || 'IN PROGRESS'))}
                                   </span>
@@ -7255,6 +7751,7 @@ export const BillingPOSView = ({
 
           </div>
         </div>
+      </div>
       )}
 
       {activePOSMode === "history" && (
@@ -7284,11 +7781,10 @@ export const BillingPOSView = ({
                     key={item.key}
                     type="button"
                     onClick={() => setHistoryTimeframe(item.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      historyTimeframe === item.key
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${historyTimeframe === item.key
                         ? 'bg-white text-slate-800 shadow-xs'
                         : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -7407,16 +7903,16 @@ export const BillingPOSView = ({
                                 <div className="flex items-center gap-1.5 text-[11px]">
                                   <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">PSS Status:</span>
                                   <span className={`font-black uppercase px-2 py-0.5 rounded-md text-[9px] border ${displayStatus === 'CLOSED'
-                                      ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
-                                      : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
-                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                        : displayStatus === 'PARTIALLY_COLLECTED'
-                                          ? 'bg-teal-100 text-teal-800 border-teal-300'
-                                          : displayStatus === 'PARTIALLY_READY'
-                                            ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                            : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
-                                              ? 'bg-purple-100 text-purple-800 border-purple-300'
-                                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                                    ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
+                                    : displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : displayStatus === 'PARTIALLY_COLLECTED'
+                                        ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                        : displayStatus === 'PARTIALLY_READY'
+                                          ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                          : displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED'
+                                            ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                            : 'bg-amber-100 text-amber-800 border-amber-300'
                                     }`}>
                                     {displayStatus.replace(/_/g, ' ')}
                                   </span>
@@ -7944,10 +8440,10 @@ export const BillingPOSView = ({
                                               </span>
                                             </div>
                                             <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
-                                                ? 'bg-emerald-100 text-emerald-800'
-                                                : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
-                                                  ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
-                                                  : 'bg-amber-100 text-amber-800'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
+                                                : 'bg-amber-100 text-amber-800'
                                               }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
@@ -8281,10 +8777,10 @@ export const BillingPOSView = ({
                                             </span>
                                           </div>
                                           <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
-                                              ? 'bg-emerald-100 text-emerald-800'
-                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
-                                                ? 'bg-blue-100 text-blue-800'
-                                                : 'bg-amber-100 text-amber-800'
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                              ? 'bg-blue-100 text-blue-800'
+                                              : 'bg-amber-100 text-amber-800'
                                             }`}>
                                             {item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS'}
                                           </span>
@@ -10925,8 +11421,8 @@ export const BillingPOSView = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">Split Amounts</span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${splitRemaining < 0 ? 'bg-red-100 text-red-600' :
-                          splitRemaining === 0 ? 'bg-green-100 text-green-700' :
-                            'bg-amber-100 text-amber-700'
+                        splitRemaining === 0 ? 'bg-green-100 text-green-700' :
+                          'bg-amber-100 text-amber-700'
                         }`}>
                         {splitRemaining < 0 ? '⚠ Over by ₹' + Math.abs(splitRemaining).toLocaleString() :
                           splitRemaining === 0 ? '✓ Balanced' :
@@ -11486,8 +11982,8 @@ export const BillingPOSView = ({
                         }
                       }}
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${pssSameAsMobileWhatsapp
-                          ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                        ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                        : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
                         }`}
                       title="Auto-fill with Mobile number"
                     >
@@ -11632,8 +12128,8 @@ export const BillingPOSView = ({
                           setPssConfigItems(prev => prev.map((itm, i) => i === idx ? { ...itm, selectedForPSS: !itm.selectedForPSS } : itm));
                         }}
                         className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
-                            ? 'bg-emerald-50 border-emerald-500 shadow-md ring-1 ring-emerald-500/40'
-                            : 'bg-slate-50 border-slate-200 opacity-90 hover:opacity-100'
+                          ? 'bg-emerald-50 border-emerald-500 shadow-md ring-1 ring-emerald-500/40'
+                          : 'bg-slate-50 border-slate-200 opacity-90 hover:opacity-100'
                           } ${isFocused ? 'ring-4 ring-rose-500/70 border-rose-500 scale-[1.01] shadow-xl' : ''
                           }`}
                       >
@@ -11764,24 +12260,24 @@ export const BillingPOSView = ({
                       key={opt.value}
                       onClick={() => setPssCustomerWaitingOption(opt.value)}
                       className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${pssCustomerWaitingOption === opt.value
-                          ? opt.color === 'rose' ? 'bg-rose-50 border-rose-500 ring-1 ring-rose-500/30 shadow-md'
-                            : opt.color === 'blue' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30 shadow-md'
-                              : 'bg-slate-100 border-slate-500 ring-1 ring-slate-500/30 shadow-md'
-                          : 'bg-white border-slate-200 hover:border-slate-300'
+                        ? opt.color === 'rose' ? 'bg-rose-50 border-rose-500 ring-1 ring-rose-500/30 shadow-md'
+                          : opt.color === 'blue' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30 shadow-md'
+                            : 'bg-slate-100 border-slate-500 ring-1 ring-slate-500/30 shadow-md'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
                         }`}
                     >
                       <div className="flex items-center gap-2 mb-1.5">
                         <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${pssCustomerWaitingOption === opt.value
-                            ? opt.color === 'rose' ? 'border-rose-600 bg-rose-600' : opt.color === 'blue' ? 'border-blue-600 bg-blue-600' : 'border-slate-600 bg-slate-600'
-                            : 'border-slate-300 bg-white'
+                          ? opt.color === 'rose' ? 'border-rose-600 bg-rose-600' : opt.color === 'blue' ? 'border-blue-600 bg-blue-600' : 'border-slate-600 bg-slate-600'
+                          : 'border-slate-300 bg-white'
                           }`}>
                           {pssCustomerWaitingOption === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <p className="text-xs font-black text-slate-900">{opt.label}</p>
                       </div>
                       <span className={`text-[10px] font-extrabold uppercase font-mono px-2 py-0.5 rounded ${opt.color === 'rose' ? 'bg-rose-100 text-rose-700'
-                          : opt.color === 'blue' ? 'bg-blue-100 text-blue-700'
-                            : 'bg-slate-200 text-slate-700'
+                        : opt.color === 'blue' ? 'bg-blue-100 text-blue-700'
+                          : 'bg-slate-200 text-slate-700'
                         }`}>{opt.badge}</span>
                       <p className="text-[10px] text-slate-500 mt-1.5">{opt.desc}</p>
                     </div>
@@ -11789,8 +12285,8 @@ export const BillingPOSView = ({
                 </div>
                 {/* Priority Preview */}
                 <div className={`rounded-xl p-3 flex items-center gap-2 text-xs font-bold border ${pssCustomerWaitingOption === 'Waiting in Store' ? 'bg-rose-50 border-rose-200 text-rose-700'
-                    : pssCustomerWaitingOption === 'Home Delivery Required' ? 'bg-blue-50 border-blue-200 text-blue-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
+                  : pssCustomerWaitingOption === 'Home Delivery Required' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
                   Auto Priority:&nbsp;
@@ -11872,8 +12368,8 @@ export const BillingPOSView = ({
                                   type="button"
                                   onClick={() => setPssSalesmanName(emp.name)}
                                   className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-2.5 hover:bg-indigo-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${pssSalesmanName.trim().toLowerCase() === (emp.name || '').toLowerCase()
-                                      ? 'bg-indigo-50 font-black text-indigo-900'
-                                      : 'font-semibold text-slate-800'
+                                    ? 'bg-indigo-50 font-black text-indigo-900'
+                                    : 'font-semibold text-slate-800'
                                     }`}
                                 >
                                   <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-[10px] shrink-0">
@@ -12027,12 +12523,12 @@ export const BillingPOSView = ({
                           type="button"
                           onClick={() => setPssServiceGenderFilter(gf)}
                           className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${isAct
-                              ? gf === 'Ladies'
-                                ? 'bg-rose-600 text-white shadow-xs'
-                                : gf === 'Gents'
-                                  ? 'bg-blue-600 text-white shadow-xs'
-                                  : 'bg-slate-900 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                            ? gf === 'Ladies'
+                              ? 'bg-rose-600 text-white shadow-xs'
+                              : gf === 'Gents'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
                             }`}
                         >
                           {gf === 'Gents' && <span>👨</span>}
@@ -12081,8 +12577,8 @@ export const BillingPOSView = ({
                                       setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Gents' } : itm));
                                     }}
                                     className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${(item.gender || 'Gents') === 'Gents'
-                                        ? 'bg-blue-600 text-white shadow-xs'
-                                        : 'text-slate-600 hover:text-slate-900'
+                                      ? 'bg-blue-600 text-white shadow-xs'
+                                      : 'text-slate-600 hover:text-slate-900'
                                       }`}
                                   >
                                     <span>👨 Gents</span>
@@ -12093,8 +12589,8 @@ export const BillingPOSView = ({
                                       setPssConfigItems(prev => prev.map(itm => itm.itemKey === item.itemKey ? { ...itm, gender: 'Ladies' } : itm));
                                     }}
                                     className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${item.gender === 'Ladies'
-                                        ? 'bg-rose-600 text-white shadow-xs'
-                                        : 'text-slate-600 hover:text-slate-900'
+                                      ? 'bg-rose-600 text-white shadow-xs'
+                                      : 'text-slate-600 hover:text-slate-900'
                                       }`}
                                   >
                                     <span>👩 Ladies</span>
@@ -12111,8 +12607,8 @@ export const BillingPOSView = ({
                                     </span>
                                     {sv.toLowerCase().includes('alteration') && (
                                       <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 px-1.5 py-0.2 rounded border ${(item.gender || 'Gents') === 'Ladies'
-                                          ? 'bg-pink-50 text-pink-700 border-pink-200'
-                                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                                        ? 'bg-pink-50 text-pink-700 border-pink-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'
                                         }`}>
                                         {(item.gender || 'Gents')}
                                       </span>
@@ -12135,8 +12631,8 @@ export const BillingPOSView = ({
                                   <label
                                     key={srv}
                                     className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold select-none ${isChecked
-                                        ? 'bg-rose-50 border-rose-500 text-rose-800 shadow-sm'
-                                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                      ? 'bg-rose-50 border-rose-500 text-rose-800 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                                       }`}
                                   >
                                     <input
@@ -12256,8 +12752,8 @@ export const BillingPOSView = ({
                   <div
                     onClick={() => setPssAssignmentOption("DIRECT")}
                     className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${pssAssignmentOption === "DIRECT"
-                        ? 'bg-rose-50 border-rose-500 shadow-xs ring-1 ring-rose-500/30'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-rose-50 border-rose-500 shadow-xs ring-1 ring-rose-500/30'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
                       }`}
                   >
                     <input
@@ -12280,8 +12776,8 @@ export const BillingPOSView = ({
                   <div
                     onClick={() => setPssAssignmentOption("PENDING_QUEUE")}
                     className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${pssAssignmentOption === "PENDING_QUEUE"
-                        ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500/30'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500/30'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
                       }`}
                   >
                     <input
@@ -12355,8 +12851,8 @@ export const BillingPOSView = ({
                       setPssConfigItems(prev => prev.map(itm => ({ ...itm, trialDate: itm.trialDate || v })));
                     }}
                     className={`w-full border rounded-xl text-xs font-mono font-bold px-3 py-2 outline-none ${pssGeneralTrialRequired === false
-                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-purple-50/50 border-purple-300 text-purple-950 focus:ring-2 focus:ring-purple-500'
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-purple-50/50 border-purple-300 text-purple-950 focus:ring-2 focus:ring-purple-500'
                       }`}
                   />
                 </div>
@@ -12372,8 +12868,8 @@ export const BillingPOSView = ({
                         type="button"
                         onClick={() => setPssGeneralPriority(prio)}
                         className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${pssGeneralPriority === prio
-                            ? prio === 'Urgent' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
+                          ? prio === 'Urgent' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
                           }`}
                       >
                         {prio}
@@ -12675,8 +13171,8 @@ export const BillingPOSView = ({
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-semibold uppercase tracking-wider">Priority</span>
                   <span className={`font-black px-2.5 py-0.5 rounded-lg ${pssSlipData.priority === 'HIGH' ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                      : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                    : pssSlipData.priority === 'DELIVERY' ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                      : 'bg-slate-100 text-slate-700 border border-slate-200'
                     }`}>{pssSlipData.priority}</span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -12710,11 +13206,11 @@ export const BillingPOSView = ({
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-semibold uppercase tracking-wider">Overall Status</span>
                       <span className={`font-black uppercase px-2.5 py-0.5 rounded-lg text-xs border ${displayStatus === 'CLOSED' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' :
-                          displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                            displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
-                              displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
-                                  'bg-amber-100 text-amber-800 border-amber-200'
+                        displayStatus === 'READY_FOR_DELIVERY' || displayStatus === 'READY' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                          displayStatus === 'PARTIALLY_COLLECTED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                            displayStatus === 'PARTIALLY_READY' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                              displayStatus === 'IN_PROGRESS' || displayStatus === 'ASSIGNED' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                                'bg-amber-100 text-amber-800 border-amber-200'
                         }`}>
                         {displayStatus.replace(/_/g, ' ')}
                       </span>
@@ -12766,8 +13262,8 @@ export const BillingPOSView = ({
 
                   return (
                     <div key={idx} className={`border rounded-xl p-3 text-xs space-y-1.5 transition-all ${isCollected ? 'bg-slate-50/80 border-slate-200' :
-                        isReady ? 'bg-emerald-50/70 border-emerald-300' :
-                          'bg-white border-slate-200'
+                      isReady ? 'bg-emerald-50/70 border-emerald-300' :
+                        'bg-white border-slate-200'
                       }`}>
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -12808,8 +13304,8 @@ export const BillingPOSView = ({
                           ) : (
                             <>
                               <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${isReady ? 'bg-emerald-600 text-white border-emerald-700' :
-                                  itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
-                                    'bg-amber-100 text-amber-800 border-amber-200'
+                                itm.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                                  'bg-amber-100 text-amber-800 border-amber-200'
                                 }`}>
                                 {(itm.status || 'PENDING').replace(/_/g, ' ')}
                               </span>
@@ -12969,8 +13465,8 @@ export const BillingPOSView = ({
                   window.open(waUrl, '_blank');
                 }}
                 className={`py-2.5 font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1 ${pssSlipData.allowWhatsApp
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
@@ -13203,10 +13699,10 @@ export const BillingPOSView = ({
                                               </span>
                                             </div>
                                             <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
-                                                ? 'bg-emerald-100 text-emerald-800'
-                                                : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
-                                                  ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
-                                                  : 'bg-amber-100 text-amber-800'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
+                                                : 'bg-amber-100 text-amber-800'
                                               }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
@@ -13560,10 +14056,10 @@ export const BillingPOSView = ({
                                               </span>
                                             </div>
                                             <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${(item.pssmItemStatus || item.pssmRecord?.status) === 'COLLECTED' || (item.pssmItemStatus || item.pssmRecord?.status) === 'CLOSED'
-                                                ? 'bg-emerald-100 text-emerald-800'
-                                                : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
-                                                  ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
-                                                  : 'bg-amber-100 text-amber-800'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : (item.pssmItemStatus || item.pssmRecord?.status) === 'READY'
+                                                ? 'bg-blue-100 text-blue-800 font-bold ring-1 ring-blue-400'
+                                                : 'bg-amber-100 text-amber-800'
                                               }`}>
                                               {(item.pssmItemStatus || item.pssmRecord?.status || 'IN PROGRESS').replace(/_/g, ' ')}
                                             </span>
