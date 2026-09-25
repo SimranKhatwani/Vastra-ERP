@@ -169,6 +169,11 @@ class PTImportService {
       const firmCache = new Map();
       const hsnCache = new Map();
       const processedBarcodesSet = new Set();
+      const productsToSave = new Map();
+      const allPurchaseItems = [];
+      const allInventoryPieces = [];
+      const allLifecycleEvents = [];
+      const billTotalsMap = new Map();
 
       // Phase 1: Pre-process Vendors from Sheet 2/3 (vendorDataRows)
       if (vendorDataRows && vendorDataRows.length > 0) {
@@ -410,9 +415,9 @@ class PTImportService {
         const batch = String(getVal(row, 'Batch', 'batch', 'BATCH', 'Batch No', 'Batch No.', 'BATCH NO', 'BATCH NO.', 'Batch Number', 'BATCH NUMBER', 'Lot No', 'Lot No.', 'LOT NO', 'Lot', 'LOT', 'Lot Number', 'BATCH_NO', 'Batch_No', 'Batch#') || '').trim();
         const counter = String(getVal(row, 'Counter', 'counter', 'COUNTER', 'Counter No', 'Counter No.', 'COUNTER NO', 'COUNTER NO.', 'Counter Number', 'COUNTER NUMBER', 'Counter Name', 'COUNTER NAME', 'COUNTER_NO', 'Cntr', 'CNTR') || '').trim();
 
-        const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1);
-        const discount = parseFloat(getVal(row, 'Discount', 'discount') || 0);
-        const lineTotal = parseFloat(getVal(row, 'Net Amount', 'netAmount', 'Value', 'lineTotal') || (qty * purchaseRate));
+        const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1) || 1;
+        const discount = parseFloat(getVal(row, 'Discount', 'discount', 'DISCOUNT', 'Dis. on Purchase', 'discountOnPurchase') || 0) || 0;
+        const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
 
         const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
         const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
@@ -734,7 +739,7 @@ class PTImportService {
                 updated = true;
               }
               if (updated) {
-                await product.save({ session });
+                productsToSave.set(product._id.toString(), product);
               }
             }
             productCache.set(productKey, product);
@@ -784,78 +789,64 @@ class PTImportService {
           purchaseBillIds.push(purchaseBill._id);
         }
 
-        // Create Purchase Item
-        let purchaseItem;
-        try {
-          const createdItem = await PurchaseItem.create([{
+        // Prepare Purchase Item in batch
+        const purchaseItemId = new mongoose.Types.ObjectId();
+        allPurchaseItems.push({
+          _id: purchaseItemId,
+          tenantId,
+          purchaseBillId: purchaseBill._id,
+          productId: product._id,
+          size,
+          qty,
+          purchaseRate,
+          mrp,
+          discount,
+          taxRate,
+          color: primaryColor,
+          typeOfGst: typeOfGstNormalized,
+          gstStatus: gstStatus,
+          discountStatus: discountStatusNormalized,
+          lineTotal,
+          importBatchId: historyId
+        });
+        purchaseItemIds.push(purchaseItemId);
+
+        // Prepare Inventory Pieces & Lifecycles in batch
+        for (let i = 0; i < qty; i++) {
+          const pieceId = new mongoose.Types.ObjectId();
+          const pieceBarcode = barcode;
+          allInventoryPieces.push({
+            _id: pieceId,
             tenantId,
-            purchaseBillId: purchaseBill._id,
             productId: product._id,
+            purchaseBillId: purchaseBill._id,
+            purchaseItemId: purchaseItemId,
+            warehouseId: warehouse._id,
+            firmId: firm._id,
+            barcode: pieceBarcode,
+            uniqueCode,
+            batch,
+            counter,
+            ipn,
+            primaryColor,
+            secondaryColor,
             size,
-            qty,
             purchaseRate,
+            wspAfterGST,
             mrp,
-            discount,
-            taxRate,
-            color: primaryColor,
             typeOfGst: typeOfGstNormalized,
             gstStatus: gstStatus,
             discountStatus: discountStatusNormalized,
-            lineTotal,
+            status: INVENTORY_STATUS.AVAILABLE,
+            currentLocation: 'WAREHOUSE',
             importBatchId: historyId
-          }], { session });
-          purchaseItem = createdItem[0];
-          purchaseItemIds.push(purchaseItem._id);
-        } catch (err) {
-          console.error('FAILED AT STEP: PurchaseItem.create');
-          throw err;
-        }
+          });
+          inventoryPieceIds.push(pieceId);
 
-        // Create Inventory Pieces
-        try {
-          const piecesToCreate = [];
-          for (let i = 0; i < qty; i++) {
-            const pieceBarcode = barcode;
-            piecesToCreate.push({
-              tenantId,
-              productId: product._id,
-              purchaseBillId: purchaseBill._id,
-              purchaseItemId: purchaseItem._id,
-              warehouseId: warehouse._id,
-              firmId: firm._id,
-              barcode: pieceBarcode,
-              uniqueCode,
-              batch,
-              counter,
-              ipn,
-              primaryColor,
-              secondaryColor,
-              size,
-              purchaseRate,
-              wspAfterGST,
-              mrp,
-              typeOfGst: typeOfGstNormalized,
-              gstStatus: gstStatus,
-              discountStatus: discountStatusNormalized,
-              status: INVENTORY_STATUS.AVAILABLE,
-              currentLocation: 'WAREHOUSE',
-              importBatchId: historyId
-            });
-          }
-
-          const createdPieces = await InventoryPiece.insertMany(piecesToCreate, { session });
-          for (const p of createdPieces) {
-            inventoryPieceIds.push(p._id);
-          }
-
-          // DEBUG: Log GST/Discount fields saved to InventoryPiece
-          console.log(`[PT IMPORT ROW ${rowNum}] InventoryPiece saved => discountStatus: "${discountStatusNormalized}", typeOfGst: "${typeOfGstNormalized}", gstStatus: "${gstStatus}" | Product: ${itemCode}, Barcode: ${barcode}`);
-          console.log(`[PT IMPORT ROW ${rowNum}] Product saved => discountStatus: "${product.discountStatus}", typeOfGst: "${product.typeOfGst}", gstStatus: "${product.gstStatus}"`);
-
-          const lifecycleEvents = createdPieces.map(p => ({
+          allLifecycleEvents.push({
             tenantId,
-            inventoryPieceId: p._id,
-            barcode: p.barcode,
+            inventoryPieceId: pieceId,
+            barcode: pieceBarcode,
             eventType: LIFECYCLE_EVENT.PURCHASE,
             fromLocation: `Vendor:${vendor.name}`,
             toLocation: `Warehouse:${warehouse.name}`,
@@ -864,32 +855,51 @@ class PTImportService {
             performedBy: userId,
             notes: `PT Excel Import row ${rowNum}`,
             importBatchId: historyId
-          }));
-          await InventoryLifecycle.insertMany(lifecycleEvents, { session });
-          console.log(`AFTER InventoryPiece and Lifecycle creation loop. inTransaction: ${session.inTransaction()}`);
-        } catch (err) {
-          console.error('FAILED AT STEP: InventoryPiece.create loop');
-          console.error(err);
-          throw err;
+          });
         }
 
-        // Update Purchase Bill Total using atomic $inc operator
-        try {
-          console.log(`BEFORE PurchaseBill.updateOne: BillNo: ${billNo}, incTotal: ${lineTotal}`);
-          await PurchaseBill.updateOne(
-            { _id: purchaseBill._id },
-            { $inc: { totalAmount: lineTotal } },
-            { session }
-          );
-          console.log(`AFTER PurchaseBill.updateOne: BillNo: ${billNo}. inTransaction: ${session.inTransaction()}`);
-        } catch (err) {
-          console.error('FAILED AT STEP: PurchaseBill.updateOne');
-          console.error(err);
-          throw err;
-        }
+        // Accumulate Bill Total
+        const billKey = purchaseBill._id.toString();
+        billTotalsMap.set(billKey, (billTotalsMap.get(billKey) || 0) + lineTotal);
 
         processedBarcodesSet.add(barcode);
         summary.inserted++;
+      }
+
+      // High Performance Bulk Execution across all rows
+      if (productsToSave.size > 0) {
+        await Promise.all(Array.from(productsToSave.values()).map(p => p.save({ session })));
+      }
+
+      if (allPurchaseItems.length > 0) {
+        await PurchaseItem.insertMany(allPurchaseItems, { session, ordered: false });
+      }
+
+      // Chunk large piece inserts to optimize MongoDB batch sizes
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < allInventoryPieces.length; i += CHUNK_SIZE) {
+        const pieceChunk = allInventoryPieces.slice(i, i + CHUNK_SIZE);
+        await InventoryPiece.insertMany(pieceChunk, { session, ordered: false });
+      }
+
+      for (let i = 0; i < allLifecycleEvents.length; i += CHUNK_SIZE) {
+        const lifecycleChunk = allLifecycleEvents.slice(i, i + CHUNK_SIZE);
+        await InventoryLifecycle.insertMany(lifecycleChunk, { session, ordered: false });
+      }
+
+      // Update Bill Totals in parallel
+      const billUpdatePromises = [];
+      for (const [bId, incTotal] of billTotalsMap.entries()) {
+        billUpdatePromises.push(
+          PurchaseBill.updateOne(
+            { _id: bId },
+            { $inc: { totalAmount: incTotal } },
+            { session }
+          )
+        );
+      }
+      if (billUpdatePromises.length > 0) {
+        await Promise.all(billUpdatePromises);
       }
 
       // 5. Finalize & Save History

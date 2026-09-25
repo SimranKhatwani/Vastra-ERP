@@ -31,13 +31,13 @@ router.get('/return', (req, res) => res.status(200).json({ success: true, data: 
 router.get('/pending-tracking', (req, res) => res.status(200).json({ success: true, data: [], message: 'Pending tracking mock data' }));
 router.get('/outstanding', (req, res) => res.status(200).json({ success: true, data: [], message: 'Outstanding mock data' }));
 
-router.get('/:id', isValidObjectId, authorize(PERMISSIONS.PURCHASE_READ), auditLog('PURCHASE_VIEW_DETAIL', 'purchase'), PurchaseController.getPurchaseBillById);
-router.post('/:id/approve', isValidObjectId, authorize(PERMISSIONS.PURCHASE_APPROVE), auditLog('APPROVE_PURCHASE', 'purchase'), PurchaseController.approvePurchaseBill);
-router.post('/:id/cancel', isValidObjectId, authorize(PERMISSIONS.PURCHASE_CANCEL), auditLog('CANCEL_PURCHASE', 'purchase'), PurchaseController.cancelPurchaseBill);
+router.get('/:id', authorize(PERMISSIONS.PURCHASE_READ), auditLog('PURCHASE_VIEW_DETAIL', 'purchase'), PurchaseController.getPurchaseBillById);
+router.post('/:id/approve', authorize(PERMISSIONS.PURCHASE_APPROVE), auditLog('APPROVE_PURCHASE', 'purchase'), PurchaseController.approvePurchaseBill);
+router.post('/:id/cancel', authorize(PERMISSIONS.PURCHASE_CANCEL), auditLog('CANCEL_PURCHASE', 'purchase'), PurchaseController.cancelPurchaseBill);
 
 
-router.put('/:id', isValidObjectId, authorize(PERMISSIONS.PURCHASE_UPDATE), validate(createPurchaseBillSchema), auditLog('UPDATE_PURCHASE_BILL', 'purchase'), PurchaseController.updatePurchaseBill);
-router.delete('/:id', isValidObjectId, authorize(PERMISSIONS.PURCHASE_DELETE), auditLog('DELETE_PURCHASE_BILL', 'purchase'), PurchaseController.deletePurchaseBill);
-router.get('/:id/items', isValidObjectId, authorize(PERMISSIONS.PURCHASE_READ_ITEMS), PurchaseController.getPurchaseBillItems);
+router.put('/:id', authorize(PERMISSIONS.PURCHASE_UPDATE), validate(createPurchaseBillSchema), auditLog('UPDATE_PURCHASE_BILL', 'purchase'), PurchaseController.updatePurchaseBill);
+router.delete('/:id', authorize(PERMISSIONS.PURCHASE_DELETE), auditLog('DELETE_PURCHASE_BILL', 'purchase'), PurchaseController.deletePurchaseBill);
+router.get('/:id/items', authorize(PERMISSIONS.PURCHASE_READ_ITEMS), PurchaseController.getPurchaseBillItems);
 
 module.exports = router;

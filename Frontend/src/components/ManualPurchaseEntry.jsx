@@ -10,7 +10,8 @@ import {
   Search, 
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from "lucide-react";
 import { InvoiceViewer } from "./PTImporter"; 
 
@@ -250,13 +251,13 @@ export const ManualPurchaseEntry = ({
         taxable = itemSubTotal / (1 + (gstP / 100));
         itemGst = itemSubTotal - taxable;
       } else {
-        itemGst = taxable * (gstP / 100);
+        itemGst = (itemSubTotal - itemDiscAmt) * (gstP / 100);
       }
       
-      subTotal += taxable;
+      subTotal += itemSubTotal;
       grandDisc += itemDiscAmt;
       gstTotal += itemGst;
-      grandTotal += (taxable + itemGst - itemDiscAmt);
+      grandTotal += (itemSubTotal - itemDiscAmt);
     });
 
     return { subTotal, gstTotal, grandDisc, grandTotal };
@@ -495,12 +496,13 @@ export const ManualPurchaseEntry = ({
         calculatedTaxable: taxable,
         calculatedDisc: discAmt,
         calculatedGst: itemGst,
-        totalPrice: taxable - discAmt + itemGst,
-        amount: taxable - discAmt + itemGst
+        totalPrice: itemSubTotal - discAmt,
+        amount: itemSubTotal - discAmt
       };
     });
 
     const newVoucherPayload = {
+      _id: (initialPO?._id && /^[0-9a-fA-F]{24}$/.test(String(initialPO._id))) ? initialPO._id : (initialPO?.id && /^[0-9a-fA-F]{24}$/.test(String(initialPO.id)) ? initialPO.id : undefined),
       poNo: headerDetails.invoiceNo,
       billNo: headerDetails.invoiceNo,
       invoiceNo: headerDetails.invoiceNo,
@@ -508,14 +510,20 @@ export const ManualPurchaseEntry = ({
       billDate: headerDetails.date,
       supplierName: headerDetails.supplierName,
       vendorName: headerDetails.supplierName,
+      vendorId: initialPO?.vendorId?._id || initialPO?.vendorId || initialPO?.supplierId?._id || initialPO?.supplierId,
       firm: headerDetails.firm || "RANGOLI ENTERPRISES",
       firmName: headerDetails.firm || "RANGOLI ENTERPRISES",
+      firmId: initialPO?.firmId?._id || initialPO?.firmId || initialPO?.firm?._id,
+      warehouse: headerDetails.warehouse || "Main Warehouse",
+      warehouseId: initialPO?.warehouseId?._id || initialPO?.warehouseId || initialPO?.warehouse?._id,
       items: formattedItems,
       billItems: formattedItems,
       products: formattedItems,
       rows: formattedItems,
       subTotal: totals.subTotal,
       gstTotal: totals.gstTotal,
+      discount: totals.grandDisc,
+      grandDisc: totals.grandDisc,
       grandTotal: totals.grandTotal,
       totalAmount: totals.grandTotal,
       status: "Completed",
@@ -523,7 +531,7 @@ export const ManualPurchaseEntry = ({
     };
 
     let success = false;
-    const poId = initialPO?._id || initialPO?.id;
+    const poId = initialPO?._id || initialPO?.id || initialPO?.billNo || initialPO?.poNo || initialPO?.invoiceNo || headerDetails.invoiceNo;
     if (isEditMode && onUpdatePurchaseOrder && poId) {
       success = await onUpdatePurchaseOrder(poId, newVoucherPayload);
     } else if (onAddPurchaseOrder) {
@@ -932,6 +940,30 @@ export const ManualPurchaseEntry = ({
           </button>
         </div>
       </div>
+
+      {/* 5. FULL SCREEN PROCESSING OVERLAY WHILE UPDATING */}
+      {isSubmitting && (
+        <div className="fixed inset-0 z-70 bg-slate-900/60 backdrop-blur-xs flex flex-col items-center justify-center p-4 animate-fade-in text-white">
+          <div className="bg-white text-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full text-center space-y-4 border border-slate-200 animate-scale-up">
+            <div className="w-16 h-16 relative flex items-center justify-center">
+              <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+              <RefreshCw className="w-6 h-6 text-indigo-600 absolute animate-spin" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-800">
+                {isEditMode ? "Updating Purchase Voucher" : "Generating Purchase Voucher"}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Recalculating totals, syncing {items.length} items & updating inventory barcodes in database...
+              </p>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-indigo-600 h-1.5 rounded-full animate-pulse w-4/5 mx-auto"></div>
+            </div>
+            <p className="text-[11px] font-bold text-indigo-600">Please wait a moment...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

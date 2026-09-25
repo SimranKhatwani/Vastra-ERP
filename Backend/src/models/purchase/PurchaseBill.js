@@ -43,7 +43,7 @@ const purchaseBillSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['DRAFT', 'APPROVED', 'RECEIVED', 'CANCELLED'],
+    enum: ['DRAFT', 'APPROVED', 'RECEIVED', 'CANCELLED', 'COMPLETED', 'PENDING', 'COMPILED'],
     default: 'APPROVED'
   },
   remarks: String

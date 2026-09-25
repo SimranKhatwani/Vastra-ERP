@@ -1212,14 +1212,12 @@ export default function App() {
         };
         setPurchaseOrders((prev) => [savedPo, ...prev]);
 
-        // Refetch purchase orders, products, and suppliers from MongoDB to guarantee persistence sync
-        try {
-          const [resPOs, resProducts, resSuppliers] = await Promise.all([
-            api.get(`/purchase-orders`),
-            api.get(`/products?limit=5000`),
-            api.get(`/suppliers`)
-          ]);
-
+        // Refetch purchase orders, products, and suppliers in background to keep full local cache updated
+        Promise.all([
+          api.get(`/purchase-orders`),
+          api.get(`/products?limit=5000`),
+          api.get(`/suppliers`)
+        ]).then(([resPOs, resProducts, resSuppliers]) => {
           const dataOrBills = Array.isArray(resPOs.data?.data)
             ? resPOs.data.data
             : (Array.isArray(resPOs.data?.data?.bills) ? resPOs.data.data.bills : []);
@@ -1233,10 +1231,10 @@ export default function App() {
               return combined;
             });
           }
-
           if (resProducts.data?.success) setProducts(resProducts.data.data.map(p => ({ ...p, id: p._id })));
           if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
-        } catch (e) { }
+        }).catch(() => {});
+
         return true;
       } else {
         addToastNotification("Error", data.message || "Failed to save Purchase Order", "danger");
@@ -1251,64 +1249,68 @@ export default function App() {
 
   const handleUpdatePurchaseOrder = async (id, po) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.put(`/purchase-orders/${id}`, po);
       const data = res.data;
 
       if (data.success) {
-        setPurchaseOrders((prev) => prev.map(p => p.id === id ? { ...data.data, id: data.data._id } : p));
+        const updatedBill = { ...data.data, id: data.data._id || id };
+        setPurchaseOrders((prev) => prev.map(p => (p.id === id || p._id === id || p.poNo === po.poNo || p.invoiceNo === po.invoiceNo) ? updatedBill : p));
 
-        const [resProducts, resSuppliers] = await Promise.all([
+        // Refetch in background without blocking the UI
+        Promise.all([
+          api.get(`/purchase-orders`),
           api.get(`/products?limit=5000`),
           api.get(`/suppliers`)
-        ]);
+        ]).then(([resPOs, resProducts, resSuppliers]) => {
+          const dataOrBills = Array.isArray(resPOs.data?.data)
+            ? resPOs.data.data
+            : (Array.isArray(resPOs.data?.data?.bills) ? resPOs.data.data.bills : []);
+          if (dataOrBills.length > 0) {
+            setPurchaseOrders(dataOrBills.map(p => ({ ...p, id: p._id || p.id })));
+          }
+          if (resProducts.data?.success) setProducts(resProducts.data.data.map(p => ({ ...p, id: p._id })));
+          if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
+        }).catch(() => {});
 
-        const dataProducts = resProducts.data;
-        const dataSuppliers = resSuppliers.data;
-
-        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({ ...p, id: p._id })));
-        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({ ...s, id: s._id })));
+        addToastNotification("Success", "Purchase Voucher updated successfully", "success");
         return true;
       } else {
-        alert("Backend Error: " + (data.message || "Unknown error"));
-        addToastNotification("Error", data.message, "danger");
+        addToastNotification("Error", data.message || "Failed to update purchase voucher", "danger");
         return false;
       }
     } catch (error) {
-      alert("App.jsx catch error: " + error.message);
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.error("handleUpdatePurchaseOrder error:", error);
+      const msg = error.response?.data?.message || (error.response?.data?.errors && error.response.data.errors.join(', ')) || error.message;
+      addToastNotification("Update Failed", msg, "danger");
       return false;
     }
   };
 
   const handleDeletePurchaseOrder = async (id) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await api.delete(`/purchase-orders/${id}`);
       const data = res.data;
 
       if (data.success) {
-        setPurchaseOrders((prev) => prev.filter(p => p.id !== id));
+        setPurchaseOrders((prev) => prev.filter(p => p.id !== id && p._id !== id));
 
-        const [resProducts, resSuppliers] = await Promise.all([
+        Promise.all([
           api.get(`/products?limit=5000`),
           api.get(`/suppliers`)
-        ]);
+        ]).then(([resProducts, resSuppliers]) => {
+          if (resProducts.data?.success) setProducts(resProducts.data.data.map(p => ({ ...p, id: p._id })));
+          if (resSuppliers.data?.success) setSuppliers(resSuppliers.data.data.map(s => ({ ...s, id: s._id })));
+        }).catch(() => {});
 
-        const dataProducts = resProducts.data;
-        const dataSuppliers = resSuppliers.data;
-
-        if (dataProducts.success) setProducts(dataProducts.data.map(p => ({ ...p, id: p._id })));
-        if (dataSuppliers.success) setSuppliers(dataSuppliers.data.map(s => ({ ...s, id: s._id })));
+        addToastNotification("Success", "Purchase Voucher deleted successfully", "success");
         return true;
       } else {
-        alert("Backend Error: " + (data.message || "Unknown error"));
-        addToastNotification("Error", data.message, "danger");
+        addToastNotification("Error", data.message || "Failed to delete purchase order", "danger");
         return false;
       }
     } catch (error) {
-      alert("App.jsx catch error: " + error.message);
-      addToastNotification("Error", "Failed to connect to API", "danger");
+      console.error("handleDeletePurchaseOrder error:", error);
+      addToastNotification("Error", error.response?.data?.message || error.message || "Failed to connect to API", "danger");
       return false;
     }
   };

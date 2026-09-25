@@ -625,15 +625,15 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           productId: baseProductId,
           name: `${row.itemName} (${row.designNo})`,
           purchasePrice: rate,
-          totalPrice: taxable - discAmt + itemGst,
+          totalPrice: (qty * rate) - discAmt,
           calculatedTaxable: taxable,
           calculatedGst: itemGst,
-          calculatedTotal: taxable - discAmt + itemGst,
+          calculatedTotal: (qty * rate) - discAmt,
           calculatedDisc: discAmt
         };
       });
 
-      const subTotal = billItems.reduce((sum, r) => sum + r.calculatedTaxable, 0);
+      const subTotal = billItems.reduce((sum, r) => sum + (r.quantity * r.purchaseRate), 0);
       const gstTotal = billItems.reduce((sum, r) => sum + r.calculatedGst, 0);
       const grandDisc = billItems.reduce((sum, r) => sum + r.calculatedDisc, 0);
 
@@ -746,7 +746,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         rows: billItems,
         subTotal: subTotal,
         gstTotal: gstTotal,
-        grandTotal: subTotal - grandDisc + gstTotal,
+        grandTotal: subTotal - grandDisc,
         status: "Completed"
       };
 
@@ -1697,21 +1697,18 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     gstPercent = Number(gstPercent);
 
     let discAmt = Number(item.discountOnPurchase ?? item.discount ?? 0);
-    let taxable = Number(item.calculatedTaxable ?? (quantity * rate));
-    let gstAmt = Number(item.calculatedGst ?? 0);
+    const typeOfGst = String(item.typeOfGst || voucher.typeOfGst || 'E').toUpperCase();
+    
+    let taxable = quantity * rate;
+    let gstAmt = 0;
 
-    if (!gstAmt && gstPercent > 0) {
-      if (item.typeOfGst?.toUpperCase() === "I") {
-        const baseRate = rate / (1 + (gstPercent / 100));
-        taxable = quantity * baseRate;
-        gstAmt = (quantity * rate) - taxable;
-      } else {
-        gstAmt = (taxable - discAmt) * (gstPercent / 100);
-      }
+    if (typeOfGst === "I") {
+      taxable = (quantity * rate) / (1 + (gstPercent / 100));
+      gstAmt = (quantity * rate) - taxable;
+    } else {
+      gstAmt = (taxable - discAmt) * (gstPercent / 100);
     }
-
-    // Amount on bill = Purchase Rate (Taxable) + GST on purchase
-    const amount = Number(item.calculatedTotal ?? item.totalPrice ?? (taxable - discAmt + gstAmt));
+    const amount = taxable - discAmt;
 
     return {
       id: idx,
@@ -1731,7 +1728,9 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
   const totalQty = itemsList.reduce((acc, item) => acc + (item.quantity || 0), 0);
   const totalAmount = itemsList.reduce((acc, item) => acc + (item.amount || 0), 0);
 
-  const grandTotal = totalAmount > 0 ? totalAmount : Number(voucher.grandTotal ?? voucher.totalAmount ?? voucher.amount ?? 0);
+  const grandTotal = totalAmount > 0 
+    ? totalAmount 
+    : Number(voucher.grandTotal ?? voucher.totalAmount ?? voucher.amount ?? 0);
 
   // Derive GST breakdown percentage from imported item rows
   const uniqueGstRates = Array.from(new Set(itemsList.map(item => item.gstPercent).filter(p => p > 0)));

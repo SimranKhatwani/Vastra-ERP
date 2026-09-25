@@ -1,235 +1,427 @@
+const mongoose = require('mongoose');
 const ApiError = require('../helpers/ApiError');
 const PurchaseBill = require('../models/purchase/PurchaseBill');
 const PurchaseItem = require('../models/purchase/PurchaseItem');
 const Product = require('../models/Product');
 const InventoryPiece = require('../models/InventoryPiece');
 const InventoryLifecycle = require('../models/InventoryLifecycle');
+const Vendor = require('../models/masters/Vendor');
+const Brand = require('../models/masters/Brand');
+const Category = require('../models/masters/Category');
+const Firm = require('../models/masters/Firm');
+const Warehouse = require('../models/masters/Warehouse');
+const HSN = require('../models/masters/HSN');
 const { generateBarcode, generateUniqueCode } = require('../helpers/barcodeGenerator');
 const { INVENTORY_STATUS, LIFECYCLE_EVENT } = require('../constants/status');
 const { formatExportData } = require('../helpers/export.helper');
 
+const escapeRegExp = (string) => {
+  return String(string || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const normalizeGender = (g) => {
+  const s = String(g || '').toUpperCase().trim();
+  return ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(s) ? s : 'UNISEX';
+};
+
+const normalizeTopBottomSet = (t) => {
+  const s = String(t || '').toUpperCase().trim();
+  return ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(s) ? s : 'TOP';
+};
+
+const normalizeTypeOfGst = (t) => {
+  const s = String(t || '').toUpperCase().trim();
+  return ['I', 'E'].includes(s) ? s : 'E';
+};
+
+const normalizeDiscountStatus = (d) => {
+  const s = String(d || '').toUpperCase().trim();
+  if (s.startsWith('B')) return 'B';
+  if (s.startsWith('A')) return 'A';
+  return 'N';
+};
+
 class PurchaseService {
+  /**
+   * Helper to ensure default warehouse exists and is active
+   */
+  static async resolveWarehouse(warehouseId, warehouseName, tenantId, session = null) {
+    let warehouse = null;
+    const opts = session ? { session } : {};
+    const rawWhId = (warehouseId && typeof warehouseId === 'object') ? (warehouseId._id || warehouseId.id) : warehouseId;
+    const rawWhName = (warehouseName && typeof warehouseName === 'object') ? (warehouseName.name) : (warehouseName || (warehouseId && typeof warehouseId === 'object' ? warehouseId.name : ''));
+
+    if (rawWhId && /^[0-9a-fA-F]{24}$/.test(String(rawWhId))) {
+      warehouse = await Warehouse.findOne({ _id: rawWhId, tenantId, includeDeleted: true }, null, opts);
+    }
+    if (!warehouse && rawWhName) {
+      const escaped = escapeRegExp(String(rawWhName).trim());
+      warehouse = await Warehouse.findOne({ tenantId, name: new RegExp(`^${escaped}$`, 'i'), includeDeleted: true }, null, opts);
+    }
+    if (!warehouse) {
+      warehouse = await Warehouse.findOne({ tenantId, name: 'Main Warehouse', includeDeleted: true }, null, opts);
+    }
+    if (!warehouse) {
+      warehouse = await Warehouse.findOne({ tenantId, includeDeleted: true }, null, opts);
+    }
+    if (!warehouse) {
+      const created = await Warehouse.create([{
+        tenantId,
+        name: 'Main Warehouse',
+        code: 'WH-MAIN',
+        address: 'Headquarters'
+      }], opts);
+      warehouse = created[0] || created;
+    } else if (warehouse.isDeleted) {
+      warehouse.isDeleted = false;
+      warehouse.status = 'ACTIVE';
+      await warehouse.save(opts);
+    }
+    return warehouse;
+  }
+
+  /**
+   * Helper to ensure default firm exists and is active
+   */
+  static async resolveFirm(firmId, firmName, tenantId, session = null) {
+    let firm = null;
+    const opts = session ? { session } : {};
+    const rawFirmId = (firmId && typeof firmId === 'object') ? (firmId._id || firmId.id) : firmId;
+    const rawFirmName = (firmName && typeof firmName === 'object') ? (firmName.name) : (firmName || (firmId && typeof firmId === 'object' ? firmId.name : ''));
+
+    if (rawFirmId && /^[0-9a-fA-F]{24}$/.test(String(rawFirmId))) {
+      firm = await Firm.findOne({ _id: rawFirmId, tenantId, includeDeleted: true }, null, opts);
+    }
+    if (!firm && rawFirmName) {
+      const escaped = escapeRegExp(String(rawFirmName).trim());
+      firm = await Firm.findOne({ tenantId, name: new RegExp(`^${escaped}$`, 'i'), includeDeleted: true }, null, opts);
+    }
+    if (!firm) {
+      firm = await Firm.findOne({ tenantId, name: 'Primary Store Firm', includeDeleted: true }, null, opts);
+    }
+    if (!firm) {
+      firm = await Firm.findOne({ tenantId, includeDeleted: true }, null, opts);
+    }
+    if (!firm) {
+      const fName = String(rawFirmName || 'Primary Store Firm').trim();
+      const created = await Firm.create([{
+        tenantId,
+        name: fName,
+        code: fName.substring(0, 6).toUpperCase()
+      }], opts);
+      firm = created[0] || created;
+    } else if (firm.isDeleted) {
+      firm.isDeleted = false;
+      firm.status = 'ACTIVE';
+      await firm.save(opts);
+    }
+    return firm;
+  }
+
+  /**
+   * Helper to ensure vendor exists and is active
+   */
+  static async resolveVendor(vendorId, vendorName, vendorGst, tenantId, session = null) {
+    let vendor = null;
+    const opts = session ? { session } : {};
+    const rawVendorId = (vendorId && typeof vendorId === 'object') ? (vendorId._id || vendorId.id) : vendorId;
+    const rawVendorName = (vendorName && typeof vendorName === 'object') ? (vendorName.name) : (vendorName || (vendorId && typeof vendorId === 'object' ? vendorId.name : ''));
+    const rawGst = (vendorGst && typeof vendorGst === 'object') ? (vendorGst.gstin || vendorGst.gst) : vendorGst;
+
+    if (rawVendorId && /^[0-9a-fA-F]{24}$/.test(String(rawVendorId))) {
+      vendor = await Vendor.findOne({ _id: rawVendorId, tenantId, includeDeleted: true }, null, opts);
+    }
+    if (!vendor && rawGst) {
+      const escaped = escapeRegExp(String(rawGst).trim());
+      vendor = await Vendor.findOne({ tenantId, gstin: new RegExp(`^${escaped}$`, 'i'), includeDeleted: true }, null, opts);
+    }
+    if (!vendor && rawVendorName) {
+      const escaped = escapeRegExp(String(rawVendorName).trim());
+      vendor = await Vendor.findOne({ tenantId, name: new RegExp(`^${escaped}$`, 'i'), includeDeleted: true }, null, opts);
+    }
+    if (!vendor) {
+      const vName = String(rawVendorName || 'Wholesaler / Vendor').trim();
+      const vCode = vName.substring(0, 8).toUpperCase();
+      const created = await Vendor.create([{
+        tenantId,
+        name: vName,
+        vendorCode: vCode,
+        gstin: rawGst || ''
+      }], opts);
+      vendor = created[0] || created;
+    } else if (vendor.isDeleted) {
+      vendor.isDeleted = false;
+      vendor.status = 'ACTIVE';
+      await vendor.save(opts);
+    }
+    return vendor;
+  }
+
   /**
    * Create Purchase Bill and auto-generate InventoryPiece items (One Barcode = One Document)
    */
   static async createPurchaseBill(billData, userId, tenantId) {
     const rawItems = billData.items || billData.billItems || billData.products || billData.rows || [];
-    const billNo = billData.billNo || billData.poNo || billData.invoiceNo || `PB-${Date.now()}`;
+    const billNo = String(billData.billNo || billData.poNo || billData.invoiceNo || `PB-${Date.now()}`).trim();
     
-    let vendorId = billData.vendorId || billData.supplierId;
-    if (!vendorId || typeof vendorId !== 'string' || vendorId.length !== 24) {
-      vendorId = null;
-    }
+    const warehouse = await this.resolveWarehouse(billData.warehouseId, billData.warehouse, tenantId);
+    const firm = await this.resolveFirm(billData.firmId, billData.firmName || billData.firm, tenantId);
+    const vendor = await this.resolveVendor(billData.vendorId || billData.supplierId, billData.vendorName || billData.supplierName, billData.vendorGst, tenantId);
 
-    let firmId = billData.firmId;
-    if (!firmId || typeof firmId !== 'string' || firmId.length !== 24) {
-      firmId = null;
-    }
+    const brandCache = new Map();
+    const categoryCache = new Map();
+    const hsnCache = new Map();
+    const productCache = new Map();
+    const productsToSave = new Map();
 
-    let warehouseId = billData.warehouseId;
-    if (!warehouseId || typeof warehouseId !== 'string' || warehouseId.length !== 24) {
-      warehouseId = null;
-    }
-
+    const purchaseBillId = new mongoose.Types.ObjectId();
     let calculatedTotal = 0;
-    const itemsToCreate = [];
+
+    const purchaseItemsToCreate = [];
+    const piecesToCreate = [];
+    const lifecycleEventsToCreate = [];
 
     for (const item of rawItems) {
-      const typeOfGst = String(item.typeOfGst || 'E').toUpperCase().trim();
-      const typeOfGstNormalized = ['I', 'E'].includes(typeOfGst) ? typeOfGst : 'E';
-
+      const typeOfGstNormalized = normalizeTypeOfGst(item.typeOfGst);
       const gstStatus = String(item.gstStatus || '').trim();
+      const discountStatusNormalized = normalizeDiscountStatus(item.discountStatus);
+      const genderNormalized = normalizeGender(item.gender);
+      const topBottomSetNormalized = normalizeTopBottomSet(item.topBottomSet);
 
-      const discountStatus = String(item.discountStatus || 'N').toUpperCase().trim();
-      const discountStatusNormalized = ['B', 'A', 'N'].includes(discountStatus) ? discountStatus : 'N';
+      const brandName = String(item.brand || item.brandName || 'GENERIC BRAND').trim();
+      const categoryName = String(item.category || item.itemName || item.subItem || 'FABRIC SUIT').trim();
+      const designNo = String(item.designNo || 'DSG-001').trim();
+      const subItem = String(item.subItem || item.subCategory || '').trim();
+      const hsnCode = String(item.hsnCode || item.hsn || '').trim();
 
-      let product = null;
-      if (item.productId && typeof item.productId === 'string' && item.productId.length === 24) {
-        product = await Product.findOne({ _id: item.productId, tenantId });
-      }
-
-      if (product) {
-        let updated = false;
-        if (product.typeOfGst !== typeOfGstNormalized) {
-          product.typeOfGst = typeOfGstNormalized;
-          updated = true;
-        }
-        if (gstStatus && product.gstStatus !== gstStatus) {
-          product.gstStatus = gstStatus;
-          updated = true;
-        }
-        if (product.discountStatus !== discountStatusNormalized) {
-          product.discountStatus = discountStatusNormalized;
-          updated = true;
-        }
-        if (updated) {
-          await product.save();
-        }
-      }
-
-      if (!product) {
-        const Brand = require('../models/masters/Brand');
-        const Category = require('../models/masters/Category');
-        const brandName = item.brand || 'GENERIC BRAND';
-        const categoryName = item.category || item.itemName || item.subItem || 'FABRIC SUIT';
-
-        let brand = await Brand.findOne({ tenantId, name: new RegExp(`^${brandName}$`, 'i') });
+      let brand = brandCache.get(brandName.toUpperCase());
+      if (!brand) {
+        brand = await Brand.findOne({ tenantId, name: new RegExp(`^${escapeRegExp(brandName)}$`, 'i'), includeDeleted: true });
         if (!brand) {
           brand = await Brand.create({ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() });
+        } else if (brand.isDeleted) {
+          brand.isDeleted = false;
+          brand.status = 'ACTIVE';
+          await brand.save();
         }
-
-        let category = await Category.findOne({ tenantId, name: new RegExp(`^${categoryName}$`, 'i') });
-        if (!category) {
-          category = await Category.create({ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() });
-        }
-
-        const barcode = item.barcode || `BC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        const designNo = String(item.designNo || 'DSG-001').trim();
-        const itemCode = String(item.itemCode || `ITEM-${designNo}-${Date.now()}`).trim();
-        const itemName = String(item.itemName || item.name || `${brandName} ${designNo}`).trim();
-        const mrp = Number(item.mrp || item.sellingPrice || item.purchasePrice || 100);
-
-        product = await Product.create({
-          tenantId,
-          designNo,
-          itemCode,
-          itemName,
-          subItem: item.subItem || '',
-          brandId: brand._id,
-          categoryId: category._id,
-          gender: 'UNISEX',
-          topBottomSet: 'TOP',
-          defaultMRP: mrp,
-          typeOfGst: typeOfGstNormalized,
-          gstStatus: gstStatus,
-          discountStatus: discountStatusNormalized,
-          createdBy: userId
-        });
+        brandCache.set(brandName.toUpperCase(), brand);
       }
 
-      const qty = Number(item.quantity || item.qty || 1);
-      const purchaseRate = Number(item.purchaseRate || item.purchasePrice || item.rate || 0);
-      const mrp = Number(item.mrp || product.mrp || purchaseRate);
-      const discount = Number(item.discount || item.discountOnPurchase || 0);
-      const taxRate = Number(item.taxRate || item.gstOnPurchase || 0);
-      const size = item.size || product.size || "FS";
-      const color = item.color || item.colorPrimary || product.color || "Standard";
+      let category = categoryCache.get(categoryName.toUpperCase());
+      if (!category) {
+        category = await Category.findOne({ tenantId, name: new RegExp(`^${escapeRegExp(categoryName)}$`, 'i'), includeDeleted: true });
+        if (!category) {
+          category = await Category.create({ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() });
+        } else if (category.isDeleted) {
+          category.isDeleted = false;
+          category.status = 'ACTIVE';
+          await category.save();
+        }
+        categoryCache.set(categoryName.toUpperCase(), category);
+      }
 
-      const lineTotal = item.calculatedTaxable ?? item.totalPrice ?? (qty * purchaseRate - discount);
+      let hsn = null;
+      if (hsnCode) {
+        hsn = hsnCache.get(hsnCode.toUpperCase());
+        if (!hsn) {
+          hsn = await HSN.findOne({ tenantId, hsnCode: new RegExp(`^${escapeRegExp(hsnCode)}$`, 'i') });
+          if (!hsn) {
+            hsn = await HSN.create({ tenantId, hsnCode, description: 'HSN code' });
+          }
+          hsnCache.set(hsnCode.toUpperCase(), hsn);
+        }
+      }
+
+      const qty = Number(item.quantity || item.qty || 1) || 1;
+      const purchaseRate = Number(item.purchaseRate || item.purchasePrice || item.rate || 0) || 0;
+      const mrp = Number(item.mrp || item.sellingPrice || item.purchasePrice || purchaseRate || 0);
+      const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
+      const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
+      const size = String(item.size || "FS").trim() || "FS";
+      const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
+      const batch = String(item.batch || "").trim();
+      const counter = String(item.counter || "").trim();
+      const rawBarcode = String(item.barcode || "").trim();
+
+      const productKey = rawBarcode 
+        ? `BC_${rawBarcode.toUpperCase()}` 
+        : `${designNo}_${subItem}_${color}_${brand._id}_${category._id}`.toUpperCase();
+
+      let product = productCache.get(productKey);
+      if (!product) {
+        if (item.productId && /^[0-9a-fA-F]{24}$/.test(String(item.productId))) {
+          product = await Product.findOne({ _id: item.productId, tenantId, includeDeleted: true });
+        }
+        if (!product && rawBarcode) {
+          product = await Product.findOne({ tenantId, barcode: rawBarcode, includeDeleted: true });
+        }
+        if (!product) {
+          product = await Product.findOne({
+            tenantId,
+            designNo: new RegExp(`^${escapeRegExp(designNo)}$`, 'i'),
+            brandId: brand._id,
+            includeDeleted: true
+          });
+        }
+
+        if (product) {
+          let updated = false;
+          if (product.isDeleted) {
+            product.isDeleted = false;
+            product.status = 'ACTIVE';
+            updated = true;
+          }
+          if (product.typeOfGst !== typeOfGstNormalized) { product.typeOfGst = typeOfGstNormalized; updated = true; }
+          if (product.gstStatus !== gstStatus) { product.gstStatus = gstStatus; updated = true; }
+          if (product.discountStatus !== discountStatusNormalized) { product.discountStatus = discountStatusNormalized; updated = true; }
+          if (mrp > 0 && product.defaultMRP !== mrp) { product.defaultMRP = mrp; updated = true; }
+          if (purchaseRate > 0 && product.purchaseRate !== purchaseRate) { product.purchaseRate = purchaseRate; updated = true; }
+          if (rawBarcode && !product.barcode) { product.barcode = rawBarcode; updated = true; }
+          if (updated) {
+            productsToSave.set(product._id.toString(), product);
+          }
+        } else {
+          const itemCode = String(item.itemCode || `ITEM-${designNo}-${Date.now()}`).trim();
+          const itemName = String(item.itemName || item.name || `${brandName} ${designNo}`).trim();
+
+          product = await Product.create({
+            tenantId,
+            designNo,
+            itemCode,
+            itemName,
+            subItem,
+            brandId: brand._id,
+            categoryId: category._id,
+            hsnId: hsn ? hsn._id : undefined,
+            firmId: firm._id,
+            firmName: firm.name,
+            barcode: rawBarcode || generateBarcode(tenantId, 'VST'),
+            uniqueCode: String(item.uniqueCode || '').trim() || generateUniqueCode(designNo, size, 1),
+            gender: genderNormalized,
+            topBottomSet: topBottomSetNormalized,
+            batch,
+            counter,
+            defaultMRP: mrp,
+            purchaseRate,
+            wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + taxRate / 100) : purchaseRate,
+            typeOfGst: typeOfGstNormalized,
+            gstStatus: gstStatus,
+            discountStatus: discountStatusNormalized,
+            createdBy: userId
+          });
+        }
+        productCache.set(productKey, product);
+      }
+
+      const barcode = rawBarcode || product.barcode || generateBarcode(tenantId, 'VST');
+      const uniqueCode = String(item.uniqueCode || "").trim() || product.uniqueCode || generateUniqueCode(designNo, size, 1);
+      const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
       calculatedTotal += lineTotal;
 
-      itemsToCreate.push({
+      const purchaseItemId = new mongoose.Types.ObjectId();
+      purchaseItemsToCreate.push({
+        _id: purchaseItemId,
+        tenantId,
+        purchaseBillId,
         productId: product._id,
-        product,
         qty,
         purchaseRate,
         mrp,
         discount,
         taxRate,
         size,
-        primaryColor: color,
+        color,
         rack: item.rack || "A1",
-        lineTotal,
         typeOfGst: typeOfGstNormalized,
-        gstStatus: gstStatus,
-        discountStatus: discountStatusNormalized
-      });
-    }
-
-    const grandTotal = Number(billData.grandTotal ?? billData.totalAmount ?? (calculatedTotal - (billData.discount || 0) + (billData.gst || 0)));
-
-    // 1. Create Purchase Bill
-    const purchaseBill = await PurchaseBill.create({
-      tenantId,
-      billNo,
-      billDate: billData.billDate || billData.date || new Date(),
-      vendorId,
-      firmId,
-      warehouseId,
-      discount: billData.discount || 0,
-      gst: billData.gst || billData.gstTotal || 0,
-      totalAmount: grandTotal,
-      status: 'APPROVED',
-      createdBy: userId
-    });
-
-    // 2. Create Purchase Items & Generate InventoryPieces per unit quantity
-    const createdInventoryPieces = [];
-
-    for (const item of itemsToCreate) {
-      const purchaseItem = await PurchaseItem.create({
-        tenantId,
-        purchaseBillId: purchaseBill._id,
-        productId: item.productId,
-        qty: item.qty,
-        purchaseRate: item.purchaseRate,
-        mrp: item.mrp,
-        discount: item.discount || 0,
-        taxRate: item.taxRate || 0,
-        size: item.size,
-        color: item.primaryColor,
-        rack: item.rack,
-        typeOfGst: item.typeOfGst,
-        gstStatus: item.gstStatus,
-        discountStatus: item.discountStatus,
-        lineTotal: item.lineTotal,
+        gstStatus,
+        discountStatus: discountStatusNormalized,
+        lineTotal,
         createdBy: userId
       });
 
-      // Generate 1 Document for each quantity unit
-      for (let i = 1; i <= item.qty; i++) {
-        const barcode = item.product?.barcode || item.barcode || '';
-        const uniqueCode = item.product?.uniqueCode || item.uniqueCode || '';
-        const ipn = item.ipn || '';
+      for (let i = 1; i <= qty; i++) {
+        const pieceBarcode = (i === 1 && barcode) ? barcode : generateBarcode(tenantId, 'VST');
+        const pieceUniqueCode = (i === 1 && uniqueCode) ? uniqueCode : generateUniqueCode(designNo, size, i);
+        const ipn = item.ipn || `${product.itemCode}-${size}`;
+        const pieceId = new mongoose.Types.ObjectId();
 
-        const piece = await InventoryPiece.create({
+        piecesToCreate.push({
+          _id: pieceId,
           tenantId,
-          productId: item.productId,
-          purchaseBillId: purchaseBill._id,
-          purchaseItemId: purchaseItem._id,
-          warehouseId,
-          firmId,
-          barcode,
-          uniqueCode,
+          productId: product._id,
+          purchaseBillId,
+          purchaseItemId,
+          warehouseId: warehouse._id,
+          firmId: firm._id,
+          barcode: pieceBarcode,
+          uniqueCode: pieceUniqueCode,
           ipn,
-          primaryColor: item.primaryColor,
-          secondaryColor: item.secondaryColor,
-          size: item.size,
-          purchaseRate: item.purchaseRate,
-          wspAfterGST: item.purchaseRate * (1 + (item.taxRate || 0) / 100),
-          mrp: item.mrp,
-          rack: item.rack,
-          typeOfGst: item.typeOfGst,
-          gstStatus: item.gstStatus,
-          discountStatus: item.discountStatus,
+          primaryColor: color,
+          secondaryColor: String(item.colorSecondary || '').trim(),
+          size,
+          batch,
+          counter,
+          purchaseRate,
+          wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + (taxRate / 100)) : purchaseRate,
+          mrp,
+          rack: item.rack || "A1",
+          typeOfGst: typeOfGstNormalized,
+          gstStatus,
+          discountStatus: discountStatusNormalized,
           status: INVENTORY_STATUS.AVAILABLE,
           currentLocation: 'WAREHOUSE',
           createdBy: userId
         });
 
-        // 3. Record Inventory Lifecycle event
-        await InventoryLifecycle.create({
+        lifecycleEventsToCreate.push({
           tenantId,
-          inventoryPieceId: piece._id,
-          barcode: piece.barcode,
+          inventoryPieceId: pieceId,
+          barcode: pieceBarcode,
           eventType: LIFECYCLE_EVENT.PURCHASE,
           toLocation: 'WAREHOUSE',
-          referenceId: purchaseBill._id,
+          referenceId: purchaseBillId,
           referenceModel: 'PurchaseBill',
           performedBy: userId,
-          notes: `Purchase Bill Received: ${purchaseBill.billNo}`
+          notes: `Purchase Bill Received: ${billNo}`
         });
-
-        createdInventoryPieces.push(piece);
       }
     }
+
+    if (productsToSave.size > 0) {
+      await Promise.all(Array.from(productsToSave.values()).map(p => p.save()));
+    }
+
+    const billDiscount = Number(billData.discount ?? billData.grandDisc ?? 0) || 0;
+    const grandTotal = calculatedTotal > 0 ? (calculatedTotal - billDiscount) : Number(billData.grandTotal ?? billData.totalAmount ?? 0);
+
+    // Create Purchase Bill and batch insert items in parallel
+    const [purchaseBill] = await Promise.all([
+      PurchaseBill.create({
+        _id: purchaseBillId,
+        tenantId,
+        billNo,
+        billDate: billData.billDate || billData.date || new Date(),
+        vendorId: vendor._id,
+        firmId: firm._id,
+        warehouseId: warehouse._id,
+        discount: billDiscount,
+        gst: Number(billData.gst ?? billData.gstTotal ?? 0),
+        totalAmount: grandTotal,
+        status: 'APPROVED',
+        remarks: billData.remarks || '',
+        createdBy: userId
+      }),
+      purchaseItemsToCreate.length > 0 ? PurchaseItem.insertMany(purchaseItemsToCreate, { ordered: false }) : Promise.resolve(),
+      piecesToCreate.length > 0 ? InventoryPiece.insertMany(piecesToCreate, { ordered: false }) : Promise.resolve(),
+      lifecycleEventsToCreate.length > 0 ? InventoryLifecycle.insertMany(lifecycleEventsToCreate, { ordered: false }) : Promise.resolve()
+    ]);
 
     const fetchedBill = await PurchaseBill.findById(purchaseBill._id).populate('vendorId firmId warehouseId');
     const enriched = await this.enrichPurchaseBill(fetchedBill, tenantId);
     return {
       ...enriched,
-      totalInventoryPiecesCreated: createdInventoryPieces.length,
-      sampleBarcodes: createdInventoryPieces.slice(0, 5).map(p => p.barcode)
+      totalInventoryPiecesCreated: piecesToCreate.length,
+      sampleBarcodes: piecesToCreate.slice(0, 5).map(p => p.barcode)
     };
   }
 
@@ -238,7 +430,7 @@ class PurchaseService {
     const billObj = typeof billDoc.toObject === 'function' ? billDoc.toObject() : { ...billDoc };
     const billId = billObj._id || billObj.id;
 
-    // Fetch associated PurchaseItems & InventoryPieces
+    // Fetch associated PurchaseItems & InventoryPieces in parallel
     const [items, pieces] = await Promise.all([
       PurchaseItem.find({ purchaseBillId: billId }).populate({
         path: 'productId',
@@ -247,23 +439,45 @@ class PurchaseService {
       InventoryPiece.find({ purchaseBillId: billId }).select('barcode uniqueCode status mrp purchaseRate size ipn primaryColor secondaryColor batch counter typeOfGst gstStatus discountStatus purchaseItemId productId')
     ]);
 
+    // Build O(1) lookup Maps
+    const pieceByPurchaseItemId = new Map();
+    const pieceByProductAndSize = new Map();
+    for (const p of pieces) {
+      if (p.purchaseItemId && !pieceByPurchaseItemId.has(String(p.purchaseItemId))) {
+        pieceByPurchaseItemId.set(String(p.purchaseItemId), p);
+      }
+      const pKey = `${p.productId}_${p.size}`;
+      if (!pieceByProductAndSize.has(pKey)) {
+        pieceByProductAndSize.set(pKey, p);
+      }
+    }
+
     const enrichedItems = items.map(item => {
       const prd = item.productId || {};
-      const piece = pieces.find(p => String(p.purchaseItemId) === String(item._id)) ||
-                    pieces.find(p => String(p.productId) === String(prd._id) && p.size === item.size) ||
+      const piece = pieceByPurchaseItemId.get(String(item._id)) ||
+                    pieceByProductAndSize.get(`${prd._id}_${item.size}`) ||
                     pieces[0] || {};
 
-      const qty = item.qty || 1;
-      const rate = item.purchaseRate ?? prd.purchaseRate ?? prd.purchasePrice ?? 0;
-      const taxRate = item.taxRate ?? prd.gstRate ?? 5;
-      const typeOfGst = item.typeOfGst || prd.typeOfGst || "E";
-      const lineTotal = item.lineTotal || (qty * rate);
+      const qty = Number(item.qty || 1);
+      const rate = Number(item.purchaseRate ?? prd.purchaseRate ?? prd.purchasePrice ?? 0);
+      const taxRate = Number(item.taxRate ?? prd.gstRate ?? 5);
+      const typeOfGst = String(item.typeOfGst || prd.typeOfGst || "E").toUpperCase();
+      const discount = Number(item.discount || 0);
+
+      let taxable = qty * rate;
+      let gstAmt = 0;
+      let lineTotal = Math.max(0, (qty * rate) - discount);
+      if (typeOfGst === "I") {
+        taxable = (qty * rate) / (1 + (taxRate / 100));
+        gstAmt = (qty * rate) - taxable;
+      } else {
+        gstAmt = (taxable - discount) * (taxRate / 100);
+      }
       const wspAfterGst = (typeOfGst === "E") ? rate * (1 + taxRate / 100) : rate;
 
       const brandName = prd.brandId?.name || prd.brand || "GENERIC BRAND";
       const categoryName = prd.categoryId?.name || prd.category || prd.itemName || "Garment Item";
       const hsnCode = prd.hsnId?.hsnCode || prd.hsnId?.code || prd.hsnCode || prd.hsn || "5208";
-      const discount = item.discount || 0;
 
       return {
         _id: item._id,
@@ -310,10 +524,16 @@ class PurchaseService {
         discount: discount,
         hsnCode: hsnCode,
         totalPrice: lineTotal,
-        calculatedTaxable: lineTotal,
+        calculatedTaxable: taxable,
+        calculatedGst: gstAmt,
+        calculatedTotal: lineTotal,
         amount: lineTotal
       };
     });
+
+    const itemsSum = enrichedItems.reduce((sum, it) => sum + (Number(it.amount || it.totalPrice || it.calculatedTotal || 0)), 0);
+    const billDiscount = Number(billObj.discount || 0);
+    const effectiveTotal = itemsSum > 0 ? (itemsSum - billDiscount) : Number(billObj.totalAmount || 0);
 
     billObj.id = billObj._id;
     billObj.items = enrichedItems;
@@ -323,8 +543,9 @@ class PurchaseService {
     billObj.vendorName = billObj.supplierName;
     billObj.poNo = billObj.billNo;
     billObj.invoiceNo = billObj.billNo;
-    billObj.grandTotal = billObj.totalAmount;
-    billObj.subTotal = billObj.totalAmount;
+    billObj.grandTotal = effectiveTotal;
+    billObj.subTotal = effectiveTotal;
+    billObj.totalAmount = effectiveTotal;
     billObj.date = billObj.billDate || billObj.createdAt;
     billObj.firm = billObj.firmId?.name || billObj.firmName || (enrichedItems[0]?.firm) || "RANGOLI ENTERPRISES";
     billObj.firmName = billObj.firm;
@@ -333,161 +554,234 @@ class PurchaseService {
   }
 
   static async updatePurchaseBill(id, billData, userId, tenantId) {
-    const purchaseBill = await PurchaseBill.findOne({ _id: id, tenantId, isDeleted: false });
-    if (!purchaseBill) throw new ApiError(404, 'Purchase Bill not found.');
+    let purchaseBill = null;
+    if (id && /^[0-9a-fA-F]{24}$/.test(String(id))) {
+      purchaseBill = await PurchaseBill.findOne({ _id: id, tenantId, includeDeleted: true });
+    }
+    const candidateBillNo = billData.billNo || billData.poNo || billData.invoiceNo || id;
+    if (!purchaseBill && candidateBillNo) {
+      const escaped = escapeRegExp(String(candidateBillNo).trim());
+      purchaseBill = await PurchaseBill.findOne({
+        tenantId,
+        billNo: new RegExp(`^${escaped}$`, 'i'),
+        includeDeleted: true
+      });
+    }
+
+    if (!purchaseBill) {
+      // Fallback: If not found, create new purchase bill seamlessly
+      return await this.createPurchaseBill(billData, userId, tenantId);
+    }
+
+    if (purchaseBill.isDeleted) {
+      purchaseBill.isDeleted = false;
+      purchaseBill.status = 'APPROVED';
+    }
 
     const rawItems = billData.items || billData.billItems || billData.products || billData.rows || [];
-    const billNo = billData.billNo || billData.poNo || billData.invoiceNo || purchaseBill.billNo;
+    const billNo = String(billData.billNo || billData.poNo || billData.invoiceNo || purchaseBill.billNo).trim();
 
-    let vendorId = billData.vendorId || billData.supplierId || purchaseBill.vendorId;
-    const vendorName = billData.vendorName || billData.supplierName;
-    if (vendorName) {
-      const Vendor = require('../models/masters/Vendor');
-      let vendor = await Vendor.findOne({ tenantId, name: new RegExp(`^${String(vendorName).trim()}$`, 'i') });
-      if (!vendor) {
-        vendor = await Vendor.create({ tenantId, name: String(vendorName).trim(), vendorCode: String(vendorName).trim().substring(0, 8).toUpperCase() });
-      }
-      vendorId = vendor._id;
-    }
-
-    let firmId = billData.firmId || purchaseBill.firmId;
-    const firmName = billData.firmName || billData.firm;
-    if (firmName) {
-      const Firm = require('../models/masters/Firm');
-      let firm = await Firm.findOne({ tenantId, name: new RegExp(`^${String(firmName).trim()}$`, 'i') });
-      if (!firm) {
-        firm = await Firm.create({ tenantId, name: String(firmName).trim() });
-      }
-      firmId = firm._id;
-    }
+    const [warehouse, firm, vendor] = await Promise.all([
+      this.resolveWarehouse(billData.warehouseId || purchaseBill.warehouseId, billData.warehouse, tenantId),
+      this.resolveFirm(billData.firmId || purchaseBill.firmId, billData.firmName || billData.firm, tenantId),
+      this.resolveVendor(billData.vendorId || billData.supplierId || purchaseBill.vendorId, billData.vendorName || billData.supplierName, billData.vendorGst, tenantId)
+    ]);
 
     purchaseBill.billNo = billNo;
-    purchaseBill.billDate = billData.billDate || billData.date || purchaseBill.billDate;
-    purchaseBill.vendorId = vendorId;
-    purchaseBill.firmId = firmId;
-    purchaseBill.discount = Number(billData.discount ?? billData.gstTotal ?? purchaseBill.discount ?? 0);
+    if (billData.billDate || billData.date) {
+      const rawDate = billData.billDate || billData.date;
+      const parsedDate = new Date(rawDate);
+      if (!isNaN(parsedDate.getTime())) {
+        purchaseBill.billDate = parsedDate;
+      }
+    }
+    purchaseBill.vendorId = vendor._id;
+    purchaseBill.firmId = firm._id;
+    purchaseBill.warehouseId = warehouse._id;
+    purchaseBill.discount = Number(billData.discount ?? billData.grandDisc ?? purchaseBill.discount ?? 0);
     purchaseBill.gst = Number(billData.gst ?? billData.gstTotal ?? purchaseBill.gst ?? 0);
-    purchaseBill.totalAmount = Number(billData.grandTotal ?? billData.totalAmount ?? purchaseBill.totalAmount ?? 0);
     if (billData.remarks) purchaseBill.remarks = billData.remarks;
-    if (billData.status) purchaseBill.status = billData.status;
+    if (billData.status) {
+      const s = String(billData.status).toUpperCase().trim();
+      purchaseBill.status = ['DRAFT', 'APPROVED', 'RECEIVED', 'CANCELLED', 'COMPLETED', 'PENDING', 'COMPILED'].includes(s) ? s : 'APPROVED';
+    }
 
-    await purchaseBill.save();
+    const brandCache = new Map();
+    const categoryCache = new Map();
+    const hsnCache = new Map();
+    const productCache = new Map();
+    const productsToSave = new Map();
+
+    let calculatedTotal = 0;
+    const purchaseItemsToCreate = [];
+    const piecesToCreate = [];
+    const lifecycleEventsToCreate = [];
 
     if (rawItems && rawItems.length > 0) {
-      const Brand = require('../models/masters/Brand');
-      const Category = require('../models/masters/Category');
-      const HSN = require('../models/masters/HSN');
-
-      await InventoryLifecycle.deleteMany({
-        $or: [{ referenceId: purchaseBill._id }, { referenceId: id }],
-        tenantId
-      });
-      await InventoryPiece.deleteMany({
-        purchaseBillId: purchaseBill._id,
-        tenantId
-      });
-      await PurchaseItem.deleteMany({
-        purchaseBillId: purchaseBill._id,
-        tenantId
-      });
+      // Parallel delete of old records
+      await Promise.all([
+        InventoryLifecycle.deleteMany({
+          $or: [{ referenceId: purchaseBill._id }, { referenceId: id }],
+          tenantId
+        }),
+        InventoryPiece.deleteMany({
+          purchaseBillId: purchaseBill._id,
+          tenantId
+        }),
+        PurchaseItem.deleteMany({
+          purchaseBillId: purchaseBill._id,
+          tenantId
+        })
+      ]);
 
       for (const item of rawItems) {
-        const typeOfGst = String(item.typeOfGst || 'E').toUpperCase().trim();
-        const typeOfGstNormalized = ['I', 'E'].includes(typeOfGst) ? typeOfGst : 'E';
+        const typeOfGstNormalized = normalizeTypeOfGst(item.typeOfGst);
         const gstStatus = String(item.gstStatus || '').trim();
-        const discountStatus = String(item.discountStatus || 'N').toUpperCase().trim();
-        const discountStatusNormalized = ['B', 'A', 'N'].includes(discountStatus) ? discountStatus : 'N';
+        const discountStatusNormalized = normalizeDiscountStatus(item.discountStatus);
+        const genderNormalized = normalizeGender(item.gender);
+        const topBottomSetNormalized = normalizeTopBottomSet(item.topBottomSet);
 
-        const brandName = item.brand || 'GENERIC BRAND';
-        const categoryName = item.category || item.itemName || item.subItem || 'FABRIC SUIT';
+        const brandName = String(item.brand || item.brandName || 'GENERIC BRAND').trim();
+        const categoryName = String(item.category || item.itemName || item.subItem || 'FABRIC SUIT').trim();
         const designNo = String(item.designNo || 'DSG-001').trim();
-        const itemCode = String(item.itemCode || `ITEM-${designNo}`).trim();
-        const itemName = String(item.itemName || item.name || `${brandName} ${designNo}`).trim();
         const subItem = String(item.subItem || item.subCategory || '').trim();
         const hsnCode = String(item.hsnCode || item.hsn || '').trim();
 
-        let brand = await Brand.findOne({ tenantId, name: new RegExp(`^${brandName}$`, 'i') });
+        let brand = brandCache.get(brandName.toUpperCase());
         if (!brand) {
-          brand = await Brand.create({ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() });
+          brand = await Brand.findOne({ tenantId, name: new RegExp(`^${escapeRegExp(brandName)}$`, 'i'), includeDeleted: true });
+          if (!brand) {
+            brand = await Brand.create({ tenantId, name: brandName, code: brandName.substring(0, 4).toUpperCase() });
+          } else if (brand.isDeleted) {
+            brand.isDeleted = false;
+            brand.status = 'ACTIVE';
+            await brand.save();
+          }
+          brandCache.set(brandName.toUpperCase(), brand);
         }
 
-        let category = await Category.findOne({ tenantId, name: new RegExp(`^${categoryName}$`, 'i') });
+        let category = categoryCache.get(categoryName.toUpperCase());
         if (!category) {
-          category = await Category.create({ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() });
+          category = await Category.findOne({ tenantId, name: new RegExp(`^${escapeRegExp(categoryName)}$`, 'i'), includeDeleted: true });
+          if (!category) {
+            category = await Category.create({ tenantId, name: categoryName, code: categoryName.substring(0, 4).toUpperCase() });
+          } else if (category.isDeleted) {
+            category.isDeleted = false;
+            category.status = 'ACTIVE';
+            await category.save();
+          }
+          categoryCache.set(categoryName.toUpperCase(), category);
         }
 
         let hsn = null;
         if (hsnCode) {
-          hsn = await HSN.findOne({ tenantId, hsnCode: new RegExp(`^${hsnCode}$`, 'i') });
+          hsn = hsnCache.get(hsnCode.toUpperCase());
           if (!hsn) {
-            hsn = await HSN.create({ tenantId, hsnCode, description: 'HSN code' });
+            hsn = await HSN.findOne({ tenantId, hsnCode: new RegExp(`^${escapeRegExp(hsnCode)}$`, 'i') });
+            if (!hsn) {
+              hsn = await HSN.create({ tenantId, hsnCode, description: 'HSN code' });
+            }
+            hsnCache.set(hsnCode.toUpperCase(), hsn);
           }
         }
 
-        let product = null;
-        if (item.productId && typeof item.productId === 'string' && item.productId.length === 24) {
-          product = await Product.findOne({ _id: item.productId, tenantId });
-        }
+        const qty = Number(item.quantity || item.qty || 1) || 1;
+        const purchaseRate = Number(item.purchaseRate || item.purchasePrice || item.rate || 0) || 0;
+        const mrp = Number(item.mrp || item.sellingPrice || purchaseRate || 0);
+        const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
+        const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
+        const size = String(item.size || "FS").trim() || "FS";
+        const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
+        const batch = String(item.batch || "").trim();
+        const counter = String(item.counter || "").trim();
+        const rawBarcode = String(item.barcode || "").trim();
+
+        const productKey = rawBarcode 
+          ? `BC_${rawBarcode.toUpperCase()}` 
+          : `${designNo}_${subItem}_${color}_${brand._id}_${category._id}`.toUpperCase();
+
+        const itemName = String(item.itemName || item.name || `${brandName} ${designNo}`).trim();
+
+        let product = productCache.get(productKey);
         if (!product) {
-          product = await Product.findOne({ tenantId, designNo, brandId: brand._id });
+          if (item.productId && /^[0-9a-fA-F]{24}$/.test(String(item.productId))) {
+            product = await Product.findOne({ _id: item.productId, tenantId, includeDeleted: true });
+          }
+          if (!product && rawBarcode) {
+            product = await Product.findOne({ tenantId, barcode: rawBarcode, includeDeleted: true });
+          }
+          if (!product) {
+            product = await Product.findOne({
+              tenantId,
+              designNo: new RegExp(`^${escapeRegExp(designNo)}$`, 'i'),
+              brandId: brand._id,
+              includeDeleted: true
+            });
+          }
+
+          if (product) {
+            let updated = false;
+            if (product.isDeleted) {
+              product.isDeleted = false;
+              product.status = 'ACTIVE';
+              updated = true;
+            }
+            if (product.itemName !== itemName) { product.itemName = itemName; updated = true; }
+            if (product.subItem !== subItem) { product.subItem = subItem; updated = true; }
+            if (product.brandId?.toString() !== brand._id.toString()) { product.brandId = brand._id; updated = true; }
+            if (product.categoryId?.toString() !== category._id.toString()) { product.categoryId = category._id; updated = true; }
+            if (hsn && product.hsnId?.toString() !== hsn._id.toString()) { product.hsnId = hsn._id; updated = true; }
+            if (batch && product.batch !== batch) { product.batch = batch; updated = true; }
+            if (counter && product.counter !== counter) { product.counter = counter; updated = true; }
+            if (mrp > 0 && product.defaultMRP !== mrp) { product.defaultMRP = mrp; updated = true; }
+            if (purchaseRate > 0 && product.purchaseRate !== purchaseRate) { product.purchaseRate = purchaseRate; updated = true; }
+            if (product.typeOfGst !== typeOfGstNormalized) { product.typeOfGst = typeOfGstNormalized; updated = true; }
+            if (product.gstStatus !== gstStatus) { product.gstStatus = gstStatus; updated = true; }
+            if (product.discountStatus !== discountStatusNormalized) { product.discountStatus = discountStatusNormalized; updated = true; }
+            if (rawBarcode && !product.barcode) { product.barcode = rawBarcode; updated = true; }
+            if (updated) {
+              productsToSave.set(product._id.toString(), product);
+            }
+          } else {
+            const itemCode = String(item.itemCode || `ITEM-${designNo}`).trim();
+
+            product = await Product.create({
+              tenantId,
+              designNo,
+              itemCode,
+              itemName,
+              subItem,
+              brandId: brand._id,
+              categoryId: category._id,
+              hsnId: hsn ? hsn._id : undefined,
+              firmId: firm._id,
+              firmName: firm.name,
+              barcode: rawBarcode || generateBarcode(tenantId, 'VST'),
+              uniqueCode: String(item.uniqueCode || '').trim() || generateUniqueCode(designNo, size, 1),
+              gender: genderNormalized,
+              topBottomSet: topBottomSetNormalized,
+              batch,
+              counter,
+              defaultMRP: mrp,
+              purchaseRate,
+              wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + taxRate / 100) : purchaseRate,
+              typeOfGst: typeOfGstNormalized,
+              gstStatus: gstStatus,
+              discountStatus: discountStatusNormalized,
+              createdBy: userId
+            });
+          }
+          productCache.set(productKey, product);
         }
 
-        const qty = Number(item.quantity || item.qty || 1);
-        const purchaseRate = Number(item.purchaseRate || item.purchasePrice || item.rate || 0);
-        const mrp = Number(item.mrp || item.sellingPrice || purchaseRate);
-        const discount = Number(item.discount || item.discountOnPurchase || 0);
-        const taxRate = Number(item.taxRate || item.gstOnPurchase || 0);
-        const size = item.size || "FS";
-        const color = item.color || item.colorPrimary || "Standard";
-        const batch = item.batch || "";
-        const counter = item.counter || "";
-        const barcode = item.barcode || (product?.barcode) || generateBarcode(tenantId, 'VST');
-        const uniqueCode = item.uniqueCode || (product?.uniqueCode) || generateUniqueCode(designNo, size, 1);
-        const lineTotal = item.calculatedTaxable ?? item.totalPrice ?? (qty * purchaseRate - discount);
+        const barcode = rawBarcode || product.barcode || generateBarcode(tenantId, 'VST');
+        const uniqueCode = String(item.uniqueCode || "").trim() || product.uniqueCode || generateUniqueCode(designNo, size, 1);
+        const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
+        calculatedTotal += lineTotal;
 
-        if (product) {
-          product.itemName = itemName;
-          product.subItem = subItem;
-          product.brandId = brand._id;
-          product.categoryId = category._id;
-          if (hsn) product.hsnId = hsn._id;
-          product.batch = batch || product.batch;
-          product.counter = counter || product.counter;
-          product.defaultMRP = mrp;
-          product.purchaseRate = purchaseRate;
-          product.typeOfGst = typeOfGstNormalized;
-          product.gstStatus = gstStatus;
-          product.discountStatus = discountStatusNormalized;
-          product.barcode = barcode;
-          await product.save();
-        } else {
-          product = await Product.create({
-            tenantId,
-            designNo,
-            itemCode,
-            itemName,
-            subItem,
-            brandId: brand._id,
-            categoryId: category._id,
-            hsnId: hsn ? hsn._id : undefined,
-            firmId,
-            firmName: firmName || 'RANGOLI ENTERPRISES',
-            barcode,
-            uniqueCode,
-            gender: item.gender || 'UNISEX',
-            topBottomSet: item.topBottomSet || 'TOP',
-            batch,
-            counter,
-            defaultMRP: mrp,
-            purchaseRate,
-            typeOfGst: typeOfGstNormalized,
-            gstStatus: gstStatus,
-            discountStatus: discountStatusNormalized,
-            createdBy: userId
-          });
-        }
-
-        const purchaseItem = await PurchaseItem.create({
+        const purchaseItemId = new mongoose.Types.ObjectId();
+        purchaseItemsToCreate.push({
+          _id: purchaseItemId,
           tenantId,
           purchaseBillId: purchaseBill._id,
           productId: product._id,
@@ -500,23 +794,29 @@ class PurchaseService {
           color,
           rack: item.rack || "A1",
           typeOfGst: typeOfGstNormalized,
-          gstStatus: gstStatus,
+          gstStatus,
           discountStatus: discountStatusNormalized,
           lineTotal,
           createdBy: userId
         });
 
         for (let i = 1; i <= qty; i++) {
-          const piece = await InventoryPiece.create({
+          const pieceBarcode = (i === 1 && barcode) ? barcode : generateBarcode(tenantId, 'VST');
+          const pieceUniqueCode = (i === 1 && uniqueCode) ? uniqueCode : generateUniqueCode(designNo, size, i);
+          const ipn = item.ipn || `${product.itemCode}-${size}`;
+          const pieceId = new mongoose.Types.ObjectId();
+
+          piecesToCreate.push({
+            _id: pieceId,
             tenantId,
             productId: product._id,
             purchaseBillId: purchaseBill._id,
-            purchaseItemId: purchaseItem._id,
-            warehouseId: purchaseBill.warehouseId,
-            firmId,
-            barcode: (i === 1 && barcode) ? barcode : generateBarcode(tenantId, 'VST'),
-            uniqueCode: (i === 1 && uniqueCode) ? uniqueCode : generateUniqueCode(designNo, size, i),
-            ipn: item.ipn || `${product.itemCode}-${size}`,
+            purchaseItemId,
+            warehouseId: warehouse._id,
+            firmId: firm._id,
+            barcode: pieceBarcode,
+            uniqueCode: pieceUniqueCode,
+            ipn,
             primaryColor: color,
             secondaryColor: item.colorSecondary || '',
             size,
@@ -527,17 +827,17 @@ class PurchaseService {
             mrp,
             rack: item.rack || "A1",
             typeOfGst: typeOfGstNormalized,
-            gstStatus: gstStatus,
+            gstStatus,
             discountStatus: discountStatusNormalized,
             status: INVENTORY_STATUS.AVAILABLE,
             currentLocation: 'WAREHOUSE',
             createdBy: userId
           });
 
-          await InventoryLifecycle.create({
+          lifecycleEventsToCreate.push({
             tenantId,
-            inventoryPieceId: piece._id,
-            barcode: piece.barcode,
+            inventoryPieceId: pieceId,
+            barcode: pieceBarcode,
             eventType: LIFECYCLE_EVENT.PURCHASE,
             toLocation: 'WAREHOUSE',
             referenceId: purchaseBill._id,
@@ -547,7 +847,21 @@ class PurchaseService {
           });
         }
       }
+
+      if (productsToSave.size > 0) {
+        await Promise.all(Array.from(productsToSave.values()).map(p => p.save()));
+      }
+
+      // Parallel batch insert of items, pieces, and lifecycles
+      await Promise.all([
+        purchaseItemsToCreate.length > 0 ? PurchaseItem.insertMany(purchaseItemsToCreate, { ordered: false }) : Promise.resolve(),
+        piecesToCreate.length > 0 ? InventoryPiece.insertMany(piecesToCreate, { ordered: false }) : Promise.resolve(),
+        lifecycleEventsToCreate.length > 0 ? InventoryLifecycle.insertMany(lifecycleEventsToCreate, { ordered: false }) : Promise.resolve()
+      ]);
     }
+
+    purchaseBill.totalAmount = calculatedTotal > 0 ? (calculatedTotal - purchaseBill.discount) : Number(billData.grandTotal ?? billData.totalAmount ?? purchaseBill.totalAmount ?? 0);
+    await purchaseBill.save();
 
     const fetchedBill = await PurchaseBill.findById(purchaseBill._id).populate('vendorId firmId warehouseId');
     return await this.enrichPurchaseBill(fetchedBill, tenantId);
@@ -563,10 +877,13 @@ class PurchaseService {
   }
 
   static async getPurchaseBills(query = {}, tenantId) {
+    const isObjectId = tenantId && /^[0-9a-fA-F]{24}$/.test(String(tenantId));
     const filter = {
-      $or: [{ tenantId }, { tenantId: { $exists: false } }, { tenantId: null }],
       isDeleted: false
     };
+    if (isObjectId) {
+      filter.$or = [{ tenantId }, { tenantId: { $exists: false } }, { tenantId: null }];
+    }
     if (query.vendorId) filter.vendorId = query.vendorId;
     if (query.status) filter.status = query.status;
     if (query.search) {
@@ -599,7 +916,10 @@ class PurchaseService {
   }
 
   static async getPurchaseBillById(id, tenantId) {
-    const bill = await PurchaseBill.findOne({ _id: id, tenantId, isDeleted: false })
+    const isObjectId = tenantId && /^[0-9a-fA-F]{24}$/.test(String(tenantId));
+    const query = { _id: id, isDeleted: false };
+    if (isObjectId) query.tenantId = tenantId;
+    const bill = await PurchaseBill.findOne(query)
       .populate('vendorId firmId warehouseId');
     if (!bill) throw new ApiError(404, 'Purchase Bill not found.');
 

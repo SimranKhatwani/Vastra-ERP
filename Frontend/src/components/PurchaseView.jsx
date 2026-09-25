@@ -1515,7 +1515,12 @@ export const PurchaseView = ({
               </div>
 
               <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
-                <span>Total Procurement: <strong className="text-slate-800 font-mono">₹{(filteredPOs || []).reduce((acc, p) => acc + (p.grandTotal || p.subTotal || 0), 0).toLocaleString('en-IN')}</strong></span>
+                <span>Total Procurement: <strong className="text-slate-800 font-mono">₹{(filteredPOs || []).reduce((acc, p) => {
+                  const pItemsTotal = Array.isArray(p.items) && p.items.length > 0
+                    ? p.items.reduce((s, i) => s + (Number(i.amount ?? i.totalPrice ?? (Number(i.quantity || i.qty || 1) * Number(i.purchaseRate || i.purchasePrice || i.rate || 0) - Number(i.discount || i.discountOnPurchase || 0))) || 0), 0)
+                    : 0;
+                  return acc + (pItemsTotal > 0 ? pItemsTotal : (p.grandTotal || p.subTotal || p.totalAmount || 0));
+                }, 0).toLocaleString('en-IN')}</strong></span>
                 <span>Records: <strong className="text-indigo-600">{(filteredPOs || []).length}</strong></span>
               </div>
             </div>
@@ -1567,7 +1572,10 @@ export const PurchaseView = ({
                         const totalQty = Array.isArray(po.items)
                           ? po.items.reduce((acc, i) => acc + (Number(i.quantity || i.qty) || 0), 0)
                           : (po.quantity || 1);
-                        const amount = po.grandTotal || po.subTotal || 0;
+                        const itemsTotal = Array.isArray(po.items) && po.items.length > 0
+                          ? po.items.reduce((acc, i) => acc + (Number(i.amount ?? i.totalPrice ?? (Number(i.quantity || i.qty || 1) * Number(i.purchaseRate || i.purchasePrice || i.rate || 0) - Number(i.discount || i.discountOnPurchase || 0))) || 0), 0)
+                          : 0;
+                        const amount = itemsTotal > 0 ? itemsTotal : (po.grandTotal || po.subTotal || po.totalAmount || 0);
 
                         return (
                           <tr key={po.id || po._id || idx} className="hover:bg-slate-50/60 transition-colors">
