@@ -13,6 +13,7 @@ const createProductSchema = Joi.object({
   description: Joi.string().allow('', null),
   hsnId: Joi.string().hex().length(24).allow(null, ''),
   gstId: Joi.string().hex().length(24).allow(null, ''),
+  gstOnSalePrice: Joi.number().min(0).allow(null),
   defaultMRP: Joi.number().min(0).required()
 });
 

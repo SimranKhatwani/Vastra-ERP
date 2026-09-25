@@ -352,6 +352,24 @@ class PTImportService {
           'gstRate'
         ) || 0);
 
+        const gstOnSalePrice = parseFloat(getVal(
+          row,
+          'gstOnSalePrice',
+          'GST on Sale (%)',
+          'GST on Sale',
+          'GST ON SALE',
+          'gstOnSale',
+          'GST on Sale Price (%)',
+          'GST on Sale Price',
+          'GST On Sale',
+          'Sale GST',
+          'saleGst',
+          'GST Sale',
+          'GST % (Sale)',
+          'GST Slab',
+          'gstSlab'
+        ) || 5) || 5;
+
         const typeOfGstRaw = String(getVal(
           row,
           'typeOfGst',
@@ -647,6 +665,7 @@ class PTImportService {
                 defaultMRP: mrp,
                 purchaseRate: purchaseRate || 0,
                 wspAfterGST: wspAfterGST || 0,
+                gstOnSalePrice: gstOnSalePrice,
                 imageUrl: itemImage || undefined,
                 typeOfGst: typeOfGstNormalized,
                 gstStatus: gstStatus,
@@ -726,6 +745,11 @@ class PTImportService {
                 product.markModified('wspAfterGST');
                 updated = true;
               }
+              if (gstOnSalePrice !== undefined && gstOnSalePrice !== null && !isNaN(gstOnSalePrice) && product.gstOnSalePrice !== gstOnSalePrice) {
+                product.gstOnSalePrice = gstOnSalePrice;
+                product.markModified('gstOnSalePrice');
+                updated = true;
+              }
               if (batch && product.batch !== batch) {
                 product.batch = batch;
                 product.description = `Batch: ${batch}`;
@@ -802,6 +826,7 @@ class PTImportService {
           mrp,
           discount,
           taxRate,
+          gstOnSalePrice,
           color: primaryColor,
           typeOfGst: typeOfGstNormalized,
           gstStatus: gstStatus,
@@ -834,6 +859,7 @@ class PTImportService {
             purchaseRate,
             wspAfterGST,
             mrp,
+            gstOnSalePrice,
             typeOfGst: typeOfGstNormalized,
             gstStatus: gstStatus,
             discountStatus: discountStatusNormalized,

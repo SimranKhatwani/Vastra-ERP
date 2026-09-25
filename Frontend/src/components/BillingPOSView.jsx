@@ -491,7 +491,8 @@ export const BillingPOSView = ({
               workerName: "",
               quantity: 1,
               discount: 0,
-              gstPercent: 0,
+              gstOnSalePrice: Number(p.gstOnSalePrice ?? p.gstPercent ?? 5),
+              gstPercent: Number(p.gstOnSalePrice ?? p.gstPercent ?? 5),
               totalPrice: sPrice,
               uniqueCode: generateUniqueItemCode(p.designNo || p.itemName || 'ITM', p.size || 'FS', 0)
             }
@@ -3468,7 +3469,8 @@ export const BillingPOSView = ({
           price: sPrice,
           sellingPrice: sPrice,
           discount: Number(prod.discount) || 0,
-          gstPercent: Number(prod.gstPercent) || 0,
+          gstOnSalePrice: Number(prod.gstOnSalePrice ?? prod.gstPercent ?? prod.gstRate ?? 5),
+          gstPercent: Number(prod.gstOnSalePrice ?? prod.gstPercent ?? prod.gstRate ?? 5),
           totalPrice: sPrice,
           salespersonId: spId,
           salespersonName: spName,
@@ -3769,19 +3771,22 @@ export const BillingPOSView = ({
           : 0
       ));
       const hasItemSlab = item.gstPercent !== undefined && item.gstPercent !== null && item.gstPercent !== '';
-      const slab = Number(hasItemSlab ? item.gstPercent : (isGstApplied ? gRate : 0)) || 0;
-      if (!isGstApplied || slab <= 0 || itemNet <= 0) return;
-      const tax = parseFloat((itemNet * slab / 100).toFixed(2));
+      const slab = Number(hasItemSlab ? item.gstPercent : (isGstApplied ? gRate : (item.gstOnSalePrice || 5))) || 0;
+      if (slab <= 0 || itemNet <= 0) return;
+
+      // Inclusive GST Calculation: MRP / retail selling price is inclusive of GST, so grand total does NOT increase
+      const taxable = parseFloat((itemNet / (1 + (slab / 100))).toFixed(2));
+      const tax = parseFloat((itemNet - taxable).toFixed(2));
       const current = gstSummaryMap.get(slab) || { gstPercent: slab, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 };
-      current.taxableAmount += itemNet;
+      current.taxableAmount += taxable;
       current.totalTax += tax;
-      if (gstTaxType === 'INTER') {
+      if ((typeof gstTaxType !== 'undefined' && gstTaxType === 'INTER') || (iRate > 0 && cRate === 0 && sRate === 0)) {
         current.igst += tax;
       } else {
         const configuredSplit = cRate + sRate;
         const cgstShare = configuredSplit > 0 ? cRate / configuredSplit : 0.5;
         const taxCents = Math.round(tax * 100);
-        const cgstCents = Math.ceil(taxCents * cgstShare);
+        const cgstCents = Math.round(taxCents * cgstShare);
         current.cgst += cgstCents / 100;
         current.sgst += (taxCents - cgstCents) / 100;
       }
@@ -3801,37 +3806,37 @@ export const BillingPOSView = ({
     computedIgstAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.igst, 0);
     computedTotalTax = computedTaxBreakdown.reduce((sum, row) => sum + row.totalTax, 0);
 
-    // Grand total = net amount + GST tax (if applied)
-    const grandTotal = parseFloat((netBillAmount + computedTotalTax).toFixed(2));
+    // Grand total: Retail Selling Price is inclusive of GST, so billing amount does NOT increase
+    const grandTotal = parseFloat(netBillAmount.toFixed(2));
 
     const taxDetails = {
-      isApplied: isGstApplied,
-      gstRate: gRate,
+      isApplied: isGstApplied || computedTotalTax > 0,
+      gstRate: gRate || (computedTaxBreakdown[0]?.gstPercent || 5),
       cgstRate: cRate,
       sgstRate: sRate,
       igstRate: iRate,
-      taxableAmount: isGstApplied ? computedTaxableAmount : 0,
-      cgstAmount: isGstApplied ? computedCgstAmount : 0,
-      sgstAmount: isGstApplied ? computedSgstAmount : 0,
-      igstAmount: isGstApplied ? computedIgstAmount : 0,
-      totalTax: isGstApplied ? computedTotalTax : 0
-      , taxBreakdown: isGstApplied ? computedTaxBreakdown : []
+      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : netBillAmount,
+      cgstAmount: computedCgstAmount,
+      sgstAmount: computedSgstAmount,
+      igstAmount: computedIgstAmount,
+      totalTax: computedTotalTax,
+      taxBreakdown: computedTaxBreakdown
     };
 
     return {
       subTotal,
       discountTotal: totalOverallDiscount,
       couponDiscount,
-      gstTotal: isGstApplied ? computedTotalTax : 0,
+      gstTotal: computedTotalTax,
       grandTotal,
       netBillAmount,
       appliedDiscountsList,
-      taxableAmount: isGstApplied ? computedTaxableAmount : 0,
-      cgstAmount: isGstApplied ? computedCgstAmount : 0,
-      sgstAmount: isGstApplied ? computedSgstAmount : 0,
-      igstAmount: isGstApplied ? computedIgstAmount : 0,
-      totalTax: isGstApplied ? computedTotalTax : 0,
-      taxBreakdown: isGstApplied ? computedTaxBreakdown : [],
+      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : netBillAmount,
+      cgstAmount: computedCgstAmount,
+      sgstAmount: computedSgstAmount,
+      igstAmount: computedIgstAmount,
+      totalTax: computedTotalTax,
+      taxBreakdown: computedTaxBreakdown,
       taxDetails
     };
   }, [cart, couponCode, manualDiscountIds, rejectedAutoDiscountIds, discountRules, products, activeCustomer, billAdjustment, isGstApplied, gstRateInput, cgstRateInput, sgstRateInput, igstRateInput]);
@@ -4136,8 +4141,8 @@ export const BillingPOSView = ({
         : paymentMethod;
 
       // Build taxBreakdown for the invoice
-      const taxBreakdown = isGstApplied && totalTax > 0
-        ? (taxDetails.taxBreakdown || [])
+      const taxBreakdown = (taxDetails.taxBreakdown && taxDetails.taxBreakdown.length > 0)
+        ? taxDetails.taxBreakdown
         : [];
 
       const newInvoice = {
@@ -4642,7 +4647,7 @@ export const BillingPOSView = ({
       igstAmount: isGstApplied ? igstAmount : 0,
       totalTax: isGstApplied ? totalTax : 0,
       taxDetails,
-      taxBreakdown: isGstApplied && totalTax > 0 ? (taxDetails.taxBreakdown || []) : [],
+      taxBreakdown: (taxDetails.taxBreakdown && taxDetails.taxBreakdown.length > 0) ? taxDetails.taxBreakdown : [],
       paymentMethod: displayPaymentMode,
       paymentMode: displayPaymentMode,
       transactions: compiledTransactions,

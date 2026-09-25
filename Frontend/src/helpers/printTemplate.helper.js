@@ -310,7 +310,34 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
       }
     }
 
-    // Priority 4: Derive from grandTotal vs (subTotal - discountTotal)
+    // Priority 4: Derive from invoice items / cart items if taxBreakdown was not provided
+    if (taxMap.size === 0) {
+      const itemsList = invoice.items || invoice.cart || [];
+      itemsList.forEach(item => {
+        const slab = Number(item.gstPercent ?? item.gstRate ?? item.gstOnSalePrice ?? (invoice.gstRate || 5)) || 0;
+        const itemPrice = Number(item.totalPrice || item.sellingPrice || item.price || item.mrp || 0);
+        const qty = Number(item.quantity || 1);
+        const itemDisc = Number(item.customDiscount || item.discount || 0);
+        const itemNet = Math.max(0, itemPrice > 0 && item.totalPrice ? itemPrice : (itemPrice * qty - Math.floor(itemPrice * qty * (itemDisc / 100))));
+        if (slab > 0 && itemNet > 0) {
+          const taxable = parseFloat((itemNet / (1 + slab / 100)).toFixed(2));
+          const tax = parseFloat((itemNet - taxable).toFixed(2));
+          const halfTax = parseFloat((tax / 2).toFixed(2));
+          const cur = taxMap.get(slab) || { gstPercent: slab, taxableAmount: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 };
+          cur.taxableAmount += taxable;
+          cur.totalTax += tax;
+          if (invoice.igstRate > 0 || tDet.igstRate > 0) {
+            cur.igst += tax;
+          } else {
+            cur.cgst += halfTax;
+            cur.sgst += parseFloat((tax - halfTax).toFixed(2));
+          }
+          taxMap.set(slab, cur);
+        }
+      });
+    }
+
+    // Priority 5: Derive from grandTotal vs (subTotal - discountTotal)
     // This covers any bill (old or new) where grandTotal > net amount, meaning GST was added
     if (taxMap.size === 0) {
       const grandTotal = Number(invoice.grandTotal || 0);
@@ -332,16 +359,14 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
       }
     }
 
-    const validTaxEntries = Array.from(taxMap.values()).filter(t => t.totalTax > 0);
+    const validTaxEntries = Array.from(taxMap.values()).filter(t => t.totalTax > 0 || t.taxableAmount > 0);
 
-    // IMPORTANT: Determine isApplied AFTER building taxMap so that Priority 4 derived
-    // tax entries are included in the check. validTaxEntries.length > 0 covers the case
-    // where GST flags are missing but tax was derived from amounts.
+    // IMPORTANT: Determine isApplied AFTER building taxMap
     const isApplied = invoice.isGstApplied === true ||
       (tDet.isApplied === true) ||
       (invoice.gstTotal > 0) ||
       (invoice.totalTax > 0) ||
-      validTaxEntries.length > 0;   // ← derived tax also counts as "applied"
+      validTaxEntries.length > 0;
 
     if (isApplied && validTaxEntries.length > 0) {
       validTaxEntries.forEach(tb => {

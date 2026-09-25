@@ -123,6 +123,11 @@ const productSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  gstOnSalePrice: {
+    type: Number,
+    default: 5,
+    min: 0
+  },
 
   typeOfGst: {
     type: String,

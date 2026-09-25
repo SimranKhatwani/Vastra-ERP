@@ -37,6 +37,11 @@ const purchaseItemSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  gstOnSalePrice: {
+    type: Number,
+    default: 5,
+    min: 0
+  },
   size: {
     type: String,
     required: true

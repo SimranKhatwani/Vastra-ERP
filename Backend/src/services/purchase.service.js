@@ -237,6 +237,7 @@ class PurchaseService {
       const mrp = Number(item.mrp || item.sellingPrice || item.purchasePrice || purchaseRate || 0);
       const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
       const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
+      const gstOnSalePrice = Number(item.gstOnSalePrice ?? item.gstOnSale ?? item.saleGst ?? 5) || 5;
       const size = String(item.size || "FS").trim() || "FS";
       const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
       const batch = String(item.batch || "").trim();
@@ -276,6 +277,7 @@ class PurchaseService {
           if (product.discountStatus !== discountStatusNormalized) { product.discountStatus = discountStatusNormalized; updated = true; }
           if (mrp > 0 && product.defaultMRP !== mrp) { product.defaultMRP = mrp; updated = true; }
           if (purchaseRate > 0 && product.purchaseRate !== purchaseRate) { product.purchaseRate = purchaseRate; updated = true; }
+          if (gstOnSalePrice > 0 && product.gstOnSalePrice !== gstOnSalePrice) { product.gstOnSalePrice = gstOnSalePrice; updated = true; }
           if (rawBarcode && !product.barcode) { product.barcode = rawBarcode; updated = true; }
           if (updated) {
             productsToSave.set(product._id.toString(), product);
@@ -304,6 +306,7 @@ class PurchaseService {
             defaultMRP: mrp,
             purchaseRate,
             wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + taxRate / 100) : purchaseRate,
+            gstOnSalePrice,
             typeOfGst: typeOfGstNormalized,
             gstStatus: gstStatus,
             discountStatus: discountStatusNormalized,
@@ -329,6 +332,7 @@ class PurchaseService {
         mrp,
         discount,
         taxRate,
+        gstOnSalePrice,
         size,
         color,
         rack: item.rack || "A1",
@@ -364,6 +368,7 @@ class PurchaseService {
           purchaseRate,
           wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + (taxRate / 100)) : purchaseRate,
           mrp,
+          gstOnSalePrice,
           rack: item.rack || "A1",
           typeOfGst: typeOfGstNormalized,
           gstStatus,
@@ -690,6 +695,7 @@ class PurchaseService {
         const mrp = Number(item.mrp || item.sellingPrice || purchaseRate || 0);
         const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
         const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
+        const gstOnSalePrice = Number(item.gstOnSalePrice ?? item.gstOnSale ?? item.saleGst ?? 5) || 5;
         const size = String(item.size || "FS").trim() || "FS";
         const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
         const batch = String(item.batch || "").trim();
@@ -735,6 +741,7 @@ class PurchaseService {
             if (counter && product.counter !== counter) { product.counter = counter; updated = true; }
             if (mrp > 0 && product.defaultMRP !== mrp) { product.defaultMRP = mrp; updated = true; }
             if (purchaseRate > 0 && product.purchaseRate !== purchaseRate) { product.purchaseRate = purchaseRate; updated = true; }
+            if (gstOnSalePrice > 0 && product.gstOnSalePrice !== gstOnSalePrice) { product.gstOnSalePrice = gstOnSalePrice; updated = true; }
             if (product.typeOfGst !== typeOfGstNormalized) { product.typeOfGst = typeOfGstNormalized; updated = true; }
             if (product.gstStatus !== gstStatus) { product.gstStatus = gstStatus; updated = true; }
             if (product.discountStatus !== discountStatusNormalized) { product.discountStatus = discountStatusNormalized; updated = true; }
@@ -765,6 +772,7 @@ class PurchaseService {
               defaultMRP: mrp,
               purchaseRate,
               wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + taxRate / 100) : purchaseRate,
+              gstOnSalePrice,
               typeOfGst: typeOfGstNormalized,
               gstStatus: gstStatus,
               discountStatus: discountStatusNormalized,
@@ -790,6 +798,7 @@ class PurchaseService {
           mrp,
           discount,
           taxRate,
+          gstOnSalePrice,
           size,
           color,
           rack: item.rack || "A1",
@@ -823,8 +832,9 @@ class PurchaseService {
             batch,
             counter,
             purchaseRate,
-            wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + taxRate / 100) : purchaseRate,
+            wspAfterGST: typeOfGstNormalized === 'E' ? purchaseRate * (1 + (taxRate / 100)) : purchaseRate,
             mrp,
+            gstOnSalePrice,
             rack: item.rack || "A1",
             typeOfGst: typeOfGstNormalized,
             gstStatus,

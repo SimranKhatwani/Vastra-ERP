@@ -113,7 +113,7 @@ export const ProductManagementView = ({
   const [formPurchasePrice, setFormPurchasePrice] = useState(500);
   const [formMRP, setFormMRP] = useState(1200);
   const [formSellingPrice, setFormSellingPrice] = useState(1000);
-  const [formGSTPercent, setFormGSTPercent] = useState(12);
+  const [formGSTPercent, setFormGSTPercent] = useState(5);
   const [formStock, setFormStock] = useState(50);
   const [formMinStock, setFormMinStock] = useState(10);
 
@@ -483,6 +483,7 @@ export const ProductManagementView = ({
     setFormPurchasePrice(prod.purchaseRate || prod.purchasePrice || 0);
     setFormWSP(prod.wspAfterGST || prod.afterGST || prod.purchaseRate || prod.purchasePrice || 0);
     setFormMRP(prod.mrp || prod.defaultMRP || 0);
+    setFormGSTPercent(prod.gstOnSalePrice ?? prod.gstPercent ?? 5);
     setFormStock(prod.stock || 0);
     setFormMinStock(prod.minStockAlert || 5);
     setFormCreatedDate(prod.formattedDate || '—');
@@ -511,7 +512,8 @@ export const ProductManagementView = ({
         afterGST: formWSP,
         sellingPrice: formMRP,
         mrp: formMRP,
-        gstPercent: 0,
+        gstOnSalePrice: Number(formGSTPercent) || 5,
+        gstPercent: Number(formGSTPercent) || 5,
         stock: formStock,
         minStockAlert: formMinStock,
         status:
@@ -548,7 +550,8 @@ export const ProductManagementView = ({
           afterGST: formWSP,
           sellingPrice: formMRP,
           mrp: formMRP,
-          gstPercent: 0,
+          gstOnSalePrice: Number(formGSTPercent) || 5,
+          gstPercent: Number(formGSTPercent) || 5,
           stock: formStock,
           minStockAlert: formMinStock,
           status:
@@ -902,7 +905,7 @@ export const ProductManagementView = ({
                               </p>
                             </div>
                             <span className="text-[10px] text-slate-400 font-medium">
-                              {p.category} | {p.brand} {p.description ? `• ${p.description}` : ''}
+                              {p.category} | {p.brand} {p.description ? `• ${p.description}` : ''} • GST on Sale: <strong className="text-slate-600 font-bold">{p.gstOnSalePrice ?? p.gstPercent ?? 5}%</strong>
                             </span>
                           </div>
                         </td>
@@ -1550,6 +1553,24 @@ export const ProductManagementView = ({
 
                 <div>
                   <label className="block text-slate-500 mb-1 font-semibold">
+                    GST on Sale (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={formGSTPercent}
+                    onChange={(e) =>
+                      setFormGSTPercent(Number(e.target.value))
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono font-bold text-indigo-700"
+                    placeholder="5"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">
                     Initial Stock Level
                   </label>
                   <input
@@ -1587,7 +1608,12 @@ export const ProductManagementView = ({
                     onClick={() => {
                        const p = products.find(prod => prod.id === editingProductId);
                        if (p) {
-                         localStorage.setItem("pending_pos_cart_item", JSON.stringify(p));
+                         const cartItem = {
+                           ...p,
+                           gstOnSalePrice: p.gstOnSalePrice ?? formGSTPercent ?? 5,
+                           gstPercent: p.gstOnSalePrice ?? formGSTPercent ?? 5
+                         };
+                         localStorage.setItem("pending_pos_cart_item", JSON.stringify(cartItem));
                          setShowProductModal(false);
                          onNavigate("billing");
                        }

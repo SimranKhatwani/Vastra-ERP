@@ -84,6 +84,8 @@ export const PublicProductInfoModal = () => {
             purchasePrice: item.purchaseRate || item.purchasePrice || 0,
             wspAfterGST: item.wspAfterGST || item.purchaseRate || 0,
             mrp: item.mrp || item.defaultMRP || 0,
+            gstOnSalePrice: item.gstOnSalePrice ?? item.gstPercent ?? 5,
+            gstPercent: item.gstOnSalePrice ?? item.gstPercent ?? 5,
             stock: item.stock || 1,
             minStockAlert: 5
           });
@@ -564,6 +566,18 @@ export const PublicProductInfoModal = () => {
                   type="text"
                   value={p.mrp || p.defaultMRP || 0}
                   className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono font-bold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">
+                  GST on Sale (%)
+                </label>
+                <input
+                  readOnly
+                  type="text"
+                  value={`${p.gstOnSalePrice ?? p.gstPercent ?? 5}%`}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl font-mono font-bold text-indigo-700"
                 />
               </div>
 
