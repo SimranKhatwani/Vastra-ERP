@@ -983,6 +983,7 @@ export default function App() {
       const barcodesList = (inv.items || []).map((item, idx) => ({
         barcode: item.barcode || item.itemCode || `BC-${Date.now()}-${idx}`,
         productId: item.productId || item.id || item._id,
+        inventoryPieceId: item.inventoryPieceId || item.piece?._id || item.piece?.id || undefined,
         itemCode: item.itemCode,
         uniqueCode: item.uniqueCode,
         sellingPrice: Number(item.price || item.sellingPrice || 0),
@@ -990,6 +991,9 @@ export default function App() {
         gstPercent: Number(item.gstPercent ?? 0),
         taxAmount: Number(item.taxAmount || 0),
         cartItemId: item.cartItemId,
+        isReturn: Boolean(item.isReturn || item.actionType === 'return' || item.isReturned),
+        actionType: item.actionType || (item.isReturn ? 'return' : 'sale'),
+        soldFromInvoiceNo: item.soldFromInvoiceNo || null,
         hasAlteration: Boolean(item.hasAlteration || item.alterationRecord)
       }));
 

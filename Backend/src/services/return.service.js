@@ -68,6 +68,15 @@ class ReturnService {
         }
       }
 
+      if (saleItem) {
+        if (saleItem.isReturned) {
+          return { valid: false, reason: 'This item has already been returned.', isAlreadyReturned: true, saleBill, saleItem, piece };
+        }
+        if (saleItem.isExchanged) {
+          return { valid: false, reason: 'This item has already been exchanged.', isAlreadyExchanged: true, saleBill, saleItem, piece };
+        }
+      }
+
       return {
         valid: true,
         piece: piece || null,
@@ -78,6 +87,9 @@ class ReturnService {
     }
 
     if (piece) {
+      if (piece.status === INVENTORY_STATUS.RETURNED || piece.returned) {
+        return { valid: false, reason: 'This item has already been returned.', isAlreadyReturned: true, piece };
+      }
       if (piece.altered) {
         return { valid: false, reason: 'Altered items are non-returnable as per store policy.' };
       }

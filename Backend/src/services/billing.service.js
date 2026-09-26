@@ -91,8 +91,17 @@ class BillingService {
 
       let piece = null;
 
+      // 1.0 If specific inventoryPieceId is provided, resolve directly
+      if (item.inventoryPieceId) {
+        piece = await InventoryPiece.findOne({
+          _id: item.inventoryPieceId,
+          tenantId,
+          isDeleted: false
+        });
+      }
+
       // 1.1 Try finding an AVAILABLE InventoryPiece matching exact barcode or uniqueCode
-      if (itemBarcode) {
+      if (!piece && itemBarcode) {
         piece = await InventoryPiece.findOne({
           tenantId,
           barcode: itemBarcode,
@@ -445,6 +454,42 @@ class BillingService {
                 }
               }
             );
+          }
+
+          // Mark original invoice item as returned if soldFromInvoiceNo is present
+          if (val.soldFromInvoiceNo) {
+            try {
+              const originalBill = await SaleBill.findOne({ tenantId, billNo: val.soldFromInvoiceNo });
+              if (originalBill) {
+                await SaleItem.updateMany(
+                  {
+                    tenantId,
+                    saleBillId: originalBill._id,
+                    $or: [
+                      { inventoryPieceId: val.piece._id },
+                      { uniqueCode: val.cartUniqueCode || val.piece.uniqueCode },
+                      { barcode: val.piece.barcode }
+                    ]
+                  },
+                  {
+                    $set: {
+                      isReturned: true,
+                      returnedAt: new Date(),
+                      returnReason: `Returned/Exchanged via Bill ${saleBill.billNo}`
+                    }
+                  }
+                );
+                await SaleBill.updateOne(
+                  { _id: originalBill._id },
+                  {
+                    $set: { hasReturn: true },
+                    $inc: { returnedAmount: val.finalPrice }
+                  }
+                );
+              }
+            } catch (e) {
+              console.warn("Error updating original saleBill on return:", e.message);
+            }
           }
 
           await InventoryLifecycle.create({

@@ -1147,7 +1147,7 @@ export const BillingSalesView = ({
               ) : (
                 returnInvoices.map(inv => {
                   return (inv.items || []).filter(i => i.isReturned || i.isExchanged).map((item, idx) => {
-                    const isReturn = item.isReturned;
+                    const isReturn = item.isReturned && !item.isExchanged && item.actionType !== 'exchange';
                     return (
                       <tr key={`${inv._id}-${idx}`} className="hover:bg-slate-50 transition-colors">
                         <td className="p-3 text-slate-500 font-mono text-xs">{new Date(item.returnedAt || inv.updatedAt).toLocaleDateString('en-IN')}</td>

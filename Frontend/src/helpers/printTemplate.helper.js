@@ -409,9 +409,12 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
 
   const items = invoice.items || [];
 
-  
   const itemsHTML = items.map((item, index) => {
-    const isRet = Boolean(item.isReturn);
+    const isExch = Boolean(item.isExchanged || item.actionType === 'exchange');
+    const isRet = Boolean((item.isReturn || item.isReturned || item.actionType === 'return') && !isExch);
+    const isRepl = Boolean(item.isReplacement || item.replacesItemName);
+    const isNegativeLine = isExch || isRet;
+
     const altRec = item.alterationRecord || (item.hasAlteration ? item : null);
     const hasAlt = Boolean(item.hasAlteration || item.alterationRecord || item.serviceType || item.trialRequired !== undefined || item.trialDate);
     const itTrialRequired = altRec?.trialRequired !== undefined ? altRec.trialRequired : (item.trialRequired !== undefined ? item.trialRequired : Boolean(altRec?.trialDate || item.trialDate));
@@ -422,9 +425,10 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
       : (item.serviceType || (hasAlt ? 'Alteration' : ''));
 
     const lineAmount = (Number(item.totalPrice || (item.sellingPrice ? item.sellingPrice * (item.quantity || 1) : item.price)) || 0);
+    const rowBackground = isExch ? 'background: #eef2ff;' : isRet ? 'background: #fff1f2;' : '';
 
     return `
-      <tr class="item-row" style="${isRet ? 'background: #fff1f2;' : ''}">
+      <tr class="item-row" style="${rowBackground}">
         <td class="col-sn">${index + 1}</td>
         <td class="col-code">
           <div>B- ${item.barcode || item.barcodeNo || item.inventoryPieceId?.barcode || item.pieceBarcode || 'N/A'}</div>
@@ -432,9 +436,13 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           <div>D- ${item.designNo || item.sku || item.itemCode || item.inventoryPieceId?.productId?.designNo || item.productId?.designNo || item.designNumber || item.product?.designNo || 'N/A'}</div>
         </td>
         <td class="col-product">
-          ${isRet ? '<span style="background:#e11d48; color:#fff; font-size:6.5px; font-weight:800; padding:1px 2px; border-radius:2px; margin-right:2px;">[RETURN]</span>' : ''}
+          ${isExch ? '<span style="background:#4f46e5; color:#fff; font-size:6.5px; font-weight:800; padding:1px 2px; border-radius:2px; margin-right:2px;">[EXCHANGED]</span>' : isRet ? '<span style="background:#e11d48; color:#fff; font-size:6.5px; font-weight:800; padding:1px 2px; border-radius:2px; margin-right:2px;">[RETURN]</span>' : isRepl ? '<span style="background:#059669; color:#fff; font-size:6.5px; font-weight:800; padding:1px 2px; border-radius:2px; margin-right:2px;">[REPLACEMENT]</span>' : ''}
           ${item.name || item.itemName}
-          ${item.soldFromInvoiceNo ? `<div style="font-size: 6.5px; color: #b91c1c; font-weight: bold;">(From Bill #${item.soldFromInvoiceNo})</div>` : ''}
+          ${item.soldFromInvoiceNo ? `<div style="font-size: 6.5px; color: ${isExch ? '#4338ca' : '#b91c1c'}; font-weight: bold;">(From Bill #${item.soldFromInvoiceNo})</div>` : ''}
+          ${item.exchangedFor ? `<div style="font-size: 6.5px; color: #4338ca; font-weight: bold;">↳ Replaced with: ${item.exchangedFor}</div>` : ''}
+          ${item.replacesItemName ? `<div style="font-size: 6.5px; color: #047857; font-weight: bold;">↳ Exchanged for: ${item.replacesItemName}${item.replacesUniqueCode ? ` (${item.replacesUniqueCode})` : ''}</div>` : ''}
+          ${item.returnReason ? `<div style="font-size: 6px; color: #b91c1c;">Reason: ${item.returnReason}</div>` : ''}
+          ${item.exchangeReason ? `<div style="font-size: 6px; color: #6366f1;">Reason: ${item.exchangeReason}</div>` : ''}
           ${hasAlt ? `
             <div style="font-size: 6.5px; color: #1e1b4b; font-weight: bold; margin-top: 1px; border-top: 0.5px dotted #999; padding-top: 1px;">
               ${itServices ? `[${itServices}] ` : '[ALT] '}Trial Req: ${itTrialRequired ? 'YES' : 'NO'}${itTrialRequired && itTrialDate ? ` (Trial: ${itTrialDate})` : ''}${itDeliveryDate ? ` | Del: ${itDeliveryDate}` : ''}
@@ -443,7 +451,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
         </td>
         <td class="col-shade">(NIL)</td>
         <td class="col-qty">${(Number(item.quantity)||1).toFixed(2)}</td>
-        <td class="col-mrp">${isRet ? '-' : ''}${(Number(item.mrp) || Number(item.price) || 0).toFixed(0)}</td>
+        <td class="col-mrp">${isNegativeLine ? '-' : ''}${(Number(item.mrp) || Number(item.price) || 0).toFixed(0)}</td>
         <td class="col-cd">${(() => {
           if (item.discountType === 'percent') {
             const val = Number(item.discountValue !== undefined ? item.discountValue : (item.discountPercent || 0));
@@ -454,7 +462,7 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           if (Number(item.discountPercent) > 0) return `${Number(item.discountPercent).toFixed(0)}%`;
           return '0';
         })()}</td>
-        <td class="col-amount" style="${isRet ? 'color: #b91c1c; font-weight: bold;' : ''}">${isRet ? '-' : ''}${lineAmount.toFixed(0)}</td>
+        <td class="col-amount" style="${isExch ? 'color: #4338ca; font-weight: bold;' : isRet ? 'color: #b91c1c; font-weight: bold;' : ''}">${isNegativeLine ? '-' : ''}${lineAmount.toFixed(0)}</td>
       </tr>
     `;
   }).join('');
@@ -842,8 +850,24 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
           </tbody>
           <tfoot>
             <tr class="totals-row">
-              <td colspan="4" class="text-left" style="padding-left:4px;">ITEMS : ${(invoice.items || []).length} (SALE: ${(invoice.items || []).filter(i => !i.isReturn).length}, RET: ${(invoice.items || []).filter(i => i.isReturn).length})</td>
-              <td colspan="4" class="text-left" style="padding-left:14px;">NET QTY : ${(invoice.items || []).reduce((acc, item) => acc + (item.isReturn ? -(Number(item.quantity) || 0) : (Number(item.quantity) || 0)), 0)}</td>
+              <td colspan="4" class="text-left" style="padding-left:4px;">
+                ITEMS : ${items.length} (${(() => {
+                  const exchCount = items.filter(i => i.isExchanged || i.actionType === 'exchange').length;
+                  const retCount = items.filter(i => (i.isReturn || i.isReturned || i.actionType === 'return') && !(i.isExchanged || i.actionType === 'exchange')).length;
+                  const saleCount = items.filter(i => !i.isReturn && !i.isReturned && i.actionType !== 'return' && !i.isExchanged && i.actionType !== 'exchange').length;
+                  const parts = [];
+                  if (saleCount > 0) parts.push(`SALE: ${saleCount}`);
+                  if (retCount > 0) parts.push(`RET: ${retCount}`);
+                  if (exchCount > 0) parts.push(`EXCH: ${exchCount}`);
+                  return parts.length > 0 ? parts.join(', ') : `SALE: ${items.length}`;
+                })()})
+              </td>
+              <td colspan="4" class="text-left" style="padding-left:14px;">
+                NET QTY : ${items.reduce((acc, item) => {
+                  const isDeducted = item.isReturn || item.isReturned || item.actionType === 'return' || item.isExchanged || item.actionType === 'exchange';
+                  return acc + (isDeducted ? -(Number(item.quantity) || 1) : (Number(item.quantity) || 1));
+                }, 0)}
+              </td>
             </tr>
           </tfoot>
         </table>
@@ -854,7 +878,24 @@ export const generateReceiptHTMLContent = (invoice, autoPrint = false) => {
             <div class="section-black-header" style="text-align: left;">BILL SUMMARY</div>
             <div class="summary-row"><div>Gross Amount</div><div>:</div><div style="width: 45px; text-align: right;">₹${(Number(invoice.subTotal) || 0).toFixed(2)}</div></div>
             <div class="summary-row"><div>Total Discount</div><div>:</div><div style="width: 45px; text-align: right;">₹${(Number(invoice.discountTotal) || 0).toFixed(2)}</div></div>
-            ${Number(invoice.returnTotal || 0) > 0 ? `<div class="summary-row" style="color:#b91c1c; font-weight:bold;"><div>Return Amount</div><div>:</div><div style="width: 45px; text-align: right;">-₹${Number(invoice.returnTotal).toFixed(2)}</div></div>` : ''}
+            ${(() => {
+              const exchDeduction = items
+                .filter(i => i.isExchanged || i.actionType === 'exchange')
+                .reduce((sum, i) => sum + (Number(i.totalPrice || (i.sellingPrice ? i.sellingPrice * (i.quantity || 1) : i.price)) || 0), 0);
+              const retDeduction = items
+                .filter(i => (i.isReturn || i.isReturned || i.actionType === 'return') && !(i.isExchanged || i.actionType === 'exchange'))
+                .reduce((sum, i) => sum + (Number(i.totalPrice || (i.sellingPrice ? i.sellingPrice * (i.quantity || 1) : i.price)) || 0), 0);
+              let html = '';
+              if (exchDeduction > 0) {
+                html += `<div class="summary-row" style="color:#4338ca; font-weight:bold;"><div>Exchange Value</div><div>:</div><div style="width: 45px; text-align: right;">-₹${exchDeduction.toFixed(2)}</div></div>`;
+              }
+              if (retDeduction > 0) {
+                html += `<div class="summary-row" style="color:#b91c1c; font-weight:bold;"><div>Return Amount</div><div>:</div><div style="width: 45px; text-align: right;">-₹${retDeduction.toFixed(2)}</div></div>`;
+              } else if (exchDeduction === 0 && Number(invoice.returnTotal || 0) > 0) {
+                html += `<div class="summary-row" style="color:#b91c1c; font-weight:bold;"><div>Return Amount</div><div>:</div><div style="width: 45px; text-align: right;">-₹${Number(invoice.returnTotal).toFixed(2)}</div></div>`;
+              }
+              return html;
+            })()}
             ${specialDiscountAmt > 0 ? `<div class="summary-row"><div>Bill Adjustment (Discount)</div><div>:</div><div style="width: 45px; text-align: right;">-₹${specialDiscountAmt.toFixed(2)}</div></div>` : ''}
             ${serviceChargeAmt > 0 ? `<div class="summary-row"><div>Service Charge</div><div>:</div><div style="width: 45px; text-align: right;">+₹${serviceChargeAmt.toFixed(2)}</div></div>` : ''}
             <div class="summary-row"><div>Round Off</div><div>:</div><div style="width: 45px; text-align: right;">₹0.00</div></div>

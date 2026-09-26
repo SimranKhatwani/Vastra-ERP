@@ -3103,12 +3103,12 @@ export const BillingPOSView = ({
           e.preventDefault();
           if (loadedOriginalInvoice) {
             setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-            setReturnActionType("return");
-            setReturnedItemIds([]);
-            setShowReturnExchangeModal(true);
           } else {
-            setActivePOSMode("returns");
+            setSelectedInvoiceForReturn(null);
           }
+          setReturnActionType("return");
+          setReturnedItemIds([]);
+          setShowReturnExchangeModal(true);
           return;
         }
         // Discount -> D
@@ -3122,13 +3122,13 @@ export const BillingPOSView = ({
           e.preventDefault();
           if (loadedOriginalInvoice) {
             setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-            setReturnActionType("exchange");
-            setExchangeOldItemIdx(0);
-            setExchangeSelectedNewProduct(null);
-            setShowReturnExchangeModal(true);
           } else {
-            setActivePOSMode("returns");
+            setSelectedInvoiceForReturn(null);
           }
+          setReturnActionType("exchange");
+          setExchangeOldItemIdx(0);
+          setExchangeSelectedNewProduct(null);
+          setShowReturnExchangeModal(true);
           return;
         }
         // Clear Bill -> C
@@ -4761,6 +4761,7 @@ export const BillingPOSView = ({
           const originalItem = newInvoice.items[i] || savedItem;
           return {
             ...savedItem,
+            ...originalItem,
             mrp: originalItem.mrp ?? savedItem.mrp,
             price: originalItem.price ?? savedItem.price,
             sellingPrice: originalItem.sellingPrice ?? savedItem.sellingPrice,
@@ -4773,7 +4774,17 @@ export const BillingPOSView = ({
             totalPrice: originalItem.totalPrice ?? savedItem.totalPrice,
             gstPercent: originalItem.gstPercent ?? savedItem.gstPercent ?? 0,
             hasAlteration: originalItem.hasAlteration || savedItem.hasAlteration || Boolean(originalItem.alterationRecord),
-            alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord
+            alterationRecord: originalItem.alterationRecord || savedItem.alterationRecord,
+            isReturn: originalItem.isReturn ?? savedItem.isReturn,
+            isReturned: originalItem.isReturned ?? savedItem.isReturned,
+            isExchanged: originalItem.isExchanged ?? savedItem.isExchanged,
+            actionType: originalItem.actionType ?? savedItem.actionType,
+            exchangedFor: originalItem.exchangedFor ?? savedItem.exchangedFor,
+            exchangeReason: originalItem.exchangeReason ?? savedItem.exchangeReason,
+            soldFromInvoiceNo: originalItem.soldFromInvoiceNo ?? savedItem.soldFromInvoiceNo,
+            isReplacement: originalItem.isReplacement ?? savedItem.isReplacement,
+            replacesItemName: originalItem.replacesItemName ?? savedItem.replacesItemName,
+            replacesUniqueCode: originalItem.replacesUniqueCode ?? savedItem.replacesUniqueCode
           };
         })
       };
@@ -5101,6 +5112,94 @@ export const BillingPOSView = ({
     setSelectedInvoiceForReturn(null);
     setReturnedItemIds([]);
     setActivePOSMode("billing");
+  };
+
+  const handleKeepOldProductInCart = (customSelectedInvoice = null, customItemIds = null) => {
+    const inv = customSelectedInvoice || selectedInvoiceForReturn || loadedOriginalInvoice;
+    if (!inv) {
+      setShowReturnExchangeModal(false);
+      return;
+    }
+
+    const itemIds = customItemIds || returnedItemIds || [];
+    const itemsToKeep = (inv.items || []).filter((item, idx) =>
+      itemIds.length === 0 || itemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)
+    );
+
+    if (itemsToKeep.length > 0) {
+      const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+      const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
+
+      const cartItems = itemsToKeep.map((item, idx) => {
+        const uniqueCodeVal = item.uniqueCode || item.barcode || item.barcodeNo || '';
+        const itemPrice = Number(item.sellingPrice || item.price || item.totalPrice || item.mrp || 0);
+        const mrpVal = Number(item.mrp || itemPrice);
+
+        return {
+          cartItemId: `cart-item-kept-${Date.now()}-${idx}-${Math.random().toString(36).substring(7)}`,
+          productId: item.productId || item._id || item.id,
+          inventoryPieceId: item.inventoryPieceId || item.piece?._id || item.piece?.id || item.id || undefined,
+          name: item.name || item.itemName || 'Garment Item',
+          itemName: item.name || item.itemName || 'Garment Item',
+          barcode: item.barcode || item.barcodeNo || uniqueCodeVal,
+          barcodeNo: item.barcode || item.barcodeNo || uniqueCodeVal,
+          uniqueCode: uniqueCodeVal,
+          subItem: item.subItem || '',
+          designNo: item.designNo || item.sku || '',
+          itemCode: item.itemCode || '',
+          ipn: item.ipn || '',
+          sku: item.designNo || item.itemCode || '',
+          firmName: item.firmName || item.company || inv.firmName || selectedFirm?.name || '',
+          company: item.firmName || item.company || inv.firmName || selectedFirm?.name || '',
+          counter: item.counter || '',
+          size: item.size || 'FS',
+          color: item.color || item.primaryColor || 'Standard',
+          primaryColor: item.color || item.primaryColor || 'Standard',
+          secondaryColor: item.secondaryColor || '',
+          mrp: mrpVal,
+          price: itemPrice,
+          sellingPrice: itemPrice,
+          discountType: 'amount',
+          discountValue: 0,
+          discount: 0,
+          customDiscount: 0,
+          discountAmount: 0,
+          discountPercent: 0,
+          gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+          totalPrice: itemPrice,
+          salespersonId: sp.id || sp._id || "sp-default",
+          salespersonName: sp.name || "Store Salesperson",
+          salesman1: sp.name || "Store Salesperson",
+          salesman2: '',
+          workerId: wk.id || wk._id || "w-default",
+          workerName: wk.name || "In-House Tailor",
+          quantity: 1,
+          isReturn: false,
+          isReturned: false,
+          isExchanged: false,
+          actionType: 'sale',
+          soldFromInvoiceNo: inv.invoiceNo || inv.billNo,
+          hasAlteration: Boolean(item.hasAlteration || item.alterationRecord),
+          alterationRecord: item.alterationRecord || null
+        };
+      });
+
+      setCart(prev => {
+        const newCodes = cartItems.map(c => String(c.uniqueCode || c.barcode || '').toLowerCase()).filter(Boolean);
+        const filtered = prev.filter(c => !newCodes.includes(String(c.uniqueCode || c.barcode || '').toLowerCase()));
+        return [...filtered, ...cartItems];
+      });
+
+      if (onAddNotification) {
+        onAddNotification(
+          "Product in Bill",
+          `Kept ${cartItems.map(i => i.name).join(', ')} in the bill. You can select Alteration (Alt+A) or other services.`,
+          "info"
+        );
+      }
+    }
+
+    setShowReturnExchangeModal(false);
   };
 
   const handleOpenDraftPreview = () => {
@@ -5496,13 +5595,28 @@ export const BillingPOSView = ({
       }
     }
 
+    // 1.5. Check if scanned barcode/code matches a previously sold piece / unique code first
+    const qLower = q.toLowerCase();
+    const allInvoices = invoiceList || invoices || [];
+    const isSoldInLocalInvoices = allInvoices.some(inv => {
+      const invItems = inv.items || inv.billItems || inv.products || [];
+      return invItems.some(itm => {
+        const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || itm.itemCode || '').toLowerCase();
+        return uCode === qLower;
+      });
+    });
+
+    if (isSoldInLocalInvoices) {
+      const handled = await executeUniqueCodeSearch(q, clearInputFn);
+      if (handled) return;
+    }
+
     // 2. Normal Product Lookup flow via Backend Search
     try {
       const res = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
       if (res.data.success) {
         const items = res.data.data;
         if (items.length > 0) {
-          const qLower = q.toLowerCase();
           const match = items.find(i =>
             String(i.barcode || '').toLowerCase() === qLower ||
             String(i.uniqueCode || '').toLowerCase() === qLower ||
@@ -5526,7 +5640,6 @@ export const BillingPOSView = ({
     }
 
     // 2.5 Local In-memory Product Lookup Fallback
-    const qLower = q.toLowerCase();
     const localProductMatches = (products || []).filter(p => {
       const pBarcode = String(p.barcode || p.pieces?.[0]?.barcode || '').toLowerCase();
       const pCode = String(p.itemCode || p.sku || '').toLowerCase();
@@ -5790,7 +5903,7 @@ export const BillingPOSView = ({
       } catch (e) { }
     }
 
-    // 6. If found as sold item -> Load Original Bill context into POS, show top Return/Exchange banner, and populate customer details
+    // 6. If found as sold item -> Load Original Bill context, auto-fill customer, and open Return/Exchange modal
     if (foundSoldItem || foundSoldInvoice) {
       let fullInvoice = foundSoldInvoice;
       const invNo = foundSoldInvoice?.invoiceNo || foundSoldInvoice?.billNo || foundSoldItem?.soldFromInvoiceNo || foundSoldItem?.invoiceNo;
@@ -5861,12 +5974,46 @@ export const BillingPOSView = ({
           totalPrice: Number(item.finalPrice || item.totalPrice || sPrice),
           quantity: Number(item.quantity || 1),
           isReturn: true,
-          isReturned: true,
+          isReturned: Boolean(item.isReturned),
+          isExchanged: Boolean(item.isExchanged),
           soldFromInvoiceNo: invNo || fullInvoice?.invoiceNo || fullInvoice?.billNo,
           hasAlteration: Boolean(item.hasAlteration),
           alterationRecord: item.alterationRecord || null
         };
       });
+
+      // Validation 1: Check if this specific scanned piece was already returned
+      const matchedSoldEntry = formattedItems.find(itm =>
+        String(itm.uniqueCode || '').toLowerCase() === qLower ||
+        String(itm.barcode || '').toLowerCase() === qLower ||
+        String(itm.barcodeNo || '').toLowerCase() === qLower
+      );
+      if (matchedSoldEntry?.isReturned || foundSoldItem?.isReturned) {
+        if (onAddNotification) {
+          onAddNotification(
+            "Item Already Returned",
+            `Product with Unique Code "${q}" was already returned in Bill #${invNo || fullInvoice?.invoiceNo || 'Past Bill'}. Cannot return again.`,
+            "danger"
+          );
+        }
+        setUniqueCodeInput("");
+        if (typeof clearInputFn === 'function') clearInputFn("");
+        return;
+      }
+
+      // Validation 2: Check if this specific scanned piece was already exchanged
+      if (matchedSoldEntry?.isExchanged || foundSoldItem?.isExchanged) {
+        if (onAddNotification) {
+          onAddNotification(
+            "Item Already Exchanged",
+            `Product with Unique Code "${q}" was already exchanged in Bill #${invNo || fullInvoice?.invoiceNo || 'Past Bill'}. Cannot exchange again.`,
+            "danger"
+          );
+        }
+        setUniqueCodeInput("");
+        if (typeof clearInputFn === 'function') clearInputFn("");
+        return;
+      }
 
       // Enrich with PSSM if exists
       try {
@@ -5882,26 +6029,23 @@ export const BillingPOSView = ({
       const custId = (typeof invCust === 'object' && invCust.customerId) ? invCust.customerId : (fullInvoice.customerId || (custPhone ? `CUST-${custPhone.slice(-4)}` : ''));
       const custGstin = (typeof invCust === 'object' ? invCust.gstin || invCust.gstNo : '') || '';
 
+      const unrolledItems = unrollInvoiceItems(formattedItems);
       const unifiedLoadedBill = {
         ...fullInvoice,
         invoiceNo: fullInvoice.invoiceNo || fullInvoice.billNo || invNo,
         billNo: fullInvoice.billNo || fullInvoice.invoiceNo || invNo,
         customerName: custName,
         customerPhone: custPhone,
-        items: formattedItems,
+        items: unrolledItems,
         grandTotal: fullInvoice.grandTotal || formattedItems.reduce((s, i) => s + (i.totalPrice || 0), 0)
       };
 
-      // 1. Set loaded original invoice -> activates top banner with Return, Exchange, Alteration, PSS Slip
+      // 1. Set loaded original invoice context
       setLoadedOriginalInvoice(unifiedLoadedBill);
       setSelectedInvoiceForReturn(unifiedLoadedBill);
 
-      if (onAddNotification) {
-        onAddNotification("Original Bill Loaded", `Original Bill ${unifiedLoadedBill.invoiceNo} loaded. Select Alteration (Alt+A), Returns (R), or Exchange (E) above.`, "info");
-      }
-
-      // 2. Auto-populate customer info if active bill doesn't have customer set yet
-      if (custName || custPhone) {
+      // 2. Auto-populate customer info if available
+      if (custName || custPhone || custId) {
         setCustomerForm(prev => ({
           ...prev,
           name: prev.name && prev.name !== 'Walk-in Customer' ? prev.name : (custName || prev.name),
@@ -5918,15 +6062,95 @@ export const BillingPOSView = ({
         }
       }
 
-      // 3. Clear unique code input
+      // 3. Pre-select scanned item unitId for Return/Exchange & add to bill as active cart item
+      const targetUnit = unrolledItems.find(itm =>
+        String(itm.uniqueCode || '').toLowerCase() === qLower ||
+        String(itm.barcode || '').toLowerCase() === qLower ||
+        String(itm.barcodeNo || '').toLowerCase() === qLower
+      ) || unrolledItems[0];
+
+      if (targetUnit) {
+        const targetUnitId = targetUnit.unitId || `${targetUnit.productId || targetUnit.id}-0`;
+        setReturnedItemIds([targetUnitId]);
+
+        // Place the scanned product in active cart so it is never lost if user closes the modal
+        const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+        const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
+        const sPrice = Number(targetUnit.sellingPrice || targetUnit.price || targetUnit.totalPrice || targetUnit.mrp || 0);
+        const mrpVal = Number(targetUnit.mrp || sPrice);
+        const uniqueCodeVal = targetUnit.uniqueCode || targetUnit.barcode || targetUnit.barcodeNo || q;
+
+        const scannedOldItem = {
+          cartItemId: `cart-item-old-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          productId: targetUnit.productId || targetUnit._id || targetUnit.id,
+          inventoryPieceId: targetUnit.inventoryPieceId || targetUnit.piece?._id || targetUnit.piece?.id || targetUnit.id || undefined,
+          name: targetUnit.name || targetUnit.itemName || 'Garment Item',
+          itemName: targetUnit.name || targetUnit.itemName || 'Garment Item',
+          barcode: targetUnit.barcode || targetUnit.barcodeNo || uniqueCodeVal,
+          barcodeNo: targetUnit.barcode || targetUnit.barcodeNo || uniqueCodeVal,
+          uniqueCode: uniqueCodeVal,
+          subItem: targetUnit.subItem || '',
+          designNo: targetUnit.designNo || targetUnit.sku || '',
+          itemCode: targetUnit.itemCode || '',
+          ipn: targetUnit.ipn || '',
+          sku: targetUnit.designNo || targetUnit.itemCode || '',
+          firmName: targetUnit.firmName || targetUnit.company || unifiedLoadedBill.firmName || selectedFirm?.name || '',
+          company: targetUnit.firmName || targetUnit.company || unifiedLoadedBill.firmName || selectedFirm?.name || '',
+          counter: targetUnit.counter || '',
+          size: targetUnit.size || 'FS',
+          color: targetUnit.color || targetUnit.primaryColor || 'Standard',
+          primaryColor: targetUnit.color || targetUnit.primaryColor || 'Standard',
+          secondaryColor: targetUnit.secondaryColor || '',
+          mrp: mrpVal,
+          price: sPrice,
+          sellingPrice: sPrice,
+          discountType: 'amount',
+          discountValue: 0,
+          discount: 0,
+          customDiscount: 0,
+          discountAmount: 0,
+          discountPercent: 0,
+          gstPercent: targetUnit.gstPercent !== undefined ? Number(targetUnit.gstPercent) : 5,
+          totalPrice: sPrice,
+          salespersonId: sp.id || sp._id || "sp-default",
+          salespersonName: sp.name || "Store Salesperson",
+          salesman1: sp.name || "Store Salesperson",
+          salesman2: '',
+          workerId: wk.id || wk._id || "w-default",
+          workerName: wk.name || "In-House Tailor",
+          quantity: 1,
+          isReturn: false,
+          isReturned: false,
+          isExchanged: false,
+          actionType: 'sale',
+          soldFromInvoiceNo: unifiedLoadedBill.invoiceNo || unifiedLoadedBill.billNo,
+          hasAlteration: Boolean(targetUnit.hasAlteration || targetUnit.alterationRecord),
+          alterationRecord: targetUnit.alterationRecord || null
+        };
+
+        setCart(prev => {
+          const codeLower = String(uniqueCodeVal).toLowerCase();
+          const already = prev.some(c => String(c.uniqueCode || c.barcode || '').toLowerCase() === codeLower);
+          if (already) return prev;
+          return [...prev, scannedOldItem];
+        });
+      } else {
+        setReturnedItemIds([]);
+      }
+
+      // 4. Set action type and open Return/Exchange modal immediately inside active bill
+      setReturnActionType("return");
+      setShowReturnExchangeModal(true);
+
+      // 5. Clear unique code input
       setUniqueCodeInput("");
       if (typeof clearInputFn === 'function') clearInputFn("");
 
       if (onAddNotification) {
         onAddNotification(
           "Original Bill Loaded",
-          `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}" (Use Returns & Exchange options on top)`,
-          "success"
+          `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}". Product added to bill — select Return/Exchange or close to keep for alterations/services.`,
+          "info"
         );
       }
       return;
@@ -6017,6 +6241,7 @@ export const BillingPOSView = ({
       const hsnVal = matchedProduct.hsn || matchedProduct.hsnCode || '';
 
       if (isPieceSold) {
+        // Handle previously sold piece in matchedProduct -> Do NOT add as fresh sale! Open Return/Exchange modal
         const soldItemObj = {
           productId: matchedProduct._id || matchedProduct.id || matchedPiece?._id,
           name: itemNameVal,
@@ -6078,6 +6303,7 @@ export const BillingPOSView = ({
           return {
             cartItemId: `cart-item-sold-${Date.now()}-${idx}`,
             productId: (typeof prod === 'object' ? (prod._id || prod.id) : null) || item.productId || `sold-${idx}`,
+            inventoryPieceId: (piece && (piece._id || piece.id)) || item.inventoryPieceId || undefined,
             name: iName,
             itemName: iName,
             barcode: iBarcode,
@@ -6101,43 +6327,52 @@ export const BillingPOSView = ({
             gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
             totalPrice: Number(item.finalPrice || item.totalPrice || iPrice),
             quantity: Number(item.quantity || 1),
+            isReturn: true,
+            isReturned: Boolean(item.isReturned),
+            isExchanged: Boolean(item.isExchanged),
+            soldFromInvoiceNo: invNo || saleInv.invoiceNo || saleInv.billNo,
             hasAlteration: Boolean(item.hasAlteration),
             alterationRecord: item.alterationRecord || null
           };
         });
 
+        // Validation for matchedProduct
+        const matchedItemEntry = formattedItems.find(itm =>
+          String(itm.uniqueCode || '').toLowerCase() === qLower ||
+          String(itm.barcode || '').toLowerCase() === qLower
+        );
+        if (matchedItemEntry?.isReturned || matchedPiece?.status === 'RETURNED' || matchedPiece?.returned) {
+          if (onAddNotification) {
+            onAddNotification("Item Already Returned", `Product with Unique Code "${q}" was already returned. Cannot return again.`, "danger");
+          }
+          setUniqueCodeInput("");
+          if (typeof clearInputFn === 'function') clearInputFn("");
+          return;
+        }
+        if (matchedItemEntry?.isExchanged || matchedPiece?.status === 'EXCHANGED') {
+          if (onAddNotification) {
+            onAddNotification("Item Already Exchanged", `Product with Unique Code "${q}" was already exchanged. Cannot exchange again.`, "danger");
+          }
+          setUniqueCodeInput("");
+          if (typeof clearInputFn === 'function') clearInputFn("");
+          return;
+        }
+
+        const unrolledItems = unrollInvoiceItems(formattedItems);
         const unifiedLoadedBill = {
           ...saleInv,
           invoiceNo: saleInv.invoiceNo || saleInv.billNo || invNo || 'PAST-BILL',
           billNo: saleInv.billNo || saleInv.invoiceNo || invNo || 'PAST-BILL',
           customerName: custName,
           customerPhone: custPhone,
-          items: formattedItems,
+          items: unrolledItems,
           grandTotal: saleInv.grandTotal || formattedItems.reduce((s, i) => s + (i.totalPrice || 0), 0)
         };
 
         setLoadedOriginalInvoice(unifiedLoadedBill);
         setSelectedInvoiceForReturn(unifiedLoadedBill);
 
-        // Add the looked-up product into the billing cart table alongside ongoing items
-        const targetSoldItem = formattedItems.find(item =>
-          String(item.uniqueCode || '').toLowerCase() === qLower ||
-          String(item.barcode || '').toLowerCase() === qLower ||
-          String(item.barcodeNo || '').toLowerCase() === qLower
-        ) || formattedItems[0];
-
-        if (targetSoldItem) {
-          setCart(prev => {
-            const alreadyExists = (prev || []).some(c =>
-              (c.uniqueCode && String(c.uniqueCode).toLowerCase() === qLower) ||
-              (c.cartItemId && c.cartItemId === targetSoldItem.cartItemId)
-            );
-            if (alreadyExists) return prev;
-            return [...(prev || []), targetSoldItem];
-          });
-        }
-
-        if (custName || custPhone) {
+        if (custName || custPhone || custId) {
           setCustomerForm(prev => ({
             ...prev,
             name: prev.name && prev.name !== 'Walk-in Customer' ? prev.name : (custName || prev.name),
@@ -6153,25 +6388,102 @@ export const BillingPOSView = ({
           }
         }
 
+        const targetUnit = unrolledItems.find(itm =>
+          String(itm.uniqueCode || '').toLowerCase() === qLower ||
+          String(itm.barcode || '').toLowerCase() === qLower
+        ) || unrolledItems[0];
+
+        if (targetUnit) {
+          const targetUnitId = targetUnit.unitId || `${targetUnit.productId || targetUnit.id}-0`;
+          setReturnedItemIds([targetUnitId]);
+
+          // Place the scanned product in active cart so it is never lost if user closes the modal
+          const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+          const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
+          const sPrice = Number(targetUnit.sellingPrice || targetUnit.price || targetUnit.totalPrice || targetUnit.mrp || 0);
+          const mrpVal = Number(targetUnit.mrp || sPrice);
+          const uniqueCodeVal = targetUnit.uniqueCode || targetUnit.barcode || targetUnit.barcodeNo || q;
+
+          const scannedOldItem = {
+            cartItemId: `cart-item-old-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            productId: targetUnit.productId || targetUnit._id || targetUnit.id,
+            inventoryPieceId: targetUnit.inventoryPieceId || targetUnit.piece?._id || targetUnit.piece?.id || targetUnit.id || undefined,
+            name: targetUnit.name || targetUnit.itemName || 'Garment Item',
+            itemName: targetUnit.name || targetUnit.itemName || 'Garment Item',
+            barcode: targetUnit.barcode || targetUnit.barcodeNo || uniqueCodeVal,
+            barcodeNo: targetUnit.barcode || targetUnit.barcodeNo || uniqueCodeVal,
+            uniqueCode: uniqueCodeVal,
+            subItem: targetUnit.subItem || '',
+            designNo: targetUnit.designNo || targetUnit.sku || '',
+            itemCode: targetUnit.itemCode || '',
+            ipn: targetUnit.ipn || '',
+            sku: targetUnit.designNo || targetUnit.itemCode || '',
+            firmName: targetUnit.firmName || targetUnit.company || unifiedLoadedBill.firmName || selectedFirm?.name || '',
+            company: targetUnit.firmName || targetUnit.company || unifiedLoadedBill.firmName || selectedFirm?.name || '',
+            counter: targetUnit.counter || '',
+            size: targetUnit.size || 'FS',
+            color: targetUnit.color || targetUnit.primaryColor || 'Standard',
+            primaryColor: targetUnit.color || targetUnit.primaryColor || 'Standard',
+            secondaryColor: targetUnit.secondaryColor || '',
+            mrp: mrpVal,
+            price: sPrice,
+            sellingPrice: sPrice,
+            discountType: 'amount',
+            discountValue: 0,
+            discount: 0,
+            customDiscount: 0,
+            discountAmount: 0,
+            discountPercent: 0,
+            gstPercent: targetUnit.gstPercent !== undefined ? Number(targetUnit.gstPercent) : 5,
+            totalPrice: sPrice,
+            salespersonId: sp.id || sp._id || "sp-default",
+            salespersonName: sp.name || "Store Salesperson",
+            salesman1: sp.name || "Store Salesperson",
+            salesman2: '',
+            workerId: wk.id || wk._id || "w-default",
+            workerName: wk.name || "In-House Tailor",
+            quantity: 1,
+            isReturn: false,
+            isReturned: false,
+            isExchanged: false,
+            actionType: 'sale',
+            soldFromInvoiceNo: unifiedLoadedBill.invoiceNo || unifiedLoadedBill.billNo,
+            hasAlteration: Boolean(targetUnit.hasAlteration || targetUnit.alterationRecord),
+            alterationRecord: targetUnit.alterationRecord || null
+          };
+
+          setCart(prev => {
+            const codeLower = String(uniqueCodeVal).toLowerCase();
+            const already = prev.some(c => String(c.uniqueCode || c.barcode || '').toLowerCase() === codeLower);
+            if (already) return prev;
+            return [...prev, scannedOldItem];
+          });
+        }
+
+        setReturnActionType("return");
+        setShowReturnExchangeModal(true);
+
         setUniqueCodeInput("");
         if (typeof clearInputFn === 'function') clearInputFn("");
 
         if (onAddNotification) {
           onAddNotification(
             "Original Bill Loaded",
-            `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}" (Use Returns & Exchange options on top)`,
-            "success"
+            `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}". Product added to bill — select Return/Exchange or close to keep for alterations/services.`,
+            "info"
           );
         }
-        return;
+        return true;
       }
 
+      // Fresh new product -> Normal SALE item (NO SALE tag)
       const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
       const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
 
       const newCartItem = {
         cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         productId: matchedProduct._id || matchedProduct.id,
+        inventoryPieceId: matchedPiece?._id || undefined,
         name: itemNameVal,
         itemName: itemNameVal,
         barcode: barcodeVal,
@@ -6215,18 +6527,20 @@ export const BillingPOSView = ({
       };
 
       setCart(prev => [...prev, newCartItem]);
-      // Only clear input field on successful add!
       setUniqueCodeInput("");
       if (typeof clearInputFn === 'function') clearInputFn("");
+      setTimeout(() => {
+        focusPosColumn("uniqueCode");
+      }, 50);
 
       if (onAddNotification) {
         onAddNotification(
-          "Unique Code Added",
-          `Loaded ${itemNameVal} (${uniqueCodeVal})`,
+          "Item Added",
+          `Added ${itemNameVal} (${uniqueCodeVal})`,
           "success"
         );
       }
-      return;
+      return true;
     }
 
     // If NOT found: DO NOT clear the input field! Highlight / select it and notify user
@@ -6237,6 +6551,7 @@ export const BillingPOSView = ({
     if (onAddNotification) {
       onAddNotification("Unique Code Not Found", `No active inventory piece or sold item found for Unique Code "${q}"`, "danger");
     }
+    return false;
   };
 
   const handleUniqueCodeKeyDown = async (e) => {
@@ -7119,7 +7434,13 @@ export const BillingPOSView = ({
                             setSelectedCartRowIndex(idx);
                             setFocusedAlterationIndex(idx);
                           }}
-                          className={`border-b border-slate-200 transition-all cursor-pointer ${item.isReturn ? 'bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500' : firmStyle.rowClass} ${selectedCartRowIndex === idx
+                          className={`border-b border-slate-200 transition-all cursor-pointer ${
+                            item.isReturn
+                              ? (item.isExchanged || item.actionType === 'exchange'
+                                  ? 'bg-indigo-50/80 hover:bg-indigo-100/90 border-l-4 border-l-indigo-600'
+                                  : 'bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500')
+                              : firmStyle.rowClass
+                          } ${selectedCartRowIndex === idx
                             ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
                             : ''
                             }`}
@@ -7128,16 +7449,32 @@ export const BillingPOSView = ({
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all overflow-hidden text-ellipsis whitespace-nowrap" title={item.uniqueCode || ''}>{item.uniqueCode || ''}</td>
                           <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>
-                            {item.isReturn && (
-                              <span className="inline-block bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
-                                RETURN
-                              </span>
-                            )}
+                            {item.isReturn ? (
+                              (item.isExchanged || item.actionType === 'exchange') ? (
+                                <span className="inline-block bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
+                                  EXCHANGED
+                                </span>
+                              ) : (
+                                <span className="inline-block bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
+                                  RETURNED
+                                </span>
+                              )
+                            ) : null}
                             {nameDisplay}
                             {item.soldFromInvoiceNo && (
-                              <span className="ml-1 text-[9px] text-rose-700 font-bold">
+                              <span className={`ml-1 text-[9px] font-bold ${item.isExchanged || item.actionType === 'exchange' ? 'text-indigo-700' : 'text-rose-700'}`}>
                                 (#{item.soldFromInvoiceNo})
                               </span>
+                            )}
+                            {item.exchangedFor && (
+                              <div className="text-[10px] text-indigo-700 font-medium italic mt-0.5 whitespace-normal">
+                                ↳ Replaced with: {item.exchangedFor}
+                              </div>
+                            )}
+                            {item.replacesItemName && (
+                              <div className="text-[10px] text-slate-500 font-medium italic mt-0.5 whitespace-normal">
+                                ↳ Exchanged for: {item.replacesItemName} {item.replacesUniqueCode ? `(${item.replacesUniqueCode})` : ''}
+                              </div>
                             )}
                           </td>
                           <td className="border-r border-slate-300 p-1 overflow-hidden text-ellipsis whitespace-nowrap" title={subItemDisplay}>{subItemDisplay}</td>
@@ -7378,22 +7715,14 @@ export const BillingPOSView = ({
                           </td>
                           <td className="border-r border-slate-300 p-1 font-mono text-slate-700 overflow-hidden text-ellipsis whitespace-nowrap" title={hsnDisplay}>{hsnDisplay}</td>
                           <td className="p-1 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1">
-                              {item.isReturn && (
-                                <span
-                                  className="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[9px] font-black shadow-2xs"
-                                  title="Return Item"
-                                >
-                                  RET
-                                </span>
-                              )}
+                            <div className="flex items-center justify-center">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleRemoveCartItem(idx);
                                 }}
-                                className="text-red-500 hover:text-red-700 cursor-pointer p-0.5 rounded hover:bg-red-50 transition-colors"
+                                className="text-red-500 hover:text-red-700 cursor-pointer p-1 rounded hover:bg-red-50 transition-colors"
                                 title="Delete Item"
                               >
                                 <Trash2 className="w-3.5 h-3.5 mx-auto" />
@@ -8046,25 +8375,25 @@ export const BillingPOSView = ({
                       id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
                         if (loadedOriginalInvoice) {
                           setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                          setReturnActionType("return");
-                          setReturnedItemIds([]);
-                          setShowReturnExchangeModal(true);
                         } else {
-                          setActivePOSMode("returns");
+                          setSelectedInvoiceForReturn(null);
                         }
+                        setReturnActionType("return");
+                        setReturnedItemIds([]);
+                        setShowReturnExchangeModal(true);
                       }
                     },
                     {
                       id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
                         if (loadedOriginalInvoice) {
                           setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                          setReturnActionType("exchange");
-                          setExchangeOldItemIdx(0);
-                          setExchangeSelectedNewProduct(null);
-                          setShowReturnExchangeModal(true);
                         } else {
-                          setActivePOSMode("returns");
+                          setSelectedInvoiceForReturn(null);
                         }
+                        setReturnActionType("exchange");
+                        setExchangeOldItemIdx(0);
+                        setExchangeSelectedNewProduct(null);
+                        setShowReturnExchangeModal(true);
                       }
                     },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
@@ -8938,7 +9267,7 @@ export const BillingPOSView = ({
                                     <div>
                                       <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                                         <span>{item.name}</span>
-                                        {item.isReturned && (
+                                        {(item.isReturned && !item.isExchanged) && (
                                           <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
                                             RETURNED
                                           </span>
@@ -14013,7 +14342,128 @@ export const BillingPOSView = ({
       )}
 
       {/* RETURN & EXCHANGE POPUP MODAL (DIRECTLY IN BILLING) */}
-      {showReturnExchangeModal && selectedInvoiceForReturn && (() => {
+      {showReturnExchangeModal && (() => {
+        if (!selectedInvoiceForReturn) {
+          // Bill Search / Lookup View when no bill is selected yet
+          const qLower = (returnSearchQuery || "").toLowerCase().trim();
+          const allBills = invoiceList || invoices || [];
+          const filteredBills = allBills.filter(inv => {
+            if (!qLower) return true;
+            const invNo = String(inv.invoiceNo || inv.billNo || '').toLowerCase();
+            const custName = String(inv.customerName || inv.customer?.name || '').toLowerCase();
+            const custPhone = String(inv.customerPhone || inv.customer?.phone || inv.customer?.mobile || '').toLowerCase();
+            const hasBarcode = (inv.items || inv.billItems || []).some(itm =>
+              String(itm.barcode || itm.uniqueCode || itm.itemCode || '').toLowerCase().includes(qLower)
+            );
+            return invNo.includes(qLower) || custName.includes(qLower) || custPhone.includes(qLower) || hasBarcode;
+          }).slice(0, 20);
+
+          return (
+            <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+              <div className="bg-slate-50 border border-slate-300 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-scale-up">
+                {/* Header */}
+                <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center">
+                      <RotateCcw className="w-4 h-4 text-rose-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black tracking-wide text-white uppercase flex items-center gap-2">
+                        <span>Select Past Bill for Return / Exchange</span>
+                      </h3>
+                      <p className="text-[10.5px] text-slate-400">Search by Invoice No, Customer Mobile, Name, or Product Barcode/Unique Code</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowReturnExchangeModal(false)}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Search Box */}
+                <div className="p-4 bg-white border-b border-slate-200">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Type Invoice No (e.g. INV-...), Mobile No, Customer Name, or Barcode..."
+                      value={returnSearchQuery}
+                      onChange={(e) => setReturnSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Bills List */}
+                <div className="p-4 overflow-y-auto flex-1 custom-scrollbar space-y-2 max-h-[50vh]">
+                  {filteredBills.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400 font-medium">
+                      No matching sales bills found. Try a different search term.
+                    </div>
+                  ) : (
+                    filteredBills.map((inv, idx) => {
+                      const invNo = inv.invoiceNo || inv.billNo || `BILL-${idx}`;
+                      const cName = inv.customerName || (typeof inv.customer === 'object' ? inv.customer.name : 'Walk-in Customer');
+                      const cPhone = inv.customerPhone || (typeof inv.customer === 'object' ? inv.customer.phone || inv.customer.mobile : '');
+                      const itemsCount = (inv.items || inv.billItems || []).length;
+                      const gTotal = Number(inv.grandTotal || inv.finalPrice || 0);
+
+                      return (
+                        <div
+                          key={inv._id || inv.id || idx}
+                          onClick={() => {
+                            const rawItems = inv.items || inv.billItems || [];
+                            const formatted = {
+                              ...inv,
+                              invoiceNo: invNo,
+                              billNo: invNo,
+                              customerName: cName,
+                              customerPhone: cPhone,
+                              items: unrollInvoiceItems(rawItems)
+                            };
+                            setSelectedInvoiceForReturn(formatted);
+                            setLoadedOriginalInvoice(formatted);
+                            setReturnedItemIds([]);
+                          }}
+                          className="bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 p-3.5 rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-2xs group"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{invNo}</span>
+                              <span className="text-xs font-bold text-slate-800">{cName}</span>
+                              {cPhone && <span className="text-[11px] text-slate-500 font-mono">({cPhone})</span>}
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 flex items-center gap-3">
+                              <span>Date: {inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : '-'}</span>
+                              <span>•</span>
+                              <span>{itemsCount} item{itemsCount === 1 ? '' : 's'}</span>
+                              <span>•</span>
+                              <span>Payment: <strong>{inv.paymentMethod || 'Cash'}</strong></span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-black font-mono text-slate-900">₹{gTotal.toLocaleString()}</span>
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 bg-indigo-600 group-hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                            >
+                              Select
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         let implicitDiscount = 0;
         if (selectedInvoiceForReturn.subTotal && selectedInvoiceForReturn.grandTotal < selectedInvoiceForReturn.subTotal) {
           implicitDiscount = selectedInvoiceForReturn.subTotal - selectedInvoiceForReturn.grandTotal;
@@ -14049,6 +14499,16 @@ export const BillingPOSView = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoiceForReturn(null)}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                    title="Search and select a different bill"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Other Bill</span>
+                  </button>
+
                   <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
                     <button
                       type="button"
@@ -14067,8 +14527,9 @@ export const BillingPOSView = ({
                   </div>
 
                   <button
-                    onClick={() => setShowReturnExchangeModal(false)}
+                    onClick={() => handleKeepOldProductInCart()}
                     className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Close and keep product in bill"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -14199,7 +14660,7 @@ export const BillingPOSView = ({
                                     <div>
                                       <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                                         <span>{item.name}</span>
-                                        {item.isReturned && (
+                                        {(item.isReturned && !item.isExchanged) && (
                                           <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-1.5 py-0.2 rounded">
                                             RETURNED
                                           </span>
@@ -14343,153 +14804,258 @@ export const BillingPOSView = ({
                           <span>I approve this return request & confirm physical garment condition has been verified.</span>
                         </label>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (isProcessingReturn) return;
-                            setIsProcessingReturn(true);
-                            try {
+                        <div className="space-y-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (returnedItemIds.length === 0) return;
                               const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
                               const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
-                              let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+                              if (returnedItems.length === 0) return;
 
-                              if (totalAdjAmt > 0) {
-                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                                const proportionalAdjustment = refundAmt * adjustmentRatio;
-                                refundAmt -= proportionalAdjustment;
-                                refundAmt = Math.floor(refundAmt);
-                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
-                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                                const proportionalAdjustment = refundAmt * adjustmentRatio;
-                                refundAmt += proportionalAdjustment;
-                                refundAmt = Math.floor(refundAmt);
-                              }
-
-                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
-                                if (returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) {
-                                  return {
-                                    ...item,
-                                    isReturned: true,
-                                    returnReason: finalReason,
-                                    returnedAt: new Date().toISOString()
-                                  };
+                              const itemsToAdd = returnedItems.map((item, idx) => {
+                                let itemPrice = Number(item.sellingPrice || item.price || item.totalPrice || item.mrp || 0);
+                                if (totalAdjAmt > 0) {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                  itemPrice -= (itemPrice * adjustmentRatio);
+                                  itemPrice = Math.floor(itemPrice);
+                                } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment?.operation === 'Charge') {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = (selectedInvoiceForReturn.billAdjustment.amount || 0) / totalItemsPrice;
+                                  itemPrice += (itemPrice * adjustmentRatio);
+                                  itemPrice = Math.floor(itemPrice);
                                 }
-                                return item;
+
+                                const uniqueCodeVal = item.uniqueCode || item.barcode || item.barcodeNo || '';
+                                return {
+                                  cartItemId: `cart-item-ret-${Date.now()}-${idx}`,
+                                  productId: item.productId || item._id || item.id,
+                                  inventoryPieceId: item.inventoryPieceId || item.piece?._id || item.piece?.id || item.id || undefined,
+                                  name: item.name || item.itemName || 'Returned Garment',
+                                  itemName: item.name || item.itemName || 'Returned Garment',
+                                  barcode: item.barcode || item.barcodeNo || uniqueCodeVal,
+                                  barcodeNo: item.barcode || item.barcodeNo || uniqueCodeVal,
+                                  uniqueCode: uniqueCodeVal,
+                                  subItem: item.subItem || '',
+                                  designNo: item.designNo || item.sku || '',
+                                  itemCode: item.itemCode || '',
+                                  ipn: item.ipn || '',
+                                  sku: item.designNo || item.itemCode || '',
+                                  firmName: item.firmName || item.company || selectedInvoiceForReturn.firmName || '',
+                                  company: item.firmName || item.company || selectedInvoiceForReturn.firmName || '',
+                                  counter: item.counter || '',
+                                  size: item.size || 'FS',
+                                  color: item.color || item.primaryColor || 'Standard',
+                                  primaryColor: item.color || item.primaryColor || 'Standard',
+                                  mrp: Number(item.mrp || itemPrice),
+                                  price: itemPrice,
+                                  sellingPrice: itemPrice,
+                                  discount: 0,
+                                  gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+                                  totalPrice: itemPrice,
+                                  quantity: 1,
+                                  isReturn: true,
+                                  isReturned: true,
+                                  actionType: 'return',
+                                  returnReason: finalReason,
+                                  soldFromInvoiceNo: selectedInvoiceForReturn.invoiceNo || selectedInvoiceForReturn.billNo,
+                                  hasAlteration: false
+                                };
                               });
 
-                              const allRet = updatedItems.every(i => i.isReturned);
-                              const updatedInvoice = {
-                                ...selectedInvoiceForReturn,
-                                hasReturn: true,
-                                returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
-                                status: allRet ? 'Returned' : 'Partially Returned',
-                                items: updatedItems
-                              };
-
-                              let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
-                              if (finalCustomerId === "c-walkin") finalCustomerId = null;
-
-                              if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
-                                setShowReturnCustomerModal(true);
-                                return;
-                              }
-
-                              // Call Backend API to update MongoDB invoice, inventory & customer ledger
-                              try {
-                                const token = localStorage.getItem("token");
-                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                                const returnItemsPayload = returnedItems.map(item => {
-                                  let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
-
-                                  // Adjust for proportional short-pay/discounts if any
-                                  if (selectedInvoiceForReturn.billAdjustment) {
-                                    const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
-                                    const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                                    if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
-                                      itemPrice -= (itemPrice * adjustmentRatio);
-                                    } else {
-                                      itemPrice += (itemPrice * adjustmentRatio);
-                                    }
-                                  }
-                                  return {
-                                    inventoryPieceId: item?.inventoryPieceId || item?.piece?._id || item?.piece?.id || item?.id || undefined,
-                                    barcode: item?.barcode || item?.barcodeNo || item?.uniqueCode || '',
-                                    uniqueCode: item?.uniqueCode || item?.barcode || '',
-                                    refundRate: Math.floor(itemPrice),
-                                    condition: 'RESELLABLE'
-                                  };
-                                });
-
-                                await api.post(`/returns`, {
-                                  saleBillId: invId,
-                                  saleBillNo: selectedInvoiceForReturn.invoiceNo,
-                                  customerId: finalCustomerId,
-                                  refundMode: returnRefundMode,
-                                  reason: finalReason,
-                                  items: returnItemsPayload,
-                                  forceApprove: true
-                                });
-                              } catch (apiErr) {
-                                console.warn("Backend return endpoint call error:", apiErr.message);
-                                if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
-                                return; // Stop execution to prevent desync
-                              }
-
-                              // Update local invoices list so Invoice History reflects returned status immediately
-                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
-
-                              if (invoices) {
-                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                                if (idx !== -1) invoices[idx] = updatedInvoice;
-                              }
-
-                              if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
-                                onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
-                              }
-
-                              if (onAddNotification) {
-                                onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
-                              }
-
-                              // Auto-clear data and reset selection
-                              if (loadedOriginalInvoice?.invoiceNo === selectedInvoiceForReturn.invoiceNo || loadedOriginalInvoice?._id === selectedInvoiceForReturn._id) {
-                                setLoadedOriginalInvoice(null);
-                              }
-
-                              // Remove returned items from active cart since they are already refunded/settled via the return modal
-                              const returnedPieceOrBarcodes = returnedItems.map(ri => String(ri.uniqueCode || ri.barcode || ri.inventoryPieceId || '').toLowerCase()).filter(Boolean);
-                              setCart(prev => prev.filter(ci => {
-                                const cCode = String(ci.uniqueCode || ci.barcode || ci.inventoryPieceId || '').toLowerCase();
-                                return !returnedPieceOrBarcodes.includes(cCode);
-                              }));
+                              setCart(prev => {
+                                const retCodes = itemsToAdd.map(i => String(i.uniqueCode || i.barcode || '').toLowerCase()).filter(Boolean);
+                                const filtered = prev.filter(c => !retCodes.includes(String(c.uniqueCode || c.barcode || '').toLowerCase()));
+                                return [...filtered, ...itemsToAdd];
+                              });
 
                               setShowReturnExchangeModal(false);
                               setSelectedInvoiceForReturn(null);
                               setReturnedItemIds([]);
                               setReturnApprovedCheckbox(false);
                               setReturnSearchQuery("");
-                              setReturnReason("Defective / Damaged");
-                              setReturnCustomReason("");
-                            } finally {
-                              setIsProcessingReturn(false);
-                            }
-                          }}
-                          disabled={isProcessingReturn || (!returnApprovedCheckbox || returnedItemIds.length === 0)}
-                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                        >
-                          {isProcessingReturn ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Processing Return...
-                            </>
-                          ) : (
-                            returnRefundMode === 'ADD_TO_ADVANCE'
-                              ? "Approve Return & Credit Customer Wallet"
-                              : "Approve Return & Refund Customer"
-                          )}
-                        </button>
+
+                              if (onAddNotification) {
+                                onAddNotification(
+                                  "Return Added to Bill",
+                                  `Added ${itemsToAdd.length} returned product(s) as deduction to current bill.`,
+                                  "success"
+                                );
+                              }
+                            }}
+                            disabled={returnedItemIds.length === 0}
+                            className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${returnedItemIds.length > 0 ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            Apply Return to Current Bill (Deduct ₹{(() => {
+                              const returnedItems = selectedInvoiceForReturn?.items?.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) || [];
+                              let amt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * (item.quantity || 1)), 0);
+                              if (totalAdjAmt > 0 && selectedInvoiceForReturn?.items?.length) {
+                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                amt -= (amt * (totalAdjAmt / totalItemsPrice));
+                              }
+                              return Math.floor(Math.max(0, amt)).toLocaleString();
+                            })()})
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleKeepOldProductInCart()}
+                            className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm cursor-pointer"
+                          >
+                            <Scissors className="w-4 h-4" />
+                            Keep in Bill (For Alteration / Services / Re-bill)
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (isProcessingReturn) return;
+                              setIsProcessingReturn(true);
+                              try {
+                                const finalReason = returnReason === "Other" ? returnCustomReason : returnReason;
+                                const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                                let refundAmt = returnedItems.reduce((sum, item) => sum + (item.totalPrice || item.price * item.quantity), 0);
+
+                                if (totalAdjAmt > 0) {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                  const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                  const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                  refundAmt -= proportionalAdjustment;
+                                  refundAmt = Math.floor(refundAmt);
+                                } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * i.quantity)), 0) || 1;
+                                  const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                  const proportionalAdjustment = refundAmt * adjustmentRatio;
+                                  refundAmt += proportionalAdjustment;
+                                  refundAmt = Math.floor(refundAmt);
+                                }
+
+                                const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                  if (returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) {
+                                    return {
+                                      ...item,
+                                      isReturned: true,
+                                      returnReason: finalReason,
+                                      returnedAt: new Date().toISOString()
+                                    };
+                                  }
+                                  return item;
+                                });
+
+                                const allRet = updatedItems.every(i => i.isReturned);
+                                const updatedInvoice = {
+                                  ...selectedInvoiceForReturn,
+                                  hasReturn: true,
+                                  returnedAmount: (selectedInvoiceForReturn.returnedAmount || 0) + refundAmt,
+                                  status: allRet ? 'Returned' : 'Partially Returned',
+                                  items: updatedItems
+                                };
+
+                                let finalCustomerId = selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId;
+                                if (finalCustomerId === "c-walkin") finalCustomerId = null;
+
+                                if (returnRefundMode === 'ADD_TO_ADVANCE' && !finalCustomerId) {
+                                  setShowReturnCustomerModal(true);
+                                  return;
+                                }
+
+                                // Call Backend API to update MongoDB invoice, inventory & customer ledger
+                                try {
+                                  const token = localStorage.getItem("token");
+                                  const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                  const returnItemsPayload = returnedItems.map(item => {
+                                    let itemPrice = item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1));
+
+                                    // Adjust for proportional short-pay/discounts if any
+                                    if (selectedInvoiceForReturn.billAdjustment) {
+                                      const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, it) => s + (it.totalPrice || ((it.sellingPrice || it.price || 0) * it.quantity)), 0) || 1;
+                                      const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                      if (selectedInvoiceForReturn.billAdjustment.operation === 'Discount') {
+                                        itemPrice -= (itemPrice * adjustmentRatio);
+                                      } else {
+                                        itemPrice += (itemPrice * adjustmentRatio);
+                                      }
+                                    }
+                                    return {
+                                      inventoryPieceId: item?.inventoryPieceId || item?.piece?._id || item?.piece?.id || item?.id || undefined,
+                                      barcode: item?.barcode || item?.barcodeNo || item?.uniqueCode || '',
+                                      uniqueCode: item?.uniqueCode || item?.barcode || '',
+                                      refundRate: Math.floor(itemPrice),
+                                      condition: 'RESELLABLE'
+                                    };
+                                  });
+
+                                  await api.post(`/returns`, {
+                                    saleBillId: invId,
+                                    saleBillNo: selectedInvoiceForReturn.invoiceNo,
+                                    customerId: finalCustomerId,
+                                    refundMode: returnRefundMode,
+                                    reason: finalReason,
+                                    items: returnItemsPayload,
+                                    forceApprove: true
+                                  });
+                                } catch (apiErr) {
+                                  console.warn("Backend return endpoint call error:", apiErr.message);
+                                  if (onAddNotification) onAddNotification("Return Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process return in backend", "danger");
+                                  return; // Stop execution to prevent desync
+                                }
+
+                                // Update local invoices list so Invoice History reflects returned status immediately
+                                setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                                if (invoices) {
+                                  const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                  if (idx !== -1) invoices[idx] = updatedInvoice;
+                                }
+
+                                if (selectedInvoiceForReturn.customerId && onUpdateCustomerBalance) {
+                                  onUpdateCustomerBalance(selectedInvoiceForReturn.customerId, -refundAmt);
+                                }
+
+                                if (onAddNotification) {
+                                  onAddNotification("Return Approved", `Return of ₹${refundAmt.toLocaleString()} approved for ${selectedInvoiceForReturn.customerName}. Inventory & Financials recalculated.`, "success");
+                                }
+
+                                // Auto-clear data and reset selection
+                                if (loadedOriginalInvoice?.invoiceNo === selectedInvoiceForReturn.invoiceNo || loadedOriginalInvoice?._id === selectedInvoiceForReturn._id) {
+                                  setLoadedOriginalInvoice(null);
+                                }
+
+                                // Remove returned items from active cart since they are already refunded/settled via the return modal
+                                const returnedPieceOrBarcodes = returnedItems.map(ri => String(ri.uniqueCode || ri.barcode || ri.inventoryPieceId || '').toLowerCase()).filter(Boolean);
+                                setCart(prev => prev.filter(ci => {
+                                  const cCode = String(ci.uniqueCode || ci.barcode || ci.inventoryPieceId || '').toLowerCase();
+                                  return !returnedPieceOrBarcodes.includes(cCode);
+                                }));
+
+                                setShowReturnExchangeModal(false);
+                                setSelectedInvoiceForReturn(null);
+                                setReturnedItemIds([]);
+                                setReturnApprovedCheckbox(false);
+                                setReturnSearchQuery("");
+                                setReturnReason("Defective / Damaged");
+                                setReturnCustomReason("");
+                              } finally {
+                                setIsProcessingReturn(false);
+                              }
+                            }}
+                            disabled={isProcessingReturn || (!returnApprovedCheckbox || returnedItemIds.length === 0)}
+                            className={`w-full py-2.5 rounded-xl text-xs font-semibold tracking-wider transition-all flex items-center justify-center gap-2 ${returnApprovedCheckbox && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            {isProcessingReturn ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Processing Standalone Return...
+                              </>
+                            ) : (
+                              returnRefundMode === 'ADD_TO_ADVANCE'
+                                ? "Standalone: Credit to Customer Wallet"
+                                : "Standalone: Direct Cash/Bank Refund"
+                            )}
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -14760,139 +15326,287 @@ export const BillingPOSView = ({
                           );
                         })()}
 
-                        <button
-                          type="button"
-                          disabled={isProcessingReturn || returnedItemIds.length === 0 || exchangeCart.length === 0}
-                          onClick={async () => {
-                            if (isProcessingReturn) return;
-                            setIsProcessingReturn(true);
-                            try {
-                              const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                        <div className="space-y-2 pt-2">
+                          <button
+                            type="button"
+                            disabled={returnedItemIds.length === 0 || exchangeCart.length === 0}
+                            onClick={() => {
+                              const returnedItems = selectedInvoiceForReturn?.items?.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`)) || [];
                               if (returnedItems.length === 0 || exchangeCart.length === 0) return;
 
-                              let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
-
-                              if (totalAdjAmt > 0) {
-                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                                const adjustmentRatio = totalAdjAmt / totalItemsPrice;
-                                const proportionalAdjustment = oldPrice * adjustmentRatio;
-                                oldPrice -= proportionalAdjustment;
-                                oldPrice = Math.floor(oldPrice);
-                              } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
-                                const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
-                                const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
-                                const proportionalAdjustment = oldPrice * adjustmentRatio;
-                                oldPrice += proportionalAdjustment;
-                                oldPrice = Math.floor(oldPrice);
-                              }
-
-                              const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
-                              const priceDiff = newPrice - oldPrice;
-
-                              const docket = {
-                                docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
-                                originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
-                                customerName: selectedInvoiceForReturn.customerName,
-                                customerPhone: selectedInvoiceForReturn.customerPhone,
-                                reason: exchangeReason,
-                                oldItem: {
-                                  name: returnedItems.map(i => i.name).join(', '),
-                                  size: 'Mixed',
-                                  color: 'Mixed',
-                                  price: oldPrice
-                                },
-                                newItem: {
-                                  name: exchangeCart.map(i => i.name).join(', '),
-                                  sku: exchangeCart.map(i => i.sku || i.productCode || i.id).join(', '),
-                                  size: 'Mixed',
-                                  color: 'Mixed',
-                                  price: newPrice
-                                },
-                                priceDiff,
-                                cashierName: currentUser ? currentUser.name : "Store Cashier",
-                                createdAt: new Date().toISOString()
-                              };
-
-                              const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
-                                const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
-                                if (returnedItemIds.includes(targetId)) {
-                                  return {
-                                    ...item,
-                                    isExchanged: true,
-                                    exchangedFor: exchangeCart.map(i => i.name).join(', '),
-                                    exchangeReason
-                                  };
+                              const itemsToAdd = returnedItems.map((item, idx) => {
+                                let itemPrice = Number(item.sellingPrice || item.price || item.totalPrice || item.mrp || 0);
+                                if (totalAdjAmt > 0) {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                  itemPrice -= (itemPrice * adjustmentRatio);
+                                  itemPrice = Math.floor(itemPrice);
+                                } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment?.operation === 'Charge') {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = (selectedInvoiceForReturn.billAdjustment.amount || 0) / totalItemsPrice;
+                                  itemPrice += (itemPrice * adjustmentRatio);
+                                  itemPrice = Math.floor(itemPrice);
                                 }
-                                return item;
+
+                                const uniqueCodeVal = item.uniqueCode || item.barcode || item.barcodeNo || '';
+                                return {
+                                  cartItemId: `cart-item-ret-exch-${Date.now()}-${idx}`,
+                                  productId: item.productId || item._id || item.id,
+                                  inventoryPieceId: item.inventoryPieceId || item.piece?._id || item.piece?.id || item.id || undefined,
+                                  name: item.name || item.itemName || 'Exchanged Garment',
+                                  itemName: item.name || item.itemName || 'Exchanged Garment',
+                                  barcode: item.barcode || item.barcodeNo || uniqueCodeVal,
+                                  barcodeNo: item.barcode || item.barcodeNo || uniqueCodeVal,
+                                  uniqueCode: uniqueCodeVal,
+                                  subItem: item.subItem || '',
+                                  designNo: item.designNo || item.sku || '',
+                                  itemCode: item.itemCode || '',
+                                  ipn: item.ipn || '',
+                                  sku: item.designNo || item.itemCode || '',
+                                  firmName: item.firmName || item.company || selectedInvoiceForReturn.firmName || '',
+                                  company: item.firmName || item.company || selectedInvoiceForReturn.firmName || '',
+                                  counter: item.counter || '',
+                                  size: item.size || 'FS',
+                                  color: item.color || item.primaryColor || 'Standard',
+                                  primaryColor: item.color || item.primaryColor || 'Standard',
+                                  mrp: Number(item.mrp || itemPrice),
+                                  price: itemPrice,
+                                  sellingPrice: itemPrice,
+                                  discount: 0,
+                                  gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+                                  totalPrice: itemPrice,
+                                  quantity: 1,
+                                  isReturn: true,
+                                  isReturned: true,
+                                  isExchanged: true,
+                                  actionType: 'exchange',
+                                  exchangeReason,
+                                  exchangedFor: exchangeCart.map(i => i.name || i.itemName).join(', '),
+                                  soldFromInvoiceNo: selectedInvoiceForReturn.invoiceNo || selectedInvoiceForReturn.billNo,
+                                  hasAlteration: false
+                                };
                               });
 
-                              const allEx = updatedItems.every(i => i.isExchanged);
-                              const updatedInvoice = {
-                                ...selectedInvoiceForReturn,
-                                hasExchange: true,
-                                exchangeSlip: docket,
-                                status: allEx ? 'Exchanged' : 'Partially Exchanged',
-                                items: updatedItems
-                              };
+                              const replacementItemsToAdd = exchangeCart.map((item, idx) => {
+                                const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+                                const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
+                                const sPrice = Number(item.sellingPrice || item.price || 0);
+                                const mrpVal = Number(item.mrp || item.defaultMRP || sPrice);
 
-                              // Call Backend API to process exchange in MongoDB
-                              try {
-                                const token = localStorage.getItem("token");
-                                const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
-                                await api.post(`/exchanges`, {
-                                  originalBillId: invId,
-                                  originalBillNo: selectedInvoiceForReturn.invoiceNo,
-                                  customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
-                                  returnedBarcodes: returnedItems.map(i => i.barcode || i.designNo || i.itemCode || ''),
-                                  newBarcodes: exchangeCart.map(i => i.barcode || i.productCode || i.sku || i.id || ''),
-                                  returnedValue: oldPrice,
-                                  newItemValue: newPrice,
-                                  remarks: exchangeReason,
-                                  forceApprove: true
-                                });
-                              } catch (apiErr) {
-                                console.warn("Backend exchange endpoint call error:", apiErr.message);
-                                if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
-                                return; // Stop execution to prevent desync
-                              }
+                                return {
+                                  cartItemId: `cart-item-exch-rep-${Date.now()}-${idx}`,
+                                  productId: item._id || item.id,
+                                  inventoryPieceId: item.inventoryPieceId || item.piece?._id || undefined,
+                                  name: item.name || item.itemName || 'Replacement Item',
+                                  itemName: item.name || item.itemName || 'Replacement Item',
+                                  barcode: item.barcode || item.barcodeNo || '',
+                                  barcodeNo: item.barcode || item.barcodeNo || '',
+                                  uniqueCode: item.uniqueCode || item.barcode || '',
+                                  subItem: item.subItem || item.category || '',
+                                  designNo: item.designNo || item.sku || '',
+                                  itemCode: item.itemCode || item.productCode || '',
+                                  ipn: item.ipn || '',
+                                  sku: item.designNo || item.sku || '',
+                                  firmName: item.firmName || item.company || selectedFirm?.name || '',
+                                  company: item.firmName || item.company || selectedFirm?.name || '',
+                                  counter: item.counter || '',
+                                  size: item.size || 'M',
+                                  color: item.color || item.primaryColor || 'Standard',
+                                  primaryColor: item.color || item.primaryColor || 'Standard',
+                                  mrp: mrpVal,
+                                  price: sPrice,
+                                  sellingPrice: sPrice,
+                                  discount: 0,
+                                  discountType: 'amount',
+                                  discountValue: 0,
+                                  discountAmount: 0,
+                                  gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+                                  totalPrice: sPrice * (item.quantity || 1),
+                                  quantity: Number(item.quantity || 1),
+                                  salesman1: sp.name,
+                                  salesmanId1: sp.id || sp._id,
+                                  salesman2: "",
+                                  worker: wk.name,
+                                  workerId: wk.id || wk._id,
+                                  isReturn: false,
+                                  isReplacement: true,
+                                  replacesItemName: returnedItems.map(i => i.name || i.itemName).join(', '),
+                                  replacesUniqueCode: returnedItems.map(i => i.uniqueCode || i.barcode).join(', '),
+                                  actionType: 'sale',
+                                  hasAlteration: false
+                                };
+                              });
 
-                              // Update local invoices list so Invoice History reflects exchanged status immediately
-                              setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+                              setCart(prev => {
+                                const retCodes = itemsToAdd.map(i => String(i.uniqueCode || i.barcode || '').toLowerCase()).filter(Boolean);
+                                const filtered = prev.filter(c => !retCodes.includes(String(c.uniqueCode || c.barcode || '').toLowerCase()));
+                                return [...filtered, ...itemsToAdd, ...replacementItemsToAdd];
+                              });
 
-                              if (invoices) {
-                                const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
-                                if (idx !== -1) invoices[idx] = updatedInvoice;
-                              }
-
-                              setCompletedExchangeSlip(docket);
-                              setShowExchangeSlipModal(true);
-
-                              if (onAddNotification) {
-                                onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
-                              }
-
-                              // Auto-clear search & selection data after completing exchange
                               setShowReturnExchangeModal(false);
                               setSelectedInvoiceForReturn(null);
                               setExchangeCart([]);
                               setExchangeNewSearchQuery("");
                               setReturnSearchQuery("");
                               setReturnedItemIds([]);
-                            } finally {
-                              setIsProcessingReturn(false);
-                            }
-                          }}
-                          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeCart.length > 0 && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                        >
-                          {isProcessingReturn ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Processing Exchange...
-                            </>
-                          ) : (
-                            "Confirm Exchange & Deduct Difference"
-                          )}
-                        </button>
+
+                              if (onAddNotification) {
+                                onAddNotification(
+                                  "Exchange Added to Bill",
+                                  `Added exchange deduction and replacement product(s) to current bill.`,
+                                  "success"
+                                );
+                              }
+                            }}
+                            className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeCart.length > 0 && returnedItemIds.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            Apply Exchange to Current Bill
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleKeepOldProductInCart()}
+                            className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm cursor-pointer"
+                          >
+                            <Scissors className="w-4 h-4" />
+                            Keep in Bill (For Alteration / Services / Re-bill)
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isProcessingReturn || returnedItemIds.length === 0 || exchangeCart.length === 0}
+                            onClick={async () => {
+                              if (isProcessingReturn) return;
+                              setIsProcessingReturn(true);
+                              try {
+                                const returnedItems = selectedInvoiceForReturn.items.filter((item, idx) => returnedItemIds.includes(item.unitId || `${item.productId || item.id}-${idx}`));
+                                if (returnedItems.length === 0 || exchangeCart.length === 0) return;
+
+                                let oldPrice = returnedItems.reduce((sum, item) => sum + (item.totalPrice || ((item.sellingPrice || item.price || 0) * (item.quantity || 1))), 0);
+
+                                if (totalAdjAmt > 0) {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = totalAdjAmt / totalItemsPrice;
+                                  const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                  oldPrice -= proportionalAdjustment;
+                                  oldPrice = Math.floor(oldPrice);
+                                } else if (hasManualAdj && selectedInvoiceForReturn.billAdjustment.operation === 'Charge') {
+                                  const totalItemsPrice = selectedInvoiceForReturn.items.reduce((s, i) => s + (i.totalPrice || ((i.sellingPrice || i.price || 0) * (i.quantity || 1))), 0) || 1;
+                                  const adjustmentRatio = selectedInvoiceForReturn.billAdjustment.amount / totalItemsPrice;
+                                  const proportionalAdjustment = oldPrice * adjustmentRatio;
+                                  oldPrice += proportionalAdjustment;
+                                  oldPrice = Math.floor(oldPrice);
+                                }
+
+                                const newPrice = exchangeCart.reduce((sum, item) => sum + (item.sellingPrice || item.price || 0), 0);
+                                const priceDiff = newPrice - oldPrice;
+
+                                const docket = {
+                                  docketNo: `EXCH-${Date.now().toString().slice(-6)}`,
+                                  originalInvoiceNo: selectedInvoiceForReturn.invoiceNo,
+                                  customerName: selectedInvoiceForReturn.customerName,
+                                  customerPhone: selectedInvoiceForReturn.customerPhone,
+                                  reason: exchangeReason,
+                                  oldItem: {
+                                    name: returnedItems.map(i => i.name).join(', '),
+                                    size: 'Mixed',
+                                    color: 'Mixed',
+                                    price: oldPrice
+                                  },
+                                  newItem: {
+                                    name: exchangeCart.map(i => i.name).join(', '),
+                                    sku: exchangeCart.map(i => i.sku || i.productCode || i.id).join(', '),
+                                    size: 'Mixed',
+                                    color: 'Mixed',
+                                    price: newPrice
+                                  },
+                                  priceDiff,
+                                  cashierName: currentUser ? currentUser.name : "Store Cashier",
+                                  createdAt: new Date().toISOString()
+                                };
+
+                                const updatedItems = selectedInvoiceForReturn.items.map((item, idx) => {
+                                  const targetId = item.unitId || `${item.productId || item.id}-${idx}`;
+                                  if (returnedItemIds.includes(targetId)) {
+                                    return {
+                                      ...item,
+                                      isExchanged: true,
+                                      exchangedFor: exchangeCart.map(i => i.name).join(', '),
+                                      exchangeReason
+                                    };
+                                  }
+                                  return item;
+                                });
+
+                                const allEx = updatedItems.every(i => i.isExchanged);
+                                const updatedInvoice = {
+                                  ...selectedInvoiceForReturn,
+                                  hasExchange: true,
+                                  exchangeSlip: docket,
+                                  status: allEx ? 'Exchanged' : 'Partially Exchanged',
+                                  items: updatedItems
+                                };
+
+                                // Call Backend API to process exchange in MongoDB
+                                try {
+                                  const token = localStorage.getItem("token");
+                                  const invId = selectedInvoiceForReturn._id || selectedInvoiceForReturn.id || selectedInvoiceForReturn.invoiceNo;
+                                  await api.post(`/exchanges`, {
+                                    originalBillId: invId,
+                                    originalBillNo: selectedInvoiceForReturn.invoiceNo,
+                                    customerId: selectedInvoiceForReturn.customer?._id || selectedInvoiceForReturn.customer || selectedInvoiceForReturn.customerId,
+                                    returnedBarcodes: returnedItems.map(i => i.barcode || i.designNo || i.itemCode || ''),
+                                    newBarcodes: exchangeCart.map(i => i.barcode || i.productCode || i.sku || i.id || ''),
+                                    returnedValue: oldPrice,
+                                    newItemValue: newPrice,
+                                    remarks: exchangeReason,
+                                    forceApprove: true
+                                  });
+                                } catch (apiErr) {
+                                  console.warn("Backend exchange endpoint call error:", apiErr.message);
+                                  if (onAddNotification) onAddNotification("Exchange Failed", apiErr.response?.data?.message || apiErr.message || "Failed to process exchange in backend", "danger");
+                                  return; // Stop execution to prevent desync
+                                }
+
+                                // Update local invoices list so Invoice History reflects exchanged status immediately
+                                setInvoiceList(prev => prev.map(inv => (inv.invoiceNo === updatedInvoice.invoiceNo || inv._id === updatedInvoice._id) ? updatedInvoice : inv));
+
+                                if (invoices) {
+                                  const idx = invoices.findIndex(i => i.invoiceNo === selectedInvoiceForReturn.invoiceNo || i._id === selectedInvoiceForReturn._id);
+                                  if (idx !== -1) invoices[idx] = updatedInvoice;
+                                }
+
+                                setCompletedExchangeSlip(docket);
+                                setShowExchangeSlipModal(true);
+
+                                if (onAddNotification) {
+                                  onAddNotification("Exchange Completed", `Exchange docket ${docket.docketNo} issued successfully. Stocks & Financials recalculated.`, "success");
+                                }
+
+                                // Auto-clear search & selection data after completing exchange
+                                setShowReturnExchangeModal(false);
+                                setSelectedInvoiceForReturn(null);
+                                setExchangeCart([]);
+                                setExchangeNewSearchQuery("");
+                                setReturnSearchQuery("");
+                                setReturnedItemIds([]);
+                              } finally {
+                                setIsProcessingReturn(false);
+                              }
+                            }}
+                            className={`w-full py-2.5 rounded-xl text-xs font-semibold tracking-wider transition-all flex items-center justify-center gap-2 ${exchangeCart.length > 0 && returnedItemIds.length > 0 && !isProcessingReturn ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            {isProcessingReturn ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Issuing Standalone Docket...
+                              </>
+                            ) : (
+                              "Standalone: Issue Exchange Slip Docket"
+                            )}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
