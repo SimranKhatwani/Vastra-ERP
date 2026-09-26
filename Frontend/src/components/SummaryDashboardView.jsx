@@ -324,7 +324,15 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
                 <LayoutDashboard className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-800 tracking-tight">Summary Dashboard</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-slate-800 tracking-tight">Summary Dashboard</h2>
+                  {isLoadingOverview && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 animate-pulse">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Loading live metrics...
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs font-semibold text-slate-400">
                   Consolidated post-sales services, operations, salesperson ownership & management control hub
                 </p>
@@ -336,133 +344,187 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
           {renderTimeframeSelector(fetchOverview, isLoadingOverview, 'text-indigo-600')}
         </div>
 
-        {/* Loading / Error States */}
-        {isLoadingOverview && !overviewData && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-              <div key={n} className="h-28 bg-white border border-slate-100 rounded-2xl p-4 space-y-3">
-                <div className="h-4 bg-slate-100 rounded w-1/2"></div>
-                <div className="h-7 bg-slate-200 rounded w-1/3"></div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {overviewError && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center gap-3 text-red-700 text-xs font-semibold">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{overviewError}</span>
-            </div>
-            <button
-              onClick={fetchOverview}
-              className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Overall High-Level KPI Summary Grid (8 Metrics) */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {/* 1. Total Pending Services */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-indigo-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Pending</span>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Scissors className="w-4 h-4" />
+        {/* Loading State when no data yet */}
+        {isLoadingOverview && !overviewData ? (
+          <div className="space-y-6 animate-fade-in">
+            {/* Animated Loading Header Banner */}
+            <div className="bg-white rounded-2xl border border-indigo-100/80 p-8 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Loading Summary Dashboard Data...</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Consolidating real-time post-sales services, alteration workload & control metrics
+                </p>
               </div>
             </div>
-            <p className="text-2xl font-black text-slate-800 tracking-tight">{kpis.totalPendingServices}</p>
-            <span className="text-[10px] text-slate-400 font-semibold block">Across all floor services</span>
-          </div>
 
-          {/* 2. Today's New Entries */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-teal-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Today's Inward</span>
-              <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
-                <Sparkles className="w-4 h-4" />
+            {/* Shimmering KPI Skeletons Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { title: "Total Pending", color: "border-indigo-100" },
+                { title: "Today's Inward", color: "border-teal-100" },
+                { title: "Ready for Delivery", color: "border-emerald-100" },
+                { title: "Delivered Today", color: "border-blue-100" },
+                { title: "Overdue Alerts", color: "border-rose-100" },
+                { title: "Urgent Deliveries", color: "border-amber-100" },
+                { title: "Re-Alter Pending", color: "border-purple-100" },
+                { title: "Partial Collections", color: "border-cyan-100" }
+              ].map((item, n) => (
+                <div key={n} className={`bg-white p-5 rounded-2xl border ${item.color} shadow-xs space-y-3 animate-pulse`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{item.title}</span>
+                    <div className="w-7 h-7 bg-slate-100 rounded-xl"></div>
+                  </div>
+                  <div className="h-8 bg-slate-200/80 rounded-lg w-20"></div>
+                  <div className="h-3 bg-slate-100 rounded w-32"></div>
+                </div>
+              ))}
+            </div>
+
+            {/* Skeletons for Control Center Cards */}
+            <div className="space-y-3">
+              <div className="h-4 bg-slate-200 rounded w-48 animate-pulse"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {[1, 2, 3, 4].map((n) => (
+                  <div key={n} className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 space-y-4 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-slate-100 rounded-xl"></div>
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 bg-slate-200 rounded w-36"></div>
+                        <div className="h-2.5 bg-slate-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                    <div className="h-8 bg-slate-100 rounded w-full"></div>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      {[1, 2, 3, 4].map((m) => (
+                        <div key={m} className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-2">
+                          <div className="h-2.5 bg-slate-200 rounded w-16"></div>
+                          <div className="h-5 bg-slate-200 rounded w-10"></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-            <p className="text-2xl font-black text-teal-700 tracking-tight">+{kpis.todayNewEntries}</p>
-            <span className="text-[10px] text-teal-600 font-semibold block">New service bookings today</span>
           </div>
+        ) : (
+          <>
+            {overviewError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center gap-3 text-red-700 text-xs font-semibold">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span>{overviewError}</span>
+                </div>
+                <button
+                  onClick={fetchOverview}
+                  className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
-          {/* 3. Ready for Delivery */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-emerald-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</span>
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                <CheckCircle2 className="w-4 h-4" />
+            {/* Overall High-Level KPI Summary Grid (8 Metrics) */}
+            <div className={`grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 transition-opacity ${isLoadingOverview ? 'opacity-60' : 'opacity-100'}`}>
+              {/* 1. Total Pending Services */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-indigo-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Pending</span>
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Scissors className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-slate-800 tracking-tight">{kpis.totalPendingServices}</p>
+                <span className="text-[10px] text-slate-400 font-semibold block">Across all floor services</span>
+              </div>
+
+              {/* 2. Today's New Entries */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-teal-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Today's Inward</span>
+                  <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-teal-700 tracking-tight">+{kpis.todayNewEntries}</p>
+                <span className="text-[10px] text-teal-600 font-semibold block">New service bookings today</span>
+              </div>
+
+              {/* 3. Ready for Delivery */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-emerald-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ready for Delivery</span>
+                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-emerald-700 tracking-tight">{kpis.readyForDelivery}</p>
+                <span className="text-[10px] text-emerald-600 font-semibold block">Awaiting customer collection</span>
+              </div>
+
+              {/* 4. Delivered Today */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-blue-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Delivered Today</span>
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                    <Package className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-blue-700 tracking-tight">{kpis.deliveredToday}</p>
+                <span className="text-[10px] text-blue-600 font-semibold block">Completed handovers today</span>
+              </div>
+
+              {/* 5. Overdue Services */}
+              <div className={`p-5 rounded-2xl border shadow-xs space-y-2 transition-all ${
+                kpis.overdueServices > 0 ? 'bg-rose-50/50 border-rose-200' : 'bg-white border-slate-100'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Overdue Alerts</span>
+                  <div className="p-2 bg-rose-100 text-rose-600 rounded-xl">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-rose-700 tracking-tight">{kpis.overdueServices}</p>
+                <span className="text-[10px] text-rose-600 font-semibold block">Past target delivery timeline</span>
+              </div>
+
+              {/* 6. Urgent Deliveries */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-amber-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">Urgent Deliveries</span>
+                  <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                    <Timer className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-amber-700 tracking-tight">{kpis.urgentDeliveries}</p>
+                <span className="text-[10px] text-amber-600 font-semibold block">Store waiting / Express priority</span>
+              </div>
+
+              {/* 7. Re-Alter Pending */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-purple-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">Re-Alter Pending</span>
+                  <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-purple-700 tracking-tight">{kpis.reAlterPending}</p>
+                <span className="text-[10px] text-purple-600 font-semibold block">Secondary fitting adjustments</span>
+              </div>
+
+              {/* 8. Partial Collection Pending */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-cyan-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-cyan-600 uppercase tracking-wider">Partial Collections</span>
+                  <div className="p-2 bg-cyan-50 text-cyan-600 rounded-xl">
+                    <Truck className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-cyan-700 tracking-tight">{kpis.partialCollectionPending}</p>
+                <span className="text-[10px] text-cyan-600 font-semibold block">Split item deliveries pending</span>
               </div>
             </div>
-            <p className="text-2xl font-black text-emerald-700 tracking-tight">{kpis.readyForDelivery}</p>
-            <span className="text-[10px] text-emerald-600 font-semibold block">Awaiting customer collection</span>
-          </div>
-
-          {/* 4. Delivered Today */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-blue-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Delivered Today</span>
-              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                <Package className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-blue-700 tracking-tight">{kpis.deliveredToday}</p>
-            <span className="text-[10px] text-blue-600 font-semibold block">Completed handovers today</span>
-          </div>
-
-          {/* 5. Overdue Services */}
-          <div className={`p-5 rounded-2xl border shadow-xs space-y-2 transition-all ${
-            kpis.overdueServices > 0 ? 'bg-rose-50/50 border-rose-200' : 'bg-white border-slate-100'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Overdue Alerts</span>
-              <div className="p-2 bg-rose-100 text-rose-600 rounded-xl">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-rose-700 tracking-tight">{kpis.overdueServices}</p>
-            <span className="text-[10px] text-rose-600 font-semibold block">Past target delivery timeline</span>
-          </div>
-
-          {/* 6. Urgent Deliveries */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-amber-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">Urgent Deliveries</span>
-              <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                <Timer className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-amber-700 tracking-tight">{kpis.urgentDeliveries}</p>
-            <span className="text-[10px] text-amber-600 font-semibold block">Store waiting / Express priority</span>
-          </div>
-
-          {/* 7. Re-Alter Pending */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-purple-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">Re-Alter Pending</span>
-              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
-                <RefreshCw className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-purple-700 tracking-tight">{kpis.reAlterPending}</p>
-            <span className="text-[10px] text-purple-600 font-semibold block">Secondary fitting adjustments</span>
-          </div>
-
-          {/* 8. Partial Collection Pending */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-2 hover:border-cyan-200 transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-cyan-600 uppercase tracking-wider">Partial Collections</span>
-              <div className="p-2 bg-cyan-50 text-cyan-600 rounded-xl">
-                <Truck className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-cyan-700 tracking-tight">{kpis.partialCollectionPending}</p>
-            <span className="text-[10px] text-cyan-600 font-semibold block">Split item deliveries pending</span>
-          </div>
-        </div>
 
         {/* Operational Health Strip */}
         <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-4 rounded-2xl text-white flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
@@ -730,9 +792,11 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
             </div>
           </div>
         </div>
-      </div>
-    );
-  };
+      </>
+    )}
+  </div>
+);
+};
 
   // -------------------------------------------------------------
   // B. OPERATIONS DASHBOARD VIEW
@@ -796,8 +860,31 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
           </div>
         </div>
 
-        {/* Section A: Operations KPI Cards (10 Cards) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5">
+        {/* Loading State when no data yet */}
+        {isLoadingOperations && !operationsData ? (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white rounded-2xl border border-indigo-100/80 p-8 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Loading Operations & Workshop Data...</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Fetching live service queues, workshop loads, capacity metrics & floor jobs
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <div key={n} className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-2 animate-pulse">
+                  <div className="h-3 bg-slate-100 rounded w-16"></div>
+                  <div className="h-6 bg-slate-200 rounded w-12"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Section A: Operations KPI Cards (10 Cards) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5">
           <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase">Total Pending</span>
             <p className="text-xl font-black text-slate-800">{kpis.totalPendingServices}</p>
@@ -1219,9 +1306,11 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
             </table>
           </div>
         </div>
-      </div>
-    );
-  };
+      </>
+    )}
+  </div>
+);
+};
 
   // -------------------------------------------------------------
   // C. SALESMAN DASHBOARD VIEW
@@ -1300,8 +1389,31 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
           </div>
         </div>
 
-        {/* Summary KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+        {/* Loading State when no data yet */}
+        {isLoadingSalesman && !salesmanData ? (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white rounded-2xl border border-teal-100/80 p-8 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <div className="w-10 h-10 border-3 border-teal-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Loading Salesman Follow-up Data...</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Fetching salesperson service ownership, daily call lists & delegation status
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <div key={n} className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-2 animate-pulse">
+                  <div className="h-3 bg-slate-100 rounded w-16"></div>
+                  <div className="h-6 bg-slate-200 rounded w-12"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Summary KPI Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
           <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase">Total Assigned</span>
             <p className="text-xl font-black text-slate-800">{summary.totalAssignedServices}</p>
@@ -1542,9 +1654,11 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
             </table>
           </div>
         </div>
-      </div>
-    );
-  };
+      </>
+    )}
+  </div>
+);
+};
 
   // -------------------------------------------------------------
   // D. CUSTOMER DASHBOARD VIEW
@@ -2298,8 +2412,31 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
           </div>
         </div>
 
-        {/* Section A: Business Analysis Intelligence Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+        {/* Loading State when no data yet */}
+        {isLoadingManagement && !managementData ? (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white rounded-2xl border border-purple-100/80 p-8 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <div className="w-10 h-10 border-3 border-purple-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Loading Executive Management Analytics...</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Computing turnaround times, master tailor ratings & quality rework rates
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <div key={n} className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-2 animate-pulse">
+                  <div className="h-3 bg-slate-100 rounded w-16"></div>
+                  <div className="h-6 bg-slate-200 rounded w-12"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Section A: Business Analysis Intelligence Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
           <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs space-y-1">
             <span className="text-[10px] font-bold text-purple-600 uppercase">Most Prone Item</span>
             <p className="text-sm font-black text-slate-800 truncate">{biz.mostAlterationProneItem || 'N/A'}</p>
@@ -2494,9 +2631,11 @@ export default function SummaryDashboardView({ currentUser, onAddNotification })
             </div>
           );
         })()}
-      </div>
-    );
-  };
+      </>
+    )}
+  </div>
+);
+};
 
   // ==================== MAIN COMPONENT DISPATCHER ====================
   return (
