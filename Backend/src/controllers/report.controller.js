@@ -28,22 +28,26 @@ class ReportController {
 
   static getStockReport = asyncHandler(async (req, res) => {
     const type = req.query.type || req.query.reportType || req.params.type;
-    const report = await ReportService.getInventoryReport(type, req.tenantId);
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getInventoryReport(type, req.tenantId, startDate, endDate);
     return res.status(200).json(new ApiResponse(200, report, 'Inventory report generated.'));
   });
 
   static getStockAgingReport = asyncHandler(async (req, res) => {
-    const report = await ReportService.getInventoryReport('stock_aging', req.tenantId);
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getInventoryReport('stock_aging', req.tenantId, startDate, endDate);
     return res.status(200).json(new ApiResponse(200, report, 'Stock aging report generated.'));
   });
 
   static getFastMovingReport = asyncHandler(async (req, res) => {
-    const report = await ReportService.getInventoryReport('fast_moving', req.tenantId);
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getInventoryReport('fast_moving', req.tenantId, startDate, endDate);
     return res.status(200).json(new ApiResponse(200, report, 'Fast moving products report generated.'));
   });
 
   static getSlowMovingReport = asyncHandler(async (req, res) => {
-    const report = await ReportService.getInventoryReport('slow_moving', req.tenantId);
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getInventoryReport('slow_moving', req.tenantId, startDate, endDate);
     return res.status(200).json(new ApiResponse(200, report, 'Slow moving products report generated.'));
   });
 
@@ -78,7 +82,8 @@ class ReportController {
   });
 
   static getCustomerReport = asyncHandler(async (req, res) => {
-    const report = await ReportService.getCustomerReport(req.tenantId);
+    const { startDate, endDate } = req.query;
+    const report = await ReportService.getCustomerReport(startDate, endDate, req.tenantId);
     return res.status(200).json(new ApiResponse(200, report, 'Customer report generated.'));
   });
 

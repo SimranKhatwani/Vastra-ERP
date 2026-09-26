@@ -17,6 +17,57 @@ const Product = require('../models/Product');
 const Category = require('../models/masters/Category');
 const { BILL_STATUS, INVENTORY_STATUS } = require('../constants/status');
 
+const parseDateBounds = (startDate, endDate) => {
+  let start = null;
+  let end = null;
+
+  if (startDate) {
+    if (typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      const [y, m, d] = startDate.split('-').map(Number);
+      const localStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+      const utcStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+      start = localStart < utcStart ? localStart : utcStart;
+    } else {
+      start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+    }
+  }
+
+  if (endDate) {
+    if (typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      const [y, m, d] = endDate.split('-').map(Number);
+      const localEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+      const utcEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+      end = localEnd > utcEnd ? localEnd : utcEnd;
+    } else {
+      end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+    }
+  }
+
+  return { start, end };
+};
+
+const buildDateFilter = (startDate, endDate, primaryField = 'billDate', fallbackField = 'createdAt') => {
+  const { start, end } = parseDateBounds(startDate, endDate);
+  if (!start && !end) return {};
+
+  const range = {};
+  if (start) range.$gte = start;
+  if (end) range.$lte = end;
+
+  if (primaryField === fallbackField) {
+    return { [primaryField]: range };
+  }
+
+  return {
+    $or: [
+      { [primaryField]: range },
+      { [primaryField]: { $in: [null, undefined] }, [fallbackField]: range }
+    ]
+  };
+};
+
 class ReportService {
   /**
    * Enterprise Dashboard Analytics (18 KPIs, Multi-Metric Charts & Live Transaction Feed)
@@ -262,16 +313,12 @@ class ReportService {
    * Sales Report
    */
   static async getSalesReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
+    const dateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const filter = { tenantId, isDeleted: false, ...dateQuery };
 
     const bills = await SaleBill.find(filter)
       .populate('customerId firmId salesmanId')
-      .sort({ billDate: -1 });
+      .sort({ billDate: -1, createdAt: -1 });
 
     const totalSales = bills.reduce((sum, b) => sum + (b.grandTotal || 0), 0);
     const totalDiscount = bills.reduce((sum, b) => sum + (b.discountAmount || 0), 0);
@@ -311,16 +358,12 @@ class ReportService {
    * Purchase Report
    */
   static async getPurchaseReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
+    const dateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const filter = { tenantId, isDeleted: false, ...dateQuery };
 
     const bills = await PurchaseBill.find(filter)
       .populate('vendorId firmId warehouseId')
-      .sort({ billDate: -1 });
+      .sort({ billDate: -1, createdAt: -1 });
 
     const totalPurchaseAmount = bills.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
 
@@ -349,7 +392,8 @@ class ReportService {
    */
   static async getVendorReport(startDate, endDate, tenantId) {
     const vendors = await Vendor.find({ tenantId, isDeleted: false }).lean();
-    const purchases = await PurchaseBill.find({ tenantId, isDeleted: false }).lean();
+    const purchaseDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const purchases = await PurchaseBill.find({ tenantId, isDeleted: false, ...purchaseDateQuery }).lean();
 
     const vendorStats = new Map();
     purchases.forEach(p => {
@@ -374,23 +418,27 @@ class ReportService {
       };
     });
 
-    const totalPurchases = data.reduce((sum, v) => sum + v.totalPurchases, 0);
-    const totalDuePayables = data.reduce((sum, v) => sum + v.duePayables, 0);
+    const filteredData = (startDate || endDate)
+      ? data.filter(v => v.totalBills > 0 || v.totalPurchases > 0 || v.duePayables > 0)
+      : data;
+
+    const totalPurchases = filteredData.reduce((sum, v) => sum + v.totalPurchases, 0);
+    const totalDuePayables = filteredData.reduce((sum, v) => sum + v.duePayables, 0);
 
     return {
       summary: {
-        totalVendors: vendors.length,
+        totalVendors: filteredData.length,
         totalPurchases,
         totalDuePayables
       },
-      data
+      data: filteredData
     };
   }
 
   /**
    * Inventory & Stock Analytics (Summary, Aging, Fast/Slow Moving)
    */
-  static async getInventoryReport(type, tenantId) {
+  static async getInventoryReport(type, tenantId, startDate, endDate) {
     const tenantObjectId = new mongoose.Types.ObjectId(tenantId);
     const pieces = await InventoryPiece.find({
       tenantId: tenantObjectId,
@@ -431,7 +479,8 @@ class ReportService {
     }
 
     if (type === 'fast_moving' || type === 'slow_moving') {
-      const sales = await SaleBill.find({ tenantId: tenantObjectId, isDeleted: false }).lean();
+      const salesDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+      const sales = await SaleBill.find({ tenantId: tenantObjectId, isDeleted: false, ...salesDateQuery }).lean();
       const turnoverMap = new Map();
 
       sales.forEach(b => {
@@ -496,15 +545,11 @@ class ReportService {
    * GST Tax Audit Report
    */
   static async getGSTReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
+    const salesDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const purchaseDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
 
-    const salesBills = await SaleBill.find(filter).populate('customerId');
-    const purchaseBills = await PurchaseBill.find(filter).populate('vendorId');
+    const salesBills = await SaleBill.find({ tenantId, isDeleted: false, ...salesDateQuery }).populate('customerId');
+    const purchaseBills = await PurchaseBill.find({ tenantId, isDeleted: false, ...purchaseDateQuery }).populate('vendorId');
 
     const totalSalesGST = salesBills.reduce((sum, b) => sum + (b.taxAmount || 0), 0);
     const totalPurchaseGST = purchaseBills.reduce((sum, b) => sum + (b.gst || b.taxAmount || 0), 0);
@@ -545,23 +590,42 @@ class ReportService {
   /**
    * Customer CRM Report
    */
-  static async getCustomerReport(tenantId) {
+  static async getCustomerReport(startDate, endDate, tenantId) {
     const customers = await Customer.find({ tenantId, isDeleted: false })
       .sort({ dueBalance: -1 })
       .lean();
 
-    const totalCustomers = customers.length;
-    const totalDueReceivables = customers.reduce((sum, c) => sum + Number(c.dueBalance || 0), 0);
+    const salesDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const sales = await SaleBill.find({ tenantId, isDeleted: false, ...salesDateQuery }).lean();
 
-    const data = customers.map(c => ({
-      customerName: c.name,
-      phone: c.phone || '—',
-      email: c.email || '—',
-      city: c.city || '—',
-      dueReceivables: Number(c.dueBalance || 0),
-      advanceBalance: Number(c.advanceBalance || 0),
-      lifetimePoints: Number(c.rewardPoints || 0)
-    }));
+    const custSalesMap = new Map();
+    sales.forEach(b => {
+      const cId = b.customerId?.toString();
+      if (cId) {
+        const stat = custSalesMap.get(cId) || { billsCount: 0, totalSpend: 0 };
+        stat.billsCount++;
+        stat.totalSpend += Number(b.grandTotal || 0);
+        custSalesMap.set(cId, stat);
+      }
+    });
+
+    const data = customers.map(c => {
+      const stat = custSalesMap.get(c._id.toString()) || { billsCount: 0, totalSpend: 0 };
+      return {
+        customerName: c.name,
+        phone: c.phone || '—',
+        email: c.email || '—',
+        city: c.city || '—',
+        billsCount: stat.billsCount,
+        periodSpend: stat.totalSpend,
+        dueReceivables: Number(c.dueBalance || 0),
+        advanceBalance: Number(c.advanceBalance || 0),
+        lifetimePoints: Number(c.rewardPoints || 0)
+      };
+    });
+
+    const totalCustomers = customers.length;
+    const totalDueReceivables = data.reduce((sum, c) => sum + Number(c.dueReceivables || 0), 0);
 
     return {
       summary: {
@@ -576,15 +640,9 @@ class ReportService {
    * Employee Performance Analytics
    */
   static async getEmployeePerformanceReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
-
+    const dateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
     const salesmen = await Salesman.find({ tenantId, isDeleted: false }).lean();
-    const sales = await SaleBill.find(filter).lean();
+    const sales = await SaleBill.find({ tenantId, isDeleted: false, ...dateQuery }).lean();
 
     const statsMap = new Map();
     sales.forEach(b => {
@@ -627,24 +685,21 @@ class ReportService {
    * Attendance Report
    */
   static async getAttendanceReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
-    }
-
-    const logs = await Attendance.find(filter).populate('salesmanId userId').sort({ date: -1 }).lean();
+    const dateQuery = buildDateFilter(startDate, endDate, 'date', 'createdAt');
+    const logs = await Attendance.find({ tenantId, isDeleted: false, ...dateQuery })
+      .populate('salesmanId userId')
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
     const salesmen = await Salesman.find({ tenantId, isDeleted: false }).lean();
 
     let data = logs.map(l => ({
       staffName: l.staffName || l.salesmanId?.name || l.userId?.name || 'Staff Member',
-      date: l.date,
+      date: l.date || l.createdAt,
       status: l.status || 'PRESENT',
       remarks: l.remarks || 'Regular Check-in'
     }));
 
-    if (data.length === 0) {
+    if (data.length === 0 && !startDate && !endDate) {
       data = salesmen.map(s => ({
         staffName: s.name,
         date: new Date(),
@@ -653,10 +708,13 @@ class ReportService {
       }));
     }
 
+    const presentCount = data.filter(d => d.status === 'PRESENT').length;
+    const presentRate = data.length > 0 ? `${Math.round((presentCount / data.length) * 100)}%` : '100%';
+
     return {
       summary: {
         totalLogs: data.length,
-        presentRate: '98%'
+        presentRate
       },
       data
     };
@@ -666,17 +724,15 @@ class ReportService {
    * Financial Summary & P&L Statement
    */
   static async getFinancialSummaryReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
+    const salesDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const purchaseDateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const expenseDateQuery = buildDateFilter(startDate, endDate, 'date', 'createdAt');
+    const returnDateQuery = buildDateFilter(startDate, endDate, 'createdAt', 'returnDate');
 
-    const sales = await SaleBill.find(filter).lean();
-    const purchases = await PurchaseBill.find(filter).lean();
-    const expenses = await Expense.find({ tenantId, isDeleted: false }).lean();
-    const returns = await Return.find({ tenantId, isDeleted: false }).lean();
+    const sales = await SaleBill.find({ tenantId, isDeleted: false, ...salesDateQuery }).lean();
+    const purchases = await PurchaseBill.find({ tenantId, isDeleted: false, ...purchaseDateQuery }).lean();
+    const expenses = await Expense.find({ tenantId, isDeleted: false, ...expenseDateQuery }).lean();
+    const returns = await Return.find({ tenantId, isDeleted: false, ...returnDateQuery }).lean();
 
     const grossSales = sales.reduce((sum, b) => sum + Number(b.grandTotal || 0), 0);
     const salesReturns = returns.reduce((sum, r) => sum + Number(r.refundAmount || 0), 0);
@@ -712,14 +768,8 @@ class ReportService {
    * Expense Management Report
    */
   static async getExpensesReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.date = {};
-      if (startDate) filter.date.$gte = startDate;
-      if (endDate) filter.date.$lte = endDate;
-    }
-
-    const expenses = await Expense.find(filter).sort({ date: -1 }).lean();
+    const dateQuery = buildDateFilter(startDate, endDate, 'date', 'createdAt');
+    const expenses = await Expense.find({ tenantId, isDeleted: false, ...dateQuery }).sort({ date: -1, createdAt: -1 }).lean();
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
     const data = expenses.map(e => ({
@@ -745,12 +795,8 @@ class ReportService {
    * Payment Report
    */
   static async getPaymentReport(startDate, endDate, tenantId) {
-    const filter = { tenantId };
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate);
-    }
+    const dateQuery = buildDateFilter(startDate, endDate, 'createdAt', 'date');
+    const filter = { tenantId, ...dateQuery };
 
     const transactions = await PaymentTransaction.aggregate([
       { $match: filter },
@@ -788,30 +834,20 @@ class ReportService {
    * both showroom alterations and customer-owned custom tailoring tickets.
    */
   static async getTailoringReport(reportType, startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.jobDate = {};
-      if (startDate) filter.jobDate.$gte = new Date(startDate);
-      if (endDate) {
-        const inclusiveEnd = new Date(endDate);
-        inclusiveEnd.setDate(inclusiveEnd.getDate() + 1);
-        filter.jobDate.$lt = inclusiveEnd;
-      }
-    }
+    const jobDateQuery = buildDateFilter(startDate, endDate, 'jobDate', 'createdAt');
+    const filter = { tenantId, isDeleted: false, ...jobDateQuery };
 
-    const jobs = await TailoringJob.find(filter).sort({ jobDate: -1 }).lean();
+    const jobs = await TailoringJob.find(filter).sort({ jobDate: -1, createdAt: -1 }).lean();
     const jobItemIds = jobs.map(job => job.pssmItemId).filter(Boolean);
     const jobItems = await PSSMItem.find({ tenantId, _id: { $in: jobItemIds } }).populate('pssmId').lean();
     const jobItemIdSet = new Set(jobItemIds.map(id => id.toString()));
-    const untrackedPssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true } })
+
+    const pssmDateQuery = buildDateFilter(startDate, endDate, 'createdAt', 'updatedAt');
+    const untrackedPssmItems = await PSSMItem.find({ tenantId, isDeleted: { $ne: true }, ...pssmDateQuery })
       .populate('pssmId')
       .lean();
     const fallbackJobs = untrackedPssmItems
       .filter(item => !jobItemIdSet.has(item._id.toString()))
-      .filter(item => {
-        const date = item.createdAt || item.pssmId?.createdAt;
-        return !filter.jobDate || (date && (!filter.jobDate.$gte || new Date(date) >= filter.jobDate.$gte) && (!filter.jobDate.$lt || new Date(date) < filter.jobDate.$lt));
-      })
       .map(item => ({
         _id: item._id,
         pssmItemId: item._id,
@@ -901,7 +937,8 @@ class ReportService {
         break;
       }
       case 'realteration': {
-        const items = await PSSMItem.find({ tenantId, isDeleted: false, status: { $in: ['RE_ALTERATION', 'Re-Alteration', 'REWORK'] } })
+        const realtDateQuery = buildDateFilter(startDate, endDate, 'createdAt', 'updatedAt');
+        const items = await PSSMItem.find({ tenantId, isDeleted: false, status: { $in: ['RE_ALTERATION', 'Re-Alteration', 'REWORK'] }, ...realtDateQuery })
           .populate('pssmId').lean();
         data = items.map(item => ({
           pssmNo: item.pssmId?.pssmNo || '',
@@ -979,21 +1016,21 @@ class ReportService {
    * Manual Adjustments Report
    */
   static async getManualAdjustmentsReport(startDate, endDate, tenantId) {
-    const filter = { tenantId, isDeleted: false };
-    if (startDate || endDate) {
-      filter.billDate = {};
-      if (startDate) filter.billDate.$gte = new Date(startDate);
-      if (endDate) filter.billDate.$lte = new Date(endDate);
-    }
-    filter.$or = [
-      { manualDiscountAmount: { $gt: 0 } },
-      { manualChargeAmount: { $gt: 0 } }
-    ];
+    const dateQuery = buildDateFilter(startDate, endDate, 'billDate', 'createdAt');
+    const filter = {
+      tenantId,
+      isDeleted: false,
+      ...dateQuery,
+      $or: [
+        { manualDiscountAmount: { $gt: 0 } },
+        { manualChargeAmount: { $gt: 0 } }
+      ]
+    };
 
     const bills = await SaleBill.find(filter)
       .populate('customerId')
-      .sort({ billDate: -1 })
-      .select('billNo billDate grandTotal manualDiscountAmount manualChargeAmount manualAdjustmentReason customerId');
+      .sort({ billDate: -1, createdAt: -1 })
+      .select('billNo billDate createdAt grandTotal manualDiscountAmount manualChargeAmount manualAdjustmentReason customerId');
 
     const totalManualDiscounts = bills.reduce((sum, b) => sum + (b.manualDiscountAmount || 0), 0);
     const totalManualCharges = bills.reduce((sum, b) => sum + (b.manualChargeAmount || 0), 0);
@@ -1006,7 +1043,7 @@ class ReportService {
       },
       data: bills.map(b => ({
         billNo: b.billNo,
-        billDate: b.billDate,
+        billDate: b.billDate || b.createdAt,
         customerName: b.customerId?.name || 'Walk-in Customer',
         grandTotal: b.grandTotal,
         manualDiscountAmount: b.manualDiscountAmount || 0,

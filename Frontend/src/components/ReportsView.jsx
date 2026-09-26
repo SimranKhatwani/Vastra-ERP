@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   BarChart3,
   TrendingUp,
@@ -60,7 +60,7 @@ export const ReportsView = ({
   onAddNotification
 }) => {
   const [activeSection, setActiveSection] = useState("dashboard"); // 'dashboard', 'sales', 'inventory', 'people', 'financial', 'tailoring'
-  const [selectedReport, setSelectedReport] = useState(null); // Selected report inside section
+  const [selectedReport, setSelectedReport] = useState("sales_summary"); // Selected report inside section
   const [loading, setLoading] = useState(false);
 
   // Filter States
@@ -74,12 +74,28 @@ export const ReportsView = ({
   const [reportData, setReportData] = useState(null);
   const [whatsappEditor, setWhatsappEditor] = useState(null);
 
+  // Request race-condition and props stability refs
+  const latestRequestId = useRef(0);
+  const propsRef = useRef({ invoices, purchaseOrders, products, employees, customers, expenses });
+  useEffect(() => {
+    propsRef.current = { invoices, purchaseOrders, products, employees, customers, expenses };
+  }, [invoices, purchaseOrders, products, employees, customers, expenses]);
+
   // Format helpers
   const fmt = (num) => Number(num || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
 
   // Client-side fallback computation for dashboard
   const computeFallbackDashboard = useCallback(() => {
+    const {
+      invoices = [],
+      purchaseOrders = [],
+      products = [],
+      employees = [],
+      customers = [],
+      expenses = []
+    } = propsRef.current || {};
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const endToday = new Date();
@@ -257,33 +273,97 @@ export const ReportsView = ({
       },
       recentActivities
     };
-  }, [invoices, purchaseOrders, products, employees, customers, expenses]);
+  }, []);
 
   // Fetch Business Performance Dashboard Data
   const loadDashboard = useCallback(async () => {
+    const reqId = ++latestRequestId.current;
     setLoading(true);
     try {
       const res = await api.get(`/reports/dashboard`);
+      if (reqId !== latestRequestId.current) return;
       const resData = res.data;
       if (resData.success && resData.data?.kpis) {
         setDashboardData(resData.data);
       } else {
-        // Fallback to client computation
         setDashboardData(computeFallbackDashboard());
       }
     } catch (e) {
       console.warn("Reports dashboard API fallback triggered:", e);
-      setDashboardData(computeFallbackDashboard());
+      if (reqId === latestRequestId.current) {
+        setDashboardData(computeFallbackDashboard());
+      }
     } finally {
-      setLoading(false);
+      if (reqId === latestRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [computeFallbackDashboard]);
 
+  // Date range verification helper
+  const isDateInRange = useCallback((dateVal, startStr, endStr) => {
+    if (!startStr && !endStr) return true;
+    if (!dateVal) return false;
+
+    let d;
+    if (typeof dateVal === 'string' && dateVal.includes('/')) {
+      const parts = dateVal.split(/[/ -]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        } else {
+          d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        }
+      } else {
+        d = new Date(dateVal);
+      }
+    } else {
+      d = new Date(dateVal);
+    }
+
+    if (isNaN(d.getTime())) return true;
+
+    if (startStr) {
+      const [sy, sm, sd] = startStr.split('-').map(Number);
+      const sDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+      const checkDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+      if (checkDate < sDate) return false;
+    }
+
+    if (endStr) {
+      const [ey, em, ed] = endStr.split('-').map(Number);
+      const eDate = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+      const checkDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      if (checkDate > eDate) return false;
+    }
+
+    return true;
+  }, []);
+
   // Client-side fallback computation for sub-reports
   const computeFallbackSectionReport = useCallback((section, reportType) => {
+    const {
+      invoices = [],
+      purchaseOrders = [],
+      products = [],
+      employees = [],
+      customers = [],
+      expenses = []
+    } = propsRef.current || {};
+
+    const filteredInvoices = invoices.filter(inv =>
+      isDateInRange(inv.billDate || inv.date || inv.createdAt, dateRange.start, dateRange.end)
+    );
+    const filteredPurchaseOrders = purchaseOrders.filter(po =>
+      isDateInRange(po.billDate || po.orderDate || po.date || po.createdAt, dateRange.start, dateRange.end)
+    );
+    const filteredExpenses = expenses.filter(e =>
+      isDateInRange(e.date || e.createdAt, dateRange.start, dateRange.end)
+    );
+
     if (section === "sales") {
       if (reportType === "purchase") {
-        const data = purchaseOrders.map(po => ({
+        const data = filteredPurchaseOrders.map(po => ({
           invoiceNo: po.billNo || po.invoiceNumber || 'PB-REC',
           billDate: po.billDate || po.orderDate || po.date || po.createdAt,
           vendorName: po.vendorName || po.vendorId?.name || 'General Supplier',
@@ -296,11 +376,21 @@ export const ReportsView = ({
         return { summary: { totalBills: data.length, totalPurchaseAmount }, data };
       }
       if (reportType === "customer") {
+        const custSalesMap = new Map();
+        filteredInvoices.forEach(inv => {
+          const cName = inv.customerName || inv.customerId?.name || 'Walk-in Customer';
+          const stat = custSalesMap.get(cName) || { count: 0, spend: 0 };
+          stat.count++;
+          stat.spend += Number(inv.grandTotal || inv.total || 0);
+          custSalesMap.set(cName, stat);
+        });
         const data = customers.map(c => ({
           customerName: c.name || 'Customer',
           phone: c.phone || '—',
           email: c.email || '—',
           city: c.city || '—',
+          billsCount: custSalesMap.get(c.name)?.count || 0,
+          periodSpend: custSalesMap.get(c.name)?.spend || 0,
           dueReceivables: Number(c.dueBalance || c.outstanding || 0),
           advanceBalance: Number(c.advanceBalance || 0),
           lifetimePoints: Number(c.rewardPoints || 0)
@@ -310,8 +400,8 @@ export const ReportsView = ({
       }
       if (reportType === "vendor") {
         const vMap = new Map();
-        purchaseOrders.forEach(p => {
-          const vName = p.vendorName || 'General Supplier';
+        filteredPurchaseOrders.forEach(p => {
+          const vName = p.vendorName || p.vendorId?.name || 'General Supplier';
           const stat = vMap.get(vName) || { totalBills: 0, totalPurchases: 0 };
           stat.totalBills++;
           stat.totalPurchases += Number(p.totalAmount || p.grandTotal || 0);
@@ -326,21 +416,34 @@ export const ReportsView = ({
         return { summary: { totalVendors: data.length, totalPurchases: data.reduce((s, v) => s + v.totalPurchases, 0), totalDuePayables: 0 }, data };
       }
       if (reportType === "gst") {
-        const data = invoices.map(inv => ({
-          invoiceNo: inv.billNo || inv.invoiceNo || 'INV-REC',
-          billDate: inv.billDate || inv.date || inv.createdAt,
-          type: 'Output GST (Sales)',
-          partyName: inv.customerName || 'Walk-in Customer',
-          gstin: 'Unregistered',
-          taxableValue: Number(inv.grandTotal || 0) - Number(inv.taxAmount || 0),
-          gstAmount: Number(inv.taxAmount || 0),
-          totalAmount: Number(inv.grandTotal || 0)
-        }));
-        const outputGST = data.reduce((s, r) => s + r.gstAmount, 0);
-        return { summary: { outputGST, inputGST: 0, netGSTPayable: outputGST }, data };
+        const data = [
+          ...filteredInvoices.map(inv => ({
+            invoiceNo: inv.billNo || inv.invoiceNo || 'INV-REC',
+            billDate: inv.billDate || inv.date || inv.createdAt,
+            type: 'Output GST (Sales)',
+            partyName: inv.customerName || 'Walk-in Customer',
+            gstin: 'Unregistered',
+            taxableValue: Number(inv.grandTotal || 0) - Number(inv.taxAmount || 0),
+            gstAmount: Number(inv.taxAmount || 0),
+            totalAmount: Number(inv.grandTotal || 0)
+          })),
+          ...filteredPurchaseOrders.map(po => ({
+            invoiceNo: po.billNo || po.invoiceNumber || 'PB-REC',
+            billDate: po.billDate || po.orderDate || po.date || po.createdAt,
+            type: 'Input GST (Purchase)',
+            partyName: po.vendorName || po.vendorId?.name || 'General Supplier',
+            gstin: 'Unregistered',
+            taxableValue: Number(po.totalAmount || 0) - Number(po.gst || po.taxAmount || 0),
+            gstAmount: Number(po.gst || po.taxAmount || 0),
+            totalAmount: Number(po.totalAmount || 0)
+          }))
+        ];
+        const outputGST = filteredInvoices.reduce((s, r) => s + Number(r.taxAmount || 0), 0);
+        const inputGST = filteredPurchaseOrders.reduce((s, r) => s + Number(r.gst || r.taxAmount || 0), 0);
+        return { summary: { outputGST, inputGST, netGSTPayable: Math.max(0, outputGST - inputGST) }, data };
       }
       if (reportType === "manual-adjustments") {
-        const data = invoices.filter(i => (i.manualDiscountAmount > 0 || i.manualChargeAmount > 0)).map(i => ({
+        const data = filteredInvoices.filter(i => (i.manualDiscountAmount > 0 || i.manualChargeAmount > 0)).map(i => ({
           billNo: i.billNo || i.invoiceNo,
           billDate: i.billDate || i.date,
           customerName: i.customerName || 'Walk-in Customer',
@@ -352,7 +455,7 @@ export const ReportsView = ({
         return { summary: { totalAdjustedBills: data.length, totalManualDiscounts: data.reduce((s, d) => s + d.manualDiscountAmount, 0), totalManualCharges: data.reduce((s, d) => s + d.manualChargeAmount, 0) }, data };
       }
       // default: sales_summary
-      const data = invoices.map(b => ({
+      const data = filteredInvoices.map(b => ({
         billNo: b.billNo || b.invoiceNo || b.id || 'INV-REC',
         billDate: b.billDate || b.date || b.createdAt,
         customerName: b.customerName || b.customerId?.name || 'Walk-in Customer',
@@ -394,10 +497,10 @@ export const ReportsView = ({
         salesmanName: e.name,
         designation: e.designation || 'Sales Executive',
         phone: e.phone || '—',
-        billsCount: invoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).length,
-        revenueGenerated: invoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).reduce((s, i) => s + Number(i.grandTotal || 0), 0),
+        billsCount: filteredInvoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).length,
+        revenueGenerated: filteredInvoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).reduce((s, i) => s + Number(i.grandTotal || 0), 0),
         commissionRate: `${e.commissionPercentage || 1.5}%`,
-        commissionEarned: Number((invoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).reduce((s, i) => s + Number(i.grandTotal || 0), 0) * ((e.commissionPercentage || 1.5) / 100)).toFixed(2)),
+        commissionEarned: Number((filteredInvoices.filter(i => i.salesmanName === e.name || i.salesmanId === e._id).reduce((s, i) => s + Number(i.grandTotal || 0), 0) * ((e.commissionPercentage || 1.5) / 100)).toFixed(2)),
         performanceGrade: 'A (Active)'
       }));
       return { summary: { totalStaff: data.length, totalRevenueGenerated: data.reduce((s, e) => s + e.revenueGenerated, 0) }, data };
@@ -405,7 +508,7 @@ export const ReportsView = ({
 
     if (section === "financial") {
       if (reportType === "expenses") {
-        const data = expenses.map(e => ({
+        const data = filteredExpenses.map(e => ({
           expenseNo: e.expenseNo || 'EXP-REC',
           date: e.date || e.createdAt,
           category: e.category || 'Miscellaneous',
@@ -416,9 +519,9 @@ export const ReportsView = ({
         }));
         return { summary: { totalExpenseRecords: data.length, totalExpenses: data.reduce((s, e) => s + e.amount, 0) }, data };
       }
-      const grossSales = invoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
-      const totalPurchases = purchaseOrders.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
-      const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+      const grossSales = filteredInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
+      const totalPurchases = filteredPurchaseOrders.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
+      const totalExpenses = filteredExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
       const netProfit = grossSales - totalPurchases - totalExpenses;
       const data = [
         { metric: 'Gross Sales Revenue', category: 'Income', amount: grossSales, notes: 'Total sales revenue before returns' },
@@ -431,15 +534,20 @@ export const ReportsView = ({
     }
 
     return { summary: null, data: [] };
-  }, [invoices, purchaseOrders, products, employees, customers, expenses]);
+  }, [dateRange.start, dateRange.end, isDateInRange]);
 
   // Fetch Section Specific Reports
   const loadSectionReport = useCallback(async (section, reportType) => {
+    if (!section || section === "dashboard") return;
+    const repType = reportType || getDefaultReportForSection(section);
+    if (!repType) return;
+
+    const reqId = ++latestRequestId.current;
     setLoading(true);
     try {
       let endpoint = section === "tailoring"
-        ? `/reports/tailoring?reportType=${encodeURIComponent(reportType || "daily_tailoring_jobs")}`
-        : `/reports/${reportType || section}`;
+        ? `/reports/tailoring?reportType=${encodeURIComponent(repType)}`
+        : `/reports/${repType}`;
       let queryParams = [];
       if (dateRange.start) queryParams.push(`startDate=${dateRange.start}`);
       if (dateRange.end) queryParams.push(`endDate=${dateRange.end}`);
@@ -449,41 +557,84 @@ export const ReportsView = ({
       }
 
       const res = await api.get(endpoint);
+      if (reqId !== latestRequestId.current) return;
+
       const resData = res.data;
       if (resData.success) {
         const d = resData.data;
-        const normalizedData = Array.isArray(d) ? d : (d.data || d.bills || d.transactions || d.topCustomers || []);
-        const summary = d.summary || (Array.isArray(d) ? null : { ...d, data: undefined, bills: undefined, topCustomers: undefined, transactions: undefined });
+        let normalizedData = Array.isArray(d) ? d : (d.data || d.bills || d.transactions || d.topCustomers || []);
+        let summary = d.summary || (Array.isArray(d) ? null : { ...d, data: undefined, bills: undefined, topCustomers: undefined, transactions: undefined });
         if (summary) {
           delete summary.data;
           delete summary.bills;
           delete summary.topCustomers;
           delete summary.transactions;
         }
+
+        // Strictly verify row dates if date range is active
+        if (dateRange.start || dateRange.end) {
+          const strictlyFiltered = normalizedData.filter(row => {
+            const rowDate = row.billDate || row.date || row.createdAt || row.jobDate || row.orderDate;
+            if (!rowDate) return true;
+            return isDateInRange(rowDate, dateRange.start, dateRange.end);
+          });
+          if (strictlyFiltered.length !== normalizedData.length) {
+            normalizedData = strictlyFiltered;
+            if (summary) {
+              if ('totalBills' in summary) summary.totalBills = normalizedData.length;
+              if ('totalAdjustedBills' in summary) summary.totalAdjustedBills = normalizedData.length;
+              if ('totalRecords' in summary) summary.totalRecords = normalizedData.length;
+              if ('totalSales' in summary) {
+                summary.totalSales = normalizedData.reduce((s, b) => s + Number(b.grandTotal || b.total || 0), 0);
+              }
+              if ('totalDiscount' in summary) {
+                summary.totalDiscount = normalizedData.reduce((s, b) => s + Number(b.discount || b.discountAmount || 0), 0);
+              }
+              if ('totalPaid' in summary) {
+                summary.totalPaid = normalizedData.reduce((s, b) => s + Number(b.paidAmount || b.grandTotal || 0), 0);
+              }
+              if ('totalDue' in summary) {
+                summary.totalDue = normalizedData.reduce((s, b) => s + Number(b.dueAmount || 0), 0);
+              }
+              if ('totalPurchaseAmount' in summary) {
+                summary.totalPurchaseAmount = normalizedData.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
+              }
+              if ('totalExpenses' in summary) {
+                summary.totalExpenses = normalizedData.reduce((s, e) => s + Number(e.amount || 0), 0);
+              }
+            }
+          }
+        }
+
         setReportData({ summary, data: normalizedData });
       } else {
-        setReportData(computeFallbackSectionReport(section, reportType));
+        if (reqId === latestRequestId.current) {
+          setReportData(computeFallbackSectionReport(section, repType));
+        }
       }
     } catch (e) {
-      console.warn("Sub-report API fallback triggered for", section, reportType, e);
-      setReportData(computeFallbackSectionReport(section, reportType));
+      console.warn("Sub-report API fallback triggered for", section, repType, e);
+      if (reqId === latestRequestId.current) {
+        setReportData(computeFallbackSectionReport(section, repType));
+      }
     } finally {
-      setLoading(false);
+      if (reqId === latestRequestId.current) {
+        setLoading(false);
+      }
     }
-  }, [dateRange, computeFallbackSectionReport]);
+  }, [dateRange.start, dateRange.end, computeFallbackSectionReport, isDateInRange]);
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    if (activeSection === "dashboard") {
+      loadDashboard();
+    }
+  }, [activeSection, loadDashboard]);
 
   useEffect(() => {
-    if (activeSection !== "dashboard") {
-      const defaultRep = getDefaultReportForSection(activeSection);
-      const repToLoad = selectedReport || defaultRep;
-      if (!selectedReport) setSelectedReport(defaultRep);
-      loadSectionReport(activeSection, repToLoad);
+    if (activeSection !== "dashboard" && selectedReport) {
+      loadSectionReport(activeSection, selectedReport);
     }
-  }, [activeSection, selectedReport, dateRange, loadSectionReport]);
+  }, [activeSection, selectedReport, dateRange.start, dateRange.end, loadSectionReport]);
 
   const getTailoringWhatsAppMessage = (row) => (
     `Hello ${row.customerName || "there"},\n\nYour ${row.garmentService || row.productName || "tailoring job"} ` +
@@ -515,6 +666,25 @@ export const ReportsView = ({
 
   // Colors
   const COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
+
+  // Reset pagination on filter / report change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange, searchQuery, selectedReport, activeSection]);
+
+  // Strictly filtered dataset for table display & export
+  const displayedData = useMemo(() => {
+    return (reportData?.data || []).filter((row) => {
+      if (searchQuery && !JSON.stringify(row).toLowerCase().includes(searchQuery.toLowerCase())) {
+        return false;
+      }
+      const rowDate = row.billDate || row.date || row.createdAt || row.jobDate || row.orderDate;
+      if (rowDate && (dateRange.start || dateRange.end)) {
+        return isDateInRange(rowDate, dateRange.start, dateRange.end);
+      }
+      return true;
+    });
+  }, [reportData?.data, searchQuery, dateRange, isDateInRange]);
 
   // Export CSV Handler
   const handleExportCSV = (filename, headers, rows) => {
@@ -568,13 +738,13 @@ export const ReportsView = ({
       </div>
 
       {/* Top Module Section Tabs */}
-      <div className="flex gap-1.5 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs overflow-x-auto">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-xs">
         {[
-          { id: "dashboard", label: "Business Performance Dashboard", icon: BarChart3 },
-          { id: "sales", label: "Sales & Purchase Analytics", icon: DollarSign },
+          { id: "dashboard", label: "Performance Dashboard", icon: BarChart3 },
+          { id: "sales", label: "Sales & Purchases", icon: DollarSign },
           { id: "inventory", label: "Inventory Analytics", icon: Package },
-          { id: "people", label: "People & HR Analytics", icon: Users },
-          { id: "financial", label: "Financial Analytics & Expenses", icon: PieIcon },
+          { id: "people", label: "People & HR", icon: Users },
+          { id: "financial", label: "Financial & Expenses", icon: PieIcon },
           { id: "tailoring", label: "Alteration & Tailoring", icon: Layers },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -583,17 +753,18 @@ export const ReportsView = ({
             <button
               key={tab.id}
               onClick={() => {
+                const defaultRep = tab.id === 'dashboard' ? null : getDefaultReportForSection(tab.id);
                 setActiveSection(tab.id);
-                setSelectedReport(null);
+                setSelectedReport(defaultRep);
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="truncate">{tab.label}</span>
             </button>
           );
         })}
@@ -653,8 +824,9 @@ export const ReportsView = ({
                 <div
                   key={card.id}
                   onClick={() => {
+                    const defaultRep = getDefaultReportForSection(card.id);
                     setActiveSection(card.id);
-                    setSelectedReport(null);
+                    setSelectedReport(defaultRep);
                   }}
                   className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
                 >
@@ -693,26 +865,26 @@ export const ReportsView = ({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              <KPISmall label="Gross Sales" value={`₹${fmt(kpis.grossSales || kpis.monthlySales)}`} color="blue" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
-              <KPISmall label="Sales Returns (Refunds)" value={`₹${fmt(kpis.salesReturns || 0)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              <KPISmall label="Net Sales Revenue" value={`₹${fmt(kpis.netSales || kpis.monthlySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
-              <KPISmall label="Return Rate (%)" value={`${kpis.returnPercentage || 0}%`} color="amber" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
-              <KPISmall label="Total Exchanges" value={kpis.exchangeCount || 0} color="indigo" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
-              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
+              <KPISmall label="Gross Sales" value={`₹${fmt(kpis.grossSales || kpis.monthlySales)}`} color="blue" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); }} />
+              <KPISmall label="Sales Returns (Refunds)" value={`₹${fmt(kpis.salesReturns || 0)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); }} />
+              <KPISmall label="Net Sales Revenue" value={`₹${fmt(kpis.netSales || kpis.monthlySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); }} />
+              <KPISmall label="Return Rate (%)" value={`${kpis.returnPercentage || 0}%`} color="amber" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); }} />
+              <KPISmall label="Total Exchanges" value={kpis.exchangeCount || 0} color="indigo" icon={RefreshCw} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); }} />
+              <KPISmall label="Net Profit" value={`₹${fmt(kpis.netProfit)}`} color="emerald" icon={CheckCircle} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); }} />
 
-              <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); loadSectionReport("sales", "sales_summary"); }} />
-              <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
-              <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); loadSectionReport("sales", "purchase"); }} />
-              <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); loadSectionReport("financial", "financial_summary"); }} />
-              <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("expenses"); loadSectionReport("financial", "expenses"); }} />
+              <KPISmall label="Today's Sales" value={`₹${fmt(kpis.todaySales)}`} color="emerald" icon={DollarSign} onClick={() => { setActiveSection("sales"); setSelectedReport("sales_summary"); }} />
+              <KPISmall label="Today's Purchase" value={`₹${fmt(kpis.todayPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); }} />
+              <KPISmall label="Today's Profit" value={`₹${fmt(kpis.todayProfit)}`} color="indigo" icon={TrendingUp} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); }} />
+              <KPISmall label="Monthly Purchase" value={`₹${fmt(kpis.monthlyPurchase)}`} color="blue" icon={ShoppingBag} onClick={() => { setActiveSection("sales"); setSelectedReport("purchase"); }} />
+              <KPISmall label="Monthly Revenue" value={`₹${fmt(kpis.monthlyRevenue)}`} color="purple" icon={Wallet} onClick={() => { setActiveSection("financial"); setSelectedReport("financial_summary"); }} />
+              <KPISmall label="Monthly Expenses" value={`₹${fmt(kpis.monthlyExpenses)}`} color="red" icon={ArrowDownRight} onClick={() => { setActiveSection("financial"); setSelectedReport("expenses"); }} />
 
-              <KPISmall label="Due Amount (Receivables)" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
-              <KPISmall label="Due Amount (Payables)" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
-              <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); loadSectionReport("inventory", "inventory_summary"); }} />
-              <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); loadSectionReport("sales", "customer"); }} />
-              <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); loadSectionReport("sales", "vendor"); }} />
-              <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} onClick={() => { setActiveSection("people"); setSelectedReport("performance"); loadSectionReport("people", "performance"); }} />
+              <KPISmall label="Due Amount (Receivables)" value={`₹${fmt(kpis.outstandingReceivables)}`} color="amber" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); }} />
+              <KPISmall label="Due Amount (Payables)" value={`₹${fmt(kpis.outstandingPayables)}`} color="red" icon={CreditCard} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); }} />
+              <KPISmall label="Inventory Value" value={`₹${fmt(kpis.inventoryValue)}`} color="purple" icon={Package} onClick={() => { setActiveSection("inventory"); setSelectedReport("inventory_summary"); }} />
+              <KPISmall label="Active Customers" value={kpis.activeCustomers || 0} color="blue" icon={Users} onClick={() => { setActiveSection("sales"); setSelectedReport("customer"); }} />
+              <KPISmall label="Active Vendors" value={kpis.activeVendors || 0} color="amber" icon={Building2} onClick={() => { setActiveSection("sales"); setSelectedReport("vendor"); }} />
+              <KPISmall label="Active Employees" value={kpis.activeEmployees || 0} color="indigo" icon={Users2} onClick={() => { setActiveSection("people"); setSelectedReport("performance"); }} />
             </div>
           </div>
 
@@ -857,7 +1029,6 @@ export const ReportsView = ({
                   key={card.id}
                   onClick={() => {
                     setSelectedReport(card.id);
-                    loadSectionReport(activeSection, card.id);
                   }}
                   className={`${activeSection === "tailoring" ? "w-full text-left p-4" : "px-4 py-2"} rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
                     isSelected
@@ -902,7 +1073,7 @@ export const ReportsView = ({
                 </div>
 
                 {/* Date Pickers */}
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <input
                     type="date"
@@ -910,20 +1081,30 @@ export const ReportsView = ({
                     value={dateRange.start}
                     onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
                   />
-                  <span className="text-slate-400">to</span>
+                  <span className="text-slate-400 font-semibold">to</span>
                   <input
                     type="date"
                     className="bg-transparent outline-none text-slate-700 font-bold"
                     value={dateRange.end}
                     onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
                   />
+                  {(dateRange.start || dateRange.end) && (
+                    <button
+                      type="button"
+                      title="Clear date filter"
+                      onClick={() => setDateRange({ start: "", end: "" })}
+                      className="ml-1 p-0.5 text-slate-400 hover:text-rose-600 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Export Buttons */}
                 <button
                   onClick={() => {
-                    const rows = (reportData?.data || []).map((r) => Object.values(r));
-                    const headers = reportData?.data?.length ? Object.keys(reportData.data[0]) : ["No Data"];
+                    const rows = (displayedData || []).map((r) => Object.values(r));
+                    const headers = displayedData?.length ? Object.keys(displayedData[0]) : ["No Data"];
                     handleExportCSV(selectedReport, headers, rows);
                   }}
                   className="flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-2 rounded-xl hover:bg-emerald-100 transition-colors cursor-pointer"
@@ -940,10 +1121,19 @@ export const ReportsView = ({
             </div>
 
             {/* Summary KPIs */}
-            {reportData?.summary && (
+            {loading ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[1, 2, 3, 4].map((idx) => (
+                  <div key={idx} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 animate-pulse space-y-2">
+                    <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                    <div className="h-5 w-32 bg-slate-200 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            ) : reportData?.summary ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {Object.entries(reportData.summary).map(([k, v]) => (
-                  <div key={k} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div key={k} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 transition-all">
                     <p className="text-[10px] font-bold text-slate-400 uppercase">{formatFieldLabel(k)}</p>
                     <p className="text-sm font-black font-mono text-slate-800 mt-1">
                       {typeof v === "number" ? (k.toLowerCase().includes("count") || (k.toLowerCase().includes("total") && !k.toLowerCase().includes("sales") && !k.toLowerCase().includes("purchases") && !k.toLowerCase().includes("gst") && !k.toLowerCase().includes("receivables") && !k.toLowerCase().includes("payables") && !k.toLowerCase().includes("expenses") && !k.toLowerCase().includes("valuation") && !k.toLowerCase().includes("profit") && !k.toLowerCase().includes("discounts") && !k.toLowerCase().includes("charges")) ? v : `₹${fmt(v)}`) : v}
@@ -951,14 +1141,14 @@ export const ReportsView = ({
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
 
             {/* Data Table */}
             <div className="overflow-x-auto text-xs border border-slate-100 rounded-2xl">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-100">
-                    {(reportData?.data?.length ? Object.keys(reportData.data[0]) : ["Status"]).slice(0, 8).map((h) => (
+                    {(displayedData?.length ? Object.keys(displayedData[0]) : (reportData?.data?.length ? Object.keys(reportData.data[0]) : ["Status"])).slice(0, 8).map((h) => (
                       <th key={h} className="p-3">
                         {formatFieldLabel(h)}
                       </th>
@@ -969,65 +1159,76 @@ export const ReportsView = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                  {(reportData?.data || [])
-                    .filter((row) => {
-                      if (!searchQuery) return true;
-                      return JSON.stringify(row).toLowerCase().includes(searchQuery.toLowerCase());
-                    })
-                    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                    .map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        {Object.entries(row).slice(0, 8).map(([key, val], colIdx) => {
-                          const strVal = formatReportValue(key, val);
-                          if (strVal === "Returned" || strVal === "Partially Returned") {
-                            return (
-                              <td key={colIdx} className="p-3">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
-                                  ↩ {strVal}
-                                </span>
-                              </td>
-                            );
-                          }
-                          if (strVal === "Exchanged" || strVal === "Partially Exchanged") {
-                            return (
-                              <td key={colIdx} className="p-3">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  🔁 {strVal}
-                                </span>
-                              </td>
-                            );
-                          }
-                          if (key.toLowerCase().includes("sales") || key.toLowerCase().includes("amount") || key.toLowerCase().includes("price") || key.toLowerCase().includes("cogs") || key.toLowerCase().includes("profit") || key.toLowerCase().includes("rate") && !key.toLowerCase().includes("returnrate") && !key.toLowerCase().includes("commissionrate")) {
-                            return (
-                              <td key={colIdx} className="p-3 font-mono font-bold text-slate-800">
-                                {typeof val === "number" ? `₹${fmt(val)}` : strVal}
-                              </td>
-                            );
-                          }
-                          return (
-                            <td key={colIdx} className="p-3">
-                              {typeof val === "object" ? JSON.stringify(val) : strVal}
-                            </td>
-                          );
-                        })}
-                        {activeSection === "tailoring" && selectedReport === "daily_tailoring_jobs" && (
-                          <td className="p-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => openTailoringWhatsAppEditor(row)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 cursor-pointer"
-                              title="Edit and send WhatsApp message"
-                            >
-                              <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  {!(reportData?.data || []).length && (
+                  {loading ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400">
-                        No report records available for the selected filters.
+                      <td colSpan={9} className="p-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-xs font-bold text-slate-600">Loading report data...</p>
+                          <p className="text-[11px] text-slate-400">Fetching live analytics and computing metrics</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : displayedData.length > 0 ? (
+                    displayedData
+                      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                      .map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          {Object.entries(row).slice(0, 8).map(([key, val], colIdx) => {
+                            const strVal = formatReportValue(key, val);
+                            if (strVal === "Returned" || strVal === "Partially Returned") {
+                              return (
+                                <td key={colIdx} className="p-3">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                                    ↩ {strVal}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (strVal === "Exchanged" || strVal === "Partially Exchanged") {
+                              return (
+                                <td key={colIdx} className="p-3">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    🔁 {strVal}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (key.toLowerCase().includes("sales") || key.toLowerCase().includes("amount") || key.toLowerCase().includes("price") || key.toLowerCase().includes("cogs") || key.toLowerCase().includes("profit") || (key.toLowerCase().includes("rate") && !key.toLowerCase().includes("returnrate") && !key.toLowerCase().includes("commissionrate"))) {
+                              return (
+                                <td key={colIdx} className="p-3 font-mono font-bold text-slate-800">
+                                  {typeof val === "number" ? `₹${fmt(val)}` : strVal}
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={colIdx} className="p-3">
+                                {typeof val === "object" ? JSON.stringify(val) : strVal}
+                              </td>
+                            );
+                          })}
+                          {activeSection === "tailoring" && selectedReport === "daily_tailoring_jobs" && (
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openTailoringWhatsAppEditor(row)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+                                title="Edit and send WhatsApp message"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                  ) : (
+                    <tr>
+                      <td colSpan={9} className="p-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <FileSpreadsheet className="w-8 h-8 text-slate-300" />
+                          <p className="text-xs font-semibold text-slate-500">No report records available for the selected filters.</p>
+                          <p className="text-[11px] text-slate-400">Try adjusting the date range or search query.</p>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -1036,11 +1237,11 @@ export const ReportsView = ({
             </div>
 
             {/* Pagination */}
-            {Boolean(reportData?.data?.length) && (
+            {Boolean(displayedData.length) && (
               <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
                 <span>
-                  Showing {Math.min((currentPage - 1) * itemsPerPage + 1, reportData.data.length)} to{" "}
-                  {Math.min(currentPage * itemsPerPage, reportData.data.length)} of {reportData.data.length} records
+                  Showing {Math.min((currentPage - 1) * itemsPerPage + 1, displayedData.length)} to{" "}
+                  {Math.min(currentPage * itemsPerPage, displayedData.length)} of {displayedData.length} records
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -1052,7 +1253,7 @@ export const ReportsView = ({
                   </button>
                   <span className="font-bold px-2">{currentPage}</span>
                   <button
-                    disabled={currentPage * itemsPerPage >= reportData.data.length}
+                    disabled={currentPage * itemsPerPage >= displayedData.length}
                     onClick={() => setCurrentPage((p) => p + 1)}
                     className="px-3 py-1 bg-slate-100 rounded-lg text-slate-700 disabled:opacity-50 font-bold cursor-pointer"
                   >
