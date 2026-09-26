@@ -50,6 +50,7 @@ class BillingService {
 
     let subTotal = 0;
     let totalDiscount = 0;
+    let returnTotal = 0;
     const validatedPieces = [];
     const Product = require('../models/Product');
     const Firm = require('../models/masters/Firm');
@@ -198,14 +199,20 @@ class BillingService {
         }
       }
 
-      const sellingPrice = item.sellingPrice || piece.mrp || 0;
+      const isReturn = Boolean(item.isReturn || item.actionType === 'return');
+      const qty = Number(item.quantity || 1);
+      const sellingPrice = (item.sellingPrice !== undefined ? item.sellingPrice : (piece.mrp || 0)) * qty;
       const discount = item.discountAmount || 0;
       const finalPrice = Math.max(0, sellingPrice - discount);
       const gstPercent = Number(item.gstPercent || 0);
       const itemTaxAmount = Number(item.taxAmount || 0);
 
-      subTotal += sellingPrice;
-      totalDiscount += discount;
+      if (isReturn) {
+        returnTotal += finalPrice;
+      } else {
+        subTotal += sellingPrice;
+        totalDiscount += discount;
+      }
 
       validatedPieces.push({
         piece,
@@ -216,11 +223,15 @@ class BillingService {
         gstPercent,
         taxAmount: itemTaxAmount,
         finalPrice,
+        isReturn,
+        soldFromInvoiceNo: item.soldFromInvoiceNo || null,
         hasAlteration: Boolean(item.hasAlteration)
       });
     }
 
-    let grandTotal = Math.max(0, subTotal - totalDiscount);
+    let grandTotal = billData.grandTotal !== undefined 
+      ? Number(billData.grandTotal) 
+      : ((subTotal - totalDiscount) - returnTotal);
 
     let manualDiscountAmount = 0;
     let manualChargeAmount = 0;
@@ -364,6 +375,9 @@ class BillingService {
       taxDetails,
       taxBreakdown,
       grandTotal,
+      returnTotal,
+      hasReturn: returnTotal > 0,
+      returnedAmount: returnTotal,
       paidAmount: totalPaid,
       dueAmount,
       advanceApplied: Number(billData.advanceApplied || 0),
@@ -401,7 +415,10 @@ class BillingService {
         discountAmount: val.discountAmount,
         gstPercent: val.gstPercent,
         taxAmount: val.taxAmount,
-        finalPrice: val.finalPrice,
+        finalPrice: val.isReturn ? -val.finalPrice : val.finalPrice,
+        isReturned: Boolean(val.isReturn),
+        returnReason: val.isReturn ? `Returned/Exchanged via Bill ${saleBill.billNo}` : undefined,
+        returnedAt: val.isReturn ? new Date() : undefined,
         hasAlteration: isAltered,
         alterationStatus: isAltered ? 'PENDING' : 'NONE',
         alterationId: null,
@@ -409,38 +426,73 @@ class BillingService {
       });
 
       if (!billData.isHold) {
-        val.piece.status = INVENTORY_STATUS.SOLD;
-        val.piece.sold = true;
-        val.piece.currentLocation = 'CUSTOMER';
-        val.piece.updatedBy = userId;
-        await val.piece.save();
+        if (val.isReturn) {
+          val.piece.status = INVENTORY_STATUS.AVAILABLE;
+          val.piece.sold = false;
+          val.piece.currentLocation = 'WAREHOUSE';
+          val.piece.updatedBy = userId;
+          await val.piece.save();
 
-        // 3.1 Synchronize Product stock & available quantity in MongoDB
-        if (val.piece.productId) {
-          await Product.updateOne(
-            { _id: val.piece.productId },
-            {
-              $inc: {
-                stock: -1,
-                availableStock: -1,
-                soldQuantity: 1
+          // Restock Product in MongoDB
+          if (val.piece.productId) {
+            await Product.updateOne(
+              { _id: val.piece.productId },
+              {
+                $inc: {
+                  stock: 1,
+                  availableStock: 1,
+                  soldQuantity: -1
+                }
               }
-            }
-          );
-        }
+            );
+          }
 
-        await InventoryLifecycle.create({
-          tenantId,
-          inventoryPieceId: val.piece._id,
-          barcode: val.piece.barcode,
-          eventType: LIFECYCLE_EVENT.SALE,
-          fromLocation: 'WAREHOUSE',
-          toLocation: 'CUSTOMER',
-          referenceId: saleBill._id,
-          referenceModel: 'SaleBill',
-          performedBy: userId,
-          notes: `Sold in Bill No: ${saleBill.billNo}`
-        });
+          await InventoryLifecycle.create({
+            tenantId,
+            inventoryPieceId: val.piece._id,
+            barcode: val.piece.barcode,
+            eventType: LIFECYCLE_EVENT.RETURN,
+            fromLocation: 'CUSTOMER',
+            toLocation: 'WAREHOUSE',
+            referenceId: saleBill._id,
+            referenceModel: 'SaleBill',
+            performedBy: userId,
+            notes: `Returned in Bill No: ${saleBill.billNo}${val.soldFromInvoiceNo ? ` (Originally from ${val.soldFromInvoiceNo})` : ''}`
+          });
+        } else {
+          val.piece.status = INVENTORY_STATUS.SOLD;
+          val.piece.sold = true;
+          val.piece.currentLocation = 'CUSTOMER';
+          val.piece.updatedBy = userId;
+          await val.piece.save();
+
+          // 3.1 Synchronize Product stock & available quantity in MongoDB
+          if (val.piece.productId) {
+            await Product.updateOne(
+              { _id: val.piece.productId },
+              {
+                $inc: {
+                  stock: -1,
+                  availableStock: -1,
+                  soldQuantity: 1
+                }
+              }
+            );
+          }
+
+          await InventoryLifecycle.create({
+            tenantId,
+            inventoryPieceId: val.piece._id,
+            barcode: val.piece.barcode,
+            eventType: LIFECYCLE_EVENT.SALE,
+            fromLocation: 'WAREHOUSE',
+            toLocation: 'CUSTOMER',
+            referenceId: saleBill._id,
+            referenceModel: 'SaleBill',
+            performedBy: userId,
+            notes: `Sold in Bill No: ${saleBill.billNo}`
+          });
+        }
       }
 
       createdSaleItems.push(saleItem);
@@ -643,7 +695,31 @@ class BillingService {
     if (query.customerId) filter.customerId = query.customerId;
     if (query.salesmanId) filter.salesmanId = query.salesmanId;
     if (query.search) {
-      filter.billNo = new RegExp(query.search, 'i');
+      const qReg = new RegExp(query.search, 'i');
+      const matchingItems = await SaleItem.find({
+        tenantId,
+        $or: [
+          { uniqueCode: qReg },
+          { barcode: qReg }
+        ]
+      }).select('saleBillId').lean();
+      const itemBillIds = matchingItems.map(i => i.saleBillId).filter(Boolean);
+
+      const matchingCusts = await Customer.find({
+        tenantId,
+        $or: [
+          { phone: qReg },
+          { name: qReg },
+          { customerId: qReg }
+        ]
+      }).select('_id').lean();
+      const custIds = matchingCusts.map(c => c._id).filter(Boolean);
+
+      filter.$or = [
+        { billNo: qReg },
+        ...(itemBillIds.length > 0 ? [{ _id: { $in: itemBillIds } }] : []),
+        ...(custIds.length > 0 ? [{ customerId: { $in: custIds } }] : [])
+      ];
     }
     if (query.startDate && query.endDate) {
       filter.billDate = { $gte: new Date(query.startDate), $lte: new Date(query.endDate) };

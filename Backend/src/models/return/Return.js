@@ -10,7 +10,7 @@ const returnSchema = new mongoose.Schema({
   saleBillId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SaleBill',
-    required: true
+    required: false
   },
   saleBillNo: {
     type: String

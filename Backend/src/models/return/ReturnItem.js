@@ -10,7 +10,7 @@ const returnItemSchema = new mongoose.Schema({
   inventoryPieceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'InventoryPiece',
-    required: true
+    required: false
   },
   refundRate: {
     type: Number,

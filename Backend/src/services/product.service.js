@@ -29,30 +29,42 @@ class ProductService {
       return products;
     }
     const q = queryStr.trim();
+    const qRegex = new RegExp('^' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+    const qPartialRegex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+    const InventoryPiece = require('../models/InventoryPiece');
+    const matchingPieces = await InventoryPiece.find({
+      tenantId,
+      isDeleted: false,
+      $or: [
+        { uniqueCode: qRegex },
+        { barcode: qRegex },
+        { ipn: qRegex },
+        { uniqueCode: qPartialRegex },
+        { barcode: qPartialRegex }
+      ]
+    }).populate('productId');
+
+    const pieceProductIds = matchingPieces.map(pc => pc.productId?._id || pc.productId).filter(Boolean);
+
     const { products } = await this.getProducts({ search: q, limit: 1000 }, tenantId);
+    let allProducts = products || [];
 
-    // In addition, if no direct products found, search pieces directly
-    if (!products || products.length === 0) {
-      const InventoryPiece = require('../models/InventoryPiece');
-      const pieces = await InventoryPiece.find({
-        tenantId,
-        isDeleted: false,
-        $or: [
-          { barcode: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-          { uniqueCode: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-          { ipn: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
-        ]
-      }).populate('productId');
-
-      const pieceProductIds = pieces.map(pc => pc.productId?._id || pc.productId).filter(Boolean);
-      if (pieceProductIds.length > 0) {
-        const { products: extraProducts } = await this.getProducts({ limit: 1000 }, tenantId);
-        return extraProducts.filter(p => pieceProductIds.some(id => id.toString() === (p._id || p.id).toString()));
+    if (pieceProductIds.length > 0) {
+      const missingIds = pieceProductIds.filter(id => !allProducts.some(p => (p._id || p.id).toString() === id.toString()));
+      if (missingIds.length > 0) {
+        const { products: extraProducts } = await this.getProducts({ _id: { $in: missingIds }, limit: 1000 }, tenantId);
+        allProducts = [...allProducts, ...extraProducts];
       }
     }
 
+    if (allProducts.length === 0) {
+      const { products: fullCatalog } = await this.getProducts({ limit: 1000 }, tenantId);
+      allProducts = fullCatalog || [];
+    }
+
     const qLower = q.toLowerCase();
-    return products.filter(p =>
+    const filtered = allProducts.filter(p =>
       (p.itemName && p.itemName.toLowerCase().includes(qLower)) ||
       (p.name && p.name.toLowerCase().includes(qLower)) ||
       (p.itemCode && p.itemCode.toLowerCase().includes(qLower)) ||
@@ -63,11 +75,14 @@ class ProductService {
       (p.ipn && String(p.ipn).toLowerCase().includes(qLower)) ||
       (p.batch && String(p.batch).toLowerCase().includes(qLower)) ||
       (p.counter && String(p.counter).toLowerCase().includes(qLower)) ||
-      (p.pieces && p.pieces.some(pc => 
+      (Array.isArray(p.pieces) && p.pieces.some(pc => 
         String(pc.barcode || '').toLowerCase().includes(qLower) || 
-        String(pc.uniqueCode || '').toLowerCase().includes(qLower)
+        String(pc.uniqueCode || '').toLowerCase().includes(qLower) ||
+        String(pc.ipn || '').toLowerCase().includes(qLower)
       ))
     );
+
+    return filtered.length > 0 ? filtered : allProducts.slice(0, 10);
   }
 
   static async getProducts(query = {}, tenantId) {
@@ -112,6 +127,7 @@ class ProductService {
         { designNo: searchRegex },
         { subItem: searchRegex },
         { barcode: searchRegex },
+        { uniqueCode: searchRegex },
         { sku: searchRegex },
         { color: searchRegex },
         { primaryColor: searchRegex },
@@ -351,6 +367,9 @@ class ProductService {
     const mongoose = require('mongoose');
     const InventoryPiece = require('../models/InventoryPiece');
 
+    const codeRegex = new RegExp(`^${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const partialRegex = new RegExp(code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
     // 1. Try to find an InventoryPiece matching barcode, uniqueCode, ipn, or _id
     let piece = null;
     if (mongoose.Types.ObjectId.isValid(code)) {
@@ -361,9 +380,11 @@ class ProductService {
     if (!piece) {
       piece = await InventoryPiece.findOne({
         $or: [
-          { barcode: code },
-          { uniqueCode: code },
-          { ipn: code }
+          { uniqueCode: codeRegex },
+          { barcode: codeRegex },
+          { ipn: codeRegex },
+          { uniqueCode: partialRegex },
+          { barcode: partialRegex }
         ],
         isDeleted: false
       })
@@ -371,7 +392,7 @@ class ProductService {
         .populate({ path: 'purchaseBillId', populate: { path: 'vendorId' } });
     }
 
-    // 2. Find Product matching _id, itemCode, designNo, barcode, or piece.productId
+    // 2. Find Product matching _id, itemCode, designNo, barcode, uniqueCode, or piece.productId
     let product = null;
     if (piece && piece.productId) {
       product = await Product.findOne({ _id: piece.productId, isDeleted: false })
@@ -384,10 +405,10 @@ class ProductService {
     }
 
     if (!product) {
-      const codeRegex = new RegExp(`^${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       product = await Product.findOne({
         $or: [
-          { barcode: code },
+          { uniqueCode: codeRegex },
+          { barcode: codeRegex },
           { itemCode: codeRegex },
           { designNo: codeRegex },
           { itemName: codeRegex }
@@ -398,9 +419,9 @@ class ProductService {
 
     if (!product && !piece) {
       // Partial search fallback
-      const partialRegex = new RegExp(code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       product = await Product.findOne({
         $or: [
+          { uniqueCode: partialRegex },
           { barcode: partialRegex },
           { itemCode: partialRegex },
           { designNo: partialRegex },

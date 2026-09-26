@@ -93,8 +93,11 @@ const saleBillSchema = new mongoose.Schema({
   },
   grandTotal: {
     type: Number,
-    required: true,
-    min: 0
+    required: true
+  },
+  returnTotal: {
+    type: Number,
+    default: 0
   },
   paidAmount: {
     type: Number,

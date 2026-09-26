@@ -55,6 +55,11 @@ const productSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  uniqueCode: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   primaryColor: {
     type: String,
     trim: true,

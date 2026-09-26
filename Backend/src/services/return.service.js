@@ -16,60 +16,87 @@ class ReturnService {
    * Validates if piece can be returned based on barcode/uniqueCode, sale bill match, alteration status, discount rules.
    */
   static async validateReturn(barcode, uniqueCode, saleBillNo, tenantId, inventoryPieceId) {
+    const mongoose = require('mongoose');
     const pieceQuery = { tenantId, isDeleted: false };
-    if (inventoryPieceId) {
+    if (inventoryPieceId && mongoose.Types.ObjectId.isValid(inventoryPieceId)) {
       pieceQuery._id = inventoryPieceId;
-    } else if (barcode && uniqueCode) {
-      pieceQuery.$or = [
-        { barcode: barcode }, { uniqueCode: barcode },
-        { barcode: uniqueCode }, { uniqueCode: uniqueCode }
-      ];
-    } else if (barcode) {
-      pieceQuery.$or = [{ barcode: barcode }, { uniqueCode: barcode }];
-    } else if (uniqueCode) {
-      pieceQuery.$or = [{ barcode: uniqueCode }, { uniqueCode: uniqueCode }];
+    } else {
+      const code = String(barcode || uniqueCode || '').trim();
+      if (code) {
+        const cleanCode = code.replace(/^UC-/i, '');
+        pieceQuery.$or = [
+          { barcode: code },
+          { uniqueCode: code },
+          { barcode: cleanCode },
+          { uniqueCode: cleanCode },
+          { barcode: `UC-${cleanCode}` },
+          { uniqueCode: `UC-${cleanCode}` }
+        ];
+      }
     }
 
-    const piece = await InventoryPiece.findOne(pieceQuery).populate('productId');
-    if (!piece) {
-      return { valid: false, reason: 'Inventory piece not found.' };
-    }
-
-    if (!piece.sold) {
-      return { valid: false, reason: 'Piece has not been marked as sold.' };
-    }
-
-    if (piece.altered) {
-      return { valid: false, reason: 'Altered items are non-returnable as per store policy.' };
-    }
+    let piece = (pieceQuery._id || pieceQuery.$or) ? await InventoryPiece.findOne(pieceQuery).populate('productId') : null;
 
     if (saleBillNo) {
       const saleBill = await SaleBill.findOne({ billNo: saleBillNo, tenantId });
       if (!saleBill) {
         return { valid: false, reason: 'Sale Bill not found.' };
       }
-      const saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: piece._id, tenantId });
+
+      let saleItem = null;
+      if (piece) {
+        saleItem = await SaleItem.findOne({ saleBillId: saleBill._id, inventoryPieceId: piece._id, tenantId });
+      }
+
       if (!saleItem) {
-        return { valid: false, reason: 'Item was not purchased under this Sale Bill.' };
+        const code = String(barcode || uniqueCode || '').trim();
+        const cleanCode = code.replace(/^UC-/i, '');
+        saleItem = await SaleItem.findOne({
+          saleBillId: saleBill._id,
+          tenantId,
+          $or: [
+            { barcode: code },
+            { uniqueCode: code },
+            { barcode: cleanCode },
+            { uniqueCode: cleanCode },
+            { barcode: `UC-${cleanCode}` },
+            { uniqueCode: `UC-${cleanCode}` }
+          ]
+        }).populate('inventoryPieceId');
+        if (saleItem && saleItem.inventoryPieceId) {
+          piece = saleItem.inventoryPieceId;
+        }
       }
 
       return {
         valid: true,
-        piece,
+        piece: piece || null,
         saleBill,
         saleItem,
-        refundableAmount: saleItem.finalPrice
+        refundableAmount: saleItem?.finalPrice || piece?.mrp || 0
+      };
+    }
+
+    if (piece) {
+      if (piece.altered) {
+        return { valid: false, reason: 'Altered items are non-returnable as per store policy.' };
+      }
+      return {
+        valid: true,
+        piece,
+        refundableAmount: piece.mrp
       };
     }
 
     return {
       valid: true,
-      piece,
-      refundableAmount: piece.mrp
+      piece: null,
+      refundableAmount: 0
     };
   }
 
   static async createReturn(returnData, userId, tenantId) {
+    const mongoose = require('mongoose');
     let refundAmount = 0;
 
     if (!returnData.items || !returnData.items.length) {
@@ -84,12 +111,28 @@ class ReturnService {
       refundAmount += Number(item.refundRate || validation.refundableAmount || 0);
     }
 
+    let validSaleBillId = null;
+    if (returnData.saleBillId && mongoose.Types.ObjectId.isValid(returnData.saleBillId)) {
+      validSaleBillId = returnData.saleBillId;
+    } else if (returnData.saleBillNo) {
+      const sb = await SaleBill.findOne({ billNo: returnData.saleBillNo, tenantId });
+      if (sb) validSaleBillId = sb._id;
+    }
+
+    let validCustomerId = null;
+    if (returnData.customerId && mongoose.Types.ObjectId.isValid(returnData.customerId)) {
+      validCustomerId = returnData.customerId;
+    } else if (returnData.customerId) {
+      const cust = await Customer.findOne({ $or: [{ customerId: returnData.customerId }, { phone: returnData.customerId }], tenantId });
+      if (cust) validCustomerId = cust._id;
+    }
+
     const returnDoc = await Return.create({
       tenantId,
       returnNo: returnData.returnNo || `RET-${Date.now()}`,
-      saleBillId: returnData.saleBillId,
+      saleBillId: validSaleBillId,
       saleBillNo: returnData.saleBillNo,
-      customerId: returnData.customerId,
+      customerId: validCustomerId,
       refundAmount,
       refundMode: returnData.refundMode || 'CREDIT_NOTE',
       reason: returnData.reason,
@@ -98,20 +141,48 @@ class ReturnService {
     });
 
     for (const item of returnData.items) {
-      let query = { tenantId };
-      if (item.inventoryPieceId) {
-        query._id = item.inventoryPieceId;
-      } else if (item.barcode) {
-        query.$or = [{ barcode: item.barcode }, { uniqueCode: item.barcode }];
-      } else {
-        throw new ApiError(400, "Item barcode/uniqueCode/inventoryPieceId missing in return payload.");
-      }
-      const piece = await InventoryPiece.findOne(query);
-      if (!piece && !item.inventoryPieceId) {
-        throw new ApiError(404, `Barcode/UniqueCode '${item.barcode}' not found.`);
+      let piece = null;
+      if (item.inventoryPieceId && mongoose.Types.ObjectId.isValid(item.inventoryPieceId)) {
+        piece = await InventoryPiece.findOne({ _id: item.inventoryPieceId, tenantId });
       }
 
-      const invPieceIdToUse = piece ? piece._id : item.inventoryPieceId;
+      if (!piece && (item.barcode || item.uniqueCode)) {
+        const rawCode = String(item.barcode || item.uniqueCode).trim();
+        const cleanCode = rawCode.replace(/^UC-/i, '');
+        piece = await InventoryPiece.findOne({
+          tenantId,
+          $or: [
+            { barcode: rawCode },
+            { uniqueCode: rawCode },
+            { barcode: cleanCode },
+            { uniqueCode: cleanCode },
+            { barcode: `UC-${cleanCode}` },
+            { uniqueCode: `UC-${cleanCode}` }
+          ]
+        });
+      }
+
+      if (!piece && validSaleBillId) {
+        const code = String(item.barcode || item.uniqueCode || '').trim();
+        const cleanCode = code.replace(/^UC-/i, '');
+        const saleItem = await SaleItem.findOne({
+          saleBillId: validSaleBillId,
+          tenantId,
+          $or: [
+            { barcode: code },
+            { uniqueCode: code },
+            { barcode: cleanCode },
+            { uniqueCode: cleanCode },
+            { barcode: `UC-${cleanCode}` },
+            { uniqueCode: `UC-${cleanCode}` }
+          ]
+        }).populate('inventoryPieceId');
+        if (saleItem && saleItem.inventoryPieceId) {
+          piece = saleItem.inventoryPieceId;
+        }
+      }
+
+      const invPieceIdToUse = piece ? piece._id : (item.inventoryPieceId && mongoose.Types.ObjectId.isValid(item.inventoryPieceId) ? item.inventoryPieceId : null);
 
       await ReturnItem.create({
         tenantId,
@@ -158,6 +229,44 @@ class ReturnService {
           performedBy: userId,
           notes: `Returned: ${returnData.reason || 'Customer Return'}`
         });
+      }
+    }
+
+    // Update SaleBill and SaleItem if matched
+    if (validSaleBillId) {
+      await SaleBill.updateOne(
+        { _id: validSaleBillId, tenantId },
+        {
+          $set: { hasReturn: true },
+          $inc: { returnedAmount: refundAmount }
+        }
+      );
+      for (const item of returnData.items) {
+        const code = String(item.barcode || item.uniqueCode || '').trim();
+        const cleanCode = code.replace(/^UC-/i, '');
+        if (code) {
+          await SaleItem.updateMany(
+            {
+              saleBillId: validSaleBillId,
+              tenantId,
+              $or: [
+                { barcode: code },
+                { uniqueCode: code },
+                { barcode: cleanCode },
+                { uniqueCode: cleanCode },
+                { barcode: `UC-${cleanCode}` },
+                { uniqueCode: `UC-${cleanCode}` }
+              ]
+            },
+            {
+              $set: {
+                isReturned: true,
+                returnReason: returnData.reason || 'Customer Return',
+                returnedAt: new Date()
+              }
+            }
+          );
+        }
       }
     }
 

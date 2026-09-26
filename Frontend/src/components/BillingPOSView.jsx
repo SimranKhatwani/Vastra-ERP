@@ -59,6 +59,30 @@ const generateUniqueItemCode = (designNo, size, index = 0) => {
   return `UC-${timeHex}${randStr}`;
 };
 
+const unrollInvoiceItems = (items = []) => {
+  const result = [];
+  (items || []).forEach((item, idx) => {
+    const qty = Number(item.quantity || 1);
+    if (qty > 1) {
+      for (let i = 0; i < qty; i++) {
+        result.push({
+          ...item,
+          unitId: `${item.productId || item._id || item.id || 'item'}-${idx}-${i}`,
+          quantity: 1,
+          totalPrice: item.sellingPrice || item.price || (item.totalPrice ? item.totalPrice / qty : 0)
+        });
+      }
+    } else {
+      result.push({
+        ...item,
+        unitId: item.unitId || `${item.productId || item._id || item.id || 'item'}-${idx}-0`,
+        quantity: 1
+      });
+    }
+  });
+  return result;
+};
+
 export const getFirmStyle = (firmName = '') => {
   const norm = String(firmName || '').trim().toLowerCase();
   if (!norm || norm === '-' || norm === 'n/a' || norm === '-') {
@@ -693,7 +717,9 @@ export const BillingPOSView = ({
       const code = String(p.itemCode || p.productCode || p.sku || "").toLowerCase();
       const name = String(p.itemName || p.name || "").toLowerCase();
       const barcode = String(p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
-      return code.includes(q) || name.includes(q) || barcode.includes(q);
+      const uniqueCode = String(p.uniqueCode || (p.pieces && p.pieces[0]?.uniqueCode) || "").toLowerCase();
+      const pieceCodes = Array.isArray(p.pieces) ? p.pieces.map(pc => String(pc.uniqueCode || pc.barcode || '').toLowerCase()) : [];
+      return code.includes(q) || name.includes(q) || barcode.includes(q) || uniqueCode.includes(q) || pieceCodes.some(pc => pc.includes(q));
     }).slice(0, 60);
   }, [products, itemCodeSearchInput]);
 
@@ -706,7 +732,9 @@ export const BillingPOSView = ({
       const name = String(p.itemName || p.name || "").toLowerCase();
       const design = String(p.designNo || "").toLowerCase();
       const barcode = String(p.barcode || (p.pieces && p.pieces[0]?.barcode) || "").toLowerCase();
-      return name.includes(q) || code.includes(q) || design.includes(q) || barcode.includes(q);
+      const uniqueCode = String(p.uniqueCode || (p.pieces && p.pieces[0]?.uniqueCode) || "").toLowerCase();
+      const pieceCodes = Array.isArray(p.pieces) ? p.pieces.map(pc => String(pc.uniqueCode || pc.barcode || '').toLowerCase()) : [];
+      return name.includes(q) || code.includes(q) || design.includes(q) || barcode.includes(q) || uniqueCode.includes(q) || pieceCodes.some(pc => pc.includes(q));
     }).slice(0, 60);
   }, [products, itemSearchInputText]);
 
@@ -1101,7 +1129,7 @@ export const BillingPOSView = ({
   };
 
   // Helper: Load full invoice details into POS Billing Window
-  const loadInvoiceIntoPOS = async (invData, preloadedPssm = null, clearInputFn = null) => {
+  const loadInvoiceIntoPOS = async (invData, preloadedPssm = null, clearInputFn = null, updateCart = false) => {
     if (!invData) return null;
     const inv = invData.bill || invData.saleBill || invData;
     const rawItems = invData.items || inv.items || [];
@@ -1124,16 +1152,23 @@ export const BillingPOSView = ({
     const custGstin = (typeof cust === 'object' ? (cust.gstin || cust.gstNo) : '') || '';
 
     // 1. Populate Customer / CRM Strip
-    setCustomerForm({
-      phone: custPhone,
-      name: custName,
-      customerId: resolvedCustomerId,
-      gstin: custGstin,
-      lf: '2588'
-    });
-    setSelectedCustomerId((typeof cust === 'object' && (cust._id || cust.id)) ? (cust._id || cust.id) : '');
-    setCustomerSearchQuery(custPhone ? maskPhoneNumber(custPhone) : (custName || ''));
-    setCustomerSearch(custPhone ? maskPhoneNumber(custPhone) : (custName || ''));
+    if (custName || custPhone) {
+      setCustomerForm(prev => ({
+        ...prev,
+        phone: prev.phone ? prev.phone : (custPhone || prev.phone),
+        name: prev.name && prev.name !== 'Walk-in Customer' ? prev.name : (custName || prev.name),
+        customerId: prev.customerId && prev.customerId !== 'CUST-AUTO' ? prev.customerId : (resolvedCustomerId || prev.customerId),
+        gstin: prev.gstin ? prev.gstin : (custGstin || prev.gstin),
+        lf: '2588'
+      }));
+      if (resolvedCustomerId && !selectedCustomerId) {
+        setSelectedCustomerId((typeof cust === 'object' && (cust._id || cust.id)) ? (cust._id || cust.id) : resolvedCustomerId);
+      }
+      if (custPhone && !customerSearchQuery) {
+        setCustomerSearchQuery(maskPhoneNumber(custPhone) || custName || '');
+        setCustomerSearch(maskPhoneNumber(custPhone) || custName || '');
+      }
+    }
     setPaymentMethod(inv.paymentMethod || "Cash");
 
     // 2. Populate Billing Grid with all original items
@@ -1158,7 +1193,7 @@ export const BillingPOSView = ({
       const barcodeVal = item.barcode || (piece && piece.barcode) || (typeof prod === 'object' ? prod.barcode : '') || '';
       const designVal = item.designNo || (typeof prod === 'object' ? (prod.designNo || prod.sku) : '') || '';
       const itemCodeVal = item.itemCode || (typeof prod === 'object' ? (prod.itemCode || prod.productCode) : '') || '';
-      const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company || prod.firmId?.name) : '') || (piece && piece.firmId?.name) || '';
+      const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company || prod.firmId?.name) : '') || (piece && piece.firmId?.name) || inv.firmName || inv.company || 'NEW FASHION STYLE (PALAM)';
       const counterVal = item.counter || (typeof prod === 'object' ? (prod.counter || prod.counterNo) : '') || (piece && piece.counter) || '';
       const sizeVal = item.size || (piece && piece.size) || (typeof prod === 'object' ? prod.size : '') || '';
       const colorVal = item.color || item.primaryColor || (piece && piece.primaryColor) || (typeof prod === 'object' ? (prod.primaryColor || prod.color) : '') || '';
@@ -1227,7 +1262,10 @@ export const BillingPOSView = ({
       formattedItems = matchAndTagPSSMOnItems(formattedItems, pssmData);
     }
 
-    setCart(formattedItems);
+    // Only populate cart with past items if updateCart is explicitly requested (e.g. browsing historical bills); keep ongoing cart intact
+    if (updateCart) {
+      setCart(formattedItems);
+    }
     const unifiedInv = {
       ...inv,
       items: formattedItems,
@@ -1241,6 +1279,7 @@ export const BillingPOSView = ({
       pssmData: pssmData || null
     };
     setLoadedOriginalInvoice(unifiedInv);
+    setSelectedInvoiceForReturn(unifiedInv);
     if (typeof clearInputFn === 'function') clearInputFn("");
     if (onAddNotification) {
       onAddNotification(
@@ -1268,7 +1307,7 @@ export const BillingPOSView = ({
     setHistoryViewIndex(targetIdx);
     const targetInv = list[targetIdx];
     if (targetInv) {
-      await loadInvoiceIntoPOS(targetInv);
+      await loadInvoiceIntoPOS(targetInv, null, null, true);
       setShowBillPreviewInvoice(targetInv);
       if (onAddNotification) onAddNotification("Previous Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo || targetInv.billNo} (${targetIdx + 1}/${list.length})`, "success");
     }
@@ -1288,7 +1327,7 @@ export const BillingPOSView = ({
     setHistoryViewIndex(targetIdx);
     const targetInv = list[targetIdx];
     if (targetInv) {
-      await loadInvoiceIntoPOS(targetInv);
+      await loadInvoiceIntoPOS(targetInv, null, null, true);
       setShowBillPreviewInvoice(targetInv);
       if (onAddNotification) onAddNotification("Next Bill Loaded", `Viewing Bill: ${targetInv.invoiceNo || targetInv.billNo} (${targetIdx + 1}/${list.length})`, "success");
     }
@@ -2316,23 +2355,27 @@ export const BillingPOSView = ({
   const [purchaseAuthOwnerId, setPurchaseAuthOwnerId] = useState('');
   const [purchaseAuthPassword, setPurchaseAuthPassword] = useState('');
   const [isPurchaseTabUnlocked, setIsPurchaseTabUnlocked] = useState(false);
+  const [unlockedPurchaseProductId, setUnlockedPurchaseProductId] = useState(null);
 
   const [infoPanelItem, setInfoPanelItem] = useState(null);
   const [infoPanelTab, setInfoPanelTab] = useState('General'); // General, Stock, Purchase, Sales
 
-  // Audit log tracking for POS Item View
+  // Whenever selected search item changes, lock confidential purchase details and reset tab to General
   React.useEffect(() => {
-    if (selectedSearchItem) {
-      const itemName = selectedSearchItem?.name || selectedSearchItem?.product?.name || selectedSearchItem?.itemCode || 'Unknown Item';
-      const code = selectedSearchItem?.designNo || selectedSearchItem?.itemCode || '';
-      const display = code ? `${itemName} (${code})` : itemName;
+    setUnlockedPurchaseProductId(null);
+    setIsPurchaseTabUnlocked(false);
+    setInfoPanelTab('General');
+  }, [selectedSearchItem?._id, selectedSearchItem?.id, selectedSearchItem?.barcode]);
 
-      const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
-      const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
-
-      // Audit log moved to handlePurchaseAuth
+  // Whenever Item Search modal closes, lock confidential purchase details and reset tab to General
+  React.useEffect(() => {
+    if (!isItemSearchModalOpen) {
+      setUnlockedPurchaseProductId(null);
+      setIsPurchaseTabUnlocked(false);
+      setInfoPanelTab('General');
+      setShowSearchItemDetailsPanel(false);
     }
-  }, [selectedSearchItem]);
+  }, [isItemSearchModalOpen]);
 
   const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
   const [focusedProductIndex, setFocusedProductIndex] = useState(-1);
@@ -2583,10 +2626,12 @@ export const BillingPOSView = ({
 
     // 5. Reset all entry row inputs
     setBarcodeInput("");
+    setUniqueCodeInput("");
     setItemNameInput("");
     setItemSearchInputText("");
     setDesignNoSearchInput("");
     setItemCodeSearchInput("");
+    setBillNumberSearchQuery("");
     setLastSearchedQuery(null);
 
     // 6. Close all open dropdowns & modals
@@ -2683,6 +2728,8 @@ export const BillingPOSView = ({
         showPSSItemSelectModal ||
         showPSSWaitingModal ||
         showPSSServiceSelectModal ||
+        showReturnExchangeModal ||
+        showReturnCustomerModal ||
         alterationPromptItem;
 
       if (
@@ -2845,18 +2892,29 @@ export const BillingPOSView = ({
       // 'R' / 'r': Returns
       if ((e.key === "r" || e.key === "R") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
         e.preventDefault();
-        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-        setReturnActionType("return");
-        setActivePOSMode("returns");
+        if (loadedOriginalInvoice) {
+          setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+          setReturnActionType("return");
+          setReturnedItemIds([]);
+          setShowReturnExchangeModal(true);
+        } else {
+          setActivePOSMode("returns");
+        }
         return;
       }
 
       // 'E' / 'e': Exchange
       if ((e.key === "e" || e.key === "E") && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !isAnyModalOpen) {
         e.preventDefault();
-        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-        setReturnActionType("exchange");
-        setActivePOSMode("returns");
+        if (loadedOriginalInvoice) {
+          setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+          setReturnActionType("exchange");
+          setExchangeOldItemIdx(0);
+          setExchangeSelectedNewProduct(null);
+          setShowReturnExchangeModal(true);
+        } else {
+          setActivePOSMode("returns");
+        }
         return;
       }
 
@@ -3043,7 +3101,14 @@ export const BillingPOSView = ({
         // Returns -> R
         if (k === "r") {
           e.preventDefault();
-          setActivePOSMode("returns");
+          if (loadedOriginalInvoice) {
+            setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+            setReturnActionType("return");
+            setReturnedItemIds([]);
+            setShowReturnExchangeModal(true);
+          } else {
+            setActivePOSMode("returns");
+          }
           return;
         }
         // Discount -> D
@@ -3055,7 +3120,15 @@ export const BillingPOSView = ({
         // Exchange -> E
         if (k === "e") {
           e.preventDefault();
-          setActivePOSMode("returns");
+          if (loadedOriginalInvoice) {
+            setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+            setReturnActionType("exchange");
+            setExchangeOldItemIdx(0);
+            setExchangeSelectedNewProduct(null);
+            setShowReturnExchangeModal(true);
+          } else {
+            setActivePOSMode("returns");
+          }
           return;
         }
         // Clear Bill -> C
@@ -3690,6 +3763,7 @@ export const BillingPOSView = ({
   const {
     subTotal,
     discountTotal,
+    returnTotal,
     couponDiscount,
     gstTotal,
     grandTotal,
@@ -3703,6 +3777,7 @@ export const BillingPOSView = ({
   } = React.useMemo(() => {
     let subTotal = 0;
     let discountTotal = 0; // Item level discounts
+    let returnTotal = 0;
 
     cart.forEach((item) => {
       const qty = Number(item.quantity || 1);
@@ -3714,9 +3789,14 @@ export const BillingPOSView = ({
 
       const lineGross = mrp * qty;
       const lineDisc = unitDisc * qty;
+      const lineNet = Math.max(0, lineGross - lineDisc);
 
-      subTotal += lineGross;
-      discountTotal += lineDisc;
+      if (item.isReturn) {
+        returnTotal += lineNet;
+      } else {
+        subTotal += lineGross;
+        discountTotal += lineDisc;
+      }
     });
 
     const activeOffers = discountRules.filter(r => {
@@ -3730,6 +3810,7 @@ export const BillingPOSView = ({
     let totalRuleDiscount = 0;
     let appliedDiscountsList = [];
 
+    const netSaleBeforeRules = Math.max(0, subTotal - discountTotal);
     activeOffers.forEach(r => {
       const rId = r._id || r.id;
       const isManual = manualDiscountIds.includes(rId);
@@ -3740,11 +3821,11 @@ export const BillingPOSView = ({
         let disc = 0;
 
         if (r.offerType === 'Automatic' || r.offerType === 'Coupon' || r.offerType === 'Flat') {
-          if (subTotal >= (r.minBillAmount || 0)) {
-            disc = r.discountType === 'Flat' ? r.discountValue : Math.floor(subTotal * (r.discountValue / 100));
+          if (netSaleBeforeRules >= (r.minBillAmount || 0)) {
+            disc = r.discountType === 'Flat' ? r.discountValue : Math.floor(netSaleBeforeRules * (r.discountValue / 100));
           }
         } else if (r.offerType === 'Product') {
-          cart.forEach(item => {
+          cart.filter(item => !item.isReturn).forEach(item => {
             const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
             const match = (r.applicableProducts || []).some(p =>
               p.toLowerCase().trim() === (item.productId || '').toLowerCase().trim() ||
@@ -3758,7 +3839,7 @@ export const BillingPOSView = ({
             }
           });
         } else if (r.offerType === 'Category') {
-          cart.forEach(item => {
+          cart.filter(item => !item.isReturn).forEach(item => {
             const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
             if (matchedProd && matchedProd.category) {
               const match = (r.applicableCategories || []).some(c => c.toLowerCase().trim() === matchedProd.category.toLowerCase().trim());
@@ -3769,7 +3850,7 @@ export const BillingPOSView = ({
             }
           });
         } else if (r.offerType === 'Brand') {
-          cart.forEach(item => {
+          cart.filter(item => !item.isReturn).forEach(item => {
             const matchedProd = products.find(p => p._id === item.productId || p.id === item.productId);
             if (matchedProd && matchedProd.brand) {
               const match = (r.applicableBrands || []).some(b => b.toLowerCase().trim() === matchedProd.brand.toLowerCase().trim());
@@ -3821,13 +3902,14 @@ export const BillingPOSView = ({
     }
 
     const totalOverallDiscount = discountTotal + totalRuleDiscount;
-    let netBillAmount = Math.max(0, subTotal - totalOverallDiscount);
+    // Net Bill Amount: Total Sales minus Total Discounts minus Total Returns
+    let netBillAmount = (subTotal - totalOverallDiscount) - returnTotal;
 
     if (billAdjustment && billAdjustment.amount > 0) {
       if (billAdjustment.operation === 'Charge') {
         netBillAmount += billAdjustment.amount;
       } else if (billAdjustment.operation === 'Discount') {
-        netBillAmount = Math.max(0, netBillAmount - billAdjustment.amount);
+        netBillAmount = netBillAmount >= 0 ? Math.max(0, netBillAmount - billAdjustment.amount) : netBillAmount - billAdjustment.amount;
       }
     }
 
@@ -3851,19 +3933,20 @@ export const BillingPOSView = ({
       let unitDisc = discType === 'percent' ? (mrp * discVal) / 100 : discVal;
       unitDisc = Math.max(0, Math.min(mrp, unitDisc));
       const rate = Math.max(0, mrp - unitDisc);
-      return rate * qty;
+      const sign = item.isReturn ? -1 : 1;
+      return sign * rate * qty;
     });
     const totalItemNet = itemNetAmounts.reduce((sum, amount) => sum + amount, 0);
     const billAdjustmentAmount = Number(billAdjustment?.amount || 0);
     cart.forEach((item, index) => {
-      const itemNet = Math.max(0, itemNetAmounts[index] + (
+      const itemNet = itemNetAmounts[index] + (
         billAdjustmentAmount && totalItemNet > 0
           ? (billAdjustment.operation === 'Charge' ? 1 : -1) * billAdjustmentAmount * (itemNetAmounts[index] / totalItemNet)
           : 0
-      ));
+      );
       const hasItemSlab = item.gstPercent !== undefined && item.gstPercent !== null && item.gstPercent !== '';
       const slab = Number(hasItemSlab ? item.gstPercent : (isGstApplied ? gRate : (item.gstOnSalePrice || 5))) || 0;
-      if (slab <= 0 || itemNet <= 0) return;
+      if (slab <= 0 || itemNet === 0) return;
 
       // Inclusive GST Calculation: MRP / retail selling price is inclusive of GST, so grand total does NOT increase
       const taxable = parseFloat((itemNet / (1 + (slab / 100))).toFixed(2));
@@ -3897,7 +3980,7 @@ export const BillingPOSView = ({
     computedIgstAmount = computedTaxBreakdown.reduce((sum, row) => sum + row.igst, 0);
     computedTotalTax = computedTaxBreakdown.reduce((sum, row) => sum + row.totalTax, 0);
 
-    // Grand total: Retail Selling Price is inclusive of GST, so billing amount does NOT increase
+    // Grand total: Retail Selling Price is inclusive of GST
     const grandTotal = parseFloat(netBillAmount.toFixed(2));
 
     const taxDetails = {
@@ -3906,7 +3989,7 @@ export const BillingPOSView = ({
       cgstRate: cRate,
       sgstRate: sRate,
       igstRate: iRate,
-      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : netBillAmount,
+      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : (netBillAmount > 0 ? netBillAmount : 0),
       cgstAmount: computedCgstAmount,
       sgstAmount: computedSgstAmount,
       igstAmount: computedIgstAmount,
@@ -3917,12 +4000,13 @@ export const BillingPOSView = ({
     return {
       subTotal,
       discountTotal: totalOverallDiscount,
+      returnTotal,
       couponDiscount,
       gstTotal: computedTotalTax,
       grandTotal,
       netBillAmount,
       appliedDiscountsList,
-      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : netBillAmount,
+      taxableAmount: computedTaxableAmount > 0 ? computedTaxableAmount : (netBillAmount > 0 ? netBillAmount : 0),
       cgstAmount: computedCgstAmount,
       sgstAmount: computedSgstAmount,
       igstAmount: computedIgstAmount,
@@ -3934,9 +4018,6 @@ export const BillingPOSView = ({
 
   // Next live auto-generated invoice number for bill being created
   const liveInvoiceNumber = useMemo(() => {
-    if (loadedOriginalInvoice) {
-      return loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo || "";
-    }
     const allInvs = invoiceList || invoices || [];
     if (allInvs.length > 0) {
       for (const inv of allInvs) {
@@ -3952,7 +4033,7 @@ export const BillingPOSView = ({
       }
     }
     return `NFS-${984 + (uncompletedBills.length || 0)}`;
-  }, [loadedOriginalInvoice, invoiceList, invoices, uncompletedBills.length]);
+  }, [invoiceList, invoices, uncompletedBills.length]);
 
   // Snapshot current active bill into an object
   const getCurrentBillSnapshot = () => ({
@@ -4007,6 +4088,12 @@ export const BillingPOSView = ({
       setBillAdjustment(targetSlot.billAdjustment || { amount: 0, operation: 'Discount', type: 'amount' });
       setCustomerSearchQuery('');
       setBillNumberSearchQuery('');
+      setUniqueCodeInput('');
+      setBarcodeInput('');
+      setItemNameInput('');
+      setItemSearchInputText('');
+      setDesignNoSearchInput('');
+      setItemCodeSearchInput('');
     }
 
     setUncompletedBills(updatedBills);
@@ -4043,6 +4130,12 @@ export const BillingPOSView = ({
       setLoadedOriginalInvoice(null);
       setCustomerSearchQuery('');
       setBillNumberSearchQuery('');
+      setUniqueCodeInput('');
+      setBarcodeInput('');
+      setItemNameInput('');
+      setItemSearchInputText('');
+      setDesignNoSearchInput('');
+      setItemCodeSearchInput('');
     } else {
       updatedBills[activeBillSlotIndex] = currentSnap;
       updatedBills.unshift(newEmptySlot);
@@ -4053,6 +4146,12 @@ export const BillingPOSView = ({
       setLoadedOriginalInvoice(null);
       setCustomerSearchQuery('');
       setBillNumberSearchQuery('');
+      setUniqueCodeInput('');
+      setBarcodeInput('');
+      setItemNameInput('');
+      setItemSearchInputText('');
+      setDesignNoSearchInput('');
+      setItemCodeSearchInput('');
     }
 
     setUncompletedBills(updatedBills);
@@ -4074,13 +4173,20 @@ export const BillingPOSView = ({
 
   // Close / Delete a bill slot
   const handleCloseCurrentBillSlot = (indexToClose) => {
+    setUniqueCodeInput('');
+    setBarcodeInput('');
+    setItemNameInput('');
+    setItemSearchInputText('');
+    setDesignNoSearchInput('');
+    setItemCodeSearchInput('');
+    setBillNumberSearchQuery('');
+    setCustomerSearchQuery('');
+
     if (uncompletedBills.length <= 1) {
       setCart([]);
       setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
       setSelectedCustomerId('');
       setLoadedOriginalInvoice(null);
-      setCustomerSearchQuery('');
-      setBillNumberSearchQuery('');
       setUncompletedBills([]);
       setActiveBillSlotIndex(0);
       if (onAddNotification) {
@@ -4101,8 +4207,6 @@ export const BillingPOSView = ({
       setIsGstApplied(Boolean(targetSlot.isGstApplied));
       setGstRateInput(targetSlot.gstRateInput !== undefined ? targetSlot.gstRateInput : "0");
       setBillAdjustment(targetSlot.billAdjustment || { amount: 0, operation: 'Discount', type: 'amount' });
-      setCustomerSearchQuery('');
-      setBillNumberSearchQuery('');
     }
 
     setUncompletedBills(updatedBills);
@@ -4114,6 +4218,15 @@ export const BillingPOSView = ({
 
   // Delete current active bill from queue (Alt + X)
   const handleDeleteCurrentBill = () => {
+    setUniqueCodeInput('');
+    setBarcodeInput('');
+    setItemNameInput('');
+    setItemSearchInputText('');
+    setDesignNoSearchInput('');
+    setItemCodeSearchInput('');
+    setBillNumberSearchQuery('');
+    setCustomerSearchQuery('');
+
     if (uncompletedBills.length > 1) {
       handleCloseCurrentBillSlot(activeBillSlotIndex);
     } else {
@@ -5389,8 +5502,6 @@ export const BillingPOSView = ({
       if (res.data.success) {
         const items = res.data.data;
         if (items.length > 0) {
-          if (loadedOriginalInvoice) setLoadedOriginalInvoice(null);
-
           const qLower = q.toLowerCase();
           const match = items.find(i =>
             String(i.barcode || '').toLowerCase() === qLower ||
@@ -5440,7 +5551,6 @@ export const BillingPOSView = ({
     });
 
     if (localProductMatches.length > 0) {
-      if (loadedOriginalInvoice) setLoadedOriginalInvoice(null);
       const exactMatch = localProductMatches.find(p => {
         const pBarcode = String(p.barcode || p.pieces?.[0]?.barcode || '').toLowerCase();
         const pCode = String(p.itemCode || p.sku || '').toLowerCase();
@@ -5464,7 +5574,6 @@ export const BillingPOSView = ({
       const pubRes = await api.get(`/products/public/info/${encodeURIComponent(q)}`);
       if (pubRes.data?.success && pubRes.data?.data) {
         const pData = pubRes.data.data;
-        if (loadedOriginalInvoice) setLoadedOriginalInvoice(null);
         handleAddProductToCart(pData);
         if (onAddNotification) onAddNotification("Added", `${pData.name || pData.itemName} added to bill`, "success");
         if (typeof clearInputFn === 'function') clearInputFn("");
@@ -5511,6 +5620,16 @@ export const BillingPOSView = ({
       return;
     }
 
+    // 5. Fallback: Check if scanned value is a unique code of a sold item or inventory piece
+    try {
+      let isHandledAsUniqueCode = false;
+      await executeUniqueCodeSearch(q, (val) => {
+        isHandledAsUniqueCode = true;
+        if (typeof clearInputFn === 'function') clearInputFn(val);
+      });
+      if (isHandledAsUniqueCode) return;
+    } catch (e) { }
+
     if (onAddNotification) onAddNotification("Not Found", "No product or invoice found for this code", "danger");
   };
 
@@ -5545,7 +5664,275 @@ export const BillingPOSView = ({
     if (!q) return;
     const qLower = q.toLowerCase();
 
-    // 1. Check in-memory products & piece unique codes
+    // 1. Search previously sold items from local invoices state FIRST
+    let foundSoldItem = null;
+    let foundSoldInvoice = null;
+
+    const allInvoices = invoiceList || invoices || [];
+    for (const inv of allInvoices) {
+      const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
+      const matched = invItems.find(itm => {
+        const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || itm.itemCode || '').toLowerCase();
+        return uCode === qLower;
+      });
+      if (matched) {
+        foundSoldItem = matched;
+        foundSoldInvoice = inv;
+        break;
+      }
+    }
+
+    // 2. Fallback: Search backend sales/billing history API
+    if (!foundSoldItem) {
+      try {
+        const res = await api.get(`/billing?search=${encodeURIComponent(q)}`);
+        const bills = res.data?.data?.bills || res.data?.data || res.data?.bills || [];
+        for (const inv of bills) {
+          const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
+          const matched = invItems.find(itm => {
+            const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || itm.itemCode || '').toLowerCase();
+            return uCode === qLower;
+          });
+          if (matched) {
+            foundSoldItem = matched;
+            foundSoldInvoice = inv;
+            break;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 3. Fallback: Search backend searchByBarcode endpoint for sold pieces
+    if (!foundSoldItem) {
+      try {
+        const sRes = await api.get(`/search/barcode/${encodeURIComponent(q)}`);
+        if (sRes.data?.success && sRes.data?.data) {
+          const sData = sRes.data.data;
+          if (sData.type === 'inventory_piece' && sData.result) {
+            const pc = sData.result;
+            const prd = pc.productId || {};
+            const isPieceSold = pc.status === 'SOLD' || pc.sold;
+            if (isPieceSold) {
+              foundSoldItem = {
+                productId: prd._id || prd.id || pc._id,
+                name: prd.itemName || prd.name || pc.pieceName || 'Sold Garment',
+                itemName: prd.itemName || prd.name || pc.pieceName || 'Sold Garment',
+                barcode: pc.barcode || '',
+                uniqueCode: pc.uniqueCode || q,
+                designNo: prd.designNo || pc.designNo || '',
+                itemCode: prd.itemCode || '',
+                mrp: pc.mrp || prd.mrp || 0,
+                sellingPrice: pc.sellingPrice || pc.purchaseRate || pc.mrp || 0,
+                rate: pc.sellingPrice || pc.purchaseRate || pc.mrp || 0,
+                size: pc.size || 'FS',
+                color: pc.primaryColor || pc.color || 'Standard',
+                firmName: pc.firmId?.name || prd.firmName || 'NEW FASHION STYLE (PALAM)'
+              };
+              if (pc.saleBillId) {
+                foundSoldInvoice = { invoiceNo: pc.saleBillId?.billNo || pc.saleBillId };
+              }
+            }
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 4. Fallback: Check return validation endpoint
+    if (!foundSoldItem) {
+      try {
+        const retRes = await api.post('/returns/validate', { uniqueCode: q, barcode: q });
+        if (retRes.data?.success && retRes.data?.data?.valid) {
+          const vData = retRes.data.data;
+          const piece = vData.piece || {};
+          const product = piece.productId || {};
+          foundSoldItem = {
+            productId: product._id || product.id || piece._id,
+            name: product.itemName || product.name || 'Sold Garment',
+            itemName: product.itemName || product.name || 'Sold Garment',
+            barcode: piece.barcode || '',
+            uniqueCode: piece.uniqueCode || q,
+            designNo: product.designNo || piece.designNo || '',
+            itemCode: product.itemCode || '',
+            mrp: piece.mrp || product.mrp || vData.refundableAmount || 0,
+            sellingPrice: vData.refundableAmount || piece.sellingPrice || piece.mrp || 0,
+            rate: vData.refundableAmount || piece.sellingPrice || piece.mrp || 0,
+            size: piece.size || 'FS',
+            color: piece.primaryColor || piece.color || 'Standard',
+            firmName: piece.firmId?.name || product.firmName || 'NEW FASHION STYLE (PALAM)'
+          };
+          if (vData.saleBill) {
+            foundSoldInvoice = vData.saleBill;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 5. Fallback: Search PSSM custom piece records
+    if (!foundSoldItem) {
+      try {
+        const pssRes = await api.get(`/pssm?search=${encodeURIComponent(q)}`);
+        const pssItems = pssRes.data?.data || [];
+        const matchedPss = pssItems.find(p => String(p.uniqueCode || p.barcode || '').toLowerCase() === qLower);
+        if (matchedPss) {
+          foundSoldItem = {
+            name: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
+            itemName: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
+            uniqueCode: matchedPss.uniqueCode || q,
+            barcode: matchedPss.barcode || '',
+            price: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
+            mrp: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
+            size: matchedPss.size || 'M',
+            color: matchedPss.color || 'Standard',
+            designNo: matchedPss.pattern || matchedPss.designNo || ''
+          };
+          foundSoldInvoice = { invoiceNo: matchedPss.billNo || matchedPss.invoiceNumber || 'PSSM' };
+        }
+      } catch (e) { }
+    }
+
+    // 6. If found as sold item -> Load Original Bill context into POS, show top Return/Exchange banner, and populate customer details
+    if (foundSoldItem || foundSoldInvoice) {
+      let fullInvoice = foundSoldInvoice;
+      const invNo = foundSoldInvoice?.invoiceNo || foundSoldInvoice?.billNo || foundSoldItem?.soldFromInvoiceNo || foundSoldItem?.invoiceNo;
+
+      // If foundSoldInvoice doesn't have full item details, fetch complete invoice from backend
+      if (invNo && (!fullInvoice?.items || fullInvoice.items.length === 0)) {
+        try {
+          const invRes = await api.get(`/billing/${encodeURIComponent(invNo)}`);
+          if (invRes.data?.success && invRes.data.data) {
+            fullInvoice = invRes.data.data;
+          }
+        } catch (e) { }
+      }
+
+      // If full invoice is still missing, construct a fallback invoice structure
+      if (!fullInvoice) {
+        fullInvoice = {
+          invoiceNo: invNo || 'PAST-BILL',
+          billNo: invNo || 'PAST-BILL',
+          items: [foundSoldItem],
+          grandTotal: foundSoldItem?.price || foundSoldItem?.mrp || 0,
+          date: new Date().toISOString()
+        };
+      }
+
+      // Format items with PSSM & piece details
+      const rawItems = fullInvoice.items || fullInvoice.billItems || [foundSoldItem].filter(Boolean);
+      let formattedItems = rawItems.map((item, idx) => {
+        const piece = item.inventoryPieceId || item.piece || {};
+        let prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
+        const sPrice = Number(item.sellingPrice ?? item.price ?? item.mrp ?? prod.sellingPrice ?? 0);
+        const mrpVal = Number(item.mrp ?? prod.mrp ?? prod.defaultMRP ?? sPrice);
+        const nameVal = item.name || item.itemName || (typeof prod === 'object' ? (prod.itemName || prod.name) : '') || 'Sold Garment';
+        const barcodeVal = item.barcode || (piece && piece.barcode) || (typeof prod === 'object' ? prod.barcode : '') || '';
+        const uniqueCodeVal = item.uniqueCode || (piece && piece.uniqueCode) || barcodeVal || q;
+        const designVal = item.designNo || (typeof prod === 'object' ? (prod.designNo || prod.sku) : '') || '';
+        const itemCodeVal = item.itemCode || (typeof prod === 'object' ? (prod.itemCode || prod.productCode) : '') || '';
+        const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company || prod.firmId?.name) : '') || (piece && piece.firmId?.name) || fullInvoice?.firmName || fullInvoice?.company || loadedOriginalInvoice?.firmName || 'NEW FASHION STYLE (PALAM)';
+        const counterVal = item.counter || (typeof prod === 'object' ? (prod.counter || prod.counterNo) : '') || (piece && piece.counter) || '';
+        const ipnVal = item.ipn || (piece && piece.ipn) || '';
+        const subItemVal = item.subItem || (typeof prod === 'object' ? (prod.subItem || prod.category) : '') || '';
+
+        return {
+          cartItemId: `cart-item-sold-${Date.now()}-${idx}`,
+          inventoryPieceId: (piece && (piece._id || piece.id)) || item.inventoryPieceId || item._id || item.id || undefined,
+          productId: (typeof prod === 'object' ? (prod._id || prod.id) : null) || item.productId || `sold-${idx}`,
+          name: nameVal,
+          itemName: nameVal,
+          barcode: barcodeVal,
+          barcodeNo: barcodeVal,
+          uniqueCode: uniqueCodeVal,
+          subItem: subItemVal,
+          designNo: designVal,
+          itemCode: itemCodeVal,
+          ipn: ipnVal,
+          sku: designVal || itemCodeVal,
+          firmName: firmVal,
+          company: firmVal,
+          counter: counterVal,
+          size: item.size || (piece && piece.size) || 'FS',
+          color: item.color || item.primaryColor || (piece && piece.primaryColor) || 'Standard',
+          primaryColor: item.color || item.primaryColor || (piece && piece.primaryColor) || 'Standard',
+          mrp: mrpVal,
+          price: sPrice,
+          sellingPrice: sPrice,
+          discount: Number(item.discountAmount || item.discount || 0),
+          gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+          totalPrice: Number(item.finalPrice || item.totalPrice || sPrice),
+          quantity: Number(item.quantity || 1),
+          isReturn: true,
+          isReturned: true,
+          soldFromInvoiceNo: invNo || fullInvoice?.invoiceNo || fullInvoice?.billNo,
+          hasAlteration: Boolean(item.hasAlteration),
+          alterationRecord: item.alterationRecord || null
+        };
+      });
+
+      // Enrich with PSSM if exists
+      try {
+        const pssmData = await fetchAndEnrichPSSM(fullInvoice);
+        if (pssmData) {
+          formattedItems = matchAndTagPSSMOnItems(formattedItems, pssmData);
+        }
+      } catch (e) { }
+
+      const invCust = fullInvoice.customer || fullInvoice.customerId || fullInvoice;
+      const custName = fullInvoice.customerName || (typeof invCust === 'object' ? invCust.name || invCust.customerName : '') || '';
+      const custPhone = fullInvoice.customerPhone || (typeof invCust === 'object' ? invCust.phone || invCust.mobile || invCust.customerPhone : '') || '';
+      const custId = (typeof invCust === 'object' && invCust.customerId) ? invCust.customerId : (fullInvoice.customerId || (custPhone ? `CUST-${custPhone.slice(-4)}` : ''));
+      const custGstin = (typeof invCust === 'object' ? invCust.gstin || invCust.gstNo : '') || '';
+
+      const unifiedLoadedBill = {
+        ...fullInvoice,
+        invoiceNo: fullInvoice.invoiceNo || fullInvoice.billNo || invNo,
+        billNo: fullInvoice.billNo || fullInvoice.invoiceNo || invNo,
+        customerName: custName,
+        customerPhone: custPhone,
+        items: formattedItems,
+        grandTotal: fullInvoice.grandTotal || formattedItems.reduce((s, i) => s + (i.totalPrice || 0), 0)
+      };
+
+      // 1. Set loaded original invoice -> activates top banner with Return, Exchange, Alteration, PSS Slip
+      setLoadedOriginalInvoice(unifiedLoadedBill);
+      setSelectedInvoiceForReturn(unifiedLoadedBill);
+
+      if (onAddNotification) {
+        onAddNotification("Original Bill Loaded", `Original Bill ${unifiedLoadedBill.invoiceNo} loaded. Select Alteration (Alt+A), Returns (R), or Exchange (E) above.`, "info");
+      }
+
+      // 2. Auto-populate customer info if active bill doesn't have customer set yet
+      if (custName || custPhone) {
+        setCustomerForm(prev => ({
+          ...prev,
+          name: prev.name && prev.name !== 'Walk-in Customer' ? prev.name : (custName || prev.name),
+          phone: prev.phone ? prev.phone : (custPhone || prev.phone),
+          customerId: prev.customerId && prev.customerId !== 'CUST-AUTO' ? prev.customerId : (custId || prev.customerId),
+          gstin: prev.gstin ? prev.gstin : (custGstin || prev.gstin)
+        }));
+
+        if (custId && !selectedCustomerId) {
+          setSelectedCustomerId((typeof invCust === 'object' && (invCust._id || invCust.id)) ? (invCust._id || invCust.id) : custId);
+        }
+        if (custPhone && !customerSearchQuery) {
+          setCustomerSearchQuery(maskPhoneNumber(custPhone) || custName || '');
+        }
+      }
+
+      // 3. Clear unique code input
+      setUniqueCodeInput("");
+      if (typeof clearInputFn === 'function') clearInputFn("");
+
+      if (onAddNotification) {
+        onAddNotification(
+          "Original Bill Loaded",
+          `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}" (Use Returns & Exchange options on top)`,
+          "success"
+        );
+      }
+      return;
+    }
+
+    // 7. If not found in sold items, check in-memory products & piece unique codes
     let matchedProduct = null;
     let matchedPiece = null;
 
@@ -5568,7 +5955,53 @@ export const BillingPOSView = ({
       }
     }
 
+    // 7.5 Fallback: Search backend /products/search-billing
+    if (!matchedProduct) {
+      try {
+        const pRes = await api.get(`/products/search-billing?q=${encodeURIComponent(q)}`);
+        if (pRes.data?.success && Array.isArray(pRes.data?.data) && pRes.data.data.length > 0) {
+          const items = pRes.data.data;
+          const match = items.find(i =>
+            String(i.uniqueCode || '').toLowerCase() === qLower ||
+            String(i.barcode || '').toLowerCase() === qLower ||
+            (Array.isArray(i.pieces) && i.pieces.some(pc => String(pc.uniqueCode || pc.barcode || '').toLowerCase() === qLower))
+          ) || items[0];
+          matchedProduct = match;
+          if (Array.isArray(match.pieces)) {
+            matchedPiece = match.pieces.find(pc => String(pc.uniqueCode || pc.barcode || '').toLowerCase() === qLower) || match.pieces[0];
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 8. Fallback: Search backend searchByBarcode for available pieces or products
+    if (!matchedProduct) {
+      try {
+        const sRes = await api.get(`/search/barcode/${encodeURIComponent(q)}`);
+        if (sRes.data?.success && sRes.data?.data) {
+          const sData = sRes.data.data;
+          if (sData.type === 'inventory_piece' && sData.result) {
+            matchedPiece = sData.result;
+            matchedProduct = matchedPiece.productId || {};
+          } else if (sData.type === 'product' && sData.result) {
+            matchedProduct = sData.result;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 9. Fallback: Public product lookup
+    if (!matchedProduct) {
+      try {
+        const pubRes = await api.get(`/products/public/info/${encodeURIComponent(q)}`);
+        if (pubRes.data?.success && pubRes.data?.data) {
+          matchedProduct = pubRes.data.data;
+        }
+      } catch (e) { }
+    }
+
     if (matchedProduct) {
+      const isPieceSold = matchedPiece?.status === 'SOLD' || matchedPiece?.sold || matchedProduct?.status === 'SOLD' || matchedProduct?.sold;
       const sPrice = Number(matchedPiece?.sellingPrice || matchedPiece?.price || matchedProduct.mrp || matchedProduct.sellingPrice || matchedProduct.price || 0);
       const mrpVal = Number(matchedPiece?.mrp || matchedProduct.mrp || matchedProduct.defaultMRP || sPrice);
       const itemNameVal = matchedProduct.itemName || matchedProduct.name || 'Unnamed Item';
@@ -5582,6 +6015,159 @@ export const BillingPOSView = ({
       const firmVal = matchedProduct.firmName || matchedProduct.company || (matchedPiece?.firmId?.name) || '';
       const counterVal = matchedPiece?.counter || matchedProduct.counter || '';
       const hsnVal = matchedProduct.hsn || matchedProduct.hsnCode || '';
+
+      if (isPieceSold) {
+        const soldItemObj = {
+          productId: matchedProduct._id || matchedProduct.id || matchedPiece?._id,
+          name: itemNameVal,
+          itemName: itemNameVal,
+          barcode: barcodeVal,
+          uniqueCode: uniqueCodeVal,
+          designNo: designNoVal,
+          itemCode: itemCodeVal,
+          mrp: mrpVal,
+          sellingPrice: sPrice,
+          price: sPrice,
+          size: sizeVal,
+          color: colorVal,
+          firmName: firmVal
+        };
+
+        let saleInv = null;
+        const invNo = matchedPiece?.saleBillId?.billNo || matchedPiece?.saleBillId?.invoiceNo || matchedPiece?.saleBillId || (typeof matchedProduct.soldInInvoice === 'string' ? matchedProduct.soldInInvoice : null);
+        if (invNo) {
+          try {
+            const invRes = await api.get(`/billing/${encodeURIComponent(invNo)}`);
+            if (invRes.data?.success && invRes.data.data) {
+              saleInv = invRes.data.data;
+            }
+          } catch (e) { }
+        }
+        if (!saleInv) {
+          saleInv = {
+            invoiceNo: invNo || 'PAST-BILL',
+            billNo: invNo || 'PAST-BILL',
+            items: [soldItemObj],
+            grandTotal: sPrice || mrpVal || 0,
+            date: new Date().toISOString()
+          };
+        }
+
+        const invCust = saleInv.customer || saleInv.customerId || saleInv;
+        const custName = saleInv.customerName || (typeof invCust === 'object' ? invCust.name || invCust.customerName : '') || '';
+        const custPhone = saleInv.customerPhone || (typeof invCust === 'object' ? invCust.phone || invCust.mobile || invCust.customerPhone : '') || '';
+        const custId = (typeof invCust === 'object' && invCust.customerId) ? invCust.customerId : (saleInv.customerId || (custPhone ? `CUST-${custPhone.slice(-4)}` : ''));
+        const custGstin = (typeof invCust === 'object' ? invCust.gstin || invCust.gstNo : '') || '';
+
+        const rawItems = saleInv.items || saleInv.billItems || [soldItemObj];
+        let formattedItems = rawItems.map((item, idx) => {
+          const piece = item.inventoryPieceId || item.piece || {};
+          let prod = (piece && typeof piece === 'object' && piece.productId) ? piece.productId : (item.productId || item);
+          const iPrice = Number(item.sellingPrice ?? item.price ?? item.mrp ?? prod.sellingPrice ?? 0);
+          const iMrp = Number(item.mrp ?? prod.mrp ?? prod.defaultMRP ?? iPrice);
+          const iName = item.name || item.itemName || (typeof prod === 'object' ? (prod.itemName || prod.name) : '') || 'Sold Garment';
+          const iBarcode = item.barcode || (piece && piece.barcode) || (typeof prod === 'object' ? prod.barcode : '') || '';
+          const iUnique = item.uniqueCode || (piece && piece.uniqueCode) || iBarcode || q;
+          const designVal = item.designNo || (typeof prod === 'object' ? (prod.designNo || prod.sku) : '') || '';
+          const itemCodeVal = item.itemCode || (typeof prod === 'object' ? (prod.itemCode || prod.productCode) : '') || '';
+          const firmVal = item.firmName || (typeof prod === 'object' ? (prod.firmName || prod.company || prod.firmId?.name) : '') || (piece && piece.firmId?.name) || '';
+          const counterVal = item.counter || (typeof prod === 'object' ? (prod.counter || prod.counterNo) : '') || (piece && piece.counter) || '';
+          const ipnVal = item.ipn || (piece && piece.ipn) || '';
+          const subItemVal = item.subItem || (typeof prod === 'object' ? (prod.subItem || prod.category) : '') || '';
+
+          return {
+            cartItemId: `cart-item-sold-${Date.now()}-${idx}`,
+            productId: (typeof prod === 'object' ? (prod._id || prod.id) : null) || item.productId || `sold-${idx}`,
+            name: iName,
+            itemName: iName,
+            barcode: iBarcode,
+            barcodeNo: iBarcode,
+            uniqueCode: iUnique,
+            subItem: subItemVal,
+            designNo: designVal,
+            itemCode: itemCodeVal,
+            ipn: ipnVal,
+            sku: designVal || itemCodeVal,
+            firmName: firmVal,
+            company: firmVal,
+            counter: counterVal,
+            size: item.size || (piece && piece.size) || 'FS',
+            color: item.color || item.primaryColor || (piece && piece.primaryColor) || 'Standard',
+            primaryColor: item.color || item.primaryColor || (piece && piece.primaryColor) || 'Standard',
+            mrp: iMrp,
+            price: iPrice,
+            sellingPrice: iPrice,
+            discount: Number(item.discountAmount || item.discount || 0),
+            gstPercent: item.gstPercent !== undefined ? Number(item.gstPercent) : 5,
+            totalPrice: Number(item.finalPrice || item.totalPrice || iPrice),
+            quantity: Number(item.quantity || 1),
+            hasAlteration: Boolean(item.hasAlteration),
+            alterationRecord: item.alterationRecord || null
+          };
+        });
+
+        const unifiedLoadedBill = {
+          ...saleInv,
+          invoiceNo: saleInv.invoiceNo || saleInv.billNo || invNo || 'PAST-BILL',
+          billNo: saleInv.billNo || saleInv.invoiceNo || invNo || 'PAST-BILL',
+          customerName: custName,
+          customerPhone: custPhone,
+          items: formattedItems,
+          grandTotal: saleInv.grandTotal || formattedItems.reduce((s, i) => s + (i.totalPrice || 0), 0)
+        };
+
+        setLoadedOriginalInvoice(unifiedLoadedBill);
+        setSelectedInvoiceForReturn(unifiedLoadedBill);
+
+        // Add the looked-up product into the billing cart table alongside ongoing items
+        const targetSoldItem = formattedItems.find(item =>
+          String(item.uniqueCode || '').toLowerCase() === qLower ||
+          String(item.barcode || '').toLowerCase() === qLower ||
+          String(item.barcodeNo || '').toLowerCase() === qLower
+        ) || formattedItems[0];
+
+        if (targetSoldItem) {
+          setCart(prev => {
+            const alreadyExists = (prev || []).some(c =>
+              (c.uniqueCode && String(c.uniqueCode).toLowerCase() === qLower) ||
+              (c.cartItemId && c.cartItemId === targetSoldItem.cartItemId)
+            );
+            if (alreadyExists) return prev;
+            return [...(prev || []), targetSoldItem];
+          });
+        }
+
+        if (custName || custPhone) {
+          setCustomerForm(prev => ({
+            ...prev,
+            name: prev.name && prev.name !== 'Walk-in Customer' ? prev.name : (custName || prev.name),
+            phone: prev.phone ? prev.phone : (custPhone || prev.phone),
+            customerId: prev.customerId && prev.customerId !== 'CUST-AUTO' ? prev.customerId : (custId || prev.customerId),
+            gstin: prev.gstin ? prev.gstin : (custGstin || prev.gstin)
+          }));
+          if (custId && !selectedCustomerId) {
+            setSelectedCustomerId((typeof invCust === 'object' && (invCust._id || invCust.id)) ? (invCust._id || invCust.id) : custId);
+          }
+          if (custPhone && !customerSearchQuery) {
+            setCustomerSearchQuery(maskPhoneNumber(custPhone) || custName || '');
+          }
+        }
+
+        setUniqueCodeInput("");
+        if (typeof clearInputFn === 'function') clearInputFn("");
+
+        if (onAddNotification) {
+          onAddNotification(
+            "Original Bill Loaded",
+            `Loaded Bill #${unifiedLoadedBill.invoiceNo} for Unique Code "${q}" (Use Returns & Exchange options on top)`,
+            "success"
+          );
+        }
+        return;
+      }
+
+      const sp = displayedSalespersonList[0] || (currentUser ? { id: currentUser.id || currentUser._id, name: currentUser.name } : { id: "sp-default", name: "Store Salesperson" });
+      const wk = workerList[0] || { id: "w-default", name: "In-House Tailor" };
 
       const newCartItem = {
         cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -5614,141 +6200,40 @@ export const BillingPOSView = ({
         discountPercent: mrpVal > 0 ? ((Number(matchedProduct.discount) || 0) / mrpVal) * 100 : 0,
         gstPercent: Number(matchedProduct.gstOnSalePrice ?? matchedProduct.gstPercent ?? matchedProduct.gstRate ?? 5),
         totalPrice: sPrice,
+        salespersonId: sp.id || sp._id || "sp-default",
+        salespersonName: sp.name || "Store Salesperson",
+        salesman1: sp.name || "Store Salesperson",
+        salesman2: '',
+        workerId: wk.id || wk._id || "w-default",
+        workerName: wk.name || "In-House Tailor",
         quantity: 1,
         uniqueCode: uniqueCodeVal,
+        isReturn: false,
+        actionType: 'sale',
         hasAlteration: false,
         alterationRecord: null
       };
 
       setCart(prev => [...prev, newCartItem]);
-      if (onAddNotification) onAddNotification("Unique Code Added", `Loaded ${itemNameVal} (${uniqueCodeVal})`, "success");
+      // Only clear input field on successful add!
+      setUniqueCodeInput("");
       if (typeof clearInputFn === 'function') clearInputFn("");
-      return;
-    }
 
-    // 2. Search previously sold items from local invoices state
-    let foundSoldItem = null;
-    let foundSoldInvoice = null;
-
-    const allInvoices = invoiceList || invoices || [];
-    for (const inv of allInvoices) {
-      const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
-      const matched = invItems.find(itm => {
-        const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || '').toLowerCase();
-        return uCode === qLower;
-      });
-      if (matched) {
-        foundSoldItem = matched;
-        foundSoldInvoice = inv;
-        break;
-      }
-    }
-
-    // 3. Fallback: Search backend sales/billing history API
-    if (!foundSoldItem) {
-      try {
-        const res = await api.get(`/billing?search=${encodeURIComponent(q)}`);
-        const bills = res.data?.data?.bills || res.data?.data || res.data?.bills || [];
-        for (const inv of bills) {
-          const invItems = inv.items || inv.billItems || inv.products || inv.rows || [];
-          const matched = invItems.find(itm => {
-            const uCode = String(itm.uniqueCode || itm.pieceCode || itm.barcode || itm.barcodeNo || itm.sku || '').toLowerCase();
-            return uCode === qLower;
-          });
-          if (matched) {
-            foundSoldItem = matched;
-            foundSoldInvoice = inv;
-            break;
-          }
-        }
-      } catch (e) { }
-    }
-
-    // 4. Fallback: Search PSSM custom piece records
-    if (!foundSoldItem) {
-      try {
-        const pssRes = await api.get(`/pssm?search=${encodeURIComponent(q)}`);
-        const pssItems = pssRes.data?.data || [];
-        const matchedPss = pssItems.find(p => String(p.uniqueCode || p.barcode || '').toLowerCase() === qLower);
-        if (matchedPss) {
-          foundSoldItem = {
-            name: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
-            itemName: matchedPss.itemName || matchedPss.fabric || 'Sold Garment Piece',
-            uniqueCode: matchedPss.uniqueCode || q,
-            barcode: matchedPss.barcode || '',
-            price: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
-            mrp: matchedPss.totalPrice || matchedPss.estimatedCost || 0,
-            size: matchedPss.size || 'M',
-            color: matchedPss.color || 'Standard',
-            designNo: matchedPss.pattern || matchedPss.designNo || ''
-          };
-          foundSoldInvoice = { invoiceNo: matchedPss.billNo || matchedPss.invoiceNumber || 'PSSM' };
-        }
-      } catch (e) { }
-    }
-
-    if (foundSoldItem) {
-      const mrpVal = Number(foundSoldItem.mrp || foundSoldItem.price || foundSoldItem.sellingPrice || foundSoldItem.rate || 0);
-      const rateVal = Number(foundSoldItem.rate || foundSoldItem.sellingPrice || foundSoldItem.price || mrpVal);
-      const discVal = Number(foundSoldItem.discount || foundSoldItem.discountValue || foundSoldItem.discountAmount || 0);
-      const itemNameVal = foundSoldItem.itemName || foundSoldItem.name || 'Sold Item';
-      const uniqueCodeVal = foundSoldItem.uniqueCode || q;
-      const barcodeVal = foundSoldItem.barcode || foundSoldItem.barcodeNo || '';
-      const designNoVal = foundSoldItem.designNo || foundSoldItem.sku || '';
-      const invNo = foundSoldInvoice?.invoiceNo || foundSoldInvoice?.billNo || 'Past Bill';
-
-      const recoveredCartItem = {
-        cartItemId: `cart-item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        productId: foundSoldItem.productId || foundSoldItem._id || foundSoldItem.id || `sold-${Date.now()}`,
-        name: itemNameVal,
-        itemName: itemNameVal,
-        barcode: barcodeVal,
-        barcodeNo: barcodeVal,
-        uniqueCode: uniqueCodeVal,
-        subItem: foundSoldItem.subItem || '',
-        firmName: foundSoldItem.firmName || foundSoldItem.company || '',
-        company: foundSoldItem.company || foundSoldItem.firmName || '',
-        counter: foundSoldItem.counter || foundSoldItem.counterNo || '',
-        designNo: designNoVal,
-        itemCode: foundSoldItem.itemCode || '',
-        ipn: foundSoldItem.ipn || '',
-        sku: foundSoldItem.sku || designNoVal,
-        size: foundSoldItem.size || 'M',
-        color: foundSoldItem.color || foundSoldItem.primaryColor || 'Standard',
-        primaryColor: foundSoldItem.primaryColor || foundSoldItem.color || 'Standard',
-        secondaryColor: foundSoldItem.secondaryColor || '',
-        hsn: foundSoldItem.hsn || foundSoldItem.hsnCode || '',
-        mrp: mrpVal,
-        price: mrpVal,
-        sellingPrice: rateVal,
-        discountType: foundSoldItem.discountType || 'amount',
-        discountValue: discVal,
-        discount: discVal,
-        customDiscount: discVal,
-        discountAmount: discVal,
-        discountPercent: mrpVal > 0 ? (discVal / mrpVal) * 100 : 0,
-        gstPercent: Number(foundSoldItem.gstPercent ?? foundSoldItem.gstRate ?? 5),
-        totalPrice: rateVal,
-        salesman1: foundSoldItem.salesman1 || foundSoldItem.salespersonName || '',
-        salesman2: foundSoldItem.salesman2 || '',
-        quantity: 1,
-        soldFromInvoiceNo: invNo,
-        hasAlteration: false,
-        alterationRecord: null
-      };
-
-      setCart(prev => [...prev, recoveredCartItem]);
       if (onAddNotification) {
         onAddNotification(
-          "Sold Item Retrieved",
-          `Loaded "${itemNameVal}" (${uniqueCodeVal}) from Invoice #${invNo}`,
+          "Unique Code Added",
+          `Loaded ${itemNameVal} (${uniqueCodeVal})`,
           "success"
         );
       }
-      if (typeof clearInputFn === 'function') clearInputFn("");
       return;
     }
 
+    // If NOT found: DO NOT clear the input field! Highlight / select it and notify user
+    const inputEl = document.getElementById("posUniqueCodeInput");
+    if (inputEl && typeof inputEl.select === "function") {
+      inputEl.select();
+    }
     if (onAddNotification) {
       onAddNotification("Unique Code Not Found", `No active inventory piece or sold item found for Unique Code "${q}"`, "danger");
     }
@@ -6077,16 +6562,20 @@ export const BillingPOSView = ({
           password: purchaseAuthPassword
         });
 
+        const activeTargetItem = infoPanelItem || selectedSearchItem || itemSearchResults[0];
+        const targetItemId = activeTargetItem?._id || activeTargetItem?.id || activeTargetItem?.barcode;
+
+        setUnlockedPurchaseProductId(targetItemId);
         setIsPurchaseTabUnlocked(true);
         setInfoPanelTab('Purchase');
         setIsPurchaseAuthModalOpen(false);
         setPurchaseAuthOwnerId("");
         setPurchaseAuthPassword("");
 
-        const itemName = selectedSearchItem?.name || selectedSearchItem?.product?.name || selectedSearchItem?.itemCode || 'Unknown Item';
-        const code = selectedSearchItem?.designNo || selectedSearchItem?.itemCode || '';
+        const itemName = activeTargetItem?.name || activeTargetItem?.product?.name || activeTargetItem?.itemCode || 'Unknown Item';
+        const code = activeTargetItem?.designNo || activeTargetItem?.itemCode || '';
         const display = code ? `${itemName} (${code})` : itemName;
-        const rawId = selectedSearchItem?._id || selectedSearchItem?.id;
+        const rawId = activeTargetItem?._id || activeTargetItem?.id;
         const validEntityId = /^[a-fA-F0-9]{24}$/.test(rawId) ? rawId : null;
 
         api.post('/audit/track', {
@@ -6098,7 +6587,7 @@ export const BillingPOSView = ({
           displayName: `Purchase Tab Unlocked: ${display}`
         }).catch(err => console.error("Failed to track audit log", err));
       } catch (err) {
-        if (onAddNotification) onAddNotification("Auth Failed", "Invalid owner credentials", "danger");
+        if (onAddNotification) onAddNotification("Auth Failed", "Invalid supervisor credentials", "danger");
       }
     }
   };
@@ -6413,12 +6902,12 @@ export const BillingPOSView = ({
                   <input
                     type="text"
                     id="posBillNumberSearchInput"
-                    className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-extrabold text-blue-950 placeholder:text-slate-600 placeholder:font-bold"
+                    className="flex-1 p-1 text-[10px] outline-none focus:bg-yellow-100 uppercase font-mono font-extrabold text-blue-950 placeholder:text-blue-900/80 placeholder:font-black"
                     value={billNumberSearchQuery}
                     onChange={(e) => setBillNumberSearchQuery(e.target.value)}
                     onKeyDown={handleBillNumberSearchKeyDown}
-                    placeholder={loadedOriginalInvoice ? (loadedOriginalInvoice.invoiceNo || loadedOriginalInvoice.billNo) : (liveInvoiceNumber || "Enter Bill No + ↵")}
-                    title="Displays active/generating invoice number. Type previous Bill No & press Enter to search & load."
+                    placeholder={liveInvoiceNumber || "Enter Bill No + ↵"}
+                    title="Active Bill Number being generated. Type a past Bill No & press Enter to search & reference."
                   />
                   {billNumberSearchQuery && (
                     <button
@@ -6428,22 +6917,6 @@ export const BillingPOSView = ({
                       title="Clear search query"
                     >
                       <X className="w-3 h-3" />
-                    </button>
-                  )}
-                  {loadedOriginalInvoice && !billNumberSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoadedOriginalInvoice(null);
-                        setCart([]);
-                        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-                        setSelectedCustomerId('');
-                      }}
-                      className="px-1.5 py-0.5 text-[9px] bg-red-50 hover:bg-red-100 text-red-600 font-bold border-l border-slate-200 cursor-pointer flex items-center gap-0.5"
-                      title="Clear loaded bill and start fresh"
-                    >
-                      <X className="w-2.5 h-2.5" />
-                      <span>Clear</span>
                     </button>
                   )}
                   <button
@@ -6536,9 +7009,6 @@ export const BillingPOSView = ({
                       type="button"
                       onClick={() => {
                         setLoadedOriginalInvoice(null);
-                        setCart([]);
-                        setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '2588' });
-                        setSelectedCustomerId('');
                       }}
                       className="text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
                       title="Clear Loaded Bill"
@@ -6629,7 +7099,7 @@ export const BillingPOSView = ({
 
                       const barcodeDisplay = item.barcode || item.barcodeNo || item.productId?.barcode || item.pieces?.[0]?.barcode || '';
                       const nameDisplay = item.itemName || item.name || item.productId?.itemName || item.productId?.name || '';
-                      const firmDisplay = item.firmName || item.company || item.productId?.firmName || item.productId?.company || item.piece?.firmId?.name || (item.pieces && item.pieces[0]?.firmId?.name) || '';
+                      const firmDisplay = item.firmName || item.company || item.productId?.firmName || item.productId?.company || item.piece?.firmId?.name || (item.pieces && item.pieces[0]?.firmId?.name) || loadedOriginalInvoice?.firmName || loadedOriginalInvoice?.company || (cart.find(c => c.firmName)?.firmName) || 'NEW FASHION STYLE (PALAM)';
                       const firmStyle = getFirmStyle(firmDisplay);
                       const counterDisplay = item.counter || item.counterNo || item.productId?.counter || item.piece?.counter || (item.pieces && item.pieces[0]?.counter) || '';
                       const subItemDisplay = item.subItem || item.productId?.subItem || (typeof item.category === 'string' ? item.category : item.category?.name) || '';
@@ -6649,7 +7119,7 @@ export const BillingPOSView = ({
                             setSelectedCartRowIndex(idx);
                             setFocusedAlterationIndex(idx);
                           }}
-                          className={`border-b border-slate-200 transition-all cursor-pointer ${firmStyle.rowClass} ${selectedCartRowIndex === idx
+                          className={`border-b border-slate-200 transition-all cursor-pointer ${item.isReturn ? 'bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500' : firmStyle.rowClass} ${selectedCartRowIndex === idx
                             ? 'ring-2 ring-inset ring-indigo-500 shadow-xs font-bold text-slate-900'
                             : ''
                             }`}
@@ -6657,7 +7127,19 @@ export const BillingPOSView = ({
                           <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all overflow-hidden text-ellipsis whitespace-nowrap" title={item.uniqueCode || ''}>{item.uniqueCode || ''}</td>
-                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>{nameDisplay}</td>
+                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>
+                            {item.isReturn && (
+                              <span className="inline-block bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
+                                RETURN
+                              </span>
+                            )}
+                            {nameDisplay}
+                            {item.soldFromInvoiceNo && (
+                              <span className="ml-1 text-[9px] text-rose-700 font-bold">
+                                (#{item.soldFromInvoiceNo})
+                              </span>
+                            )}
+                          </td>
                           <td className="border-r border-slate-300 p-1 overflow-hidden text-ellipsis whitespace-nowrap" title={subItemDisplay}>{subItemDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={designNoDisplay}>{designNoDisplay}</td>
                           <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-800" title={itemCodeDisplay}>{itemCodeDisplay}</td>
@@ -6794,9 +7276,11 @@ export const BillingPOSView = ({
                               </div>
                             )}
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-right font-mono font-bold text-slate-800">{rate.toFixed(2)}</td>
-                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold text-slate-800 ${billAdjShare > 0 ? (isCharge ? 'text-emerald-700' : 'text-indigo-700') : ''}`}>
-                            {(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}
+                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold ${item.isReturn ? 'text-rose-700 font-black' : 'text-slate-800'}`}>
+                            {item.isReturn ? `-${rate.toFixed(2)}` : rate.toFixed(2)}
+                          </td>
+                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold ${item.isReturn ? 'text-rose-700 font-black' : (billAdjShare > 0 ? (isCharge ? 'text-emerald-700' : 'text-indigo-700') : 'text-slate-800')}`}>
+                            {item.isReturn ? `-${(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}` : (isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}
                           </td>
                           <td className="border-r border-slate-300 p-1 relative">
                             {(() => {
@@ -6893,15 +7377,28 @@ export const BillingPOSView = ({
                             )}
                           </td>
                           <td className="border-r border-slate-300 p-1 font-mono text-slate-700 overflow-hidden text-ellipsis whitespace-nowrap" title={hsnDisplay}>{hsnDisplay}</td>
-                          <td className="p-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCartItem(idx)}
-                              className="text-red-500 hover:text-red-700 cursor-pointer p-0.5 rounded hover:bg-red-50 transition-colors"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="w-4 h-4 mx-auto" />
-                            </button>
+                          <td className="p-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              {item.isReturn && (
+                                <span
+                                  className="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[9px] font-black shadow-2xs"
+                                  title="Return Item"
+                                >
+                                  RET
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCartItem(idx);
+                                }}
+                                className="text-red-500 hover:text-red-700 cursor-pointer p-0.5 rounded hover:bg-red-50 transition-colors"
+                                title="Delete Item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mx-auto" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -7331,10 +7828,18 @@ export const BillingPOSView = ({
                       <tbody>
                         <tr>
                           <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Gross Amt</td>
-                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600 w-24">{(subTotal || 0).toFixed(2)}</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600 w-24 font-mono">{(subTotal || 0).toFixed(2)}</td>
                           <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0] w-24">Disc Amt</td>
-                          <td className="border border-slate-300 p-1 px-2 text-right text-red-600 w-24">{(discountTotal || 0).toFixed(2)}</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-red-600 w-24 font-mono">{(discountTotal || 0).toFixed(2)}</td>
                         </tr>
+                        {returnTotal > 0 && (
+                          <tr>
+                            <td className="border border-slate-300 p-1 px-2 bg-rose-100 text-rose-800 font-bold">Return Amt</td>
+                            <td className="border border-slate-300 p-1 px-2 text-right text-rose-700 font-mono font-bold">-₹{(returnTotal || 0).toFixed(2)}</td>
+                            <td className="border border-slate-300 p-1 px-2 bg-rose-50 text-rose-700 font-bold">Return Items</td>
+                            <td className="border border-slate-300 p-1 px-2 text-right text-rose-700 font-mono font-bold">{cart.filter(i => i.isReturn).reduce((a, b) => a + (b.quantity || 1), 0)} PCS</td>
+                          </tr>
+                        )}
                         {isGstApplied && (
                           <>
                             <tr>
@@ -7360,13 +7865,20 @@ export const BillingPOSView = ({
                         )}
                         <tr>
                           <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Net Amt</td>
-                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600">{(grandTotal || 0).toFixed(2)}</td>
-                          <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Payable</td>
-                          <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600">{(grandTotal || 0).toFixed(2)}</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-blue-600 font-mono">{(grandTotal || 0).toFixed(2)}</td>
+                          <td className={`border border-slate-300 p-1 px-2 ${grandTotal < 0 ? 'bg-rose-100 text-rose-800' : 'bg-[#f0f0f0]'}`}>
+                            {grandTotal < 0 ? 'Refund Due' : 'Payable'}
+                          </td>
+                          <td className={`border border-slate-300 p-1 px-2 text-right font-mono font-black ${grandTotal < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {grandTotal < 0 ? `-₹${Math.abs(grandTotal).toFixed(2)}` : `₹${(grandTotal || 0).toFixed(2)}`}
+                          </td>
                         </tr>
                         <tr>
                           <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Quantity</td>
-                          <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600" colSpan={3}>{cart.reduce((a, b) => a + b.quantity, 0)} PCS</td>
+                          <td className="border border-slate-300 p-1 px-2 text-right text-emerald-600 font-mono" colSpan={3}>
+                            {cart.filter(i => !i.isReturn).reduce((a, b) => a + (b.quantity || 1), 0)} PCS
+                            {cart.some(i => i.isReturn) ? ` (Sale) / ${cart.filter(i => i.isReturn).reduce((a, b) => a + (b.quantity || 1), 0)} PCS (Return)` : ''}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -7532,16 +8044,27 @@ export const BillingPOSView = ({
                     { id: "nextBill", label: "Next Bill (>)", icon: <ChevronRight className="w-5 h-5 text-green-600 mx-auto" />, onClick: handleLoadNextBill },
                     {
                       id: "enterReturns", label: "Returns (R)", icon: <RotateCcw className="w-5 h-5 text-green-600 mx-auto" />, onClick: () => {
-                        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                        setReturnActionType("return");
-                        setActivePOSMode("returns");
+                        if (loadedOriginalInvoice) {
+                          setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+                          setReturnActionType("return");
+                          setReturnedItemIds([]);
+                          setShowReturnExchangeModal(true);
+                        } else {
+                          setActivePOSMode("returns");
+                        }
                       }
                     },
                     {
                       id: "recvChallan", label: "Exchange (E)", icon: <FileText className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => {
-                        if (loadedOriginalInvoice) setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
-                        setReturnActionType("exchange");
-                        setActivePOSMode("returns");
+                        if (loadedOriginalInvoice) {
+                          setSelectedInvoiceForReturn({ ...loadedOriginalInvoice, items: unrollInvoiceItems(loadedOriginalInvoice.items || []) });
+                          setReturnActionType("exchange");
+                          setExchangeOldItemIdx(0);
+                          setExchangeSelectedNewProduct(null);
+                          setShowReturnExchangeModal(true);
+                        } else {
+                          setActivePOSMode("returns");
+                        }
                       }
                     },
                     { id: "config", label: "Discount (D)", icon: <AlertCircle className="w-5 h-5 text-slate-600 mx-auto" />, onClick: () => setShowDiscountSelectionModal(true) },
@@ -8098,19 +8621,29 @@ export const BillingPOSView = ({
                   Search by Invoice Number, Customer Name, or Phone Number to load past transaction.
                 </p>
               </div>
-              {selectedInvoiceForReturn && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    setSelectedInvoiceForReturn(null);
-                    setReturnedItemIds([]);
-                    setExchangeSelectedNewProduct(null);
-                    setReturnSearchQuery("");
-                  }}
-                  className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer"
+                  type="button"
+                  onClick={() => setActivePOSMode("billing")}
+                  className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-300 cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
-                  Clear Selected Invoice
+                  <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                  <span>Back to Ongoing Bill</span>
                 </button>
-              )}
+                {selectedInvoiceForReturn && (
+                  <button
+                    onClick={() => {
+                      setSelectedInvoiceForReturn(null);
+                      setReturnedItemIds([]);
+                      setExchangeSelectedNewProduct(null);
+                      setReturnSearchQuery("");
+                    }}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer"
+                  >
+                    Clear Selected Invoice
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="relative">
@@ -8668,6 +9201,7 @@ export const BillingPOSView = ({
                               setReturnSearchQuery("");
                               setReturnReason("Defective / Damaged");
                               setReturnCustomReason("");
+                              setActivePOSMode("billing");
                             } finally {
                               setIsProcessingReturn(false);
                             }
@@ -9052,6 +9586,7 @@ export const BillingPOSView = ({
                               setExchangeNewSearchQuery("");
                               setReturnSearchQuery("");
                               setReturnedItemIds([]);
+                              setActivePOSMode("billing");
                             } finally {
                               setIsProcessingReturn(false);
                             }
@@ -13879,15 +14414,13 @@ export const BillingPOSView = ({
                                     }
                                   }
                                   return {
-                                    inventoryPieceId: item?.inventoryPieceId,
-                                    barcode: item?.barcode || item?.uniqueCode || item?.designNo || item?.itemCode || '',
+                                    inventoryPieceId: item?.inventoryPieceId || item?.piece?._id || item?.piece?.id || item?.id || undefined,
+                                    barcode: item?.barcode || item?.barcodeNo || item?.uniqueCode || '',
+                                    uniqueCode: item?.uniqueCode || item?.barcode || '',
                                     refundRate: Math.floor(itemPrice),
                                     condition: 'RESELLABLE'
                                   };
                                 });
-
-                                console.log("DEBUG PAYLOAD - Items:", JSON.stringify(returnItemsPayload, null, 2));
-                                console.log("DEBUG PAYLOAD - Invoice:", JSON.stringify(selectedInvoiceForReturn, null, 2));
 
                                 await api.post(`/returns`, {
                                   saleBillId: invId,
@@ -13922,13 +14455,17 @@ export const BillingPOSView = ({
 
                               // Auto-clear data and reset selection
                               if (loadedOriginalInvoice?.invoiceNo === selectedInvoiceForReturn.invoiceNo || loadedOriginalInvoice?._id === selectedInvoiceForReturn._id) {
-                                setCart([]);
                                 setLoadedOriginalInvoice(null);
-                                setCustomerForm({ phone: '', name: '', customerId: '', gstin: '', lf: '' });
-                                setSelectedCustomerId('');
-                                setCustomerSearchQuery('');
                               }
 
+                              // Remove returned items from active cart since they are already refunded/settled via the return modal
+                              const returnedPieceOrBarcodes = returnedItems.map(ri => String(ri.uniqueCode || ri.barcode || ri.inventoryPieceId || '').toLowerCase()).filter(Boolean);
+                              setCart(prev => prev.filter(ci => {
+                                const cCode = String(ci.uniqueCode || ci.barcode || ci.inventoryPieceId || '').toLowerCase();
+                                return !returnedPieceOrBarcodes.includes(cCode);
+                              }));
+
+                              setShowReturnExchangeModal(false);
                               setSelectedInvoiceForReturn(null);
                               setReturnedItemIds([]);
                               setReturnApprovedCheckbox(false);
@@ -13948,7 +14485,9 @@ export const BillingPOSView = ({
                               Processing Return...
                             </>
                           ) : (
-                            "Approve Return & Credit Customer Wallet"
+                            returnRefundMode === 'ADD_TO_ADVANCE'
+                              ? "Approve Return & Credit Customer Wallet"
+                              : "Approve Return & Refund Customer"
                           )}
                         </button>
                       </div>
@@ -14333,6 +14872,7 @@ export const BillingPOSView = ({
                               }
 
                               // Auto-clear search & selection data after completing exchange
+                              setShowReturnExchangeModal(false);
                               setSelectedInvoiceForReturn(null);
                               setExchangeCart([]);
                               setExchangeNewSearchQuery("");
@@ -14743,7 +15283,12 @@ export const BillingPOSView = ({
                     </h4>
                     <button
                       type="button"
-                      onClick={() => setShowSearchItemDetailsPanel(false)}
+                      onClick={() => {
+                        setUnlockedPurchaseProductId(null);
+                        setIsPurchaseTabUnlocked(false);
+                        setInfoPanelTab('General');
+                        setShowSearchItemDetailsPanel(false);
+                      }}
                       className="p-1 hover:bg-slate-100 hover:text-red-600 rounded text-slate-400 transition-colors cursor-pointer"
                       title="Hide Panel"
                     >
@@ -14761,6 +15306,9 @@ export const BillingPOSView = ({
                       );
                     }
 
+                    const activeItemId = activeItem._id || activeItem.id || activeItem.barcode;
+                    const isUnlockedForThisItem = Boolean(unlockedPurchaseProductId && activeItemId && unlockedPurchaseProductId === activeItemId);
+
                     return (
                       <div className="space-y-4">
                         {/* Tab buttons */}
@@ -14777,12 +15325,19 @@ export const BillingPOSView = ({
                             <button
                               key={t.id}
                               onClick={() => {
-                                if (t.id === 'Purchase' && !isPurchaseTabUnlocked) {
-                                  setInfoPanelItem(activeItem);
-                                  setPurchaseAuthOwnerId('');
-                                  setPurchaseAuthPassword('');
-                                  setIsPurchaseAuthModalOpen(true);
+                                if (t.id === 'Purchase') {
+                                  if (!isUnlockedForThisItem) {
+                                    setInfoPanelItem(activeItem);
+                                    setPurchaseAuthOwnerId('');
+                                    setPurchaseAuthPassword('');
+                                    setIsPurchaseAuthModalOpen(true);
+                                  } else {
+                                    setInfoPanelTab('Purchase');
+                                  }
                                 } else {
+                                  // Moving away from Purchase tab automatically locks Purchase
+                                  setUnlockedPurchaseProductId(null);
+                                  setIsPurchaseTabUnlocked(false);
                                   setInfoPanelTab(t.id);
                                 }
                               }}
@@ -14847,7 +15402,7 @@ export const BillingPOSView = ({
                           {infoPanelTab === 'Purchase' && (
                             <div className="space-y-2 text-slate-700 animate-fade-in">
                               <div className="text-[10px] uppercase font-bold text-slate-405 border-b border-slate-100 pb-1">🛒 Confidential Purchase Details</div>
-                              {isPurchaseTabUnlocked ? (
+                              {isUnlockedForThisItem ? (
                                 <>
                                   <div><span className="text-slate-400 font-bold">Vendor Name:</span> <span className="text-slate-800 font-semibold">{activeItem.vendorName || 'N/A'}</span></div>
                                   <div><span className="text-slate-400 font-bold">Vendor Code:</span> <span className="text-slate-800 font-mono font-semibold">{activeItem.vendorCode || 'N/A'}</span></div>
