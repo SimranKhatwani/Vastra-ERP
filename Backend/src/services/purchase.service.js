@@ -20,13 +20,22 @@ const escapeRegExp = (string) => {
 };
 
 const normalizeGender = (g) => {
-  const s = String(g || '').toUpperCase().trim();
-  return ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(s) ? s : 'UNISEX';
+  const s = String(g || '').trim();
+  if (!s) return '';
+  const u = s.toUpperCase();
+  if (['FEMALE', 'WOMEN', 'WOMAN', 'GIRL', 'GIRLS', 'LADIES'].includes(u)) return 'female';
+  if (['MALE', 'MEN', 'MAN', 'BOY', 'BOYS', 'GENTS'].includes(u)) return 'male';
+  if (['KIDS', 'KID', 'CHILD', 'CHILDREN'].includes(u)) return 'kids';
+  if (['UNISEX', 'ALL'].includes(u)) return 'UNISEX';
+  return s;
 };
 
 const normalizeTopBottomSet = (t) => {
-  const s = String(t || '').toUpperCase().trim();
-  return ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(s) ? s : 'TOP';
+  const s = String(t || '').trim();
+  if (!s) return '';
+  const u = s.toUpperCase();
+  if (['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(u)) return u;
+  return s;
 };
 
 const normalizeTypeOfGst = (t) => {
@@ -238,8 +247,8 @@ class PurchaseService {
       const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
       const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
       const gstOnSalePrice = Number(item.gstOnSalePrice ?? item.gstOnSale ?? item.saleGst ?? 5) || 5;
-      const size = String(item.size || "FS").trim() || "FS";
-      const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
+      const size = String(item.size || "").trim();
+      const color = String(item.color || item.colorPrimary || "").trim();
       const batch = String(item.batch || "").trim();
       const counter = String(item.counter || "").trim();
       const rawBarcode = String(item.barcode || "").trim();
@@ -492,28 +501,29 @@ class PurchaseService {
         name: prd.itemName || prd.name || categoryName,
         productName: prd.itemName || prd.name || categoryName,
         itemName: prd.itemName || prd.name || categoryName,
-        subItem: prd.subItem || "Finished Goods",
-        subCategory: prd.subItem || "Finished Goods",
+        subItem: prd.subItem || item.subItem || item.subCategory || "",
+        subCategory: prd.subItem || item.subCategory || item.subItem || "",
         brand: brandName,
         brandName: brandName,
-        company: billObj.firmId?.name || billObj.firmName || prd.firmName || brandName,
-        firm: billObj.firmId?.name || billObj.firmName || prd.firmName || "RANGOLI ENTERPRISES",
+        company: billObj.firmId?.name || billObj.firmName || prd.firmName || prd.company || item.firm || brandName,
+        firm: billObj.firmId?.name || billObj.firmName || prd.firmName || prd.firm || item.firm || "",
         category: categoryName,
-        designNo: prd.designNo || "DSG-001",
-        itemCode: prd.itemCode || `ITEM-${prd.designNo || '001'}`,
-        barcode: piece.barcode || prd.barcode || "",
-        ipn: piece.ipn || prd.ipn || `${prd.itemCode || 'ITM'}-${item.size || 'FS'}`,
-        uniqueCode: piece.uniqueCode || prd.uniqueCode || "",
+        designNo: prd.designNo || item.designNo || "",
+        itemCode: prd.itemCode || item.itemCode || "",
+        barcode: piece.barcode || prd.barcode || item.barcode || "",
+        ipn: piece.ipn || prd.ipn || item.ipn || "",
+        vendorCode: billObj.vendorId?.vendorCode || prd.vendorCode || item.vendorCode || "",
+        uniqueCode: piece.uniqueCode || prd.uniqueCode || item.uniqueCode || "",
         quantity: qty,
         qty: qty,
-        batch: piece.batch || prd.batch || "",
-        counter: piece.counter || prd.counter || "",
-        topBottomSet: prd.topBottomSet || "TOP",
-        gender: prd.gender || "UNISEX",
-        colorPrimary: item.color || prd.primaryColor || prd.color || "Standard",
-        colorSecondary: prd.secondaryColor || "",
-        color: item.color || prd.color || prd.primaryColor || "Standard",
-        size: item.size || prd.size || "FS",
+        batch: piece.batch || prd.batch || item.batch || "",
+        counter: piece.counter || prd.counter || item.counter || "",
+        topBottomSet: prd.topBottomSet || item.topBottomSet || "",
+        gender: (item.gender && item.gender !== 'UNISEX') ? item.gender : (prd.gender || item.gender || ""),
+        colorPrimary: item.color || prd.primaryColor || prd.color || "",
+        colorSecondary: prd.secondaryColor || item.colorSecondary || "",
+        color: item.color || prd.color || prd.primaryColor || "",
+        size: (item.size === 'FREE' || prd.size === 'FREE' || item.size === 'FS' || prd.size === 'FS') ? '' : (item.size || prd.size || ''),
         purchaseRate: rate,
         pRate: rate,
         purchasePrice: rate,
@@ -528,6 +538,8 @@ class PurchaseService {
         discountOnPurchase: discount,
         discount: discount,
         hsnCode: hsnCode,
+        itemImage: prd.imageUrl || item.itemImage || item.imageUrl || "",
+        imageUrl: prd.imageUrl || item.itemImage || item.imageUrl || "",
         totalPrice: lineTotal,
         calculatedTaxable: taxable,
         calculatedGst: gstAmt,
@@ -696,8 +708,8 @@ class PurchaseService {
         const discount = Number(item.discount || item.discountOnPurchase || 0) || 0;
         const taxRate = Number(item.taxRate || item.gstOnPurchase || 0) || 0;
         const gstOnSalePrice = Number(item.gstOnSalePrice ?? item.gstOnSale ?? item.saleGst ?? 5) || 5;
-        const size = String(item.size || "FS").trim() || "FS";
-        const color = String(item.color || item.colorPrimary || "Standard").trim() || "Standard";
+        const size = String(item.size || "").trim();
+        const color = String(item.color || item.colorPrimary || "").trim();
         const batch = String(item.batch || "").trim();
         const counter = String(item.counter || "").trim();
         const rawBarcode = String(item.barcode || "").trim();
@@ -737,6 +749,13 @@ class PurchaseService {
             if (product.brandId?.toString() !== brand._id.toString()) { product.brandId = brand._id; updated = true; }
             if (product.categoryId?.toString() !== category._id.toString()) { product.categoryId = category._id; updated = true; }
             if (hsn && product.hsnId?.toString() !== hsn._id.toString()) { product.hsnId = hsn._id; updated = true; }
+            if (firm && (!product.firmId || product.firmId.toString() !== firm._id.toString())) { product.firmId = firm._id; product.firmName = firm.name; updated = true; }
+            if (genderNormalized && product.gender !== genderNormalized) { product.gender = genderNormalized; updated = true; }
+            if (topBottomSetNormalized && product.topBottomSet !== topBottomSetNormalized) { product.topBottomSet = topBottomSetNormalized; updated = true; }
+            if (product.size !== size) { product.size = size; updated = true; }
+            if (color && product.primaryColor !== color) { product.primaryColor = color; product.color = color; updated = true; }
+            if (item.colorSecondary && product.secondaryColor !== item.colorSecondary) { product.secondaryColor = item.colorSecondary; updated = true; }
+            if (item.itemImage && product.imageUrl !== item.itemImage) { product.imageUrl = item.itemImage; updated = true; }
             if (batch && product.batch !== batch) { product.batch = batch; updated = true; }
             if (counter && product.counter !== counter) { product.counter = counter; updated = true; }
             if (mrp > 0 && product.defaultMRP !== mrp) { product.defaultMRP = mrp; updated = true; }

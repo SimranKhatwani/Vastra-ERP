@@ -82,13 +82,13 @@ const productSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    enum: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'],
-    default: 'UNISEX'
+    trim: true,
+    default: ''
   },
   topBottomSet: {
     type: String,
-    enum: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'],
-    default: 'TOP'
+    trim: true,
+    default: ''
   },
   description: String,
   batch: {

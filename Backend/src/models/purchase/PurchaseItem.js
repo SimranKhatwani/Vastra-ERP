@@ -44,7 +44,8 @@ const purchaseItemSchema = new mongoose.Schema({
   },
   size: {
     type: String,
-    required: true
+    trim: true,
+    default: ''
   },
   color: String,
   rack: String,

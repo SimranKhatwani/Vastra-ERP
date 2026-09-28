@@ -349,11 +349,11 @@ class PTImportService {
         const categoryName = String(getVal(row, 'Category', 'category', 'Item name', 'ITEM NAME') || 'FABRIC SUIT').trim();
 
         const designNo = String(getVal(row, 'DesignNo', 'Design No', 'designNo', 'Design') || 'DSG-001').trim();
-        const itemCode = String(getVal(row, 'ITEM CODE', 'Item Code', 'itemCode') || `ITEM-${designNo}`).trim();
+        const itemCode = String(getVal(row, 'ITEM CODE', 'Item Code', 'itemCode') || '').trim();
         const itemName = String(getVal(row, 'Item name', 'Item Name', 'itemName') || `${brandName} ${designNo}`).trim();
         const subItem = String(getVal(row, 'SUB ITEM NAME', 'Sub Item', 'subItem', 'Sub Item Name') || '').trim();
 
-        const size = String(getVal(row, 'Size', 'size', 'SIZE') || 'FREE').trim();
+        const size = String(getVal(row, 'Size', 'size', 'SIZE') || '').trim();
         const primaryColor = String(getVal(row, 'colorPrimary', 'color', 'COLOR', 'Color', 'COLOR (P)', 'COLOR(P)', 'Colour', 'COLOUR', 'COLOUR (P)', 'COLOUR(P)', 'Primary Color', 'Primary Colour', 'PRIMARY COLOR', 'Shade', 'SHADE', 'Shade No', 'SHADE NO', 'Col', 'COL', 'Clr', 'CLR') || '').trim();
         const secondaryColor = String(getVal(row, 'secondaryColor', 'Secondary Color', 'COLOR (S)', 'COLOR(S)', 'Colour (S)', 'COLOUR (S)', 'COLOUR(S)', 'Secondary Colour', 'SECONDARY COLOR') || '').trim();
 
@@ -496,8 +496,26 @@ class PTImportService {
         const discount = parseFloat(getVal(row, 'Discount', 'discount', 'DISCOUNT', 'Dis. on Purchase', 'discountOnPurchase') || 0) || 0;
         const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
 
-        const gender = String(getVal(row, 'Gender', 'gender') || 'UNISEX').toUpperCase().trim();
-        const topBottomSet = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase') || 'TOP').toUpperCase().trim();
+        const genderRaw = String(getVal(row, 'Gender', 'gender', 'GENDER', 'Group 3', 'group3', 'GROUP 3', 'Group 3 (Gender)', 'GROUP 3 (GENDER)', 'Group 3(Gender)') || '').trim();
+        let gender = genderRaw;
+        const genderUpper = genderRaw.toUpperCase();
+        if (['FEMALE', 'WOMEN', 'WOMAN', 'GIRL', 'GIRLS', 'LADIES'].includes(genderUpper)) {
+          gender = 'female';
+        } else if (['MALE', 'MEN', 'MAN', 'BOY', 'BOYS', 'GENTS'].includes(genderUpper)) {
+          gender = 'male';
+        } else if (['KIDS', 'KID', 'CHILD', 'CHILDREN'].includes(genderUpper)) {
+          gender = 'kids';
+        } else if (['UNISEX', 'ALL'].includes(genderUpper)) {
+          gender = 'UNISEX';
+        }
+
+        const topBottomSetRaw = String(getVal(row, 'Type', 'topBottomSet', 'Type of Purchase', 'Group 1', 'GROUP 1', 'Group 1 (Top/Bottom/Set)', 'GROUP 1 (TOP/BOTTOM/SET)', 'Group 1(Top/Bottom/Set)', 'group1', 'Group1') || '').trim();
+        let topBottomSet = topBottomSetRaw;
+        const topUpper = topBottomSetRaw.toUpperCase();
+        if (['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topUpper)) {
+          topBottomSet = topUpper;
+        }
+
         const itemImage = String(getVal(row, 'itemImage', 'item image', 'image', 'photo') || '').trim();
         const hsnCode = String(getVal(row, 'hsnCode', 'HSN CODE', 'HSN/SAC', 'HSN', 'HSN Code', 'HSN No', 'HSN No.', 'HSN NO', 'HSN NO.') || '').trim();
         const gstStatus = String(getVal(row, 'gstStatus', 'GST Status', 'Tax Status', 'GST_STATUS', 'TAX_STATUS') || '').trim();
@@ -724,8 +742,8 @@ class PTImportService {
                 firmId: firm ? firm._id : undefined,
                 firmName: firm ? firm.name : (firmName || ''),
                 hsnId: hsn ? hsn._id : undefined,
-                gender: ['MEN', 'WOMEN', 'KIDS', 'UNISEX'].includes(gender) ? gender : 'UNISEX',
-                topBottomSet: ['TOP', 'BOTTOM', 'SET', 'ACCESSORY', 'OTHER'].includes(topBottomSet) ? topBottomSet : 'TOP',
+                gender: gender || '',
+                topBottomSet: topBottomSet || '',
                 description: batch ? `Batch: ${batch}` : (normalizedSubItem ? `${itemName} - ${normalizedSubItem}` : itemName),
                 batch: batch || '',
                 counter: counter || '',

@@ -27,13 +27,16 @@ export const ManualPurchaseEntry = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState("table"); // 'table' (spreadsheet) | 'cards'
   const [searchFilter, setSearchFilter] = useState("");
+  const [selectedImagePreview, setSelectedImagePreview] = useState(null);
   const invoiceRef = useRef(null);
   const tableScrollRef = useRef(null);
 
   const getEmptyItem = () => ({
     id: crypto.randomUUID(),
     productId: undefined,
+    vendorCode: "",
     brand: "",
+    ipn: "",
     designNo: "",
     barcode: "",
     itemName: "",
@@ -50,19 +53,24 @@ export const ManualPurchaseEntry = ({
     purchaseRate: 0, 
     gstOnPurchase: 5, 
     typeOfGst: "E", 
+    gstStatus: "",
     wspAfterGst: 0,
     mrp: 0,
     gstOnSalePrice: 5, 
     discountStatus: "N", 
     discountOnPurchase: 0, 
     hsnCode: "",
-    uniqueCode: ""
+    firm: "",
+    uniqueCode: "",
+    itemImage: ""
   });
 
   const mapPOItemToForm = (item) => {
     if (!item) return getEmptyItem();
     
+    const vendorCode = item.vendorCode || item.vCode || item.vendorId?.vendorCode || item.product?.vendorCode || "";
     const brand = item.brand || item.brandName || item.brandId?.name || item.product?.brand || item.product?.brandId?.name || "";
+    const ipn = item.ipn || item.ipnNo || item.product?.ipn || "";
     const designNo = item.designNo || item.design || item.product?.designNo || "";
     const barcode = item.barcode || item.barcodeNo || item.product?.barcode || "";
     const itemName = item.itemName || item.name || item.productName || item.product?.itemName || item.product?.name || "";
@@ -72,14 +80,17 @@ export const ManualPurchaseEntry = ({
     const batch = item.batch || item.batchNo || item.product?.batch || "";
     const counter = item.counter || item.counterNo || item.product?.counter || "";
     const topBottomSet = item.topBottomSet || item.group1 || item.type || item.product?.topBottomSet || "";
-    const gender = item.gender || item.group3 || item.product?.gender || "";
+    const rawGender = item.gender || item.group3 || item.product?.gender || "";
+    const gender = (rawGender === 'UNISEX' && (itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('saree') || itemName.toLowerCase().includes('kurti') || itemName.toLowerCase().includes('lehenga') || itemName.toLowerCase().includes('dress'))) ? 'female' : rawGender;
     const colorPrimary = item.colorPrimary || item.color || item.primaryColor || item.shade || item.product?.colorPrimary || item.product?.color || "";
     const colorSecondary = item.colorSecondary || item.secondaryColor || item.product?.colorSecondary || "";
-    const size = item.size || item.sizes || item.product?.size || "";
+    const rawSize = item.size !== undefined && item.size !== null ? String(item.size) : (item.sizes || item.product?.size || "");
+    const size = (rawSize === 'FREE' || rawSize === 'FS') ? '' : rawSize;
     const purchaseRate = Number(item.purchaseRate ?? item.purchasePrice ?? item.rate ?? item.pRate ?? item.costPrice ?? 0);
     const gstOnPurchase = Number(item.gstOnPurchase ?? item.taxRate ?? item.gstPercent ?? item.gst ?? 5);
     const typeOfGstRaw = String(item.typeOfGst || item.gstType || "E").toUpperCase();
     const typeOfGst = ['I', 'E'].includes(typeOfGstRaw) ? typeOfGstRaw : 'E';
+    const gstStatus = item.gstStatus || item.product?.gstStatus || "";
     
     let wspAfterGst = Number(item.wspAfterGst ?? item.afterGST ?? item.wsp ?? 0);
     if (!wspAfterGst && purchaseRate > 0) {
@@ -92,12 +103,16 @@ export const ManualPurchaseEntry = ({
     const discountStatus = ['B', 'A', 'N'].includes(discountStatusRaw) ? discountStatusRaw : 'N';
     const discountOnPurchase = Number(item.discountOnPurchase ?? item.discount ?? item.disc ?? 0);
     const hsnCode = item.hsnCode || item.hsn || item.hsnId?.code || item.hsnId?.hsnCode || item.product?.hsnCode || item.product?.hsn || "";
+    const firm = item.firm || item.firmName || item.company || item.product?.firmName || item.firmId?.name || "";
     const uniqueCode = item.uniqueCode || item.product?.uniqueCode || "";
+    const itemImage = item.itemImage || item.imageUrl || item.image || item.product?.imageUrl || item.product?.itemImage || "";
 
     return {
       id: item.id || item._id || crypto.randomUUID(),
       productId: item.productId || item.product?._id || item.product?.id,
+      vendorCode,
       brand,
+      ipn,
       designNo,
       barcode,
       itemName,
@@ -114,13 +129,16 @@ export const ManualPurchaseEntry = ({
       purchaseRate,
       gstOnPurchase,
       typeOfGst,
+      gstStatus,
       wspAfterGst,
       mrp,
       gstOnSalePrice,
       discountStatus,
       discountOnPurchase,
       hsnCode,
+      firm,
       uniqueCode,
+      itemImage,
       totalPrice: Number(item.totalPrice ?? item.lineTotal ?? item.amount ?? (quantity * purchaseRate))
     };
   };
@@ -264,30 +282,35 @@ export const ManualPurchaseEntry = ({
   };
 
   const cols = [
-    { key: "brand", label: "Brand", width: "w-28", minWidth: "min-w-[120px]" },
-    { key: "designNo", label: "DesignNo", width: "w-28", minWidth: "min-w-[120px]" },
-    { key: "barcode", label: "Barcode No", width: "w-36", minWidth: "min-w-[150px]" },
-    { key: "itemName", label: "Item name", width: "w-36", minWidth: "min-w-[150px]", required: true },
+    { key: "vendorCode", label: "VENDOR CODE", width: "w-28", minWidth: "min-w-[115px]" },
+    { key: "brand", label: "BRAND", width: "w-28", minWidth: "min-w-[120px]" },
+    { key: "ipn", label: "IPN", width: "w-24", minWidth: "min-w-[95px]" },
+    { key: "designNo", label: "DESIGN NO", width: "w-28", minWidth: "min-w-[120px]" },
+    { key: "barcode", label: "BARCODE NO", width: "w-36", minWidth: "min-w-[150px]" },
+    { key: "itemName", label: "ITEM NAME", width: "w-36", minWidth: "min-w-[150px]", required: true },
     { key: "subCategory", label: "SUB ITEM NAME", width: "w-36", minWidth: "min-w-[140px]" },
     { key: "itemCode", label: "ITEM CODE", width: "w-28", minWidth: "min-w-[125px]" },
-    { key: "quantity", label: "Total Qty.", type: "number", width: "w-20", minWidth: "min-w-[85px]" },
+    { key: "quantity", label: "TOTAL QTY.", type: "number", width: "w-20", minWidth: "min-w-[85px]" },
     { key: "batch", label: "BATCH", width: "w-28", minWidth: "min-w-[120px]" },
     { key: "counter", label: "COUNTER", width: "w-24", minWidth: "min-w-[110px]" },
-    { key: "topBottomSet", label: "Group 1(Top/Bottom/SET)", width: "w-36", minWidth: "min-w-[145px]" },
-    { key: "gender", label: "GROUP 3 (GENDER)", width: "w-28", minWidth: "min-w-[120px]" },
-    { key: "colorPrimary", label: "Color(P)", width: "w-24", minWidth: "min-w-[110px]" },
-    { key: "colorSecondary", label: "COLOR(S)", width: "w-24", minWidth: "min-w-[110px]" },
-    { key: "size", label: "Size", width: "w-20", minWidth: "min-w-[85px]" },
+    { key: "topBottomSet", label: "GROUP 1 (TOP/BOTTOM/SET)", width: "w-36", minWidth: "min-w-[145px]" },
+    { key: "gender", label: "GENDER", width: "w-28", minWidth: "min-w-[120px]" },
+    { key: "colorPrimary", label: "COLOR (P)", width: "w-24", minWidth: "min-w-[110px]" },
+    { key: "colorSecondary", label: "COLOR (S)", width: "w-24", minWidth: "min-w-[110px]" },
+    { key: "size", label: "SIZE", width: "w-20", minWidth: "min-w-[85px]" },
     { key: "purchaseRate", label: "P. RATE", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
     { key: "gstOnPurchase", label: "GST ON PURCHASE", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
-    { key: "typeOfGst", label: "type of gst(I/E)", width: "w-24", minWidth: "min-w-[95px]" },
+    { key: "typeOfGst", label: "TYPE OF GST (I/E)", width: "w-24", minWidth: "min-w-[95px]" },
+    { key: "gstStatus", label: "GST STATUS", width: "w-24", minWidth: "min-w-[100px]" },
     { key: "wspAfterGst", label: "WSP AFTER GST", type: "number", width: "w-28", minWidth: "min-w-[115px]" },
     { key: "mrp", label: "MRP", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
     { key: "gstOnSalePrice", label: "GST ON SALE", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
-    { key: "discountStatus", label: "DISCOUNT STATUS(B/A/N)", width: "w-32", minWidth: "min-w-[130px]" },
-    { key: "discountOnPurchase", label: "dis. On purchase", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
-    { key: "hsnCode", label: "HSNCode", width: "w-24", minWidth: "min-w-[110px]" },
-    { key: "uniqueCode", label: "UNIQUE CODE", width: "w-28", minWidth: "min-w-[120px]" }
+    { key: "discountStatus", label: "DISCOUNT STATUS (B/A/N)", width: "w-32", minWidth: "min-w-[130px]" },
+    { key: "discountOnPurchase", label: "DIS. ON PURCHASE", type: "number", width: "w-24", minWidth: "min-w-[100px]" },
+    { key: "hsnCode", label: "HSN CODE", width: "w-24", minWidth: "min-w-[110px]" },
+    { key: "firm", label: "FIRM", width: "w-28", minWidth: "min-w-[120px]" },
+    { key: "uniqueCode", label: "UNIQUE CODE", width: "w-28", minWidth: "min-w-[120px]" },
+    { key: "itemImage", label: "ITEM IMAGE", width: "w-28", minWidth: "min-w-[110px]", isImage: true }
   ];
 
   const handleTableKeyDown = (e, rowIndex, colKey) => {
@@ -475,25 +498,27 @@ export const ManualPurchaseEntry = ({
       return {
         _id: item.id && item.id.length === 24 ? item.id : undefined,
         productId: item.productId,
+        vendorCode: item.vendorCode || "",
         brand: item.brand || "GENERIC BRAND",
-        designNo: item.designNo || "DSG-001",
+        ipn: item.ipn || "",
+        designNo: item.designNo || "",
         barcode: item.barcode || "",
         itemName: item.itemName || item.itemCode || `Item-${idx + 1}`,
         name: item.itemName || item.itemCode || `Item-${idx + 1}`,
         productName: item.itemName || item.itemCode || `Item-${idx + 1}`,
-        subCategory: item.subCategory || "Finished Goods",
-        subItem: item.subCategory || "Finished Goods",
-        itemCode: item.itemCode || `ITEM-${item.designNo || idx + 1}`,
+        subCategory: item.subCategory || "",
+        subItem: item.subCategory || "",
+        itemCode: item.itemCode || "",
         quantity: qty,
         qty: qty,
         batch: item.batch || "",
         counter: item.counter || "",
-        topBottomSet: item.topBottomSet || "TOP",
-        gender: item.gender || "UNISEX",
-        colorPrimary: item.colorPrimary || "Standard",
+        topBottomSet: item.topBottomSet || "",
+        gender: item.gender || "",
+        colorPrimary: item.colorPrimary || "",
         colorSecondary: item.colorSecondary || "",
-        color: item.colorPrimary || "Standard",
-        size: item.size || "FS",
+        color: item.colorPrimary || "",
+        size: item.size || "",
         purchaseRate: rate,
         purchasePrice: rate,
         rate: rate,
@@ -506,7 +531,7 @@ export const ManualPurchaseEntry = ({
         discountStatus: item.discountStatus || "N",
         discountOnPurchase: discAmt,
         discount: discAmt,
-        hsnCode: item.hsnCode || "5208",
+        hsnCode: item.hsnCode || "",
         uniqueCode: item.uniqueCode || "",
         
         calculatedTaxable: taxable,
@@ -812,18 +837,40 @@ export const ManualPurchaseEntry = ({
 
                       {cols.map(c => (
                         <td key={c.key} className="p-1 px-1.5">
-                          <input
-                            id={`manual-cell-${rowIndex}-${c.key}`}
-                            type={c.type === "number" ? "number" : "text"}
-                            min={c.type === "number" ? "0" : undefined}
-                            step={c.type === "number" ? "any" : undefined}
-                            value={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? "FS" : (item[c.key] ?? "")}
-                            onChange={e => updateItem(item.id, c.key, e.target.value)}
-                            onKeyDown={e => handleTableKeyDown(e, rowIndex, c.key)}
-                            disabled={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree"))}
-                            className={`w-full p-1.5 px-2 text-xs border border-slate-200 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all ${c.type === "number" ? "text-right font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : 'bg-white'} ${c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-70' : ''}`}
-                            placeholder={c.required ? "Required" : ""}
-                          />
+                          {c.isImage ? (
+                            <div className="flex items-center gap-1.5">
+                              {item.itemImage ? (
+                                <img
+                                  src={item.itemImage}
+                                  alt="item"
+                                  className="w-7 h-7 object-cover rounded border border-slate-300 bg-white cursor-pointer hover:scale-110 transition-transform shadow-2xs"
+                                  onClick={() => setSelectedImagePreview({ url: item.itemImage, name: item.itemName || item.designNo })}
+                                  title="Click to zoom image"
+                                />
+                              ) : null}
+                              <input
+                                id={`manual-cell-${rowIndex}-${c.key}`}
+                                type="text"
+                                value={item.itemImage || ""}
+                                onChange={e => updateItem(item.id, 'itemImage', e.target.value)}
+                                onKeyDown={e => handleTableKeyDown(e, rowIndex, c.key)}
+                                className="w-full p-1.5 px-2 text-[11px] border border-slate-200 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none bg-white"
+                                placeholder="Image URL"
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              id={`manual-cell-${rowIndex}-${c.key}`}
+                              type={c.type === "number" ? "number" : "text"}
+                              min={c.type === "number" ? "0" : undefined}
+                              step={c.type === "number" ? "any" : undefined}
+                              value={item[c.key] ?? ""}
+                              onChange={e => updateItem(item.id, c.key, e.target.value)}
+                              onKeyDown={e => handleTableKeyDown(e, rowIndex, c.key)}
+                              className={`w-full p-1.5 px-2 text-xs border border-slate-200 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all ${c.type === "number" ? "text-right font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : 'bg-white'}`}
+                              placeholder={c.required ? "Required" : ""}
+                            />
+                          )}
                         </td>
                       ))}
 
@@ -892,16 +939,36 @@ export const ManualPurchaseEntry = ({
                       <label className="text-[9px] uppercase font-bold text-slate-500">
                         {c.label} {c.required && <span className="text-red-500">*</span>}
                       </label>
-                      <input 
-                        type={c.type === "number" ? "number" : "text"} 
-                        min={c.type === "number" ? "0" : undefined} 
-                        step={c.type === "number" ? "any" : undefined} 
-                        value={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? "FS" : (item[c.key] ?? "")} 
-                        onChange={e => updateItem(item.id, c.key, e.target.value)} 
-                        disabled={c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree"))}
-                        className={`w-full p-2 text-xs border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-xs ${c.type === "number" ? "text-left font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : 'bg-white'} ${c.key === "size" && ((item.itemName || "").toLowerCase().includes("saree") || (item.subCategory || "").toLowerCase().includes("saree")) ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-70' : ''}`} 
-                        placeholder={c.required ? "Required" : ""} 
-                      />
+                      {c.isImage ? (
+                        <div className="flex items-center gap-1.5">
+                          {item.itemImage ? (
+                            <img 
+                              src={item.itemImage} 
+                              alt="item" 
+                              className="w-8 h-8 object-cover rounded-lg border border-slate-300 bg-white cursor-pointer hover:scale-110 transition-transform shadow-xs" 
+                              onClick={() => setSelectedImagePreview({ url: item.itemImage, name: item.itemName || item.designNo })}
+                              title="Click to zoom image"
+                            />
+                          ) : null}
+                          <input 
+                            type="text" 
+                            value={item.itemImage || ""} 
+                            onChange={e => updateItem(item.id, 'itemImage', e.target.value)} 
+                            className="w-full p-2 text-xs border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none bg-white shadow-xs text-[11px]" 
+                            placeholder="Image URL" 
+                          />
+                        </div>
+                      ) : (
+                        <input 
+                          type={c.type === "number" ? "number" : "text"} 
+                          min={c.type === "number" ? "0" : undefined} 
+                          step={c.type === "number" ? "any" : undefined} 
+                          value={item[c.key] ?? ""} 
+                          onChange={e => updateItem(item.id, c.key, e.target.value)} 
+                          className={`w-full p-2 text-xs border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-xs ${c.type === "number" ? "text-left font-mono" : ""} ${c.required ? 'font-semibold border-indigo-200 bg-indigo-50/20' : 'bg-white'}`} 
+                          placeholder={c.required ? "Required" : ""} 
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -956,6 +1023,21 @@ export const ManualPurchaseEntry = ({
           </button>
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      {selectedImagePreview && (
+        <div className="fixed inset-0 z-80 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedImagePreview(null)}>
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full flex flex-col items-center gap-3 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="w-full flex items-center justify-between pb-2 border-b border-slate-200">
+              <span className="text-xs font-bold text-slate-800">{selectedImagePreview.name || 'Item Image'}</span>
+              <button onClick={() => setSelectedImagePreview(null)} className="text-slate-400 hover:text-slate-700 p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <img src={selectedImagePreview.url} alt={selectedImagePreview.name} className="max-h-[70vh] object-contain rounded-lg shadow-sm" />
+          </div>
+        </div>
+      )}
 
       {/* 5. FULL SCREEN PROCESSING OVERLAY WHILE UPDATING */}
       {isSubmitting && (
