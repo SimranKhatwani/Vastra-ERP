@@ -275,24 +275,108 @@ export const BillingPOSView = ({
   });
   const [activePosColumn, setActivePosColumn] = useState("barcode");
 
-  const focusPosColumn = (colName) => {
+  const POS_COLUMNS_ORDER = [
+    "barcode",
+    "uniqueCode",
+    "itemName",
+    "subItem",
+    "designNo",
+    "itemCode",
+    "ipn",
+    "quantity",
+    "primaryColor",
+    "secondaryColor",
+    "size",
+    "gstSlab",
+    "mrp",
+    "discount",
+    "rate",
+    "amount",
+    "salesman1",
+    "salesman2",
+    "firm",
+    "counter",
+    "hsn",
+    "action"
+  ];
+
+  const goToNextPosColumn = (currentCol, rowIndex = null) => {
+    const idx = POS_COLUMNS_ORDER.indexOf(currentCol);
+    const nextIdx = (idx + 1) % POS_COLUMNS_ORDER.length;
+    focusPosColumn(POS_COLUMNS_ORDER[nextIdx], rowIndex);
+  };
+
+  const goToPrevPosColumn = (currentCol, rowIndex = null) => {
+    const idx = POS_COLUMNS_ORDER.indexOf(currentCol);
+    const prevIdx = (idx - 1 + POS_COLUMNS_ORDER.length) % POS_COLUMNS_ORDER.length;
+    focusPosColumn(POS_COLUMNS_ORDER[prevIdx], rowIndex);
+  };
+
+  const focusPosColumn = (colName, rowIndex = null) => {
     setActivePosColumn(colName);
+    if (rowIndex !== null) {
+      setSelectedCartRowIndex(rowIndex);
+    }
     const doFocus = () => {
       let el = null;
-      if (colName === "barcode") {
-        el = document.getElementById("posBarcodeInput");
-      } else if (colName === "uniqueCode") {
-        el = document.getElementById("posUniqueCodeInput");
-      } else if (colName === "itemName") {
-        el = document.getElementById("posItemNameInput");
-      } else if (colName === "designNo") {
-        el = document.getElementById("designNoSearchInput");
-      } else if (colName === "itemCode") {
-        el = document.getElementById("itemCodeSearchInput");
+      if (rowIndex !== null && rowIndex >= 0) {
+        el = document.getElementById(`cartRowInput-${rowIndex}-${colName}`);
+      }
+      if (!el) {
+        if (colName === "barcode") {
+          el = document.getElementById("posBarcodeInput");
+        } else if (colName === "uniqueCode") {
+          el = document.getElementById("posUniqueCodeInput");
+        } else if (colName === "itemName") {
+          el = document.getElementById("posItemNameInput");
+        } else if (colName === "subItem") {
+          el = document.getElementById("posSubItemInput");
+        } else if (colName === "designNo") {
+          el = document.getElementById("designNoSearchInput");
+        } else if (colName === "itemCode") {
+          el = document.getElementById("itemCodeSearchInput");
+        } else if (colName === "ipn") {
+          el = document.getElementById("posIpnInput");
+        } else if (colName === "quantity") {
+          el = document.getElementById("posQuantityInput");
+        } else if (colName === "primaryColor" || colName === "color") {
+          el = document.getElementById("posPrimaryColorInput");
+        } else if (colName === "secondaryColor") {
+          el = document.getElementById("posSecondaryColorInput");
+        } else if (colName === "size") {
+          el = document.getElementById("posSizeInput");
+        } else if (colName === "gstSlab") {
+          el = document.getElementById("posGstSlabInput");
+        } else if (colName === "mrp") {
+          el = document.getElementById("posMrpInput");
+        } else if (colName === "discount") {
+          el = document.getElementById("posDiscountInput");
+        } else if (colName === "rate") {
+          el = document.getElementById("posRateInput");
+        } else if (colName === "amount") {
+          el = document.getElementById("posAmountInput");
+        } else if (colName === "salesman1") {
+          el = document.getElementById("posSalesman1Input");
+        } else if (colName === "salesman2") {
+          el = document.getElementById("posSalesman2Input");
+        } else if (colName === "firm") {
+          el = document.getElementById("posFirmInput");
+        } else if (colName === "counter") {
+          el = document.getElementById("posCounterInput");
+        } else if (colName === "hsn") {
+          el = document.getElementById("posHsnInput");
+        } else if (colName === "action") {
+          el = document.getElementById("posAddButton");
+        }
       }
       if (el) {
         el.focus();
-        if (typeof el.select === "function") el.select();
+        try {
+          if (typeof el.select === "function") el.select();
+        } catch (err) { }
+        try {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        } catch (err) { }
       }
     };
     doFocus();
@@ -300,6 +384,123 @@ export const BillingPOSView = ({
     setTimeout(doFocus, 25);
     setTimeout(doFocus, 80);
   };
+
+  const isPosSelectionAtStart = (el) => {
+    if (!el) return true;
+    try {
+      if (typeof el.selectionStart === "number") {
+        return el.selectionStart === 0;
+      }
+    } catch (e) { }
+    return true;
+  };
+
+  const isPosSelectionAtEnd = (el) => {
+    if (!el) return true;
+    try {
+      if (typeof el.selectionEnd === "number" && typeof el.value === "string") {
+        return el.selectionEnd === el.value.length;
+      }
+    } catch (e) { }
+    return true;
+  };
+
+  const handleCartCellKeyDown = (e, rowIdx, colName) => {
+    const colIdx = POS_COLUMNS_ORDER.indexOf(colName);
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (colIdx > 0) {
+          focusPosColumn(POS_COLUMNS_ORDER[colIdx - 1], rowIdx);
+        } else if (rowIdx > 0) {
+          focusPosColumn(POS_COLUMNS_ORDER[POS_COLUMNS_ORDER.length - 1], rowIdx - 1);
+        } else {
+          focusPosColumn(POS_COLUMNS_ORDER[POS_COLUMNS_ORDER.length - 1]);
+        }
+      } else {
+        if (colIdx < POS_COLUMNS_ORDER.length - 1) {
+          focusPosColumn(POS_COLUMNS_ORDER[colIdx + 1], rowIdx);
+        } else {
+          if (rowIdx < cart.length - 1) {
+            focusPosColumn(POS_COLUMNS_ORDER[0], rowIdx + 1);
+          } else {
+            focusPosColumn("barcode");
+          }
+        }
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (rowIdx < cart.length - 1) {
+        focusPosColumn(colName, rowIdx + 1);
+      } else {
+        focusPosColumn(colName);
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (rowIdx > 0) {
+        focusPosColumn(colName, rowIdx - 1);
+      }
+    } else if (e.key === "ArrowRight") {
+      if (isPosSelectionAtEnd(e.target)) {
+        e.preventDefault();
+        if (colIdx < POS_COLUMNS_ORDER.length - 1) {
+          focusPosColumn(POS_COLUMNS_ORDER[colIdx + 1], rowIdx);
+        } else if (rowIdx < cart.length - 1) {
+          focusPosColumn(POS_COLUMNS_ORDER[0], rowIdx + 1);
+        } else {
+          focusPosColumn("barcode");
+        }
+      }
+    } else if (e.key === "ArrowLeft") {
+      if (isPosSelectionAtStart(e.target)) {
+        e.preventDefault();
+        if (colIdx > 0) {
+          focusPosColumn(POS_COLUMNS_ORDER[colIdx - 1], rowIdx);
+        } else if (rowIdx > 0) {
+          focusPosColumn(POS_COLUMNS_ORDER[POS_COLUMNS_ORDER.length - 1], rowIdx - 1);
+        }
+      }
+    } else if (e.key === "Backspace" && (!e.target.value || e.target.value === "")) {
+      e.preventDefault();
+      if (colIdx > 0) {
+        focusPosColumn(POS_COLUMNS_ORDER[colIdx - 1], rowIdx);
+      } else if (rowIdx > 0) {
+        focusPosColumn(POS_COLUMNS_ORDER[POS_COLUMNS_ORDER.length - 1], rowIdx - 1);
+      }
+    }
+  };
+
+  const handleEntryCellKeyDown = (e, colName) => {
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn(colName);
+      } else if (colName === "action") {
+        handleAddManualEntryItem();
+      } else {
+        goToNextPosColumn(colName);
+      }
+    } else if (e.key === "ArrowRight") {
+      if (isPosSelectionAtEnd(e.target)) {
+        e.preventDefault();
+        goToNextPosColumn(colName);
+      }
+    } else if (e.key === "ArrowLeft") {
+      if (isPosSelectionAtStart(e.target)) {
+        e.preventDefault();
+        goToPrevPosColumn(colName);
+      }
+    } else if (e.key === "Backspace" && (!e.target.value || e.target.value === "")) {
+      e.preventDefault();
+      goToPrevPosColumn(colName);
+    } else if (e.key === "ArrowUp") {
+      if (cart.length > 0) {
+        e.preventDefault();
+        focusPosColumn(colName, cart.length - 1);
+      }
+    }
+  };
+
   // Auto-focus Barcode column on mount
   useEffect(() => {
     focusPosColumn("barcode");
@@ -569,6 +770,155 @@ export const BillingPOSView = ({
   const [isDesignNoDropdownOpen, setIsDesignNoDropdownOpen] = useState(false);
   const [designNoHighlightedIndex, setDesignNoHighlightedIndex] = useState(0);
   const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
+
+  // Entry Row Column States for all columns
+  const [entrySubItem, setEntrySubItem] = useState("");
+  const [entryIpn, setEntryIpn] = useState("");
+  const [entryQty, setEntryQty] = useState(1);
+  const [entryColorP, setEntryColorP] = useState("");
+  const [entryColorS, setEntryColorS] = useState("");
+  const [entrySize, setEntrySize] = useState("");
+  const [entryGst, setEntryGst] = useState("");
+  const [entryMrp, setEntryMrp] = useState("");
+  const [entryDiscount, setEntryDiscount] = useState("");
+  const [entryDiscountType, setEntryDiscountType] = useState("amount");
+  const [entryRate, setEntryRate] = useState("");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entrySalesman1, setEntrySalesman1] = useState("");
+  const [entrySalesman2, setEntrySalesman2] = useState("");
+  const [entryFirm, setEntryFirm] = useState("");
+  const [entryCounter, setEntryCounter] = useState("");
+  const [entryHsn, setEntryHsn] = useState("");
+
+  const handleEntryMrpChange = (val) => {
+    setEntryMrp(val);
+    const m = parseFloat(val) || 0;
+    const d = parseFloat(entryDiscount) || 0;
+    const disc = entryDiscountType === 'percent' ? (m * d) / 100 : d;
+    const r = Math.max(0, m - disc);
+    setEntryRate(r > 0 ? String(r) : '');
+    const q = Math.max(1, parseInt(entryQty) || 1);
+    setEntryAmount(r > 0 ? String(r * q) : '');
+  };
+
+  const handleEntryDiscountChange = (val, type = entryDiscountType) => {
+    setEntryDiscount(val);
+    setEntryDiscountType(type);
+    const m = parseFloat(entryMrp) || 0;
+    const d = parseFloat(val) || 0;
+    const disc = type === 'percent' ? (m * d) / 100 : d;
+    const r = Math.max(0, m - disc);
+    setEntryRate(r > 0 ? String(r) : '');
+    const q = Math.max(1, parseInt(entryQty) || 1);
+    setEntryAmount(r > 0 ? String(r * q) : '');
+  };
+
+  const handleEntryQtyChange = (val) => {
+    setEntryQty(val);
+    const q = Math.max(1, parseInt(val) || 1);
+    const r = parseFloat(entryRate) || parseFloat(entryMrp) || 0;
+    setEntryAmount(r > 0 ? String(r * q) : '');
+  };
+
+  const handleEntryRateChange = (val) => {
+    setEntryRate(val);
+    const r = parseFloat(val) || 0;
+    const q = Math.max(1, parseInt(entryQty) || 1);
+    setEntryAmount(r > 0 ? String(r * q) : '');
+    const m = parseFloat(entryMrp) || 0;
+    if (m > 0 && r < m) {
+      const disc = m - r;
+      if (entryDiscountType === 'percent') {
+        setEntryDiscount(String(((disc / m) * 100).toFixed(1)));
+      } else {
+        setEntryDiscount(String(disc.toFixed(2)));
+      }
+    }
+  };
+
+  const handleEntryAmountChange = (val) => {
+    setEntryAmount(val);
+    const a = parseFloat(val) || 0;
+    const q = Math.max(1, parseInt(entryQty) || 1);
+    const r = a / q;
+    setEntryRate(r > 0 ? String(r.toFixed(2)) : '');
+  };
+
+  const handleAddManualEntryItem = () => {
+    if (!barcodeInput && !uniqueCodeInput && !itemSearchInputText && !designNoSearchInput && !itemCodeSearchInput && !entryMrp && !entryRate) {
+      if (onAddNotification) onAddNotification("Notice", "Please enter barcode, item name, or price to add item", "warning");
+      return;
+    }
+
+    const price = Number(entryRate) || Number(entryMrp) || 0;
+    const mrp = Number(entryMrp) || price;
+    const qty = Math.max(1, Number(entryQty) || 1);
+    const discVal = Number(entryDiscount) || 0;
+    const discType = entryDiscountType || 'amount';
+    const discAmt = discType === 'percent' ? (mrp * discVal) / 100 : discVal;
+    const sellingPrice = Math.max(0, mrp - discAmt);
+    const itemName = itemSearchInputText || designNoSearchInput || itemCodeSearchInput || barcodeInput || 'Custom Item';
+
+    const newItem = {
+      productId: `manual-${Date.now()}`,
+      name: itemName,
+      itemName: itemName,
+      barcode: barcodeInput || '',
+      uniqueCode: uniqueCodeInput || generateUniqueItemCode(designNoSearchInput || 'ITM', entrySize || 'FS', 0),
+      subItem: entrySubItem || '',
+      designNo: designNoSearchInput || '',
+      itemCode: itemCodeSearchInput || '',
+      ipn: entryIpn || '',
+      quantity: qty,
+      primaryColor: entryColorP || '',
+      color: entryColorP || '',
+      secondaryColor: entryColorS || '',
+      size: entrySize || '',
+      gstPercent: entryGst ? Number(entryGst) : (isGstApplied ? Number(gstRateInput) || 0 : 0),
+      mrp: mrp,
+      price: sellingPrice,
+      sellingPrice: sellingPrice,
+      discount: discAmt,
+      discountValue: discVal,
+      discountType: discType,
+      customDiscount: discAmt,
+      discountAmount: discAmt * qty,
+      totalPrice: sellingPrice * qty,
+      salesman1: entrySalesman1 || '',
+      salesman2: entrySalesman2 || '',
+      firmName: entryFirm || 'NEW FASHION STYLE (PALAM)',
+      company: entryFirm || 'NEW FASHION STYLE (PALAM)',
+      counter: entryCounter || '',
+      hsn: entryHsn || ''
+    };
+
+    setCart(prev => [...prev, newItem]);
+    if (onAddNotification) onAddNotification("Item Added", `Added ${itemName} to bill`, "success");
+
+    // Clear entry fields
+    setBarcodeInput('');
+    setUniqueCodeInput('');
+    setItemSearchInputText('');
+    setEntrySubItem('');
+    setDesignNoSearchInput('');
+    setItemCodeSearchInput('');
+    setEntryIpn('');
+    setEntryQty(1);
+    setEntryColorP('');
+    setEntryColorS('');
+    setEntrySize('');
+    setEntryGst('');
+    setEntryMrp('');
+    setEntryDiscount('');
+    setEntryRate('');
+    setEntryAmount('');
+    setEntrySalesman1('');
+    setEntrySalesman2('');
+    setEntryFirm('');
+    setEntryCounter('');
+    setEntryHsn('');
+    focusPosColumn('barcode');
+  };
   const [isItemSearchModalOpen, setIsItemSearchModalOpen] = useState(false);
   const [itemSearchResults, setItemSearchResults] = useState([]);
   const [selectedSearchItem, setSelectedSearchItem] = useState(null);
@@ -5752,22 +6102,26 @@ export const BillingPOSView = ({
       handleOpenItemSearchModal();
       return;
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn("barcode");
+        return;
+      }
       if (barcodeInput.trim()) {
         await executeSmartSearch(barcodeInput, setBarcodeInput);
       } else {
-        focusPosColumn("uniqueCode");
+        goToNextPosColumn("barcode");
       }
     } else if (e.key === "ArrowRight") {
-      if (e.target.selectionStart === e.target.value.length || !barcodeInput) {
+      if (isPosSelectionAtEnd(e.target) || !barcodeInput) {
         e.preventDefault();
-        focusPosColumn("uniqueCode");
+        goToNextPosColumn("barcode");
       }
     } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !barcodeInput)) {
-      if (e.target.selectionStart === 0 || !barcodeInput) {
+      if (isPosSelectionAtStart(e.target) || !barcodeInput) {
         e.preventDefault();
-        focusPosColumn("itemCode");
+        goToPrevPosColumn("barcode");
       }
     }
   };
@@ -6555,43 +6909,51 @@ export const BillingPOSView = ({
   };
 
   const handleUniqueCodeKeyDown = async (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn("uniqueCode");
+        return;
+      }
       if (uniqueCodeInput.trim()) {
         await executeUniqueCodeSearch(uniqueCodeInput, setUniqueCodeInput);
       } else {
-        focusPosColumn("itemName");
+        goToNextPosColumn("uniqueCode");
       }
     } else if (e.key === "ArrowRight") {
-      if (e.target.selectionStart === e.target.value.length || !uniqueCodeInput) {
+      if (isPosSelectionAtEnd(e.target) || !uniqueCodeInput) {
         e.preventDefault();
-        focusPosColumn("itemName");
+        goToNextPosColumn("uniqueCode");
       }
     } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !uniqueCodeInput)) {
-      if (e.target.selectionStart === 0 || !uniqueCodeInput) {
+      if (isPosSelectionAtStart(e.target) || !uniqueCodeInput) {
         e.preventDefault();
-        focusPosColumn("barcode");
+        goToPrevPosColumn("uniqueCode");
       }
     }
   };
 
   const handleItemNameSearchKeyDown = (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn("itemName");
+        return;
+      }
       if (itemSearchInputText.trim()) {
         handleOpenItemSearchModal();
       } else {
-        focusPosColumn("designNo");
+        goToNextPosColumn("itemName");
       }
     } else if (e.key === "ArrowRight") {
-      if (e.target.selectionStart === e.target.value.length || !itemSearchInputText) {
+      if (isPosSelectionAtEnd(e.target) || !itemSearchInputText) {
         e.preventDefault();
-        focusPosColumn("designNo");
+        goToNextPosColumn("itemName");
       }
     } else if (e.key === "ArrowLeft" || (e.key === "Backspace" && !itemSearchInputText)) {
-      if (e.target.selectionStart === 0 || !itemSearchInputText) {
+      if (isPosSelectionAtStart(e.target) || !itemSearchInputText) {
         e.preventDefault();
-        focusPosColumn("uniqueCode");
+        goToPrevPosColumn("itemName");
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -6672,6 +7034,7 @@ export const BillingPOSView = ({
       handleAddProductToCart(itemToAdd);
       setDesignNoSearchInput("");
       setIsDesignNoDropdownOpen(false);
+      goToNextPosColumn("designNo");
       if (onAddNotification) {
         onAddNotification("Item Added", `Added ${itemToAdd.itemName || itemToAdd.name || 'Item'} to bill`, "success");
       }
@@ -6716,17 +7079,26 @@ export const BillingPOSView = ({
       setIsDesignNoDropdownOpen(false);
       return;
     }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn("designNo");
+      } else {
+        goToNextPosColumn("designNo");
+      }
+      return;
+    }
     if (e.key === "ArrowLeft" || (e.key === "Backspace" && !designNoSearchInput)) {
-      if (!isDesignNoDropdownOpen && (e.target.selectionStart === 0 || !designNoSearchInput)) {
+      if (!isDesignNoDropdownOpen && (isPosSelectionAtStart(e.target) || !designNoSearchInput)) {
         e.preventDefault();
-        focusPosColumn("itemName");
+        goToPrevPosColumn("designNo");
         return;
       }
     }
     if (e.key === "ArrowRight") {
-      if (!isDesignNoDropdownOpen && (e.target.selectionStart === e.target.value.length || !designNoSearchInput)) {
+      if (!isDesignNoDropdownOpen && (isPosSelectionAtEnd(e.target) || !designNoSearchInput)) {
         e.preventDefault();
-        focusPosColumn("itemCode");
+        goToNextPosColumn("designNo");
         return;
       }
     }
@@ -6739,7 +7111,7 @@ export const BillingPOSView = ({
           handleAddProductToCart(itemToAdd);
           setDesignNoSearchInput("");
           setIsDesignNoDropdownOpen(false);
-          focusPosColumn("barcode");
+          goToNextPosColumn("designNo");
           if (onAddNotification) onAddNotification("Item Added", `Added ${itemToAdd.itemName || itemToAdd.name || 'Item'} to bill`, "success");
           return;
         }
@@ -6747,7 +7119,7 @@ export const BillingPOSView = ({
       if (designNoSearchInput.trim()) {
         await executeDesignNoSearch(designNoSearchInput);
       } else {
-        focusPosColumn("itemCode");
+        goToNextPosColumn("designNo");
       }
     }
   };
@@ -6758,17 +7130,26 @@ export const BillingPOSView = ({
       handleOpenItemSearchModal();
       return;
     }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        goToPrevPosColumn("itemCode");
+      } else {
+        goToNextPosColumn("itemCode");
+      }
+      return;
+    }
     if (e.key === "ArrowLeft" || (e.key === "Backspace" && !itemCodeSearchInput)) {
-      if (e.target.selectionStart === 0 || !itemCodeSearchInput) {
+      if (isPosSelectionAtStart(e.target) || !itemCodeSearchInput) {
         e.preventDefault();
-        focusPosColumn("designNo");
+        goToPrevPosColumn("itemCode");
         return;
       }
     }
     if (e.key === "ArrowRight") {
-      if (e.target.selectionStart === e.target.value.length || !itemCodeSearchInput) {
+      if (isPosSelectionAtEnd(e.target) || !itemCodeSearchInput) {
         e.preventDefault();
-        focusPosColumn("barcode");
+        goToNextPosColumn("itemCode");
         return;
       }
     }
@@ -6776,9 +7157,9 @@ export const BillingPOSView = ({
       e.preventDefault();
       if (itemCodeSearchInput.trim()) {
         await executeSmartSearch(itemCodeSearchInput, setItemCodeSearchInput);
-        focusPosColumn("barcode");
+        goToNextPosColumn("itemCode");
       } else {
-        focusPosColumn("barcode");
+        goToNextPosColumn("itemCode");
       }
     }
   };
@@ -7347,38 +7728,72 @@ export const BillingPOSView = ({
                   <thead className="bg-[#f0f0f0] border-b border-slate-400 sticky top-0 z-10 shadow-sm">
                     <tr>
                       <th className="border-r border-slate-400 font-normal p-1 text-center w-8 text-[9px]">S.NO.</th>
-                      <th className={`border-r border-slate-400 p-1 text-left w-20 transition-all ${activePosColumn === 'barcode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                      <th onClick={() => focusPosColumn('barcode')} className={`border-r border-slate-400 p-1 text-left w-20 cursor-pointer transition-all ${activePosColumn === 'barcode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
                         {activePosColumn === 'barcode' ? '▶ Barcode' : 'Barcode'}
                       </th>
-                      <th className={`border-r border-slate-400 p-1 text-left w-24 min-w-[105px] transition-all ${activePosColumn === 'uniqueCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                      <th onClick={() => focusPosColumn('uniqueCode')} className={`border-r border-slate-400 p-1 text-left w-24 min-w-[105px] cursor-pointer transition-all ${activePosColumn === 'uniqueCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
                         {activePosColumn === 'uniqueCode' ? '▶ Unique Code' : 'Unique Code'}
                       </th>
-                      <th className={`border-r border-slate-400 p-1 text-left w-32 transition-all ${activePosColumn === 'itemName' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                      <th onClick={() => focusPosColumn('itemName')} className={`border-r border-slate-400 p-1 text-left w-32 cursor-pointer transition-all ${activePosColumn === 'itemName' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
                         {activePosColumn === 'itemName' ? '▶ Item Name' : 'Item Name'}
                       </th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Sub Item</th>
-                      <th className={`border-r border-slate-400 p-1 text-left w-24 transition-all ${activePosColumn === 'designNo' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                      <th onClick={() => focusPosColumn('subItem')} className={`border-r border-slate-400 p-1 text-left w-20 cursor-pointer transition-all ${activePosColumn === 'subItem' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'subItem' ? '▶ Sub Item' : 'Sub Item'}
+                      </th>
+                      <th onClick={() => focusPosColumn('designNo')} className={`border-r border-slate-400 p-1 text-left w-24 cursor-pointer transition-all ${activePosColumn === 'designNo' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
                         {activePosColumn === 'designNo' ? '▶ Design No.' : 'Design No.'}
                       </th>
-                      <th className={`border-r border-slate-400 p-1 text-left w-36 min-w-[140px] transition-all ${activePosColumn === 'itemCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal'}`}>
+                      <th onClick={() => focusPosColumn('itemCode')} className={`border-r border-slate-400 p-1 text-left w-36 min-w-[140px] cursor-pointer transition-all ${activePosColumn === 'itemCode' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
                         {activePosColumn === 'itemCode' ? '▶ Item Code' : 'Item Code'}
                       </th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Ipn</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-20">Quantity</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Colour (P)</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">Colour (S)</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-14">Size</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-24">GST Slab</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-right w-16">MRP</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-28">Discount</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-right w-18">Rate</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-right w-20">Amount</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 1</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-20">Salesman 2</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-40">Firm</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-center w-20">Counter</th>
-                      <th className="border-r border-slate-400 font-normal p-1 text-left w-16">HSN</th>
-                      <th className="font-normal p-1 text-center w-10">Action</th>
+                      <th onClick={() => focusPosColumn('ipn')} className={`border-r border-slate-400 p-1 text-left w-14 cursor-pointer transition-all ${activePosColumn === 'ipn' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'ipn' ? '▶ Ipn' : 'Ipn'}
+                      </th>
+                      <th onClick={() => focusPosColumn('quantity')} className={`border-r border-slate-400 p-1 text-center w-20 cursor-pointer transition-all ${activePosColumn === 'quantity' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'quantity' ? '▶ Quantity' : 'Quantity'}
+                      </th>
+                      <th onClick={() => focusPosColumn('primaryColor')} className={`border-r border-slate-400 p-1 text-left w-20 cursor-pointer transition-all ${activePosColumn === 'primaryColor' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'primaryColor' ? '▶ Colour (P)' : 'Colour (P)'}
+                      </th>
+                      <th onClick={() => focusPosColumn('secondaryColor')} className={`border-r border-slate-400 p-1 text-left w-16 cursor-pointer transition-all ${activePosColumn === 'secondaryColor' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'secondaryColor' ? '▶ Colour (S)' : 'Colour (S)'}
+                      </th>
+                      <th onClick={() => focusPosColumn('size')} className={`border-r border-slate-400 p-1 text-left w-14 cursor-pointer transition-all ${activePosColumn === 'size' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'size' ? '▶ Size' : 'Size'}
+                      </th>
+                      <th onClick={() => focusPosColumn('gstSlab')} className={`border-r border-slate-400 p-1 text-center w-24 cursor-pointer transition-all ${activePosColumn === 'gstSlab' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'gstSlab' ? '▶ GST Slab' : 'GST Slab'}
+                      </th>
+                      <th onClick={() => focusPosColumn('mrp')} className={`border-r border-slate-400 p-1 text-right w-16 cursor-pointer transition-all ${activePosColumn === 'mrp' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'mrp' ? '▶ MRP' : 'MRP'}
+                      </th>
+                      <th onClick={() => focusPosColumn('discount')} className={`border-r border-slate-400 p-1 text-center w-28 cursor-pointer transition-all ${activePosColumn === 'discount' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'discount' ? '▶ Discount' : 'Discount'}
+                      </th>
+                      <th onClick={() => focusPosColumn('rate')} className={`border-r border-slate-400 p-1 text-right w-18 cursor-pointer transition-all ${activePosColumn === 'rate' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'rate' ? '▶ Rate' : 'Rate'}
+                      </th>
+                      <th onClick={() => focusPosColumn('amount')} className={`border-r border-slate-400 p-1 text-right w-20 cursor-pointer transition-all ${activePosColumn === 'amount' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'amount' ? '▶ Amount' : 'Amount'}
+                      </th>
+                      <th onClick={() => focusPosColumn('salesman1')} className={`border-r border-slate-400 p-1 text-left w-20 cursor-pointer transition-all ${activePosColumn === 'salesman1' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'salesman1' ? '▶ Salesman 1' : 'Salesman 1'}
+                      </th>
+                      <th onClick={() => focusPosColumn('salesman2')} className={`border-r border-slate-400 p-1 text-left w-20 cursor-pointer transition-all ${activePosColumn === 'salesman2' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'salesman2' ? '▶ Salesman 2' : 'Salesman 2'}
+                      </th>
+                      <th onClick={() => focusPosColumn('firm')} className={`border-r border-slate-400 p-1 text-center w-40 cursor-pointer transition-all ${activePosColumn === 'firm' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'firm' ? '▶ Firm' : 'Firm'}
+                      </th>
+                      <th onClick={() => focusPosColumn('counter')} className={`border-r border-slate-400 p-1 text-center w-20 cursor-pointer transition-all ${activePosColumn === 'counter' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'counter' ? '▶ Counter' : 'Counter'}
+                      </th>
+                      <th onClick={() => focusPosColumn('hsn')} className={`border-r border-slate-400 p-1 text-left w-16 cursor-pointer transition-all ${activePosColumn === 'hsn' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'hsn' ? '▶ HSN' : 'HSN'}
+                      </th>
+                      <th onClick={() => focusPosColumn('action')} className={`font-normal p-1 text-center w-10 cursor-pointer transition-all ${activePosColumn === 'action' ? 'bg-blue-600 text-white font-black ring-2 ring-inset ring-amber-300 shadow-inner' : 'font-normal hover:bg-slate-200'}`}>
+                        {activePosColumn === 'action' ? '▶ Action' : 'Action'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -7446,43 +7861,227 @@ export const BillingPOSView = ({
                             }`}
                         >
                           <td className="border-r border-slate-300 p-1 text-center font-bold">{idx + 1}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={barcodeDisplay}>{barcodeDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono font-bold text-[10.5px] text-indigo-700 tracking-tight select-all overflow-hidden text-ellipsis whitespace-nowrap" title={item.uniqueCode || ''}>{item.uniqueCode || ''}</td>
-                          <td className="border-r border-slate-300 p-1 font-semibold text-slate-800 overflow-hidden text-ellipsis whitespace-nowrap" title={nameDisplay}>
-                            {item.isReturn ? (
-                              (item.isExchanged || item.actionType === 'exchange') ? (
-                                <span className="inline-block bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
-                                  EXCHANGED
-                                </span>
-                              ) : (
-                                <span className="inline-block bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs uppercase mr-1 tracking-wider">
-                                  RETURNED
-                                </span>
-                              )
-                            ) : null}
-                            {nameDisplay}
-                            {item.soldFromInvoiceNo && (
-                              <span className={`ml-1 text-[9px] font-bold ${item.isExchanged || item.actionType === 'exchange' ? 'text-indigo-700' : 'text-rose-700'}`}>
-                                (#{item.soldFromInvoiceNo})
-                              </span>
-                            )}
-                            {item.exchangedFor && (
-                              <div className="text-[10px] text-indigo-700 font-medium italic mt-0.5 whitespace-normal">
-                                ↳ Replaced with: {item.exchangedFor}
-                              </div>
-                            )}
-                            {item.replacesItemName && (
-                              <div className="text-[10px] text-slate-500 font-medium italic mt-0.5 whitespace-normal">
-                                ↳ Exchanged for: {item.replacesItemName} {item.replacesUniqueCode ? `(${item.replacesUniqueCode})` : ''}
-                              </div>
-                            )}
+                          
+                          {/* 1. Barcode Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'barcode' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'barcode' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-barcode`}
+                                type="text"
+                                value={barcodeDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].barcode = e.target.value;
+                                  newCart[idx].barcodeNo = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("barcode");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "barcode")}
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase font-mono shadow-inner transition-all ${
+                                  activePosColumn === 'barcode' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 font-medium'
+                                }`}
+                                placeholder="Barcode"
+                              />
+                            </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1 overflow-hidden text-ellipsis whitespace-nowrap" title={subItemDisplay}>{subItemDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={designNoDisplay}>{designNoDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-800" title={itemCodeDisplay}>{itemCodeDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={ipnDisplay}>{ipnDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 text-center">
+
+                          {/* 2. Unique Code Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'uniqueCode' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'uniqueCode' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-uniqueCode`}
+                                type="text"
+                                value={item.uniqueCode || ''}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].uniqueCode = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("uniqueCode");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "uniqueCode")}
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase font-mono shadow-inner transition-all ${
+                                  activePosColumn === 'uniqueCode' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 font-bold text-indigo-700'
+                                }`}
+                                placeholder="Unique Code"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 3. Item Name Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'itemName' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-itemName`}
+                                type="text"
+                                value={nameDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].itemName = e.target.value;
+                                  newCart[idx].name = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("itemName");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "itemName")}
+                                className={`w-full bg-white border outline-none p-1 text-xs font-semibold shadow-inner transition-all ${
+                                  activePosColumn === 'itemName' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 text-slate-800'
+                                }`}
+                                placeholder="Item Name"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 4. Sub Item Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'subItem' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'subItem' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-subItem`}
+                                type="text"
+                                value={subItemDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].subItem = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("subItem");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "subItem")}
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                  activePosColumn === 'subItem' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Sub Item"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 5. Design No Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'designNo' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'designNo' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-designNo`}
+                                type="text"
+                                value={designNoDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].designNo = e.target.value;
+                                  newCart[idx].sku = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("designNo");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "designNo")}
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase font-mono shadow-inner transition-all ${
+                                  activePosColumn === 'designNo' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Design No"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 6. Item Code Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemCode' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'itemCode' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-itemCode`}
+                                type="text"
+                                value={itemCodeDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].itemCode = e.target.value;
+                                  newCart[idx].productCode = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("itemCode");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "itemCode")}
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase font-mono shadow-inner transition-all ${
+                                  activePosColumn === 'itemCode' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 font-bold text-slate-800'
+                                }`}
+                                placeholder="Item Code"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 7. IPN Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'ipn' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'ipn' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-ipn`}
+                                type="text"
+                                value={ipnDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].ipn = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("ipn");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "ipn")}
+                                className={`w-full bg-white border outline-none p-1 text-xs font-mono shadow-inner transition-all ${
+                                  activePosColumn === 'ipn' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="IPN"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 8. Quantity Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'quantity' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                             <div className="flex items-center justify-center gap-1">
+                              {activePosColumn === 'quantity' && selectedCartRowIndex === idx && (
+                                <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                              )}
                               <button onClick={() => {
                                 const newCart = [...cart];
                                 if (newCart[idx].quantity > 1) {
@@ -7491,11 +8090,17 @@ export const BillingPOSView = ({
                                   newCart[idx].totalPrice = newCart[idx].quantity * rate;
                                   setCart(newCart);
                                 }
-                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">-</button>
+                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px] cursor-pointer">-</button>
                               <input
+                                id={`cartRowInput-${idx}-quantity`}
                                 type="number"
                                 min="1"
                                 value={qty}
+                                onFocus={() => {
+                                  setActivePosColumn("quantity");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "quantity")}
                                 onChange={(e) => {
                                   const requestedQty = Math.max(1, parseInt(e.target.value) || 1);
                                   const availableStock = getLiveStock(cart[idx]);
@@ -7509,7 +8114,11 @@ export const BillingPOSView = ({
                                   newCart[idx].totalPrice = requestedQty * rate;
                                   setCart(newCart);
                                 }}
-                                className="w-10 text-center font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
+                                className={`w-10 text-center font-bold text-xs bg-white border outline-none ${
+                                  activePosColumn === 'quantity' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black'
+                                    : 'border-slate-300 focus:bg-yellow-100'
+                                }`}
                               />
                               <button onClick={() => {
                                 const availableStock = getLiveStock(cart[idx]);
@@ -7523,62 +8132,192 @@ export const BillingPOSView = ({
                                 newCart[idx].discountAmount = (newCart[idx].discount || 0) * newCart[idx].quantity;
                                 newCart[idx].totalPrice = newCart[idx].quantity * rate;
                                 setCart(newCart);
-                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">+</button>
+                              }} className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px] cursor-pointer">+</button>
                             </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1">{colorDisplay}</td>
-                          <td className="border-r border-slate-300 p-1">{secondaryColorDisplay}</td>
-                          <td className="border-r border-slate-300 p-1">{sizeDisplay}</td>
-                          <td className="border-r border-slate-300 p-1 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              list="gst-slab-options"
-                              value={item.gstPercent ?? ''}
-                              onChange={(event) => setCartItemGstRate(idx, event.target.value)}
-                              className="w-full min-w-[82px] border border-slate-300 rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-indigo-500"
-                              placeholder={isGstApplied ? `${gstRateInput}%` : 'No GST'}
-                              title="Enter GST slab for this item"
-                            />
+
+                          {/* 9. Colour (P) Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'primaryColor' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'primaryColor' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-primaryColor`}
+                                type="text"
+                                value={colorDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].primaryColor = e.target.value;
+                                  newCart[idx].color = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("primaryColor");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "primaryColor")}
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                  activePosColumn === 'primaryColor' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Colour (P)"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 10. Colour (S) Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'secondaryColor' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'secondaryColor' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-secondaryColor`}
+                                type="text"
+                                value={secondaryColorDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].secondaryColor = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("secondaryColor");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "secondaryColor")}
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                  activePosColumn === 'secondaryColor' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Colour (S)"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 11. Size Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'size' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'size' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-size`}
+                                type="text"
+                                value={sizeDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].size = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("size");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "size")}
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                  activePosColumn === 'size' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 font-bold'
+                                }`}
+                                placeholder="Size"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 12. GST Slab Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'gstSlab' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'gstSlab' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-gstSlab`}
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                list="gst-slab-options"
+                                value={item.gstPercent ?? ''}
+                                onFocus={() => {
+                                  setActivePosColumn("gstSlab");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "gstSlab")}
+                                onChange={(event) => setCartItemGstRate(idx, event.target.value)}
+                                className={`w-full min-w-[82px] border rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 bg-white outline-none ${
+                                  activePosColumn === 'gstSlab' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500 pl-3'
+                                    : 'border-slate-300 focus:ring-1 focus:ring-indigo-500'
+                                }`}
+                                placeholder={isGstApplied ? `${gstRateInput}%` : 'No GST'}
+                                title="Enter GST slab for this item"
+                              />
+                            </div>
                             <datalist id="gst-slab-options">
                               {GST_SLAB_OPTIONS.map((slab) => (
                                 <option key={slab} value={slab}>{slab === 0 ? 'No GST' : `${slab}%`}</option>
                               ))}
                             </datalist>
-                            <span className="sr-only">Applied GST: {itemGstRate}%</span>
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-right">
-                            <input
-                              type="number"
-                              value={mrp}
-                              onChange={(e) => {
-                                const newCart = [...cart];
-                                const newPrice = parseFloat(e.target.value) || 0;
-                                const curType = newCart[idx].discountType || 'amount';
-                                const curVal = newCart[idx].discountValue !== undefined ? newCart[idx].discountValue : (newCart[idx].customDiscount || newCart[idx].discount || 0);
-                                let newUnitDisc = curType === 'percent' ? (newPrice * curVal) / 100 : curVal;
-                                newUnitDisc = Math.max(0, Math.min(newPrice, newUnitDisc));
-                                const newRate = Math.max(0, newPrice - newUnitDisc);
 
-                                newCart[idx].price = newPrice;
-                                newCart[idx].mrp = newPrice;
-                                newCart[idx].discount = newUnitDisc;
-                                newCart[idx].customDiscount = newUnitDisc;
-                                newCart[idx].discountAmount = newUnitDisc * (newCart[idx].quantity || 1);
-                                newCart[idx].discountPercent = curType === 'percent' ? curVal : (newPrice > 0 ? (newUnitDisc / newPrice) * 100 : 0);
-                                newCart[idx].sellingPrice = newRate;
-                                newCart[idx].totalPrice = (newCart[idx].quantity || 1) * newRate;
-                                setCart(newCart);
-                              }}
-                              className="w-14 text-right font-bold text-xs bg-transparent border-b border-slate-400 outline-none focus:bg-yellow-100"
-                            />
+                          {/* 13. MRP Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'mrp' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'mrp' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-mrp`}
+                                type="number"
+                                value={mrp}
+                                onFocus={() => {
+                                  setActivePosColumn("mrp");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "mrp")}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  const newPrice = parseFloat(e.target.value) || 0;
+                                  const curType = newCart[idx].discountType || 'amount';
+                                  const curVal = newCart[idx].discountValue !== undefined ? newCart[idx].discountValue : (newCart[idx].customDiscount || newCart[idx].discount || 0);
+                                  let newUnitDisc = curType === 'percent' ? (newPrice * curVal) / 100 : curVal;
+                                  newUnitDisc = Math.max(0, Math.min(newPrice, newUnitDisc));
+                                  const newRate = Math.max(0, newPrice - newUnitDisc);
+
+                                  newCart[idx].price = newPrice;
+                                  newCart[idx].mrp = newPrice;
+                                  newCart[idx].discount = newUnitDisc;
+                                  newCart[idx].customDiscount = newUnitDisc;
+                                  newCart[idx].discountAmount = newUnitDisc * (newCart[idx].quantity || 1);
+                                  newCart[idx].discountPercent = curType === 'percent' ? curVal : (newPrice > 0 ? (newUnitDisc / newPrice) * 100 : 0);
+                                  newCart[idx].sellingPrice = newRate;
+                                  newCart[idx].totalPrice = (newCart[idx].quantity || 1) * newRate;
+                                  setCart(newCart);
+                                }}
+                                className={`w-full text-right font-bold text-xs bg-white border outline-none p-1 shadow-inner ${
+                                  activePosColumn === 'mrp' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                              />
+                            </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-center" onClick={(e) => e.stopPropagation()}>
+
+                          {/* 14. Discount Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'discount' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`} onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
+                              {activePosColumn === 'discount' && selectedCartRowIndex === idx && (
+                                <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                              )}
                               <select
                                 value={discType}
+                                onFocus={() => {
+                                  setActivePosColumn("discount");
+                                  setSelectedCartRowIndex(idx);
+                                }}
                                 onChange={(e) => {
                                   handleAdjustItemDiscount(idx, discVal, e.target.value);
                                 }}
@@ -7589,16 +8328,26 @@ export const BillingPOSView = ({
                                 <option value="percent">%</option>
                               </select>
                               <input
+                                id={`cartRowInput-${idx}-discount`}
                                 type="number"
                                 min="0"
                                 max={discType === 'percent' ? '100' : mrp}
                                 step={discType === 'percent' ? '1' : '0.01'}
                                 value={discVal === 0 ? '' : discVal}
                                 placeholder="0"
+                                onFocus={() => {
+                                  setActivePosColumn("discount");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "discount")}
                                 onChange={(e) => {
                                   handleAdjustItemDiscount(idx, e.target.value, discType);
                                 }}
-                                className="w-12 text-right font-bold text-xs bg-white border border-slate-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-yellow-50"
+                                className={`w-12 text-right font-bold text-xs bg-white border rounded px-1 py-0.5 outline-none ${
+                                  activePosColumn === 'discount' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black'
+                                    : 'border-slate-300 focus:ring-1 focus:ring-indigo-500 focus:bg-yellow-50'
+                                }`}
                                 title={discType === 'percent' ? `Discount: ${discVal}% (₹${unitDisc.toFixed(2)})` : `Discount: ₹${unitDisc.toFixed(2)}`}
                               />
                             </div>
@@ -7613,29 +8362,116 @@ export const BillingPOSView = ({
                               </div>
                             )}
                           </td>
-                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold ${item.isReturn ? 'text-rose-700 font-black' : 'text-slate-800'}`}>
-                            {item.isReturn ? `-${rate.toFixed(2)}` : rate.toFixed(2)}
+
+                          {/* 15. Rate Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'rate' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'rate' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-rate`}
+                                type="number"
+                                step="0.01"
+                                value={rate.toFixed(2)}
+                                onFocus={() => {
+                                  setActivePosColumn("rate");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "rate")}
+                                onChange={(e) => {
+                                  const newRate = Math.max(0, parseFloat(e.target.value) || 0);
+                                  const newCart = [...cart];
+                                  const curMrp = Number(newCart[idx].mrp || newCart[idx].price || newRate);
+                                  const diff = Math.max(0, curMrp - newRate);
+                                  newCart[idx].sellingPrice = newRate;
+                                  newCart[idx].price = newRate;
+                                  newCart[idx].discount = diff;
+                                  newCart[idx].customDiscount = diff;
+                                  newCart[idx].discountAmount = diff * (newCart[idx].quantity || 1);
+                                  newCart[idx].totalPrice = (newCart[idx].quantity || 1) * newRate;
+                                  setCart(newCart);
+                                }}
+                                className={`w-full text-right font-mono font-bold text-xs bg-white border outline-none p-1 shadow-inner ${
+                                  activePosColumn === 'rate' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 text-slate-800'
+                                }`}
+                              />
+                            </div>
                           </td>
-                          <td className={`border-r border-slate-300 p-1 text-right font-mono font-bold ${item.isReturn ? 'text-rose-700 font-black' : (billAdjShare > 0 ? (isCharge ? 'text-emerald-700' : 'text-indigo-700') : 'text-slate-800')}`}>
-                            {item.isReturn ? `-${(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}` : (isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}
+
+                          {/* 16. Amount Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'amount' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'amount' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-amount`}
+                                type="number"
+                                step="0.01"
+                                value={(isCharge ? amt + billAdjShare : amt - billAdjShare).toFixed(2)}
+                                onFocus={() => {
+                                  setActivePosColumn("amount");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "amount")}
+                                onChange={(e) => {
+                                  const newAmt = Math.max(0, parseFloat(e.target.value) || 0);
+                                  const qty = cart[idx].quantity || 1;
+                                  const newRate = newAmt / qty;
+                                  const newCart = [...cart];
+                                  const curMrp = Number(newCart[idx].mrp || newCart[idx].price || newRate);
+                                  const diff = Math.max(0, curMrp - newRate);
+                                  newCart[idx].sellingPrice = newRate;
+                                  newCart[idx].price = newRate;
+                                  newCart[idx].discount = diff;
+                                  newCart[idx].customDiscount = diff;
+                                  newCart[idx].discountAmount = diff * qty;
+                                  newCart[idx].totalPrice = newAmt;
+                                  setCart(newCart);
+                                }}
+                                className={`w-full text-right font-mono font-bold text-xs bg-white border outline-none p-1 shadow-inner ${
+                                  activePosColumn === 'amount' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50 text-slate-800'
+                                }`}
+                              />
+                            </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1 relative">
+
+                          {/* 17. Salesman 1 Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman1' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                             {(() => {
                               const val1 = item.salesman1 || '';
                               const filtered1 = staffList?.filter(s => s.name.toLowerCase().includes(val1.toLowerCase())) || [];
                               return (
-                                <div className="relative">
+                                <div className="relative flex items-center">
+                                  {activePosColumn === 'salesman1' && selectedCartRowIndex === idx && (
+                                    <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                                  )}
                                   <input
+                                    id={`cartRowInput-${idx}-salesman1`}
                                     type="text"
-                                    className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px] pr-4"
+                                    className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                      activePosColumn === 'salesman1' && selectedCartRowIndex === idx
+                                        ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                        : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                    }`}
                                     value={val1}
-                                    placeholder="-"
+                                    placeholder="Salesman 1"
                                     onChange={(e) => {
                                       const newCart = [...cart];
                                       newCart[idx].salesman1 = e.target.value;
                                       setCart(newCart);
                                     }}
-                                    onFocus={(e) => e.target.select()}
+                                    onFocus={(e) => {
+                                      e.target.select();
+                                      setActivePosColumn("salesman1");
+                                      setSelectedCartRowIndex(idx);
+                                    }}
+                                    onKeyDown={(e) => handleCartCellKeyDown(e, idx, "salesman1")}
                                   />
                                   {val1 && filtered1.length > 0 && !(filtered1.length === 1 && filtered1[0].name.toLowerCase() === val1.toLowerCase()) && (
                                     <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
@@ -7659,23 +8495,38 @@ export const BillingPOSView = ({
                               );
                             })()}
                           </td>
-                          <td className="border-r border-slate-300 p-1 relative">
+
+                          {/* 18. Salesman 2 Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman2' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                             {(() => {
                               const val2 = item.salesman2 || '';
                               const filtered2 = staffList?.filter(s => s.name.toLowerCase().includes(val2.toLowerCase())) || [];
                               return (
-                                <div className="relative">
+                                <div className="relative flex items-center">
+                                  {activePosColumn === 'salesman2' && selectedCartRowIndex === idx && (
+                                    <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                                  )}
                                   <input
+                                    id={`cartRowInput-${idx}-salesman2`}
                                     type="text"
-                                    className="w-full bg-transparent border-b border-slate-300 outline-none focus:bg-yellow-100 text-[10px] pr-4"
+                                    className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${
+                                      activePosColumn === 'salesman2' && selectedCartRowIndex === idx
+                                        ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                        : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                    }`}
                                     value={val2}
-                                    placeholder="-"
+                                    placeholder="Salesman 2"
                                     onChange={(e) => {
                                       const newCart = [...cart];
                                       newCart[idx].salesman2 = e.target.value;
                                       setCart(newCart);
                                     }}
-                                    onFocus={(e) => e.target.select()}
+                                    onFocus={(e) => {
+                                      e.target.select();
+                                      setActivePosColumn("salesman2");
+                                      setSelectedCartRowIndex(idx);
+                                    }}
+                                    onKeyDown={(e) => handleCartCellKeyDown(e, idx, "salesman2")}
                                   />
                                   {val2 && filtered2.length > 0 && !(filtered2.length === 1 && filtered2[0].name.toLowerCase() === val2.toLowerCase()) && (
                                     <div className="absolute top-full left-0 z-[9999] bg-white border border-slate-200 rounded shadow-lg min-w-[130px] max-h-40 overflow-y-auto">
@@ -7699,29 +8550,119 @@ export const BillingPOSView = ({
                               );
                             })()}
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-center whitespace-nowrap overflow-hidden">
-                            <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase tracking-tight inline-block shadow-2xs ${firmStyle.badgeClass}`} title={firmDisplay}>
-                              {firmDisplay}
-                            </span>
+
+                          {/* 19. Firm Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center whitespace-nowrap overflow-hidden transition-all ${activePosColumn === 'firm' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'firm' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-firm`}
+                                type="text"
+                                list="pos-firm-options"
+                                value={firmDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].firmName = e.target.value;
+                                  newCart[idx].company = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("firm");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "firm")}
+                                className={`w-full bg-white border outline-none p-1 text-[10px] font-extrabold uppercase shadow-inner transition-all ${
+                                  activePosColumn === 'firm' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Firm"
+                              />
+                            </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1 text-center font-semibold text-slate-700 overflow-hidden text-ellipsis whitespace-nowrap" title={counterDisplay}>
-                            {counterDisplay ? (
-                              <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                {counterDisplay}
-                              </span>
-                            ) : (
-                              '-'
-                            )}
+
+                          {/* 20. Counter Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'counter' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'counter' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-counter`}
+                                type="text"
+                                value={counterDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].counter = e.target.value;
+                                  newCart[idx].counterNo = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("counter");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "counter")}
+                                className={`w-full text-center bg-white border outline-none p-1 text-[10px] font-bold shadow-inner transition-all ${
+                                  activePosColumn === 'counter' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="Counter"
+                              />
+                            </div>
                           </td>
-                          <td className="border-r border-slate-300 p-1 font-mono text-slate-700 overflow-hidden text-ellipsis whitespace-nowrap" title={hsnDisplay}>{hsnDisplay}</td>
-                          <td className="p-1 text-center" onClick={(e) => e.stopPropagation()}>
+
+                          {/* 21. HSN Column */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'hsn' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {activePosColumn === 'hsn' && selectedCartRowIndex === idx && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id={`cartRowInput-${idx}-hsn`}
+                                type="text"
+                                value={hsnDisplay}
+                                onChange={(e) => {
+                                  const newCart = [...cart];
+                                  newCart[idx].hsn = e.target.value;
+                                  newCart[idx].hsnCode = e.target.value;
+                                  setCart(newCart);
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("hsn");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "hsn")}
+                                className={`w-full bg-white border outline-none p-1 font-mono text-[10px] shadow-inner transition-all ${
+                                  activePosColumn === 'hsn' && selectedCartRowIndex === idx
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-transparent hover:border-slate-300 focus:border-blue-300 focus:bg-yellow-50'
+                                }`}
+                                placeholder="HSN"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 22. Action Column */}
+                          <td className={`p-1 text-center transition-all ${activePosColumn === 'action' && selectedCartRowIndex === idx ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`} onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center">
+                              {activePosColumn === 'action' && selectedCartRowIndex === idx && (
+                                <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none mr-1">▶</span>
+                              )}
                               <button
+                                id={`cartRowInput-${idx}-action`}
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleRemoveCartItem(idx);
                                 }}
+                                onFocus={() => {
+                                  setActivePosColumn("action");
+                                  setSelectedCartRowIndex(idx);
+                                }}
+                                onKeyDown={(e) => handleCartCellKeyDown(e, idx, "action")}
                                 className="text-red-500 hover:text-red-700 cursor-pointer p-1 rounded hover:bg-red-50 transition-colors"
                                 title="Delete Item"
                               >
@@ -7732,9 +8673,12 @@ export const BillingPOSView = ({
                         </tr>
                       );
                     })}
-                    {/* Empty Entry Row */}
+
+                    {/* ─── ENTRY ROW (ROW cart.length + 1) WITH BLUE INDICATOR CURSOR ON EVERY COLUMN ─── */}
                     <tr className="border-b border-slate-300 bg-[#e8f4ff]">
                       <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
+
+                      {/* 1. Barcode Search / Entry Input */}
                       <td className={`border-r border-slate-300 p-0.5 transition-all ${activePosColumn === 'barcode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className="relative flex items-center">
                           {activePosColumn === 'barcode' && (
@@ -7756,7 +8700,7 @@ export const BillingPOSView = ({
                         </div>
                       </td>
 
-                      {/* Unique Code Search / Entry Input */}
+                      {/* 2. Unique Code Search / Entry Input */}
                       <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'uniqueCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className="relative flex items-center">
                           {activePosColumn === 'uniqueCode' && (
@@ -7778,7 +8722,7 @@ export const BillingPOSView = ({
                         </div>
                       </td>
 
-                      {/* Item Search Input with Drop Arrow Button & Interactive Dropdown */}
+                      {/* 3. Item Search Input with Drop Arrow Button & Interactive Dropdown */}
                       <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className={`flex items-center bg-white border shadow-inner transition-all ${activePosColumn === 'itemName'
                             ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500'
@@ -7938,10 +8882,29 @@ export const BillingPOSView = ({
                         )}
                       </td>
 
-                      {/* Empty Sub Item Cell */}
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
+                      {/* 4. Sub Item Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'subItem' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'subItem' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posSubItemInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'subItem'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="Sub Item"
+                            value={entrySubItem}
+                            onChange={(e) => setEntrySubItem(e.target.value)}
+                            onFocus={() => setActivePosColumn("subItem")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'subItem')}
+                          />
+                        </div>
+                      </td>
 
-                      {/* Design No Search Field */}
+                      {/* 5. Design No Search Field */}
                       <td ref={designNoContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'designNo' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className="relative flex items-center">
                           {activePosColumn === 'designNo' && (
@@ -8098,7 +9061,7 @@ export const BillingPOSView = ({
                         )}
                       </td>
 
-                      {/* Item Code Search Field */}
+                      {/* 6. Item Code Search Field */}
                       <td ref={itemCodeContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
                         <div className="relative flex items-center">
                           {activePosColumn === 'itemCode' && (
@@ -8119,25 +9082,389 @@ export const BillingPOSView = ({
                           />
                         </div>
                       </td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="border-r border-slate-300 p-1 bg-slate-50/50"></td>
-                      <td className="p-1 bg-slate-50/50"></td>
+
+                      {/* 7. IPN Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'ipn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'ipn' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posIpnInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-mono shadow-inner transition-all ${activePosColumn === 'ipn'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="IPN"
+                            value={entryIpn}
+                            onChange={(e) => setEntryIpn(e.target.value)}
+                            onFocus={() => setActivePosColumn("ipn")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'ipn')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 8. Quantity Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'quantity' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'quantity' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posQuantityInput"
+                            type="number"
+                            min="1"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-bold text-center shadow-inner transition-all ${activePosColumn === 'quantity'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="1"
+                            value={entryQty}
+                            onChange={(e) => handleEntryQtyChange(e.target.value)}
+                            onFocus={() => setActivePosColumn("quantity")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'quantity')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 9. Colour (P) Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'primaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'primaryColor' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posPrimaryColorInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'primaryColor'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="Color (P)"
+                            value={entryColorP}
+                            onChange={(e) => setEntryColorP(e.target.value)}
+                            onFocus={() => setActivePosColumn("primaryColor")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'primaryColor')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 10. Colour (S) Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'secondaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'secondaryColor' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posSecondaryColorInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'secondaryColor'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="Color (S)"
+                            value={entryColorS}
+                            onChange={(e) => setEntryColorS(e.target.value)}
+                            onFocus={() => setActivePosColumn("secondaryColor")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'secondaryColor')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 11. Size Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'size' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'size' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posSizeInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-bold shadow-inner transition-all ${activePosColumn === 'size'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Size"
+                            value={entrySize}
+                            onChange={(e) => setEntrySize(e.target.value)}
+                            onFocus={() => setActivePosColumn("size")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'size')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 12. GST Slab Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'gstSlab' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'gstSlab' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posGstSlabInput"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            list="gst-slab-options"
+                            className={`w-full bg-white border outline-none p-1 text-[10px] font-bold text-center shadow-inner transition-all ${activePosColumn === 'gstSlab'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder={isGstApplied ? `${gstRateInput}%` : 'GST%'}
+                            value={entryGst}
+                            onChange={(e) => setEntryGst(e.target.value)}
+                            onFocus={() => setActivePosColumn("gstSlab")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'gstSlab')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 13. MRP Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'mrp' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'mrp' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posMrpInput"
+                            type="number"
+                            step="0.01"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${activePosColumn === 'mrp'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="MRP"
+                            value={entryMrp}
+                            onChange={(e) => handleEntryMrpChange(e.target.value)}
+                            onFocus={() => setActivePosColumn("mrp")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'mrp')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 14. Discount Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'discount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="flex items-center justify-center gap-0.5">
+                          {activePosColumn === 'discount' && (
+                            <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                          )}
+                          <select
+                            value={entryDiscountType}
+                            onChange={(e) => handleEntryDiscountChange(entryDiscount, e.target.value)}
+                            onFocus={() => setActivePosColumn("discount")}
+                            className="bg-white border border-blue-300 rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 outline-none cursor-pointer"
+                          >
+                            <option value="amount">₹</option>
+                            <option value="percent">%</option>
+                          </select>
+                          <input
+                            id="posDiscountInput"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className={`w-12 bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${activePosColumn === 'discount'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Disc"
+                            value={entryDiscount}
+                            onChange={(e) => handleEntryDiscountChange(e.target.value, entryDiscountType)}
+                            onFocus={() => setActivePosColumn("discount")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'discount')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 15. Rate Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'rate' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'rate' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posRateInput"
+                            type="number"
+                            step="0.01"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${activePosColumn === 'rate'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Rate"
+                            value={entryRate}
+                            onChange={(e) => handleEntryRateChange(e.target.value)}
+                            onFocus={() => setActivePosColumn("rate")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'rate')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 16. Amount Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'amount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'amount' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posAmountInput"
+                            type="number"
+                            step="0.01"
+                            className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${activePosColumn === 'amount'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Amt"
+                            value={entryAmount}
+                            onChange={(e) => handleEntryAmountChange(e.target.value)}
+                            onFocus={() => setActivePosColumn("amount")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'amount')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 17. Salesman 1 Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman1' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'salesman1' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posSalesman1Input"
+                            type="text"
+                            list="pos-staff-options"
+                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'salesman1'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="Sales 1"
+                            value={entrySalesman1}
+                            onChange={(e) => setEntrySalesman1(e.target.value)}
+                            onFocus={() => setActivePosColumn("salesman1")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman1')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 18. Salesman 2 Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman2' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'salesman2' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posSalesman2Input"
+                            type="text"
+                            list="pos-staff-options"
+                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'salesman2'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                              }`}
+                            placeholder="Sales 2"
+                            value={entrySalesman2}
+                            onChange={(e) => setEntrySalesman2(e.target.value)}
+                            onFocus={() => setActivePosColumn("salesman2")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman2')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 19. Firm Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'firm' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'firm' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posFirmInput"
+                            type="text"
+                            list="pos-firm-options"
+                            className={`w-full bg-white border outline-none p-1 text-[10px] font-extrabold uppercase shadow-inner transition-all ${activePosColumn === 'firm'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Firm"
+                            value={entryFirm}
+                            onChange={(e) => setEntryFirm(e.target.value)}
+                            onFocus={() => setActivePosColumn("firm")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'firm')}
+                          />
+                        </div>
+                        <datalist id="pos-firm-options">
+                          <option value="NEW FASHION STYLE (PALAM)" />
+                          <option value="FASHION SUIT (MAIN BAZAR)" />
+                          <option value="VASTRA FABRICS" />
+                          <option value="RANGOLI ENTERPRISES" />
+                        </datalist>
+                      </td>
+
+                      {/* 20. Counter Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'counter' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'counter' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posCounterInput"
+                            type="text"
+                            className={`w-full text-center bg-white border outline-none p-1 text-[10px] font-bold shadow-inner transition-all ${activePosColumn === 'counter'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="Counter"
+                            value={entryCounter}
+                            onChange={(e) => setEntryCounter(e.target.value)}
+                            onFocus={() => setActivePosColumn("counter")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'counter')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 21. HSN Entry Input */}
+                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'hsn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <div className="relative flex items-center">
+                          {activePosColumn === 'hsn' && (
+                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                          )}
+                          <input
+                            id="posHsnInput"
+                            type="text"
+                            className={`w-full bg-white border outline-none p-1 font-mono text-[10px] shadow-inner transition-all ${activePosColumn === 'hsn'
+                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                : 'border-blue-300 focus:bg-yellow-100'
+                              }`}
+                            placeholder="HSN"
+                            value={entryHsn}
+                            onChange={(e) => setEntryHsn(e.target.value)}
+                            onFocus={() => setActivePosColumn("hsn")}
+                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'hsn')}
+                          />
+                        </div>
+                      </td>
+
+                      {/* 22. Action Entry Column */}
+                      <td className={`p-0.5 text-center transition-all ${activePosColumn === 'action' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                        <button
+                          id="posAddButton"
+                          type="button"
+                          onClick={handleAddManualEntryItem}
+                          onFocus={() => setActivePosColumn("action")}
+                          onKeyDown={(e) => handleEntryCellKeyDown(e, 'action')}
+                          className={`w-full text-white font-black text-[10px] py-1 rounded shadow-xs cursor-pointer uppercase transition-colors ${
+                            activePosColumn === 'action' ? 'bg-blue-700 ring-2 ring-amber-300 ring-offset-1' : 'bg-blue-600 hover:bg-blue-700'
+                          }`}
+                          title="Add line item to bill (or press Enter)"
+                        >
+                          {activePosColumn === 'action' ? '▶ Add' : '+ Add'}
+                        </button>
+                      </td>
                     </tr>
                   </tbody>
+                  {/* Staff Datalist for Autocomplete */}
+                  <datalist id="pos-staff-options">
+                    {(staffList || []).map(s => (
+                      <option key={s._id || s.id} value={s.name}>{s.name} ({s.designation || 'Staff'})</option>
+                    ))}
+                  </datalist>
                 </table>
               </div>
 
