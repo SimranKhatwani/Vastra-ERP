@@ -1261,7 +1261,7 @@ export const BillingPOSView = ({
   const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] =
     useState(null);
   const [loadedOriginalInvoice, setLoadedOriginalInvoice] = useState(null);
-  const [selectedCartRowIndex, setSelectedCartRowIndex] = useState(0);
+  const [selectedCartRowIndex, setSelectedCartRowIndex] = useState(null);
   const [returnedItemIds, setReturnedItemIds] = useState([]);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState(null);
@@ -3977,6 +3977,9 @@ export const BillingPOSView = ({
       }
       return [...prev, ...newItems];
     });
+    setTimeout(() => {
+      focusPosColumn('barcode', null);
+    }, 50);
   };
 
   // Barcode quick simulated lookup (and Universal Search Enter)
@@ -4123,6 +4126,7 @@ export const BillingPOSView = ({
     sgstAmount,
     igstAmount,
     totalTax,
+    taxBreakdown,
     taxDetails
   } = React.useMemo(() => {
     let subTotal = 0;
@@ -8675,789 +8679,864 @@ export const BillingPOSView = ({
                     })}
 
                     {/* ─── ENTRY ROW (ROW cart.length + 1) WITH BLUE INDICATOR CURSOR ON EVERY COLUMN ─── */}
-                    <tr className="border-b border-slate-300 bg-[#e8f4ff]">
-                      <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
+                    {(() => {
+                      const isEntryActive = selectedCartRowIndex === null || selectedCartRowIndex === -1;
+                      return (
+                        <tr className="border-b border-slate-300 bg-[#e8f4ff]">
+                          <td className="border-r border-slate-300 p-1 text-center font-bold text-blue-700">{cart.length + 1}</td>
 
-                      {/* 1. Barcode Search / Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 transition-all ${activePosColumn === 'barcode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'barcode' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posBarcodeInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase shadow-inner transition-all ${activePosColumn === 'barcode'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                              }`}
-                            placeholder="(Alt+B)"
-                            value={barcodeInput}
-                            onChange={(e) => setBarcodeInput(e.target.value)}
-                            onFocus={() => setActivePosColumn("barcode")}
-                            onKeyDown={handleSmartBarcodeKeyDown}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 2. Unique Code Search / Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'uniqueCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'uniqueCode' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posUniqueCodeInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono shadow-inner transition-all ${activePosColumn === 'uniqueCode'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                              }`}
-                            placeholder="(Alt+U)"
-                            value={uniqueCodeInput}
-                            onChange={(e) => setUniqueCodeInput(e.target.value)}
-                            onFocus={() => setActivePosColumn("uniqueCode")}
-                            onKeyDown={handleUniqueCodeKeyDown}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 3. Item Search Input with Drop Arrow Button & Interactive Dropdown */}
-                      <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className={`flex items-center bg-white border shadow-inner transition-all ${activePosColumn === 'itemName'
-                            ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500'
-                            : 'border-blue-300'
-                          }`}>
-                          {activePosColumn === 'itemName' && (
-                            <span className="pl-1 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
-                          )}
-                          <input
-                            id="posItemNameInput"
-                            type="text"
-                            className={`w-full outline-none p-1 text-xs placeholder-slate-500 font-semibold ${activePosColumn === 'itemName' ? 'bg-yellow-50 text-slate-950 font-black' : 'focus:bg-yellow-100'
-                              }`}
-                            placeholder="Search Item (F2)..."
-                            value={itemSearchInputText}
-                            onChange={(e) => setItemSearchInputText(e.target.value)}
-                            onFocus={() => setActivePosColumn("itemName")}
-                            onKeyDown={handleItemNameSearchKeyDown}
-                          />
-                          <button
-                            type="button"
-                            className="px-1.5 py-1 text-slate-500 hover:text-blue-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActivePosColumn("itemName");
-                              handleOpenItemSearchModal();
-                            }}
-                            title="Open Detailed Item Search List (F2)"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Interactive Detailed Item Table Dropdown List */}
-                        {isItemDropdownOpen && (
-                          <div
-                            id="item-search-fixed-dropdown"
-                            style={{
-                              position: 'fixed',
-                              top: `${itemSearchDropdownCoords.top}px`,
-                              left: `${itemSearchDropdownCoords.left}px`,
-                              width: '780px',
-                              maxHeight: '340px',
-                              zIndex: 99999
-                            }}
-                            className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-blue-600 ring-2 ring-blue-500/30 animate-in fade-in zoom-in-95 duration-100"
-                          >
-                            <div className="p-2.5 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Inventory Search</span>
-                                <span>Found {filteredItemSearchProducts.length} Items • Use ↑ ↓ & Enter</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsItemDropdownOpen(false);
-                                    handleOpenItemSearchModal();
-                                  }}
-                                  className="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider cursor-pointer shadow-xs flex items-center gap-1"
-                                >
-                                  <span>Full List (F2)</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsItemDropdownOpen(false);
-                                  }}
-                                  className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
-                                >
-                                  ✕
-                                </button>
-                              </div>
+                          {/* 1. Barcode Search / Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 transition-all ${isEntryActive && activePosColumn === 'barcode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'barcode' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posBarcodeInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase shadow-inner transition-all ${isEntryActive && activePosColumn === 'barcode'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                                  }`}
+                                placeholder="(Alt+B)"
+                                value={barcodeInput}
+                                onChange={(e) => setBarcodeInput(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("barcode");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={handleSmartBarcodeKeyDown}
+                              />
                             </div>
+                          </td>
 
-                            {filteredItemSearchProducts.length === 0 ? (
-                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching items found</div>
-                            ) : (
-                              <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
-                                <table className="w-full text-left border-collapse text-xs">
-                                  <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider">
-                                    <tr>
-                                      <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
-                                      <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
-                                      <th className="p-2 border-r border-slate-200 text-center">Size</th>
-                                      <th className="p-2 border-r border-slate-200 text-center">Color</th>
-                                      <th className="p-2 border-r border-slate-200 text-center">Stock</th>
-                                      <th className="p-2 border-r border-slate-200 text-right">Price</th>
-                                      <th className="p-2 text-center">Action</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-200 text-slate-700">
-                                    {filteredItemSearchProducts.map((p, pIdx) => {
-                                      const barcode = p.barcode || p.uniqueCode || p.itemCode || '-';
-                                      const code = p.itemCode || p.productCode || p.sku || '-';
-                                      const name = p.itemName || p.name || 'Unnamed Item';
-                                      const subItem = p.subCategory || p.subItem || p.category || '-';
-                                      const size = p.size || '-';
-                                      const color = p.primaryColor || p.color || '-';
-                                      const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                      const stock = p.availableStock ?? p.stock ?? 0;
-                                      const isHighlighted = pIdx === itemSearchHighlightedIndex;
+                          {/* 2. Unique Code Search / Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'uniqueCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'uniqueCode' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posUniqueCodeInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono shadow-inner transition-all ${isEntryActive && activePosColumn === 'uniqueCode'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                                  }`}
+                                placeholder="(Alt+U)"
+                                value={uniqueCodeInput}
+                                onChange={(e) => setUniqueCodeInput(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("uniqueCode");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={handleUniqueCodeKeyDown}
+                              />
+                            </div>
+                          </td>
 
-                                      return (
-                                        <tr
-                                          id={`itemsearch-opt-${pIdx}`}
-                                          key={p._id || p.id || pIdx}
-                                          className={`cursor-pointer transition-colors ${isHighlighted
-                                            ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
-                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
-                                            }`}
-                                          onClick={() => {
-                                            const added = handleAddProductToCart(p);
-                                            if (added) {
-                                              setItemSearchInputText("");
-                                              setIsItemDropdownOpen(false);
-                                              if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                            }
-                                          }}
-                                        >
-                                          <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
-                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
-                                          </td>
-                                          <td className="p-2 border-r border-slate-200">
-                                            <div className="font-bold text-slate-900">{name}</div>
-                                            <div className="text-[10px] text-slate-500 font-medium">Code: <span className="font-mono text-blue-600 font-bold">{code}</span> {subItem !== '-' && `• ${subItem}`}</div>
-                                          </td>
-                                          <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
-                                          <td className="p-2 text-center border-r border-slate-200">{color}</td>
-                                          <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
-                                              {stock} pcs
-                                            </span>
-                                          </td>
-                                          <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
-                                            ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                          </td>
-                                          <td className="p-2 text-center">
-                                            <button
-                                              type="button"
-                                              className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                                }`}
-                                            >
-                                              + Add
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* 4. Sub Item Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'subItem' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'subItem' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posSubItemInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'subItem'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="Sub Item"
-                            value={entrySubItem}
-                            onChange={(e) => setEntrySubItem(e.target.value)}
-                            onFocus={() => setActivePosColumn("subItem")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'subItem')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 5. Design No Search Field */}
-                      <td ref={designNoContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'designNo' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'designNo' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="designNoSearchInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${activePosColumn === 'designNo'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
-                              }`}
-                            placeholder="(Alt+D)"
-                            value={designNoSearchInput}
-                            onChange={(e) => {
-                              setDesignNoSearchInput(e.target.value);
-                              if (e.target.value.trim().length > 0) {
-                                setIsDesignNoDropdownOpen(true);
-                                setDesignNoHighlightedIndex(0);
-                              } else {
-                                setIsDesignNoDropdownOpen(false);
-                              }
-                            }}
-                            onFocus={() => {
-                              setActivePosColumn("designNo");
-                              if (designNoSearchInput.trim().length > 0) {
-                                setIsDesignNoDropdownOpen(true);
-                                setDesignNoHighlightedIndex(0);
-                              }
-                            }}
-                            onKeyDown={handleDesignNoKeyDown}
-                          />
-                        </div>
-
-                        {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
-                          <div
-                            id="design-no-fixed-dropdown"
-                            style={{
-                              position: 'fixed',
-                              top: `${designNoDropdownCoords.top}px`,
-                              left: `${designNoDropdownCoords.left}px`,
-                              width: '780px',
-                              maxHeight: '340px',
-                              zIndex: 99999
-                            }}
-                            className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-indigo-600 ring-2 ring-indigo-500/30 animate-in fade-in zoom-in-95 duration-100"
-                          >
-                            <div className="p-2.5 bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-indigo-500/40 text-indigo-100 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider border border-indigo-400/30">Design No Search</span>
-                                <span>Found {filteredDesignNoProducts.length} Items • Use ↑ ↓ to navigate & Enter to add</span>
-                              </div>
+                          {/* 3. Item Search Input with Drop Arrow Button & Interactive Dropdown */}
+                          <td ref={itemSearchContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'itemName' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className={`flex items-center bg-white border shadow-inner transition-all ${isEntryActive && activePosColumn === 'itemName'
+                                ? 'border-blue-600 bg-yellow-50 ring-1 ring-blue-500'
+                                : 'border-blue-300'
+                              }`}>
+                              {isEntryActive && activePosColumn === 'itemName' && (
+                                <span className="pl-1 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                              )}
+                              <input
+                                id="posItemNameInput"
+                                type="text"
+                                className={`w-full outline-none p-1 text-xs placeholder-slate-500 font-semibold ${isEntryActive && activePosColumn === 'itemName' ? 'bg-yellow-50 text-slate-950 font-black' : 'focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Search Item (F2)..."
+                                value={itemSearchInputText}
+                                onChange={(e) => setItemSearchInputText(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("itemName");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={handleItemNameSearchKeyDown}
+                              />
                               <button
                                 type="button"
+                                className="px-1.5 py-1 text-slate-500 hover:text-blue-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setIsDesignNoDropdownOpen(false);
+                                  setActivePosColumn("itemName");
+                                  setSelectedCartRowIndex(null);
+                                  handleOpenItemSearchModal();
                                 }}
-                                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
+                                title="Open Detailed Item Search List (F2)"
                               >
-                                ✕
+                                <ChevronDown className="w-3.5 h-3.5" />
                               </button>
                             </div>
 
-                            {filteredDesignNoProducts.length === 0 ? (
-                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching design numbers found</div>
-                            ) : (
-                              <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
-                                <table className="w-full text-left border-collapse text-xs">
-                                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider shadow-2xs">
-                                    <tr>
-                                      <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Design No</th>
-                                      <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Barcode</th>
-                                      <th className="p-2 border-r border-slate-200 min-w-[130px]">Item Name</th>
-                                      <th className="p-2 border-r border-slate-200 w-36 whitespace-nowrap text-center">Firm</th>
-                                      <th className="p-2 border-r border-slate-200 text-center w-12 whitespace-nowrap">Size</th>
-                                      <th className="p-2 border-r border-slate-200 text-center w-16 whitespace-nowrap">Color</th>
-                                      <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Stock</th>
-                                      <th className="p-2 border-r border-slate-200 text-right w-20 whitespace-nowrap">Price</th>
-                                      <th className="p-2 text-center w-16 whitespace-nowrap">Action</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-200 text-slate-700">
-                                    {filteredDesignNoProducts.map((p, pIdx) => {
-                                      const designNo = p.designNo || p.sku || '-';
-                                      const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
-                                      const name = p.itemName || p.name || 'Unnamed Item';
-                                      const firm = p.firmName || p.company || 'New Fashion Style';
-                                      const firmStyle = getFirmStyle(firm);
-                                      const size = p.size || '-';
-                                      const color = p.primaryColor || p.color || '-';
-                                      const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
-                                      const stock = p.availableStock ?? p.stock ?? 0;
-                                      const isHighlighted = pIdx === designNoHighlightedIndex;
+                            {/* Interactive Detailed Item Table Dropdown List */}
+                            {isItemDropdownOpen && (
+                              <div
+                                id="item-search-fixed-dropdown"
+                                style={{
+                                  position: 'fixed',
+                                  top: `${itemSearchDropdownCoords.top}px`,
+                                  left: `${itemSearchDropdownCoords.left}px`,
+                                  width: '780px',
+                                  maxHeight: '340px',
+                                  zIndex: 99999
+                                }}
+                                className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-blue-600 ring-2 ring-blue-500/30 animate-in fade-in zoom-in-95 duration-100"
+                              >
+                                <div className="p-2.5 bg-gradient-to-r from-slate-900 to-blue-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider">Inventory Search</span>
+                                    <span>Found {filteredItemSearchProducts.length} Items • Use ↑ ↓ & Enter</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsItemDropdownOpen(false);
+                                        handleOpenItemSearchModal();
+                                      }}
+                                      className="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider cursor-pointer shadow-xs flex items-center gap-1"
+                                    >
+                                      <span>Full List (F2)</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsItemDropdownOpen(false);
+                                      }}
+                                      className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
 
-                                      return (
-                                        <tr
-                                          id={`designsearch-opt-${pIdx}`}
-                                          key={p._id || p.id || pIdx}
-                                          className={`cursor-pointer transition-colors ${isHighlighted
-                                            ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
-                                            : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50/70' : 'bg-slate-50/70 hover:bg-indigo-50/70'
-                                            }`}
-                                          onClick={() => {
-                                            const added = handleAddProductToCart(p);
-                                            if (added) {
-                                              setDesignNoSearchInput("");
-                                              setIsDesignNoDropdownOpen(false);
-                                              if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
-                                            }
-                                          }}
-                                        >
-                                          <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
-                                            <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-800">{designNo}</span>
-                                          </td>
-                                          <td className="p-2 font-mono text-[11px] font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-800">{barcode}</span>
-                                          </td>
-                                          <td className="p-2 border-r border-slate-200">
-                                            <div className="font-bold text-slate-900">{name}</div>
-                                          </td>
-                                          <td className="p-2 border-r border-slate-200 text-center whitespace-nowrap">
-                                            <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-extrabold uppercase tracking-tight ${firmStyle.badgeClass}`}>
-                                              {firm}
-                                            </span>
-                                          </td>
-                                          <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700 whitespace-nowrap">{size}</td>
-                                          <td className="p-2 text-center border-r border-slate-200 whitespace-nowrap font-medium">{color}</td>
-                                          <td className="p-2 text-center border-r border-slate-200 font-mono font-bold whitespace-nowrap">
-                                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
-                                              {stock} pcs
-                                            </span>
-                                          </td>
-                                          <td className="p-2 text-right font-mono font-black text-slate-900 text-xs border-r border-slate-200 whitespace-nowrap">
-                                            ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                          </td>
-                                          <td className="p-2 text-center whitespace-nowrap">
-                                            <button
-                                              type="button"
-                                              className={`px-2.5 py-1 rounded text-[9.5px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
-                                                }`}
-                                            >
-                                              + Add
-                                            </button>
-                                          </td>
+                                {filteredItemSearchProducts.length === 0 ? (
+                                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching items found</div>
+                                ) : (
+                                  <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                      <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider">
+                                        <tr>
+                                          <th className="p-2 border-r border-slate-200">Barcode / Unique Code</th>
+                                          <th className="p-2 border-r border-slate-200">Item Name & Sub-Item</th>
+                                          <th className="p-2 border-r border-slate-200 text-center">Size</th>
+                                          <th className="p-2 border-r border-slate-200 text-center">Color</th>
+                                          <th className="p-2 border-r border-slate-200 text-center">Stock</th>
+                                          <th className="p-2 border-r border-slate-200 text-right">Price</th>
+                                          <th className="p-2 text-center">Action</th>
                                         </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-200 text-slate-700">
+                                        {filteredItemSearchProducts.map((p, pIdx) => {
+                                          const barcode = p.barcode || p.uniqueCode || p.itemCode || '-';
+                                          const code = p.itemCode || p.productCode || p.sku || '-';
+                                          const name = p.itemName || p.name || 'Unnamed Item';
+                                          const subItem = p.subCategory || p.subItem || p.category || '-';
+                                          const size = p.size || '-';
+                                          const color = p.primaryColor || p.color || '-';
+                                          const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                          const stock = p.availableStock ?? p.stock ?? 0;
+                                          const isHighlighted = pIdx === itemSearchHighlightedIndex;
+
+                                          return (
+                                            <tr
+                                              id={`itemsearch-opt-${pIdx}`}
+                                              key={p._id || p.id || pIdx}
+                                              className={`cursor-pointer transition-colors ${isHighlighted
+                                                ? 'bg-blue-100/90 font-bold border-l-4 border-l-blue-600 text-blue-900 shadow-xs'
+                                                : pIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-slate-50/60 hover:bg-blue-50'
+                                                }`}
+                                              onClick={() => {
+                                                const added = handleAddProductToCart(p);
+                                                if (added) {
+                                                  setItemSearchInputText("");
+                                                  setIsItemDropdownOpen(false);
+                                                  focusPosColumn("barcode", null);
+                                                  if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                                }
+                                              }}
+                                            >
+                                              <td className="p-2 font-mono text-[11px] font-bold text-slate-800 border-r border-slate-200">
+                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-700">{barcode}</span>
+                                              </td>
+                                              <td className="p-2 border-r border-slate-200">
+                                                <div className="font-bold text-slate-900">{name}</div>
+                                                <div className="text-[10px] text-slate-500 font-medium">Code: <span className="font-mono text-blue-600 font-bold">{code}</span> {subItem !== '-' && `• ${subItem}`}</div>
+                                              </td>
+                                              <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700">{size}</td>
+                                              <td className="p-2 text-center border-r border-slate-200">{color}</td>
+                                              <td className="p-2 text-center border-r border-slate-200 font-mono font-bold">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                                  {stock} pcs
+                                                </span>
+                                              </td>
+                                              <td className="p-2 text-right font-mono font-black text-slate-900 text-sm border-r border-slate-200">
+                                                ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                              </td>
+                                              <td className="p-2 text-center">
+                                                <button
+                                                  type="button"
+                                                  className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                                    }`}
+                                                >
+                                                  + Add
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
                               </div>
                             )}
-                          </div>
-                        )}
-                      </td>
+                          </td>
 
-                      {/* 6. Item Code Search Field */}
-                      <td ref={itemCodeContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'itemCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'itemCode' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="itemCodeSearchInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${activePosColumn === 'itemCode'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                          {/* 4. Sub Item Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'subItem' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'subItem' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posSubItemInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${isEntryActive && activePosColumn === 'subItem'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="Sub Item"
+                                value={entrySubItem}
+                                onChange={(e) => setEntrySubItem(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("subItem");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'subItem')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 5. Design No Search Field */}
+                          <td ref={designNoContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'designNo' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'designNo' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="designNoSearchInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${isEntryActive && activePosColumn === 'designNo'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                                  }`}
+                                placeholder="(Alt+D)"
+                                value={designNoSearchInput}
+                                onChange={(e) => {
+                                  setDesignNoSearchInput(e.target.value);
+                                  if (e.target.value.trim().length > 0) {
+                                    setIsDesignNoDropdownOpen(true);
+                                    setDesignNoHighlightedIndex(0);
+                                  } else {
+                                    setIsDesignNoDropdownOpen(false);
+                                  }
+                                }}
+                                onFocus={() => {
+                                  setActivePosColumn("designNo");
+                                  setSelectedCartRowIndex(null);
+                                  if (designNoSearchInput.trim().length > 0) {
+                                    setIsDesignNoDropdownOpen(true);
+                                    setDesignNoHighlightedIndex(0);
+                                  }
+                                }}
+                                onKeyDown={handleDesignNoKeyDown}
+                              />
+                            </div>
+
+                            {isDesignNoDropdownOpen && !isItemSearchModalOpen && !showPaymentModal && !showAlterationModal && !showDueCustomerModal && (
+                              <div
+                                id="design-no-fixed-dropdown"
+                                style={{
+                                  position: 'fixed',
+                                  top: `${designNoDropdownCoords.top}px`,
+                                  left: `${designNoDropdownCoords.left}px`,
+                                  width: '780px',
+                                  maxHeight: '340px',
+                                  zIndex: 99999
+                                }}
+                                className="bg-white border border-slate-300 shadow-2xl rounded-xl overflow-hidden flex flex-col text-slate-800 border-t-4 border-t-indigo-600 ring-2 ring-indigo-500/30 animate-in fade-in zoom-in-95 duration-100"
+                              >
+                                <div className="p-2.5 bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between text-xs font-bold shrink-0 shadow-md">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-indigo-500/40 text-indigo-100 px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider border border-indigo-400/30">Design No Search</span>
+                                    <span>Found {filteredDesignNoProducts.length} Items • Use ↑ ↓ to navigate & Enter to add</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsDesignNoDropdownOpen(false);
+                                    }}
+                                    className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center font-extrabold text-xs cursor-pointer transition-colors"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+
+                                {filteredDesignNoProducts.length === 0 ? (
+                                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50">No matching design numbers found</div>
+                                ) : (
+                                  <div className="overflow-y-auto max-h-[280px] custom-scrollbar">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                      <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[10px] uppercase tracking-wider shadow-2xs">
+                                        <tr>
+                                          <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Design No</th>
+                                          <th className="p-2 border-r border-slate-200 w-24 whitespace-nowrap">Barcode</th>
+                                          <th className="p-2 border-r border-slate-200 min-w-[130px]">Item Name</th>
+                                          <th className="p-2 border-r border-slate-200 w-36 whitespace-nowrap text-center">Firm</th>
+                                          <th className="p-2 border-r border-slate-200 text-center w-12 whitespace-nowrap">Size</th>
+                                          <th className="p-2 border-r border-slate-200 text-center w-16 whitespace-nowrap">Color</th>
+                                          <th className="p-2 border-r border-slate-200 text-center w-14 whitespace-nowrap">Stock</th>
+                                          <th className="p-2 border-r border-slate-200 text-right w-20 whitespace-nowrap">Price</th>
+                                          <th className="p-2 text-center w-16 whitespace-nowrap">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-200 text-slate-700">
+                                        {filteredDesignNoProducts.map((p, pIdx) => {
+                                          const designNo = p.designNo || p.sku || '-';
+                                          const barcode = p.barcode || p.uniqueCode || (p.pieces && p.pieces[0]?.barcode) || '-';
+                                          const name = p.itemName || p.name || 'Unnamed Item';
+                                          const firm = p.firmName || p.company || 'New Fashion Style';
+                                          const firmStyle = getFirmStyle(firm);
+                                          const size = p.size || '-';
+                                          const color = p.primaryColor || p.color || '-';
+                                          const price = p.sellingPrice ?? p.mrp ?? p.defaultMRP ?? 0;
+                                          const stock = p.availableStock ?? p.stock ?? 0;
+                                          const isHighlighted = pIdx === designNoHighlightedIndex;
+
+                                          return (
+                                            <tr
+                                              id={`designsearch-opt-${pIdx}`}
+                                              key={p._id || p.id || pIdx}
+                                              className={`cursor-pointer transition-colors ${isHighlighted
+                                                ? 'bg-indigo-100/90 font-bold border-l-4 border-l-indigo-600 text-indigo-900 shadow-xs'
+                                                : pIdx % 2 === 0 ? 'bg-white hover:bg-indigo-50/70' : 'bg-slate-50/70 hover:bg-indigo-50/70'
+                                                }`}
+                                              onClick={() => {
+                                                const added = handleAddProductToCart(p);
+                                                if (added) {
+                                                  setDesignNoSearchInput("");
+                                                  setIsDesignNoDropdownOpen(false);
+                                                  focusPosColumn("barcode", null);
+                                                  if (onAddNotification) onAddNotification("Item Added", `Added ${name} to bill`, "success");
+                                                }
+                                              }}
+                                            >
+                                              <td className="p-2 font-mono text-[11px] font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
+                                                <span className="bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-800">{designNo}</span>
+                                              </td>
+                                              <td className="p-2 font-mono text-[11px] font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-slate-800">{barcode}</span>
+                                              </td>
+                                              <td className="p-2 border-r border-slate-200">
+                                                <div className="font-bold text-slate-900">{name}</div>
+                                              </td>
+                                              <td className="p-2 border-r border-slate-200 text-center whitespace-nowrap">
+                                                <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-extrabold uppercase tracking-tight ${firmStyle.badgeClass}`}>
+                                                  {firm}
+                                                </span>
+                                              </td>
+                                              <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-700 whitespace-nowrap">{size}</td>
+                                              <td className="p-2 text-center border-r border-slate-200 whitespace-nowrap font-medium">{color}</td>
+                                              <td className="p-2 text-center border-r border-slate-200 font-mono font-bold whitespace-nowrap">
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${stock > 0 ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                                                  {stock} pcs
+                                                </span>
+                                              </td>
+                                              <td className="p-2 text-right font-mono font-black text-slate-900 text-xs border-r border-slate-200 whitespace-nowrap">
+                                                ₹{Number(price).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                              </td>
+                                              <td className="p-2 text-center whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  className={`px-2.5 py-1 rounded text-[9.5px] font-extrabold uppercase transition-all shadow-2xs ${isHighlighted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-800 text-white hover:bg-slate-900'
+                                                    }`}
+                                                >
+                                                  + Add
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 6. Item Code Search Field */}
+                          <td ref={itemCodeContainerRef} className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'itemCode' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'itemCode' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="itemCodeSearchInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs uppercase placeholder-slate-500 font-mono cursor-pointer shadow-inner transition-all ${isEntryActive && activePosColumn === 'itemCode'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-bold'
+                                  }`}
+                                placeholder="SEARCH(F4)"
+                                value={itemCodeSearchInput}
+                                onChange={(e) => setItemCodeSearchInput(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("itemCode");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={handleItemCodeKeyDown}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 7. IPN Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'ipn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'ipn' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posIpnInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-mono shadow-inner transition-all ${isEntryActive && activePosColumn === 'ipn'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="IPN"
+                                value={entryIpn}
+                                onChange={(e) => setEntryIpn(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("ipn");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'ipn')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 8. Quantity Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${isEntryActive && activePosColumn === 'quantity' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'quantity' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posQuantityInput"
+                                type="number"
+                                min="1"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-bold text-center shadow-inner transition-all ${isEntryActive && activePosColumn === 'quantity'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="1"
+                                value={entryQty}
+                                onChange={(e) => handleEntryQtyChange(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("quantity");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'quantity')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 9. Colour (P) Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'primaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'primaryColor' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posPrimaryColorInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${isEntryActive && activePosColumn === 'primaryColor'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="Color (P)"
+                                value={entryColorP}
+                                onChange={(e) => setEntryColorP(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("primaryColor");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'primaryColor')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 10. Colour (S) Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'secondaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'secondaryColor' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posSecondaryColorInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${isEntryActive && activePosColumn === 'secondaryColor'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="Color (S)"
+                                value={entryColorS}
+                                onChange={(e) => setEntryColorS(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("secondaryColor");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'secondaryColor')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 11. Size Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'size' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'size' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posSizeInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-bold shadow-inner transition-all ${isEntryActive && activePosColumn === 'size'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Size"
+                                value={entrySize}
+                                onChange={(e) => setEntrySize(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("size");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'size')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 12. GST Slab Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${isEntryActive && activePosColumn === 'gstSlab' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'gstSlab' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posGstSlabInput"
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                list="gst-slab-options"
+                                className={`w-full bg-white border outline-none p-1 text-[10px] font-bold text-center shadow-inner transition-all ${isEntryActive && activePosColumn === 'gstSlab'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder={isGstApplied ? `${gstRateInput}%` : 'GST%'}
+                                value={entryGst}
+                                onChange={(e) => setEntryGst(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("gstSlab");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'gstSlab')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 13. MRP Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${isEntryActive && activePosColumn === 'mrp' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'mrp' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posMrpInput"
+                                type="number"
+                                step="0.01"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${isEntryActive && activePosColumn === 'mrp'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="MRP"
+                                value={entryMrp}
+                                onChange={(e) => handleEntryMrpChange(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("mrp");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'mrp')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 14. Discount Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${isEntryActive && activePosColumn === 'discount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="flex items-center justify-center gap-0.5">
+                              {isEntryActive && activePosColumn === 'discount' && (
+                                <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
+                              )}
+                              <select
+                                value={entryDiscountType}
+                                onChange={(e) => handleEntryDiscountChange(entryDiscount, e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("discount");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                className="bg-white border border-blue-300 rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 outline-none cursor-pointer"
+                              >
+                                <option value="amount">₹</option>
+                                <option value="percent">%</option>
+                              </select>
+                              <input
+                                id="posDiscountInput"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className={`w-12 bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${isEntryActive && activePosColumn === 'discount'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Disc"
+                                value={entryDiscount}
+                                onChange={(e) => handleEntryDiscountChange(e.target.value, entryDiscountType)}
+                                onFocus={() => {
+                                  setActivePosColumn("discount");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'discount')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 15. Rate Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${isEntryActive && activePosColumn === 'rate' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'rate' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posRateInput"
+                                type="number"
+                                step="0.01"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${isEntryActive && activePosColumn === 'rate'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Rate"
+                                value={entryRate}
+                                onChange={(e) => handleEntryRateChange(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("rate");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'rate')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 16. Amount Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${isEntryActive && activePosColumn === 'amount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'amount' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posAmountInput"
+                                type="number"
+                                step="0.01"
+                                className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${isEntryActive && activePosColumn === 'amount'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Amt"
+                                value={entryAmount}
+                                onChange={(e) => handleEntryAmountChange(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("amount");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'amount')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 17. Salesman 1 Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'salesman1' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'salesman1' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posSalesman1Input"
+                                type="text"
+                                list="pos-staff-options"
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${isEntryActive && activePosColumn === 'salesman1'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="Sales 1"
+                                value={entrySalesman1}
+                                onChange={(e) => setEntrySalesman1(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("salesman1");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman1')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 18. Salesman 2 Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'salesman2' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'salesman2' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posSalesman2Input"
+                                type="text"
+                                list="pos-staff-options"
+                                className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${isEntryActive && activePosColumn === 'salesman2'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100 font-medium'
+                                  }`}
+                                placeholder="Sales 2"
+                                value={entrySalesman2}
+                                onChange={(e) => setEntrySalesman2(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("salesman2");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman2')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 19. Firm Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${isEntryActive && activePosColumn === 'firm' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'firm' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posFirmInput"
+                                type="text"
+                                list="pos-firm-options"
+                                className={`w-full bg-white border outline-none p-1 text-[10px] font-extrabold uppercase shadow-inner transition-all ${isEntryActive && activePosColumn === 'firm'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Firm"
+                                value={entryFirm}
+                                onChange={(e) => setEntryFirm(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("firm");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'firm')}
+                              />
+                            </div>
+                            <datalist id="pos-firm-options">
+                              <option value="NEW FASHION STYLE (PALAM)" />
+                              <option value="FASHION SUIT (MAIN BAZAR)" />
+                              <option value="VASTRA FABRICS" />
+                              <option value="RANGOLI ENTERPRISES" />
+                            </datalist>
+                          </td>
+
+                          {/* 20. Counter Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${isEntryActive && activePosColumn === 'counter' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'counter' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posCounterInput"
+                                type="text"
+                                className={`w-full text-center bg-white border outline-none p-1 text-[10px] font-bold shadow-inner transition-all ${isEntryActive && activePosColumn === 'counter'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="Counter"
+                                value={entryCounter}
+                                onChange={(e) => setEntryCounter(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("counter");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'counter')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 21. HSN Entry Input */}
+                          <td className={`border-r border-slate-300 p-0.5 relative transition-all ${isEntryActive && activePosColumn === 'hsn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <div className="relative flex items-center">
+                              {isEntryActive && activePosColumn === 'hsn' && (
+                                <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
+                              )}
+                              <input
+                                id="posHsnInput"
+                                type="text"
+                                className={`w-full bg-white border outline-none p-1 font-mono text-[10px] shadow-inner transition-all ${isEntryActive && activePosColumn === 'hsn'
+                                    ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
+                                    : 'border-blue-300 focus:bg-yellow-100'
+                                  }`}
+                                placeholder="HSN"
+                                value={entryHsn}
+                                onChange={(e) => setEntryHsn(e.target.value)}
+                                onFocus={() => {
+                                  setActivePosColumn("hsn");
+                                  setSelectedCartRowIndex(null);
+                                }}
+                                onKeyDown={(e) => handleEntryCellKeyDown(e, 'hsn')}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 22. Action Entry Column */}
+                          <td className={`p-0.5 text-center transition-all ${isEntryActive && activePosColumn === 'action' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
+                            <button
+                              id="posAddButton"
+                              type="button"
+                              onClick={handleAddManualEntryItem}
+                              onFocus={() => {
+                                setActivePosColumn("action");
+                                setSelectedCartRowIndex(null);
+                              }}
+                              onKeyDown={(e) => handleEntryCellKeyDown(e, 'action')}
+                              className={`w-full text-white font-black text-[10px] py-1 rounded shadow-xs cursor-pointer uppercase transition-colors ${
+                                isEntryActive && activePosColumn === 'action' ? 'bg-blue-700 ring-2 ring-amber-300 ring-offset-1' : 'bg-blue-600 hover:bg-blue-700'
                               }`}
-                            placeholder="SEARCH(F4)"
-                            value={itemCodeSearchInput}
-                            onChange={(e) => setItemCodeSearchInput(e.target.value)}
-                            onFocus={() => setActivePosColumn("itemCode")}
-                            onKeyDown={handleItemCodeKeyDown}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 7. IPN Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'ipn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'ipn' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posIpnInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-mono shadow-inner transition-all ${activePosColumn === 'ipn'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="IPN"
-                            value={entryIpn}
-                            onChange={(e) => setEntryIpn(e.target.value)}
-                            onFocus={() => setActivePosColumn("ipn")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'ipn')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 8. Quantity Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'quantity' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'quantity' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posQuantityInput"
-                            type="number"
-                            min="1"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-bold text-center shadow-inner transition-all ${activePosColumn === 'quantity'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="1"
-                            value={entryQty}
-                            onChange={(e) => handleEntryQtyChange(e.target.value)}
-                            onFocus={() => setActivePosColumn("quantity")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'quantity')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 9. Colour (P) Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'primaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'primaryColor' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posPrimaryColorInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'primaryColor'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="Color (P)"
-                            value={entryColorP}
-                            onChange={(e) => setEntryColorP(e.target.value)}
-                            onFocus={() => setActivePosColumn("primaryColor")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'primaryColor')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 10. Colour (S) Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'secondaryColor' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'secondaryColor' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posSecondaryColorInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'secondaryColor'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="Color (S)"
-                            value={entryColorS}
-                            onChange={(e) => setEntryColorS(e.target.value)}
-                            onFocus={() => setActivePosColumn("secondaryColor")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'secondaryColor')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 11. Size Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'size' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'size' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posSizeInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-bold shadow-inner transition-all ${activePosColumn === 'size'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Size"
-                            value={entrySize}
-                            onChange={(e) => setEntrySize(e.target.value)}
-                            onFocus={() => setActivePosColumn("size")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'size')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 12. GST Slab Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'gstSlab' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'gstSlab' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posGstSlabInput"
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            list="gst-slab-options"
-                            className={`w-full bg-white border outline-none p-1 text-[10px] font-bold text-center shadow-inner transition-all ${activePosColumn === 'gstSlab'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder={isGstApplied ? `${gstRateInput}%` : 'GST%'}
-                            value={entryGst}
-                            onChange={(e) => setEntryGst(e.target.value)}
-                            onFocus={() => setActivePosColumn("gstSlab")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'gstSlab')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 13. MRP Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'mrp' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'mrp' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posMrpInput"
-                            type="number"
-                            step="0.01"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${activePosColumn === 'mrp'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="MRP"
-                            value={entryMrp}
-                            onChange={(e) => handleEntryMrpChange(e.target.value)}
-                            onFocus={() => setActivePosColumn("mrp")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'mrp')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 14. Discount Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'discount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="flex items-center justify-center gap-0.5">
-                          {activePosColumn === 'discount' && (
-                            <span className="text-[9px] text-blue-700 font-black animate-pulse pointer-events-none">▶</span>
-                          )}
-                          <select
-                            value={entryDiscountType}
-                            onChange={(e) => handleEntryDiscountChange(entryDiscount, e.target.value)}
-                            onFocus={() => setActivePosColumn("discount")}
-                            className="bg-white border border-blue-300 rounded px-1 py-0.5 text-[10px] font-bold text-slate-700 outline-none cursor-pointer"
-                          >
-                            <option value="amount">₹</option>
-                            <option value="percent">%</option>
-                          </select>
-                          <input
-                            id="posDiscountInput"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className={`w-12 bg-white border outline-none p-1 text-xs font-bold text-right shadow-inner transition-all ${activePosColumn === 'discount'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Disc"
-                            value={entryDiscount}
-                            onChange={(e) => handleEntryDiscountChange(e.target.value, entryDiscountType)}
-                            onFocus={() => setActivePosColumn("discount")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'discount')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 15. Rate Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'rate' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'rate' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posRateInput"
-                            type="number"
-                            step="0.01"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${activePosColumn === 'rate'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Rate"
-                            value={entryRate}
-                            onChange={(e) => handleEntryRateChange(e.target.value)}
-                            onFocus={() => setActivePosColumn("rate")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'rate')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 16. Amount Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-right transition-all ${activePosColumn === 'amount' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'amount' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posAmountInput"
-                            type="number"
-                            step="0.01"
-                            className={`w-full bg-white border outline-none p-1 text-xs font-mono font-bold text-right shadow-inner transition-all ${activePosColumn === 'amount'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pr-2'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Amt"
-                            value={entryAmount}
-                            onChange={(e) => handleEntryAmountChange(e.target.value)}
-                            onFocus={() => setActivePosColumn("amount")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'amount')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 17. Salesman 1 Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman1' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'salesman1' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posSalesman1Input"
-                            type="text"
-                            list="pos-staff-options"
-                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'salesman1'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="Sales 1"
-                            value={entrySalesman1}
-                            onChange={(e) => setEntrySalesman1(e.target.value)}
-                            onFocus={() => setActivePosColumn("salesman1")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman1')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 18. Salesman 2 Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'salesman2' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'salesman2' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posSalesman2Input"
-                            type="text"
-                            list="pos-staff-options"
-                            className={`w-full bg-white border outline-none p-1 text-xs shadow-inner transition-all ${activePosColumn === 'salesman2'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100 font-medium'
-                              }`}
-                            placeholder="Sales 2"
-                            value={entrySalesman2}
-                            onChange={(e) => setEntrySalesman2(e.target.value)}
-                            onFocus={() => setActivePosColumn("salesman2")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'salesman2')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 19. Firm Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'firm' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'firm' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posFirmInput"
-                            type="text"
-                            list="pos-firm-options"
-                            className={`w-full bg-white border outline-none p-1 text-[10px] font-extrabold uppercase shadow-inner transition-all ${activePosColumn === 'firm'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Firm"
-                            value={entryFirm}
-                            onChange={(e) => setEntryFirm(e.target.value)}
-                            onFocus={() => setActivePosColumn("firm")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'firm')}
-                          />
-                        </div>
-                        <datalist id="pos-firm-options">
-                          <option value="NEW FASHION STYLE (PALAM)" />
-                          <option value="FASHION SUIT (MAIN BAZAR)" />
-                          <option value="VASTRA FABRICS" />
-                          <option value="RANGOLI ENTERPRISES" />
-                        </datalist>
-                      </td>
-
-                      {/* 20. Counter Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative text-center transition-all ${activePosColumn === 'counter' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'counter' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posCounterInput"
-                            type="text"
-                            className={`w-full text-center bg-white border outline-none p-1 text-[10px] font-bold shadow-inner transition-all ${activePosColumn === 'counter'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="Counter"
-                            value={entryCounter}
-                            onChange={(e) => setEntryCounter(e.target.value)}
-                            onFocus={() => setActivePosColumn("counter")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'counter')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 21. HSN Entry Input */}
-                      <td className={`border-r border-slate-300 p-0.5 relative transition-all ${activePosColumn === 'hsn' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <div className="relative flex items-center">
-                          {activePosColumn === 'hsn' && (
-                            <span className="absolute -left-0.5 text-[9px] text-blue-700 font-black animate-pulse pointer-events-none z-20">▶</span>
-                          )}
-                          <input
-                            id="posHsnInput"
-                            type="text"
-                            className={`w-full bg-white border outline-none p-1 font-mono text-[10px] shadow-inner transition-all ${activePosColumn === 'hsn'
-                                ? 'border-blue-600 bg-yellow-50 text-slate-950 ring-1 ring-blue-500 font-black pl-3'
-                                : 'border-blue-300 focus:bg-yellow-100'
-                              }`}
-                            placeholder="HSN"
-                            value={entryHsn}
-                            onChange={(e) => setEntryHsn(e.target.value)}
-                            onFocus={() => setActivePosColumn("hsn")}
-                            onKeyDown={(e) => handleEntryCellKeyDown(e, 'hsn')}
-                          />
-                        </div>
-                      </td>
-
-                      {/* 22. Action Entry Column */}
-                      <td className={`p-0.5 text-center transition-all ${activePosColumn === 'action' ? 'bg-amber-100/90 ring-2 ring-blue-600 ring-inset z-10' : ''}`}>
-                        <button
-                          id="posAddButton"
-                          type="button"
-                          onClick={handleAddManualEntryItem}
-                          onFocus={() => setActivePosColumn("action")}
-                          onKeyDown={(e) => handleEntryCellKeyDown(e, 'action')}
-                          className={`w-full text-white font-black text-[10px] py-1 rounded shadow-xs cursor-pointer uppercase transition-colors ${
-                            activePosColumn === 'action' ? 'bg-blue-700 ring-2 ring-amber-300 ring-offset-1' : 'bg-blue-600 hover:bg-blue-700'
-                          }`}
-                          title="Add line item to bill (or press Enter)"
-                        >
-                          {activePosColumn === 'action' ? '▶ Add' : '+ Add'}
-                        </button>
-                      </td>
-                    </tr>
+                              title="Add line item to bill (or press Enter)"
+                            >
+                              {isEntryActive && activePosColumn === 'action' ? '▶ Add' : '+ Add'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                   {/* Staff Datalist for Autocomplete */}
                   <datalist id="pos-staff-options">
@@ -9478,8 +9557,8 @@ export const BillingPOSView = ({
 
                 {/* Summary & GST Configuration Container */}
                 <div className="flex flex-wrap items-start gap-1.5">
-                  {/* Summary Block */}
-                  <div className="bg-white border border-slate-400 w-[390px] p-1 shadow-sm">
+                  {/* Summary Block with GST SUMMARY */}
+                  <div className="bg-white border border-slate-400 w-[420px] p-1.5 shadow-sm space-y-1.5">
                     <table className="w-full text-xs font-bold text-slate-700 table-fixed">
                       <tbody>
                         <tr>
@@ -9495,29 +9574,6 @@ export const BillingPOSView = ({
                             <td className="border border-slate-300 p-1 px-2 bg-rose-50 text-rose-700 font-bold">Return Items</td>
                             <td className="border border-slate-300 p-1 px-2 text-right text-rose-700 font-mono font-bold">{cart.filter(i => i.isReturn).reduce((a, b) => a + (b.quantity || 1), 0)} PCS</td>
                           </tr>
-                        )}
-                        {isGstApplied && (
-                          <>
-                            <tr>
-                              <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Taxable Amt</td>
-                              <td className="border border-slate-300 p-1 px-2 text-right text-slate-800 font-mono">₹{(taxableAmount || 0).toFixed(2)}</td>
-                              <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Total Tax</td>
-                              <td className="border border-slate-300 p-1 px-2 text-right text-purple-700 font-mono">₹{(totalTax || 0).toFixed(2)}</td>
-                            </tr>
-                            {igstAmount > 0 ? (
-                              <tr>
-                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">IGST ({gstRateInput}%)</td>
-                                <td className="border border-slate-300 p-1 px-2 text-right text-purple-600 font-mono" colSpan={3}>₹{igstAmount.toFixed(2)}</td>
-                              </tr>
-                            ) : (
-                              <tr>
-                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">CGST ({cgstRateInput}%)</td>
-                                <td className="border border-slate-300 p-1 px-2 text-right text-indigo-600 font-mono">₹{cgstAmount.toFixed(2)}</td>
-                                <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">SGST ({sgstRateInput}%)</td>
-                                <td className="border border-slate-300 p-1 px-2 text-right text-indigo-600 font-mono">₹{sgstAmount.toFixed(2)}</td>
-                              </tr>
-                            )}
-                          </>
                         )}
                         <tr>
                           <td className="border border-slate-300 p-1 px-2 bg-[#f0f0f0]">Net Amt</td>
@@ -9538,6 +9594,57 @@ export const BillingPOSView = ({
                         </tr>
                       </tbody>
                     </table>
+
+                    {/* GST SUMMARY Table matching Invoice Print format */}
+                    <div className="border border-black overflow-hidden shadow-2xs">
+                      <div className="bg-black text-white text-[11px] font-black tracking-wider text-center py-0.5 uppercase">
+                        GST SUMMARY
+                      </div>
+                      <table className="w-full text-[10px] border-collapse bg-white table-fixed">
+                        <thead className="bg-white text-[8.5px] uppercase font-bold text-black border-b border-black">
+                          <tr>
+                            <th className="p-0.5 border-r border-black text-center font-black w-[13%]">GST %</th>
+                            <th className="p-0.5 border-r border-black text-center font-black w-[22%]">TAXABLE<br/>AMOUNT</th>
+                            <th className="p-0.5 border-r border-black text-center font-black w-[16%]">CGST<br/>TAX</th>
+                            <th className="p-0.5 border-r border-black text-center font-black w-[16%]">SGST<br/>TAX</th>
+                            <th className="p-0.5 border-r border-black text-center font-black w-[16%]">IGST<br/>TAX</th>
+                            <th className="p-0.5 text-center font-black w-[17%]">TOTAL<br/>TAX</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-black/40 font-mono text-[9.5px]">
+                          {taxBreakdown && taxBreakdown.length > 0 ? (
+                            taxBreakdown.map((row, rIdx) => (
+                              <tr key={rIdx} className="hover:bg-slate-50">
+                                <td className="p-0.5 border-r border-black text-center font-bold">{row.gstPercent}%</td>
+                                <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(row.taxableAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(row.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(row.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(row.igst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className="p-0.5 text-right font-bold text-slate-900 pr-1">₹{(row.totalTax || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="p-0.5 border-r border-black text-center font-bold">{gstRateInput || 5}%</td>
+                              <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(taxableAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="p-0.5 border-r border-black text-right font-semibold pr-1">₹{(igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="p-0.5 text-right font-bold text-slate-900 pr-1">₹{(totalTax || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                          )}
+                          {/* TOTAL ROW */}
+                          <tr className="bg-slate-100 font-bold border-t border-black text-black font-mono">
+                            <td className="p-0.5 border-r border-black text-center uppercase font-black text-[9px]">TOTAL</td>
+                            <td className="p-0.5 border-r border-black text-right font-black pr-1">₹{(taxableAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="p-0.5 border-r border-black text-right font-black pr-1">₹{(cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="p-0.5 border-r border-black text-right font-black pr-1">₹{(sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="p-0.5 border-r border-black text-right font-black pr-1">₹{(igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="p-0.5 text-right font-black text-slate-950 pr-1">₹{(totalTax || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                     {/* Applied Discount Block */}
                     {appliedDiscountsList && appliedDiscountsList.length > 0 && (
                       <div className="w-full mt-1 space-y-1">
