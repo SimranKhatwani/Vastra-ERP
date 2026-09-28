@@ -184,14 +184,34 @@ class PTImportService {
           const vCode = String(getVal(vRow, 'VENDOR CODE', 'Vendor Code') || vName.substring(0, 8).toUpperCase()).trim();
           const vGst = String(getVal(vRow, 'GST NUMBER', 'GSTIN', 'Vendor GST') || '').trim();
           const vCompany = String(getVal(vRow, 'COMPANY NAME', 'Company Name', 'Firm') || '').trim();
-          const vPhone = [getVal(vRow, 'SALES/GENERAL CONTACT', 'Phone', 'Contact'), getVal(vRow, 'LANDLINE CONTACT', 'Landline')].filter(Boolean).join(' / ');
-          const vEmail = String(getVal(vRow, 'PRIMARY EMAIL', 'Email') || '').trim();
+          const vBrand = String(getVal(vRow, 'BRAND NAME(S)', 'BRAND NAME', 'BRAND NAMES', 'BRAND', 'Brand', 'Brands', 'Brand Name', 'Brand(s)', 'BRANDS') || '').trim();
+          const vCin = String(getVal(vRow, 'CIN', 'Cin', 'CIN NO', 'CIN NUMBER') || '').trim();
+          const vUdyam = String(getVal(vRow, 'UDYAM REG. NO', 'UDYAM REG NO', 'UDYAM', 'Udyam', 'UDYAM NO') || '').trim();
+          
+          const vSalesContact = String(getVal(vRow, 'SALES/GENERAL CONTACT', 'Sales Contact', 'Sales') || '').trim();
+          const vAccountsContact = String(getVal(vRow, 'ACCOUNTS CONTACT', 'Accounts Contact', 'Accounts') || '').trim();
+          const vDispatchContact = String(getVal(vRow, 'DISPATCH CONTACT', 'Dispatch Contact', 'Dispatch') || '').trim();
+          const vAppointmentContact = String(getVal(vRow, 'APPOINTMENT CONTACT', 'Appointment Contact', 'Appointment') || '').trim();
+          const vPhone = [vSalesContact, getVal(vRow, 'LANDLINE CONTACT', 'Landline'), getVal(vRow, 'Phone', 'Contact')].filter(Boolean).join(' / ');
+
+          const vPrimaryEmail = String(getVal(vRow, 'PRIMARY EMAIL', 'Primary Email', 'Email') || '').trim();
+          const vAccountsEmail = String(getVal(vRow, 'ACCOUNTS EMAIL', 'Accounts Email') || '').trim();
+          const vDispatchEmail = String(getVal(vRow, 'DISPATCH EMAIL', 'Dispatch Email', 'ORDER/DISPATCH EMAIL') || '').trim();
+
           const vAddress = String(getVal(vRow, 'OFFICE ADDRESS', 'Address') || '').trim();
           const vCity = String(getVal(vRow, 'CITY', 'City') || '').trim();
           const vState = String(getVal(vRow, 'STATE', 'State', 'STAE') || '').trim();
           const vStateCode = String(getVal(vRow, 'STATE CODE', 'State Code') || '').trim();
           const vPincode = String(getVal(vRow, 'PINCODE', 'Pincode', 'PIN') || '').trim();
           const vPan = String(getVal(vRow, 'PAN NUMBER', 'PAN') || '').trim();
+
+          const vTransport = String(getVal(vRow, 'PREFERRED TRANSPORT', 'TRANSPORT', 'Transport', 'Transporter') || '').trim();
+          const vStation = String(getVal(vRow, 'STATION', 'Station', 'DESTINATION', 'Destination') || '').trim();
+          const vPaymentTerms = String(getVal(vRow, 'PAYMENT TERMS', 'Payment Terms', 'TERMS', 'Terms') || '').trim();
+          const rawCreditDays = getVal(vRow, 'CREDIT DAYS', 'Credit Days');
+          const vCreditDays = rawCreditDays ? Number(rawCreditDays) : undefined;
+          const rawCreditLimit = getVal(vRow, 'CREDIT LIMIT', 'Credit Limit');
+          const vCreditLimit = rawCreditLimit ? Number(rawCreditLimit) : undefined;
 
           const vBankName = String(getVal(vRow, 'BANK NAME', 'Bank Name', 'Bank') || '').trim();
           const vAccountNo = String(getVal(vRow, 'ACCOUNT NUMBER', 'ACCOUNT NO', 'A/C NO') || '').trim();
@@ -219,6 +239,19 @@ class PTImportService {
             upiId: vUpi
           };
 
+          const contacts = {
+            salesContact: vSalesContact,
+            accountsContact: vAccountsContact,
+            dispatchContact: vDispatchContact,
+            appointmentContact: vAppointmentContact
+          };
+
+          const emails = {
+            primaryEmail: vPrimaryEmail,
+            accountsEmail: vAccountsEmail,
+            dispatchEmail: vDispatchEmail
+          };
+
           if (!vendor) {
             const created = await Vendor.create([{
               tenantId,
@@ -226,15 +259,27 @@ class PTImportService {
               vendorCode: vCode,
               gstin: vGst,
               companyName: vCompany,
+              brand: vBrand,
+              brandNames: vBrand ? [vBrand] : [],
               phone: vPhone || 'N/A',
-              email: vEmail,
+              email: vPrimaryEmail,
               address: vAddress,
               city: vCity,
               state: vState,
               stateCode: vStateCode,
               pincode: vPincode,
               panNumber: vPan,
+              cin: vCin,
+              udyamNo: vUdyam,
+              contacts,
+              emails,
+              transport: vTransport,
+              station: vStation,
+              paymentTerms: vPaymentTerms,
+              creditDays: vCreditDays,
+              creditLimit: vCreditLimit,
               bankDetails,
+              vendorDataRow: vRow,
               importBatchId: historyId
             }], { session });
             vendor = created[0];
@@ -248,20 +293,34 @@ class PTImportService {
             vendor.vendorCode = vCode || vendor.vendorCode;
             vendor.gstin = vGst || vendor.gstin;
             vendor.companyName = vCompany || vendor.companyName;
+            if (vBrand) {
+              vendor.brand = vBrand;
+              vendor.brandNames = Array.from(new Set([...(vendor.brandNames || []), vBrand]));
+            }
             if (vPhone) vendor.phone = vPhone;
-            vendor.email = vEmail || vendor.email;
+            if (vPrimaryEmail) vendor.email = vPrimaryEmail;
             vendor.address = vAddress || vendor.address;
             vendor.city = vCity || vendor.city;
             vendor.state = vState || vendor.state;
             vendor.stateCode = vStateCode || vendor.stateCode;
             vendor.pincode = vPincode || vendor.pincode;
             vendor.panNumber = vPan || vendor.panNumber;
+            if (vCin) vendor.cin = vCin;
+            if (vUdyam) vendor.udyamNo = vUdyam;
+            vendor.contacts = { ...(vendor.contacts || {}), ...contacts };
+            vendor.emails = { ...(vendor.emails || {}), ...emails };
+            if (vTransport) vendor.transport = vTransport;
+            if (vStation) vendor.station = vStation;
+            if (vPaymentTerms) vendor.paymentTerms = vPaymentTerms;
+            if (vCreditDays) vendor.creditDays = vCreditDays;
+            if (vCreditLimit) vendor.creditLimit = vCreditLimit;
             if (!vendor.bankDetails) vendor.bankDetails = {};
             if (vBankName) vendor.bankDetails.bankName = vBankName;
             if (vAccountNo) vendor.bankDetails.accountNumber = vAccountNo;
             if (vIfsc) vendor.bankDetails.ifscCode = vIfsc;
             if (vBranch) vendor.bankDetails.branchName = vBranch;
             if (vUpi) vendor.bankDetails.upiId = vUpi;
+            vendor.vendorDataRow = { ...(vendor.vendorDataRow || {}), ...vRow };
             await vendor.save({ session });
           }
           
@@ -531,12 +590,20 @@ class PTImportService {
                 name: vendorName,
                 vendorCode,
                 gstin: vendorGst,
+                brand: brandName && brandName !== 'GENERIC BRAND' ? brandName : '',
+                brandNames: brandName && brandName !== 'GENERIC BRAND' ? [brandName] : [],
                 importBatchId: historyId
               }], { session });
               vendor = created[0];
-            } else if (vendor.isDeleted) {
-              vendor.isDeleted = false;
-              vendor.status = 'ACTIVE';
+            } else {
+              if (vendor.isDeleted) {
+                vendor.isDeleted = false;
+                vendor.status = 'ACTIVE';
+              }
+              if (brandName && brandName !== 'GENERIC BRAND' && !vendor.brand) {
+                vendor.brand = brandName;
+                vendor.brandNames = Array.from(new Set([...(vendor.brandNames || []), brandName]));
+              }
               await vendor.save({ session });
             }
             

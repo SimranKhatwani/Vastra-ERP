@@ -395,23 +395,55 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     const totalRows = parsedRows.length;
     const totalCols = EDITABLE_COLUMNS.length;
 
-    // Enter: Navigate forward to next column (or next row's first column)
+    const focusCell = (r, c) => {
+      if (r < 0 || r >= totalRows || c < 0 || c >= totalCols) return false;
+      const targetColKey = EDITABLE_COLUMNS[c];
+      const targetEl = document.getElementById(`pt-cell-${r}-${targetColKey}`);
+      if (targetEl && !targetEl.disabled) {
+        targetEl.focus();
+        if (typeof targetEl.select === "function") {
+          try {
+            targetEl.select();
+          } catch (_) {}
+        }
+        return true;
+      }
+      return false;
+    };
+
+    const moveToNext = () => {
+      let r = rowIndex;
+      let c = colIndex + 1;
+      while (r < totalRows) {
+        while (c < totalCols) {
+          if (focusCell(r, c)) return;
+          c++;
+        }
+        r++;
+        c = 0;
+      }
+    };
+
+    const moveToPrev = () => {
+      let r = rowIndex;
+      let c = colIndex - 1;
+      while (r >= 0) {
+        while (c >= 0) {
+          if (focusCell(r, c)) return;
+          c--;
+        }
+        r--;
+        c = totalCols - 1;
+      }
+    };
+
+    // Enter: Navigate forward (or backward if Shift+Enter)
     if (e.key === "Enter") {
       e.preventDefault();
-      if (colIndex < totalCols - 1) {
-        const nextColKey = EDITABLE_COLUMNS[colIndex + 1];
-        const nextEl = document.getElementById(`pt-cell-${rowIndex}-${nextColKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
-      } else if (rowIndex < totalRows - 1) {
-        const nextColKey = EDITABLE_COLUMNS[0];
-        const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${nextColKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
+      if (e.shiftKey) {
+        moveToPrev();
+      } else {
+        moveToNext();
       }
       return;
     }
@@ -420,11 +452,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex < totalRows - 1) {
-        const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${colKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
+        focusCell(rowIndex + 1, colIndex);
       }
       return;
     }
@@ -433,65 +461,56 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
     if (e.key === "ArrowUp") {
       e.preventDefault();
       if (rowIndex > 0) {
-        const prevEl = document.getElementById(`pt-cell-${rowIndex - 1}-${colKey}`);
-        if (prevEl) {
-          prevEl.focus();
-          if (typeof prevEl.select === "function") prevEl.select();
-        }
+        focusCell(rowIndex - 1, colIndex);
       }
       return;
     }
 
     // Left Arrow: Move backward to previous column (or previous row's last column)
     if (e.key === "ArrowLeft") {
-      const val = e.target.value ?? "";
-      const isAtStart = e.target.selectionStart === 0 && e.target.selectionEnd === 0;
-      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === val.length;
-      if (isAtStart || isAllSelected || !val) {
-        if (colIndex > 0) {
-          e.preventDefault();
-          const prevColKey = EDITABLE_COLUMNS[colIndex - 1];
-          const prevEl = document.getElementById(`pt-cell-${rowIndex}-${prevColKey}`);
-          if (prevEl) {
-            prevEl.focus();
-            if (typeof prevEl.select === "function") prevEl.select();
-          }
-        } else if (rowIndex > 0) {
-          e.preventDefault();
-          const prevColKey = EDITABLE_COLUMNS[totalCols - 1];
-          const prevEl = document.getElementById(`pt-cell-${rowIndex - 1}-${prevColKey}`);
-          if (prevEl) {
-            prevEl.focus();
-            if (typeof prevEl.select === "function") prevEl.select();
-          }
+      let canMoveLeft = false;
+      const val = String(e.target.value ?? "");
+      try {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        if (start === null || start === undefined) {
+          // number, date, or other inputs without selection API support in browser
+          canMoveLeft = true;
+        } else {
+          // Caret at the beginning (0), or entire text is highlighted, or empty string
+          canMoveLeft = (start === 0 && end === 0) || (start === 0 && end === val.length) || !val;
         }
+      } catch (_) {
+        // Safe fallback if selectionStart throws DOMException on input type='number' etc.
+        canMoveLeft = true;
+      }
+
+      if (canMoveLeft) {
+        e.preventDefault();
+        moveToPrev();
       }
       return;
     }
 
     // Right Arrow: Move forward to next column
     if (e.key === "ArrowRight") {
-      const val = e.target.value ?? "";
-      const isAtEnd = e.target.selectionStart === val.length;
-      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === val.length;
-      if (isAtEnd || isAllSelected || !val) {
-        if (colIndex < totalCols - 1) {
-          e.preventDefault();
-          const nextColKey = EDITABLE_COLUMNS[colIndex + 1];
-          const nextEl = document.getElementById(`pt-cell-${rowIndex}-${nextColKey}`);
-          if (nextEl) {
-            nextEl.focus();
-            if (typeof nextEl.select === "function") nextEl.select();
-          }
-        } else if (rowIndex < totalRows - 1) {
-          e.preventDefault();
-          const nextColKey = EDITABLE_COLUMNS[0];
-          const nextEl = document.getElementById(`pt-cell-${rowIndex + 1}-${nextColKey}`);
-          if (nextEl) {
-            nextEl.focus();
-            if (typeof nextEl.select === "function") nextEl.select();
-          }
+      let canMoveRight = false;
+      const val = String(e.target.value ?? "");
+      try {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        if (start === null || start === undefined) {
+          canMoveRight = true;
+        } else {
+          canMoveRight = (start === val.length) || (start === 0 && end === val.length) || !val;
         }
+      } catch (_) {
+        canMoveRight = true;
+      }
+
+      if (canMoveRight) {
+        e.preventDefault();
+        moveToNext();
       }
       return;
     }
@@ -1411,7 +1430,19 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
           handleWhatsAppShare={handleWhatsAppShare}
           handleExportPTExcel={handleExportPTExcel}
           onClose={() => {
-            // Full reset so the user can import the same or a new PT file immediately
+            if (onClose) {
+              onClose();
+            } else {
+              setStep("upload");
+              setRawRows([]);
+              setHeaders([]);
+              setColumnMapping({});
+              setGlobalValues({});
+              setParsedRows([]);
+              setCreatedVoucher(null);
+            }
+          }}
+          onImportAnother={() => {
             setStep("upload");
             setRawRows([]);
             setHeaders([]);
@@ -1426,7 +1457,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
   );
 };
 
-export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, handleExportPTExcel, onClose }) => {
+export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, handleDownloadHTML, handleWhatsAppShare, handleExportPTExcel, onClose, onImportAnother }) => {
   // Audit Tracking
   React.useEffect(() => {
     if (createdVoucher && (createdVoucher.billNo || createdVoucher._id)) {
@@ -1950,24 +1981,31 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
       </div>
 
       <div className="mt-8 flex flex-wrap justify-center gap-4 no-print pb-8">
-        <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold flex items-center gap-2">
+        <button onClick={handlePrint} className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm">
           Print
         </button>
         {handleExportPTExcel && (
-          <button onClick={handleExportPTExcel} className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold flex items-center gap-2 shadow transition-all">
+          <button onClick={handleExportPTExcel} className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer">
             <Download className="w-4 h-4" />
             Download PT File (Excel)
           </button>
         )}
-        <button onClick={onDownloadHTML} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2">
+        <button onClick={onDownloadHTML} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm">
           Download HTML
         </button>
-        <button onClick={onWhatsAppShare} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2">
+        <button onClick={onWhatsAppShare} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm">
           Share on WhatsApp
         </button>
-        <button onClick={onClose} className="px-6 py-2 bg-slate-200 text-slate-800 rounded-lg font-bold">
-          Import Another PT File
-        </button>
+        {onImportAnother && (
+          <button onClick={onImportAnother} className="px-6 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold transition-colors cursor-pointer border border-indigo-200">
+            Import Another PT File
+          </button>
+        )}
+        {onClose && (
+          <button onClick={onClose} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold shadow-sm transition-colors cursor-pointer">
+            Done & Close
+          </button>
+        )}
       </div>
     </div>
   );

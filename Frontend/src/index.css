@@ -25,3 +25,33 @@ button:focus,
 button:focus-visible {
   outline: none !important;
 }
+
+@media print {
+  aside, nav, header, .no-print, [role="navigation"], button, input, select, .fixed {
+    display: none !important;
+  }
+  
+  body, #root {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #unified-vendor-card-print {
+    box-shadow: none !important;
+    border: 1.5px solid #120326 !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm;
+  }
+}
+

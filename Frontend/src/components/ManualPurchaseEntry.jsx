@@ -296,23 +296,55 @@ export const ManualPurchaseEntry = ({
     const totalRows = filteredItems.length;
     const totalCols = cols.length;
 
-    // Enter: Navigate forward to next column (or next row's first column)
+    const focusCell = (r, c) => {
+      if (r < 0 || r >= totalRows || c < 0 || c >= totalCols) return false;
+      const targetColKey = cols[c].key;
+      const targetEl = document.getElementById(`manual-cell-${r}-${targetColKey}`);
+      if (targetEl && !targetEl.disabled) {
+        targetEl.focus();
+        if (typeof targetEl.select === "function") {
+          try {
+            targetEl.select();
+          } catch (_) {}
+        }
+        return true;
+      }
+      return false;
+    };
+
+    const moveToNext = () => {
+      let r = rowIndex;
+      let c = colIndex + 1;
+      while (r < totalRows) {
+        while (c < totalCols) {
+          if (focusCell(r, c)) return;
+          c++;
+        }
+        r++;
+        c = 0;
+      }
+    };
+
+    const moveToPrev = () => {
+      let r = rowIndex;
+      let c = colIndex - 1;
+      while (r >= 0) {
+        while (c >= 0) {
+          if (focusCell(r, c)) return;
+          c--;
+        }
+        r--;
+        c = totalCols - 1;
+      }
+    };
+
+    // Enter: Navigate forward (or backward if Shift+Enter)
     if (e.key === "Enter") {
       e.preventDefault();
-      if (colIndex < totalCols - 1) {
-        const nextColKey = cols[colIndex + 1].key;
-        const nextEl = document.getElementById(`manual-cell-${rowIndex}-${nextColKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
-      } else if (rowIndex < totalRows - 1) {
-        const nextColKey = cols[0].key;
-        const nextEl = document.getElementById(`manual-cell-${rowIndex + 1}-${nextColKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
+      if (e.shiftKey) {
+        moveToPrev();
+      } else {
+        moveToNext();
       }
       return;
     }
@@ -321,11 +353,7 @@ export const ManualPurchaseEntry = ({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex < totalRows - 1) {
-        const nextEl = document.getElementById(`manual-cell-${rowIndex + 1}-${colKey}`);
-        if (nextEl) {
-          nextEl.focus();
-          if (typeof nextEl.select === "function") nextEl.select();
-        }
+        focusCell(rowIndex + 1, colIndex);
       }
       return;
     }
@@ -334,65 +362,53 @@ export const ManualPurchaseEntry = ({
     if (e.key === "ArrowUp") {
       e.preventDefault();
       if (rowIndex > 0) {
-        const prevEl = document.getElementById(`manual-cell-${rowIndex - 1}-${colKey}`);
-        if (prevEl) {
-          prevEl.focus();
-          if (typeof prevEl.select === "function") prevEl.select();
-        }
+        focusCell(rowIndex - 1, colIndex);
       }
       return;
     }
 
     // Left Arrow: Move backward to previous column
     if (e.key === "ArrowLeft") {
-      const val = e.target.value ?? "";
-      const isAtStart = e.target.selectionStart === 0 && e.target.selectionEnd === 0;
-      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === String(val).length;
-      if (isAtStart || isAllSelected || !val) {
-        if (colIndex > 0) {
-          e.preventDefault();
-          const prevColKey = cols[colIndex - 1].key;
-          const prevEl = document.getElementById(`manual-cell-${rowIndex}-${prevColKey}`);
-          if (prevEl) {
-            prevEl.focus();
-            if (typeof prevEl.select === "function") prevEl.select();
-          }
-        } else if (rowIndex > 0) {
-          e.preventDefault();
-          const prevColKey = cols[totalCols - 1].key;
-          const prevEl = document.getElementById(`manual-cell-${rowIndex - 1}-${prevColKey}`);
-          if (prevEl) {
-            prevEl.focus();
-            if (typeof prevEl.select === "function") prevEl.select();
-          }
+      let canMoveLeft = false;
+      const val = String(e.target.value ?? "");
+      try {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        if (start === null || start === undefined) {
+          canMoveLeft = true;
+        } else {
+          canMoveLeft = (start === 0 && end === 0) || (start === 0 && end === val.length) || !val;
         }
+      } catch (_) {
+        canMoveLeft = true;
+      }
+
+      if (canMoveLeft) {
+        e.preventDefault();
+        moveToPrev();
       }
       return;
     }
 
     // Right Arrow: Move forward to next column
     if (e.key === "ArrowRight") {
-      const val = e.target.value ?? "";
-      const isAtEnd = e.target.selectionStart === String(val).length;
-      const isAllSelected = e.target.selectionStart === 0 && e.target.selectionEnd === String(val).length;
-      if (isAtEnd || isAllSelected || !val) {
-        if (colIndex < totalCols - 1) {
-          e.preventDefault();
-          const nextColKey = cols[colIndex + 1].key;
-          const nextEl = document.getElementById(`manual-cell-${rowIndex}-${nextColKey}`);
-          if (nextEl) {
-            nextEl.focus();
-            if (typeof nextEl.select === "function") nextEl.select();
-          }
-        } else if (rowIndex < totalRows - 1) {
-          e.preventDefault();
-          const nextColKey = cols[0].key;
-          const nextEl = document.getElementById(`manual-cell-${rowIndex + 1}-${nextColKey}`);
-          if (nextEl) {
-            nextEl.focus();
-            if (typeof nextEl.select === "function") nextEl.select();
-          }
+      let canMoveRight = false;
+      const val = String(e.target.value ?? "");
+      try {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        if (start === null || start === undefined) {
+          canMoveRight = true;
+        } else {
+          canMoveRight = (start === val.length) || (start === 0 && end === val.length) || !val;
         }
+      } catch (_) {
+        canMoveRight = true;
+      }
+
+      if (canMoveRight) {
+        e.preventDefault();
+        moveToNext();
       }
       return;
     }

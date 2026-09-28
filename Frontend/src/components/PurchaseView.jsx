@@ -1369,7 +1369,11 @@ export const PurchaseView = ({
           purchaseOrders={purchaseOrders}
           onAddPurchaseOrder={onAddPurchaseOrder}
           onAddNotification={onAddNotification}
-          onClose={() => setShowImporter(false)}
+          onClose={() => {
+            setShowImporter(false);
+            setViewingPO(null);
+            setEditingPO(null);
+          }}
         />
       </div>
     );
@@ -1388,6 +1392,7 @@ export const PurchaseView = ({
             onClose={() => {
               setShowManualEntry(false);
               setEditingPO(null);
+              setViewingPO(null);
             }}
           />
         </div>
@@ -1451,7 +1456,14 @@ export const PurchaseView = ({
       {/* Tab Bar */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl overflow-x-auto">
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
+          <button key={t.id} onClick={() => {
+            setViewingPO(null);
+            setEditingPO(null);
+            setShowImporter(false);
+            setShowManualEntry(false);
+            setShowPOModal(false);
+            setActiveTab(t.id);
+          }}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${activeTab === t.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
             <t.icon className="w-3.5 h-3.5" />{t.label}
           </button>
@@ -1476,7 +1488,12 @@ export const PurchaseView = ({
 
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
-                  onClick={() => setShowImporter(true)}
+                  onClick={() => {
+                    setViewingPO(null);
+                    setEditingPO(null);
+                    setShowManualEntry(false);
+                    setShowImporter(true);
+                  }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <UploadCloud className="w-4 h-4" />
@@ -1484,7 +1501,12 @@ export const PurchaseView = ({
                 </button>
 
                 <button
-                  onClick={() => setShowManualEntry(true)}
+                  onClick={() => {
+                    setViewingPO(null);
+                    setEditingPO(null);
+                    setShowImporter(false);
+                    setShowManualEntry(true);
+                  }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <FilePlus className="w-4 h-4" />
@@ -1492,7 +1514,10 @@ export const PurchaseView = ({
                 </button>
 
                 <button
-                  onClick={() => setShowPOModal(true)}
+                  onClick={() => {
+                    setViewingPO(null);
+                    setShowPOModal(true);
+                  }}
                   className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />

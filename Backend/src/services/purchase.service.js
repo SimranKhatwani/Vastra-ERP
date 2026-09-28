@@ -877,6 +877,27 @@ class PurchaseService {
     return await this.enrichPurchaseBill(fetchedBill, tenantId);
   }
 
+  static async getPurchaseBillById(id, tenantId) {
+    let bill = null;
+    if (id && /^[0-9a-fA-F]{24}$/.test(String(id))) {
+      bill = await PurchaseBill.findOne({ _id: id, tenantId, includeDeleted: true }).populate('vendorId firmId warehouseId');
+      if (!bill) {
+        bill = await PurchaseBill.findById(id).populate('vendorId firmId warehouseId');
+      }
+    }
+    if (!bill && id) {
+      const escaped = escapeRegExp(String(id).trim());
+      bill = await PurchaseBill.findOne({
+        billNo: new RegExp(`^${escaped}$`, 'i'),
+        includeDeleted: true
+      }).populate('vendorId firmId warehouseId');
+    }
+    if (!bill) {
+      throw new ApiError(404, 'Purchase bill not found');
+    }
+    return await this.enrichPurchaseBill(bill, tenantId);
+  }
+
   static async getPurchaseBillItems(id, tenantId) {
     const items = await PurchaseItem.find({ purchaseBillId: id, tenantId })
       .populate({
@@ -923,17 +944,6 @@ class PurchaseService {
         pages: Math.ceil(total / limit)
       }
     };
-  }
-
-  static async getPurchaseBillById(id, tenantId) {
-    const isObjectId = tenantId && /^[0-9a-fA-F]{24}$/.test(String(tenantId));
-    const query = { _id: id, isDeleted: false };
-    if (isObjectId) query.tenantId = tenantId;
-    const bill = await PurchaseBill.findOne(query)
-      .populate('vendorId firmId warehouseId');
-    if (!bill) throw new ApiError(404, 'Purchase Bill not found.');
-
-    return await this.enrichPurchaseBill(bill, tenantId);
   }
 
   static async approvePurchaseBill(id, userId, tenantId) {

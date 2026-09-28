@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 5001;
 
 // Connect to Database and start server
 connectDB().then(async () => {
-  // Sync plain passwords for existing seed users if missing
+  // 1. Sync plain passwords for existing seed users if missing
   try {
     const User = require('./models/User');
     const usersToUpdate = await User.find({
@@ -40,6 +40,45 @@ connectDB().then(async () => {
     }
   } catch (err) {
     logger.error('Failed to run plainPassword database migration: ' + err.message);
+  }
+
+  // 2. Sync vendor brand names if missing
+  try {
+    const Vendor = require('./models/masters/Vendor');
+    const vendorsToSync = await Vendor.find({
+      $or: [
+        { brand: { $exists: false } },
+        { brand: null },
+        { brand: '' },
+        { brand: 'GENERIC BRAND' }
+      ]
+    });
+    for (let v of vendorsToSync) {
+      const name = v.name || '';
+      if (/^Rangoli/i.test(name)) {
+        v.brand = 'Rangoli';
+        v.brandNames = ['Rangoli'];
+        v.brandsSupplied = ['Rangoli'];
+        await v.save();
+      } else if (/^Mannat/i.test(name)) {
+        v.brand = 'Mannat Creation';
+        v.brandNames = ['Mannat Creation'];
+        v.brandsSupplied = ['Mannat Creation'];
+        await v.save();
+      } else if (/^Sneha/i.test(name)) {
+        v.brand = 'Sneha Silk';
+        v.brandNames = ['Sneha Silk'];
+        v.brandsSupplied = ['Sneha Silk'];
+        await v.save();
+      } else if (/^K\.?R/i.test(name)) {
+        v.brand = 'K.R. Chhabra';
+        v.brandNames = ['K.R. Chhabra'];
+        v.brandsSupplied = ['K.R. Chhabra'];
+        await v.save();
+      }
+    }
+  } catch (err) {
+    logger.warn('Vendor brand migration note: ' + err.message);
   }
 
   const server = http.createServer(app);
