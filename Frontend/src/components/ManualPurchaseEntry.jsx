@@ -259,13 +259,19 @@ export const ManualPurchaseEntry = ({
       const rate = parseFloat(item.purchaseRate) || 0;
       const disc = parseFloat(item.discountOnPurchase) || 0;
       const gstP = parseFloat(item.gstOnPurchase) || 0;
+      const typeOfGst = (item.typeOfGst || "E").toUpperCase();
       
       const itemSubTotal = qty * rate;
       let itemGst = 0;
       let taxable = itemSubTotal;
       let itemDiscAmt = disc;
 
-      if (item.typeOfGst?.toUpperCase() === "I") {
+      let wsp = parseFloat(item.wspAfterGst) || 0;
+      if (!wsp && rate > 0) {
+        wsp = typeOfGst === "E" ? Number((rate * (1 + (gstP / 100))).toFixed(2)) : rate;
+      }
+
+      if (typeOfGst === "I") {
         taxable = itemSubTotal / (1 + (gstP / 100));
         itemGst = itemSubTotal - taxable;
       } else {
@@ -275,10 +281,10 @@ export const ManualPurchaseEntry = ({
       subTotal += itemSubTotal;
       grandDisc += itemDiscAmt;
       gstTotal += itemGst;
-      grandTotal += (itemSubTotal - itemDiscAmt);
+      grandTotal += (wsp * qty - itemDiscAmt);
     });
 
-    return { subTotal, gstTotal, grandDisc, grandTotal };
+    return { subTotal, gstTotal, grandDisc, grandTotal: Number(grandTotal.toFixed(2)) };
   };
 
   const cols = [
@@ -537,8 +543,8 @@ export const ManualPurchaseEntry = ({
         calculatedTaxable: taxable,
         calculatedDisc: discAmt,
         calculatedGst: itemGst,
-        totalPrice: itemSubTotal - discAmt,
-        amount: itemSubTotal - discAmt
+        totalPrice: Number((wspAfterGst * qty - discAmt).toFixed(2)),
+        amount: Number((wspAfterGst * qty - discAmt).toFixed(2))
       };
     });
 

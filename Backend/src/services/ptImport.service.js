@@ -494,7 +494,9 @@ class PTImportService {
 
         const qty = parseInt(getVal(row, 'Qty', 'qty', 'Pcs', 'pcs') || 1) || 1;
         const discount = parseFloat(getVal(row, 'Discount', 'discount', 'DISCOUNT', 'Dis. on Purchase', 'discountOnPurchase') || 0) || 0;
-        const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
+        const lineTotal = typeOfGstNormalized === 'E' 
+          ? Number(((purchaseRate * (1 + (taxRate / 100))) * qty - discount).toFixed(2)) 
+          : Math.max(0, (qty * purchaseRate) - discount);
 
         const genderRaw = String(getVal(row, 'Gender', 'gender', 'GENDER', 'Group 3', 'group3', 'GROUP 3', 'Group 3 (Gender)', 'GROUP 3 (GENDER)', 'Group 3(Gender)') || '').trim();
         let gender = genderRaw;

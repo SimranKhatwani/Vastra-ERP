@@ -327,7 +327,7 @@ class PurchaseService {
 
       const barcode = rawBarcode || product.barcode || generateBarcode(tenantId, 'VST');
       const uniqueCode = String(item.uniqueCode || "").trim() || product.uniqueCode || generateUniqueCode(designNo, size, 1);
-      const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
+      const lineTotal = (typeOfGstNormalized === "E") ? Number(((purchaseRate * (1 + taxRate / 100)) * qty - discount).toFixed(2)) : Math.max(0, (qty * purchaseRate) - discount);
       calculatedTotal += lineTotal;
 
       const purchaseItemId = new mongoose.Types.ObjectId();
@@ -488,6 +488,7 @@ class PurchaseService {
         gstAmt = (taxable - discount) * (taxRate / 100);
       }
       const wspAfterGst = (typeOfGst === "E") ? rate * (1 + taxRate / 100) : rate;
+      const itemAmount = (typeOfGst === "E") ? Number(((rate * (1 + taxRate / 100)) * qty - discount).toFixed(2)) : lineTotal;
 
       const brandName = prd.brandId?.name || prd.brand || "GENERIC BRAND";
       const categoryName = prd.categoryId?.name || prd.category || prd.itemName || "Garment Item";
@@ -540,11 +541,11 @@ class PurchaseService {
         hsnCode: hsnCode,
         itemImage: prd.imageUrl || item.itemImage || item.imageUrl || "",
         imageUrl: prd.imageUrl || item.itemImage || item.imageUrl || "",
-        totalPrice: lineTotal,
+        totalPrice: itemAmount,
         calculatedTaxable: taxable,
         calculatedGst: gstAmt,
-        calculatedTotal: lineTotal,
-        amount: lineTotal
+        calculatedTotal: itemAmount,
+        amount: itemAmount
       };
     });
 
@@ -803,7 +804,7 @@ class PurchaseService {
 
         const barcode = rawBarcode || product.barcode || generateBarcode(tenantId, 'VST');
         const uniqueCode = String(item.uniqueCode || "").trim() || product.uniqueCode || generateUniqueCode(designNo, size, 1);
-        const lineTotal = Math.max(0, (qty * purchaseRate) - discount);
+        const lineTotal = (typeOfGstNormalized === "E") ? Number(((purchaseRate * (1 + taxRate / 100)) * qty - discount).toFixed(2)) : Math.max(0, (qty * purchaseRate) - discount);
         calculatedTotal += lineTotal;
 
         const purchaseItemId = new mongoose.Types.ObjectId();

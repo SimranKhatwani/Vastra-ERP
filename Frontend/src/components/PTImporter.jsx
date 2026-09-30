@@ -621,33 +621,43 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
       // Map parsed rows directly without grouping, so each imported row is a distinct item in the PO
       let currentProducts = [...(products || [])];
       const billItems = parsedRows.filter(r => r.status === "valid").map(row => {
-        const qty = row.quantity;
-        const rate = row.purchaseRate;
+        const qty = row.quantity || 1;
+        const rate = row.purchaseRate || 0;
+        const gstP = row.gstOnPurchase || 0;
+        const typeOfGst = (row.typeOfGst || "E").toUpperCase();
+        const discAmt = row.discountOnPurchase || 0;
         const itemSubTotal = qty * rate;
+
+        let wsp = Number(row.wspAfterGst ?? 0);
+        if (!wsp && rate > 0) {
+          wsp = typeOfGst === "E" ? Number((rate * (1 + (gstP / 100))).toFixed(2)) : rate;
+        }
 
         let itemGst = 0;
         let taxable = itemSubTotal;
-        let discAmt = row.discountOnPurchase || 0;
 
-        if (row.typeOfGst?.toUpperCase() === "I") {
-          const baseRate = rate / (1 + (row.gstOnPurchase / 100));
+        if (typeOfGst === "I") {
+          const baseRate = rate / (1 + (gstP / 100));
           taxable = qty * baseRate;
           itemGst = itemSubTotal - taxable;
         } else {
-          itemGst = (taxable - discAmt) * (row.gstOnPurchase / 100);
+          itemGst = (taxable - discAmt) * (gstP / 100);
         }
 
         const baseProductId = generateObjectId();
+        const itemLineTotal = Number((wsp * qty - discAmt).toFixed(2));
 
         return {
           ...row,
           productId: baseProductId,
           name: `${row.itemName} (${row.designNo})`,
           purchasePrice: rate,
-          totalPrice: (qty * rate) - discAmt,
+          wspAfterGst: wsp,
+          amount: itemLineTotal,
+          totalPrice: itemLineTotal,
           calculatedTaxable: taxable,
           calculatedGst: itemGst,
-          calculatedTotal: (qty * rate) - discAmt,
+          calculatedTotal: itemLineTotal,
           calculatedDisc: discAmt
         };
       });
@@ -765,7 +775,7 @@ export const PTImporter = ({ products, setProducts, suppliers, setSuppliers, pur
         rows: billItems,
         subTotal: subTotal,
         gstTotal: gstTotal,
-        grandTotal: subTotal - grandDisc,
+        grandTotal: billItems.reduce((sum, r) => sum + (r.amount || r.totalPrice || 0), 0),
         status: "Completed"
       };
 
@@ -1730,6 +1740,11 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     let discAmt = Number(item.discountOnPurchase ?? item.discount ?? 0);
     const typeOfGst = String(item.typeOfGst || voucher.typeOfGst || 'E').toUpperCase();
     
+    let wsp = Number(item.wspAfterGst ?? item.wspAfterGST ?? item.afterGST ?? item.wsp ?? 0);
+    if (!wsp && rate > 0) {
+      wsp = typeOfGst === "E" ? Number((rate * (1 + (gstPercent / 100))).toFixed(2)) : rate;
+    }
+
     let taxable = quantity * rate;
     let gstAmt = 0;
 
@@ -1739,7 +1754,9 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
     } else {
       gstAmt = (taxable - discAmt) * (gstPercent / 100);
     }
-    const amount = taxable - discAmt;
+    
+    // Amount is equal to WSP AFTER GST (Rate + GST applied * quantity - discAmt)
+    const amount = Number((wsp * quantity - discAmt).toFixed(2));
 
     return {
       id: idx,
@@ -1751,6 +1768,7 @@ export const InvoiceViewer = ({ createdVoucher = {}, invoiceRef, handlePrint, ha
       gstAmount: gstAmt,
       taxable,
       discount: discAmt,
+      wspAfterGst: wsp,
       amount
     };
   });
